@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Requests — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <div id="app-nav"></div>
+
+    <div class="page-wrap">
+
+        <!-- ── Summary cards ─────────────────────────────────── -->
+        <div class="docreq-summary" id="docreqSummary">
+            <div class="docreq-card">
+                <div class="docreq-card-value" id="sumDrTotal">—</div>
+                <div class="docreq-card-label">Total Active</div>
+            </div>
+            <div class="docreq-card docreq-card--warn">
+                <div class="docreq-card-value" id="sumDrOutstanding">—</div>
+                <div class="docreq-card-label">Outstanding</div>
+            </div>
+            <div class="docreq-card docreq-card--urgent">
+                <div class="docreq-card-value" id="sumDrOverdue">—</div>
+                <div class="docreq-card-label">Overdue</div>
+            </div>
+            <div class="docreq-card docreq-card--accent">
+                <div class="docreq-card-value" id="sumDrWeek">—</div>
+                <div class="docreq-card-label">Due This Week</div>
+            </div>
+            <div class="docreq-card docreq-card--muted">
+                <div class="docreq-card-value" id="sumDrReceived">—</div>
+                <div class="docreq-card-label">Received</div>
+            </div>
+        </div>
+
+        <!-- ── Toolbar ──────────────────────────────────────── -->
+        <div class="docreq-toolbar">
+            <select id="drFilterStatus" onchange="applyDrFilters()" title="Filter by status">
+                <option value="">All Statuses</option>
+                <option value="outstanding">Outstanding</option>
+                <option value="requested">Requested</option>
+                <option value="reminder_sent">Reminder Sent</option>
+                <option value="partially_received">Partially Received</option>
+                <option value="received">Received</option>
+                <option value="waived">Waived</option>
+            </select>
+            <select id="drFilterCategory" onchange="applyDrFilters()" title="Filter by category">
+                <option value="">All Categories</option>
+                <option value="identity">Identity</option>
+                <option value="tax">Tax</option>
+                <option value="vat">VAT</option>
+                <option value="payroll">Payroll</option>
+                <option value="accounting">Accounting</option>
+                <option value="banking">Banking</option>
+                <option value="cipc">CIPC</option>
+                <option value="trust">Trust</option>
+                <option value="legal">Legal</option>
+                <option value="compliance">Compliance</option>
+                <option value="financials">Financials</option>
+                <option value="supporting_docs">Supporting Docs</option>
+                <option value="custom">Custom</option>
+            </select>
+            <select id="drFilterClient" onchange="applyDrFilters()" title="Filter by client">
+                <option value="">All Clients</option>
+            </select>
+            <input type="text" id="drFilterSearch" class="docreq-search" placeholder="Search title, type, client…" oninput="applyDrFilters()">
+            <div class="docreq-toolbar-spacer"></div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleDrChecklists()">📋 Checklists</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openDrCreateModal()">+ Request Document</button>
+        </div>
+
+        <!-- ── Checklist panel (lazy-loaded) ─────────────────── -->
+        <div id="drChecklistPanel" class="hidden">
+            <div class="docreq-checklist-header">
+                <div class="docreq-checklist-title">📋 Document Checklists</div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openCreateChecklistModal()">+ New Checklist</button>
+            </div>
+            <div id="drChecklistLoading" class="cap-loading hidden">Loading checklists…</div>
+            <div id="drChecklistGrid" class="docreq-checklist-grid"></div>
+            <div id="drChecklistEmpty" class="cap-empty hidden">
+                <div class="cap-empty-icon">📋</div>
+                <div class="cap-empty-text">No checklists yet — create one to speed up recurring document requests</div>
+            </div>
+        </div>
+
+        <!-- ── List ─────────────────────────────────────────── -->
+        <div id="drListLoading" class="cap-loading">Loading document requests…</div>
+
+        <div id="drListWrap" class="hidden">
+            <table class="cap-table docreq-table">
+                <thead>
+                    <tr>
+                        <th class="col-drcat">Category</th>
+                        <th>Title</th>
+                        <th>Client</th>
+                        <th class="col-drdue">Required By</th>
+                        <th class="col-drstatus">Status</th>
+                        <th class="col-dractions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="drListBody"></tbody>
+            </table>
+        </div>
+
+        <div id="drListEmpty" class="cap-empty hidden">
+            <div class="cap-empty-icon">📄</div>
+            <div class="cap-empty-text">No document requests match the current filter</div>
+        </div>
+
+        <div id="drListError" class="error-banner hidden"></div>
+
+    </div><!-- /page-wrap -->
+
+    <!-- ── Create document request modal ─────────────────────── -->
+    <div id="drCreateModal" class="modal-overlay hidden" onclick="closeDrCreateModal()">
+        <div class="modal-box modal-box--lg" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">Request Document</div>
+                <button type="button" class="modal-close" onclick="closeDrCreateModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Client <span class="req">*</span></label>
+                        <select id="drCClient" class="form-input" title="Client"></select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Category <span class="req">*</span></label>
+                        <select id="drCCategory" class="form-input" title="Document category">
+                            <option value="">Select category…</option>
+                            <option value="identity">Identity</option>
+                            <option value="tax">Tax</option>
+                            <option value="vat">VAT</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="accounting">Accounting</option>
+                            <option value="banking">Banking</option>
+                            <option value="cipc">CIPC</option>
+                            <option value="trust">Trust</option>
+                            <option value="legal">Legal</option>
+                            <option value="compliance">Compliance</option>
+                            <option value="financials">Financials</option>
+                            <option value="supporting_docs">Supporting Docs</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Assigned To</label>
+                        <select id="drCAssignee" class="form-input" title="Team member"></select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Required By Date</label>
+                        <input type="date" id="drCRequiredBy" class="form-input">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Request Title <span class="req">*</span></label>
+                    <input type="text" id="drCTitle" class="form-input" placeholder="e.g. Bank statements — June 2026">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Document Type</label>
+                    <input type="text" id="drCDocType" class="form-input" placeholder="e.g. VAT201 Return, IRP5 Certificate">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Notes</label>
+                    <textarea id="drCNotes" class="form-input" rows="2" placeholder="Any instructions or context for the client…"></textarea>
+                </div>
+                <div id="drCreateError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeDrCreateModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="drCreateSubmitBtn" onclick="submitDrCreate()">Request Document</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create checklist modal ─────────────────────────────── -->
+    <div id="drNewChecklistModal" class="modal-overlay hidden" onclick="closeCreateChecklistModal()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">New Document Checklist</div>
+                <button type="button" class="modal-close" onclick="closeCreateChecklistModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label class="form-label">Checklist Name <span class="req">*</span></label>
+                    <input type="text" id="clName" class="form-input" placeholder="e.g. Monthly VAT Pack">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Category</label>
+                    <select id="clCategory" class="form-input" title="Checklist category">
+                        <option value="vat">VAT</option>
+                        <option value="tax">Tax</option>
+                        <option value="payroll">Payroll</option>
+                        <option value="financials">Financials</option>
+                        <option value="audit">Audit</option>
+                        <option value="onboarding">Onboarding</option>
+                        <option value="cipc">CIPC</option>
+                        <option value="trust">Trust</option>
+                        <option value="custom" selected>Custom</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Description</label>
+                    <textarea id="clDesc" class="form-input" rows="2" placeholder="Optional — when to use this checklist"></textarea>
+                </div>
+                <div id="clCreateError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeCreateChecklistModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="clCreateSubmitBtn" onclick="submitCreateChecklist()">Create Checklist</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Apply checklist modal ─────────────────────────────── -->
+    <div id="drApplyModal" class="modal-overlay hidden" onclick="closeDrApplyModal()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="drApplyTitle">Apply Checklist</div>
+                <button type="button" class="modal-close" onclick="closeDrApplyModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="docreq-apply-desc" id="drApplyDesc"></p>
+                <div class="form-row">
+                    <label class="form-label">Client <span class="req">*</span></label>
+                    <select id="drApplyClient" class="form-input" title="Client to apply checklist to"></select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Required By Date <span class="col-muted">(applies to all items)</span></label>
+                    <input type="date" id="drApplyDue" class="form-input">
+                </div>
+                <div id="drApplyError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeDrApplyModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="drApplySubmitBtn" onclick="submitDrApply()">Apply &amp; Create Requests</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── View modal ────────────────────────────────────────── -->
+    <div id="drViewModal" class="modal-overlay hidden" onclick="closeDrViewModal()">
+        <div class="modal-box modal-box--lg" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="drViewTitle">Document Request</div>
+                <button type="button" class="modal-close" onclick="closeDrViewModal()">✕</button>
+            </div>
+            <div class="modal-body" id="drViewBody"></div>
+            <div class="modal-footer" id="drViewFooter"></div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/document-requests.js"></script>
+</body>
+</html>

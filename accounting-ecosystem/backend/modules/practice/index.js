@@ -20,6 +20,14 @@ const capacityRouter         = require('./capacity');
 const clientHealthRouter     = require('./client-health');
 const remindersRouter        = require('./reminders');
 const communicationsRouter   = require('./communications');
+const documentRequestsRouter  = require('./document-requests');
+const compliancePacksRouter   = require('./compliance-packs');
+const taxpayerProfilesRouter  = require('./taxpayer-profiles');
+const provisionalTaxRouter    = require('./provisional-tax');
+const individualTaxRouter        = require('./individual-tax');
+const individualTaxReviewPacksRouter = require('./individual-tax-review-packs');
+const taxConfigRouter            = require('./tax-config');
+const companyTaxRouter           = require('./company-tax');
 
 const router = express.Router();
 
@@ -2400,6 +2408,37 @@ router.use('/reminders', remindersRouter);
 
 // Client Communication Log (Codebox 22)
 router.use('/communications', communicationsRouter);
+
+// Document Request Tracker (Codebox 23)
+router.use('/document-requests', documentRequestsRouter);
+
+// Compliance Pack Readiness Tracker (Codebox 24)
+router.use('/compliance-packs', compliancePacksRouter);
+
+// Taxpayer Profile Foundation (Codebox 25)
+router.use('/taxpayer-profiles', taxpayerProfilesRouter);
+
+// Provisional Tax Planning (Codebox 26)
+router.use('/provisional-tax', provisionalTaxRouter);
+
+// Individual Income Tax Data Capture (Codebox 27)
+router.use('/individual-tax', individualTaxRouter);
+
+// Individual Income Tax Draft Calculations (Codebox 28)
+// Mounted at same /individual-tax path — Express tries individualTaxRouter first,
+// then falls through to individualTaxCalcRouter for unmatched routes.
+const individualTaxCalcRouter = require('./individual-tax-calculations');
+router.use('/individual-tax', individualTaxCalcRouter);
+
+// Individual Tax Review Pack + Draft PDF (Codebox 30)
+// Mounted last — handles /review-packs/* routes not matched above.
+router.use('/individual-tax', individualTaxReviewPacksRouter);
+
+// Tax Year Configuration (Codebox 29)
+router.use('/tax-configs', taxConfigRouter);
+
+// Company Tax Data Capture Foundation (Codebox 31)
+router.use('/company-tax', companyTaxRouter);
 
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.

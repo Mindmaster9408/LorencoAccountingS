@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provisional Tax — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Summary cards ──────────────────────────────────── */
+        .pt-summary {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .pt-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 20px;
+            min-width: 110px;
+            flex: 1;
+        }
+        .pt-card-value { font-size: 1.7rem; font-weight: 700; color: var(--text); }
+        .pt-card-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .pt-card--blue   .pt-card-value { color: var(--accent); }
+        .pt-card--ready  .pt-card-value { color: #22c55e; }
+        .pt-card--warn   .pt-card-value { color: #f59e0b; }
+        .pt-card--danger .pt-card-value { color: var(--danger); }
+
+        /* ── Toolbar ───────────────────────────────────────── */
+        .pt-toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .pt-toolbar select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            height: 34px;
+        }
+        .pt-toolbar-spacer { flex: 1; }
+
+        /* ── Plan table ─────────────────────────────────────── */
+        .pt-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .pt-table th {
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+        .pt-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            color: var(--text);
+            vertical-align: middle;
+        }
+        .pt-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .pt-table .col-year    { width: 70px; }
+        .pt-table .col-status  { width: 120px; }
+        .pt-table .col-due     { width: 110px; }
+        .pt-table .col-actions { width: 90px; text-align: right; }
+
+        /* ── Status badges ─────────────────────────────────── */
+        .pt-status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .pt-s-draft            { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.5); }
+        .pt-s-collecting_info  { background: rgba(59,130,246,0.14); color: #60a5fa; }
+        .pt-s-ready_for_review { background: rgba(245,158,11,0.14); color: #fbbf24; }
+        .pt-s-reviewed         { background: rgba(139,92,246,0.14); color: #a78bfa; }
+        .pt-s-submitted        { background: rgba(16,185,129,0.14); color: #34d399; }
+        .pt-s-completed        { background: rgba(34,197,94,0.14);  color: #4ade80; }
+        .pt-s-cancelled        { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.25); }
+        .pt-s-not_started      { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.4); }
+        .pt-s-ready            { background: rgba(34,197,94,0.14);   color: #4ade80; }
+        .pt-s-paid             { background: rgba(34,197,94,0.20);   color: #4ade80; font-weight:700; }
+        .pt-s-waived           { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.3); }
+
+        /* ── Detail modal — tabs ───────────────────────────── */
+        .pt-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+        .pt-tab {
+            padding: 8px 16px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            background: none;
+            border-top: none; border-left: none; border-right: none;
+        }
+        .pt-tab:hover  { color: var(--text); }
+        .pt-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .pt-tab-panel  { display: none; }
+        .pt-tab-panel.active { display: block; }
+
+        /* ── Period rows ────────────────────────────────────── */
+        .pt-period-row {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+        }
+        .pt-period-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .pt-period-title { font-size: 0.9rem; font-weight: 600; color: var(--text); flex: 1; }
+        .pt-period-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px 16px;
+        }
+        .pt-period-field label {
+            display: block;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+        .pt-period-field input, .pt-period-field select {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            color: var(--text);
+            padding: 5px 8px;
+            font-size: 0.82rem;
+            box-sizing: border-box;
+        }
+        .pt-period-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            flex-wrap: wrap;
+        }
+
+        /* ── Overview grid ──────────────────────────────────── */
+        .pt-overview-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px 24px;
+            margin-bottom: 16px;
+        }
+        .pt-overview-field label {
+            display: block;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+        .pt-overview-field span, .pt-overview-field input, .pt-overview-field textarea {
+            font-size: 0.88rem;
+            color: var(--text);
+        }
+        .pt-overview-field input, .pt-overview-field textarea {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 5px 8px;
+            box-sizing: border-box;
+        }
+
+        /* ── Event log ──────────────────────────────────────── */
+        .pt-event-row {
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+        .pt-event-row:last-child { border-bottom: none; }
+        .pt-event-type { font-weight: 600; color: var(--text); font-size: 0.78rem; }
+
+        /* ── Amount display ─────────────────────────────────── */
+        .pt-amount {
+            font-size: 0.88rem;
+            color: var(--text);
+            font-variant-numeric: tabular-nums;
+        }
+        .pt-amount--zero { color: var(--text-muted); }
+
+        /* ── Empty / loading ───────────────────────────────── */
+        .pt-loading { padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.88rem; }
+        .pt-empty   { padding: 32px 24px; text-align: center; }
+        .pt-empty-icon { font-size: 2.2rem; margin-bottom: 10px; opacity: 0.5; }
+        .pt-empty-text { color: var(--text-muted); font-size: 0.88rem; }
+
+        /* ── Due date badge ─────────────────────────────────── */
+        .pt-due-badge {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .pt-due-badge.overdue { color: var(--danger); font-weight: 600; }
+        .pt-due-badge.soon    { color: #f59e0b; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <div id="app-nav"></div>
+
+    <div class="page-wrap">
+
+        <!-- ── Summary cards ─────────────────────────────────── -->
+        <div class="pt-summary">
+            <div class="pt-card">
+                <div class="pt-card-value" id="sumPtTotal">—</div>
+                <div class="pt-card-label">Total Plans</div>
+            </div>
+            <div class="pt-card pt-card--blue">
+                <div class="pt-card-value" id="sumPtDraft">—</div>
+                <div class="pt-card-label">Draft / Collecting</div>
+            </div>
+            <div class="pt-card pt-card--warn">
+                <div class="pt-card-value" id="sumPtReview">—</div>
+                <div class="pt-card-label">Ready for Review</div>
+            </div>
+            <div class="pt-card pt-card--ready">
+                <div class="pt-card-value" id="sumPtReviewed">—</div>
+                <div class="pt-card-label">Reviewed / Done</div>
+            </div>
+            <div class="pt-card pt-card--warn">
+                <div class="pt-card-value" id="sumPtP1">—</div>
+                <div class="pt-card-label">P1 Upcoming</div>
+            </div>
+            <div class="pt-card pt-card--warn">
+                <div class="pt-card-value" id="sumPtP2">—</div>
+                <div class="pt-card-label">P2 Upcoming</div>
+            </div>
+        </div>
+
+        <!-- ── Toolbar ───────────────────────────────────────── -->
+        <div class="pt-toolbar">
+            <select id="ptFilterClient" onchange="loadPlans()" title="Client">
+                <option value="">All Clients</option>
+            </select>
+            <select id="ptFilterYear" onchange="loadPlans()" title="Tax year">
+                <option value="">All Tax Years</option>
+            </select>
+            <select id="ptFilterStatus" onchange="loadPlans()" title="Status">
+                <option value="">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="collecting_info">Collecting Info</option>
+                <option value="ready_for_review">Ready for Review</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="submitted">Submitted</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            <div class="pt-toolbar-spacer"></div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openCreatePlanModal()">+ New Provisional Tax Plan</button>
+        </div>
+
+        <!-- ── Plan list ─────────────────────────────────────── -->
+        <div id="ptListLoading" class="pt-loading">Loading provisional tax plans…</div>
+
+        <div id="ptListWrap" class="hidden">
+            <table class="pt-table">
+                <thead>
+                    <tr>
+                        <th class="col-year">Year</th>
+                        <th>Client / Plan</th>
+                        <th class="col-status">Status</th>
+                        <th class="col-due">P1 Due</th>
+                        <th class="col-due">P2 Due</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="ptListBody"></tbody>
+            </table>
+        </div>
+
+        <div id="ptListEmpty" class="pt-empty hidden">
+            <div class="pt-empty-icon">📅</div>
+            <div class="pt-empty-text">No provisional tax plans match the current filter</div>
+        </div>
+
+        <div id="ptListError" class="error-banner hidden"></div>
+
+    </div><!-- /page-wrap -->
+
+    <!-- ── Create Plan Modal ─────────────────────────────────── -->
+    <div id="ptCreateModal" class="modal-overlay hidden" onclick="closeCreatePlanModal()">
+        <div class="modal-box modal-box--lg" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">New Provisional Tax Plan</div>
+                <button type="button" class="modal-close" onclick="closeCreatePlanModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Client <span class="req">*</span></label>
+                        <select id="ptCClient" class="form-input" onchange="ptLoadProfilesForClient()" title="Client"></select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Taxpayer Profile <span class="req">*</span></label>
+                        <select id="ptCProfile" class="form-input" title="Taxpayer profile">
+                            <option value="">Select client first…</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Tax Year <span class="req">*</span></label>
+                        <input type="number" id="ptCYear" class="form-input" placeholder="e.g. 2026" min="2000" max="2099" oninput="ptAutoName()">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Plan Name <span class="req">*</span></label>
+                        <input type="text" id="ptCName" class="form-input" placeholder="e.g. Individual IRP6 2026">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Prior Year Taxable Income</label>
+                        <input type="number" id="ptCPriorIncome" class="form-input" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Current Estimated Taxable Income</label>
+                        <input type="number" id="ptCCurrIncome" class="form-input" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Period 1 Due Date</label>
+                        <input type="date" id="ptCP1Due" class="form-input">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Period 2 Due Date</label>
+                        <input type="date" id="ptCP2Due" class="form-input">
+                    </div>
+                </div>
+                <div class="form-row" style="margin-top:8px;">
+                    <label class="form-label">Notes</label>
+                    <textarea id="ptCNotes" class="form-input" rows="2" placeholder="Any planning notes…"></textarea>
+                </div>
+                <div id="ptCreateError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeCreatePlanModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="ptCreateSubmitBtn" onclick="submitCreatePlan()">Create Plan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Plan Detail Modal ─────────────────────────────────── -->
+    <div id="ptDetailModal" class="modal-overlay hidden" onclick="closePtDetailModal()">
+        <div class="modal-box modal-box--lg" style="max-width:720px;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="ptDetailTitle">Plan Detail</div>
+                <button type="button" class="modal-close" onclick="closePtDetailModal()">✕</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- Header strip -->
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:1rem;font-weight:700;color:var(--text);" id="ptDClientName"></div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;" id="ptDSub"></div>
+                    </div>
+                    <div id="ptDStatusBadge"></div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="pt-tabs">
+                    <button type="button" class="pt-tab active" onclick="ptSwitchTab('overview', event)">Overview</button>
+                    <button type="button" class="pt-tab" onclick="ptSwitchTab('periods', event)">Periods</button>
+                    <button type="button" class="pt-tab" onclick="ptSwitchTab('events', event)">History</button>
+                </div>
+
+                <!-- Tab: Overview -->
+                <div id="ptTabOverview" class="pt-tab-panel active">
+                    <div class="pt-overview-grid" id="ptDOverviewGrid"></div>
+                    <div style="margin-top:14px;">
+                        <div class="form-row">
+                            <label class="form-label">Estimate Basis / Rationale</label>
+                            <textarea id="ptDEstimateBasis" class="form-input" rows="2" placeholder="e.g. Based on prior year + 10% growth"></textarea>
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">Risk Notes</label>
+                            <textarea id="ptDRiskNotes" class="form-input" rows="2" placeholder="e.g. Capital gain expected from property disposal"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                        <select id="ptDStatusSel" class="form-input" style="width:auto;font-size:0.8rem;padding:4px 8px;height:30px;" onchange="ptUpdateStatus()" title="Plan status">
+                            <option value="draft">Draft</option>
+                            <option value="collecting_info">Collecting Info</option>
+                            <option value="ready_for_review">Ready for Review</option>
+                            <option value="reviewed">Reviewed</option>
+                            <option value="submitted">Submitted</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="ptSaveOverviewEdits()">💾 Save Changes</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="ptMarkReviewed()">✅ Mark Reviewed</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="ptCreatePeriods()">📋 Create Periods</button>
+                    </div>
+                    <div id="ptOverviewError" class="error-banner hidden" style="margin-top:8px;"></div>
+                </div>
+
+                <!-- Tab: Periods -->
+                <div id="ptTabPeriods" class="pt-tab-panel">
+                    <div id="ptDPeriodsLoading" class="pt-loading hidden">Loading periods…</div>
+                    <div id="ptDPeriodsEmpty" class="pt-empty hidden">
+                        <div class="pt-empty-icon">📋</div>
+                        <div class="pt-empty-text">No periods created yet — use "Create Periods" on the Overview tab</div>
+                    </div>
+                    <div id="ptDPeriodsWrap"></div>
+                </div>
+
+                <!-- Tab: History -->
+                <div id="ptTabEvents" class="pt-tab-panel">
+                    <div id="ptDEventsLoading" class="pt-loading hidden">Loading history…</div>
+                    <div id="ptDEventsWrap"></div>
+                    <div id="ptDEventsEmpty" class="pt-empty hidden">
+                        <div class="pt-empty-icon">📝</div>
+                        <div class="pt-empty-text">No history recorded yet</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/provisional-tax.js"></script>
+</body>
+</html>

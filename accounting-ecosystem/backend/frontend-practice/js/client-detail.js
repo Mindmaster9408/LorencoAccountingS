@@ -63,13 +63,37 @@
             document.getElementById('engagementsSection').classList.remove('hidden');
             document.getElementById('healthSection').classList.remove('hidden');
             document.getElementById('communicationsSection').classList.remove('hidden');
+            document.getElementById('docRequestsSection').classList.remove('hidden');
+            document.getElementById('compliancePacksSection').classList.remove('hidden');
+            document.getElementById('taxpayerProfilesSection').classList.remove('hidden');
+            document.getElementById('provisionalTaxSection').classList.remove('hidden');
+            document.getElementById('individualTaxSection').classList.remove('hidden');
+            document.getElementById('companyTaxSection').classList.remove('hidden');
             document.getElementById('archiveBtn').classList.remove('hidden');
             var commLink = document.getElementById('commViewAllLink');
             if (commLink) commLink.href = '/practice/communications.html?client_id=' + clientId;
+            var docLink = document.getElementById('docReqViewAllLink');
+            if (docLink) docLink.href = '/practice/document-requests.html?client_id=' + clientId;
+            var cpLink = document.getElementById('cpViewAllLink');
+            if (cpLink) cpLink.href = '/practice/compliance-packs.html?client_id=' + clientId;
+            var tpLink = document.getElementById('tpViewAllLink');
+            if (tpLink) tpLink.href = '/practice/taxpayer-profiles.html?client_id=' + clientId;
+            var ptLink = document.getElementById('ptViewAllLink');
+            if (ptLink) ptLink.href = '/practice/provisional-tax.html?client_id=' + clientId;
+            var itLink = document.getElementById('itViewAllLink');
+            if (itLink) itLink.href = '/practice/individual-tax.html?client_id=' + clientId;
+            var ctLink = document.getElementById('ctViewAllLink');
+            if (ctLink) ctLink.href = '/practice/company-tax.html?client_id=' + clientId;
             loadContacts();
             loadEngagements();
             loadClientHealth();
             loadClientCommunications();
+            loadClientDocumentRequests();
+            loadClientCompliancePacks();
+            loadClientTaxpayerProfiles();
+            loadClientProvisionalTaxPlans();
+            loadClientIndividualTaxReturns();
+            loadClientCompanyTaxReturns();
         } catch(e) {
             document.getElementById('pageLoading').classList.add('hidden');
             document.getElementById('pageError').classList.remove('hidden');
@@ -1428,11 +1452,900 @@
     window.loadClientHealth   = loadClientHealth;
     window.recalcClientHealth = recalcClientHealth;
 
+    // ── Document Requests (Section 16) ────────────────────────────────────────
+
+    var _cdDocSubmitting = false;
+
+    var _docCatLabel = {
+        identity: 'Identity', tax: 'Tax', vat: 'VAT', payroll: 'Payroll',
+        accounting: 'Accounting', banking: 'Banking', cipc: 'CIPC',
+        trust: 'Trust', legal: 'Legal', compliance: 'Compliance',
+        financials: 'Financials', supporting_docs: 'Supporting Docs', custom: 'Custom',
+    };
+    var _docStatusClass = {
+        requested: 'drs-requested', reminder_sent: 'drs-reminder',
+        partially_received: 'drs-partial', received: 'drs-received',
+        waived: 'drs-waived',
+    };
+    var _docStatusLabel = {
+        requested: 'Requested', reminder_sent: 'Reminder Sent',
+        partially_received: 'Partial', received: 'Received', waived: 'Waived',
+    };
+
+    async function loadClientDocumentRequests() {
+        var loading = document.getElementById('docreqHistoryLoading');
+        var wrap    = document.getElementById('docreqHistoryWrap');
+        var empty   = document.getElementById('docreqHistoryEmpty');
+        if (loading) loading.classList.remove('hidden');
+        if (wrap)    wrap.classList.add('hidden');
+        if (empty)   empty.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/document-requests?client_id=' + clientId + '&limit=10');
+            if (!res.ok) throw new Error('Load failed');
+            var d = await res.json();
+            var reqs = (d.document_requests || []).filter(function(r) {
+                return r.request_status !== 'cancelled' && r.request_status !== 'received' && r.request_status !== 'waived';
+            });
+            if (loading) loading.classList.add('hidden');
+            if (reqs.length === 0) {
+                if (empty) empty.classList.remove('hidden');
+            } else {
+                renderDocRequestHistory(reqs);
+                if (wrap) wrap.classList.remove('hidden');
+            }
+        } catch(e) {
+            if (loading) loading.classList.add('hidden');
+            if (wrap) { wrap.innerHTML = '<div class="error-banner">Could not load document requests.</div>'; wrap.classList.remove('hidden'); }
+        }
+    }
+
+    function renderDocRequestHistory(reqs) {
+        var wrap  = document.getElementById('docreqHistoryWrap');
+        if (!wrap) return;
+        var today = new Date().toISOString().split('T')[0];
+
+        var rows = reqs.map(function(r) {
+            var catLabel    = _docCatLabel[r.document_category]  || r.document_category;
+            var statusCls   = _docStatusClass[r.request_status]  || '';
+            var statusLabel = _docStatusLabel[r.request_status]  || r.request_status;
+            var outstanding = ['requested', 'reminder_sent', 'partially_received'].includes(r.request_status);
+            var isOverdue   = r.is_overdue || (outstanding && r.required_by_date && r.required_by_date < today);
+            var rowCls      = isOverdue ? 'doc-hist-row docreq-row--overdue' : 'doc-hist-row';
+            var dueStr      = r.required_by_date || '';
+
+            var actionHtml = '';
+            if (outstanding) {
+                actionHtml = ' <button type="button" class="btn btn-xs btn-ghost" onclick="cdDocMarkReceived(' + r.id + ')">✓</button>';
+            }
+
+            return '<div class="' + rowCls + '">' +
+                '<div class="doc-hist-body">' +
+                    '<div class="doc-hist-title">' + esc(r.request_title) + '</div>' +
+                    '<div class="doc-hist-cat">' + esc(catLabel) + (dueStr ? ' · Due ' + esc(dueStr) : '') + '</div>' +
+                '</div>' +
+                '<div class="doc-hist-meta">' +
+                    '<span class="docreq-status-badge ' + statusCls + '">' + esc(statusLabel) + '</span>' +
+                    actionHtml +
+                '</div>' +
+            '</div>';
+        });
+        wrap.innerHTML = rows.join('');
+    }
+
+    async function openAddDocModal() {
+        document.getElementById('addDocCategory').value  = '';
+        document.getElementById('addDocTitle').value     = '';
+        document.getElementById('addDocType').value      = '';
+        document.getElementById('addDocRequiredBy').value = '';
+        document.getElementById('addDocError').classList.add('hidden');
+        _cdDocSubmitting = false;
+        document.getElementById('addDocSubmitBtn').disabled = false;
+
+        // Populate assignee picker
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/team?active=true');
+            var members = [];
+            if (res.ok) { var td = await res.json(); members = td.members || []; }
+            var opts = '<option value="">Unassigned</option>';
+            members.forEach(function(m) {
+                opts += '<option value="' + m.id + '">' + esc(m.display_name) + '</option>';
+            });
+            document.getElementById('addDocAssignee').innerHTML = opts;
+        } catch(e) {
+            document.getElementById('addDocAssignee').innerHTML = '<option value="">Unassigned</option>';
+        }
+
+        document.getElementById('addDocModal').classList.remove('hidden');
+    }
+
+    function closeAddDocModal() {
+        document.getElementById('addDocModal').classList.add('hidden');
+    }
+
+    async function submitAddDoc() {
+        if (_cdDocSubmitting) return;
+        var category = document.getElementById('addDocCategory').value;
+        var title    = document.getElementById('addDocTitle').value.trim();
+        var errEl    = document.getElementById('addDocError');
+
+        if (!category) { errEl.textContent = 'Category is required.'; errEl.classList.remove('hidden'); return; }
+        if (!title)    { errEl.textContent = 'Request title is required.'; errEl.classList.remove('hidden'); return; }
+
+        _cdDocSubmitting = true;
+        document.getElementById('addDocSubmitBtn').disabled = true;
+        errEl.classList.add('hidden');
+
+        var assigneeEl = document.getElementById('addDocAssignee');
+        var payload = {
+            client_id:              clientId,
+            request_title:          title,
+            document_category:      category,
+            document_type:          document.getElementById('addDocType').value.trim() || null,
+            required_by_date:       document.getElementById('addDocRequiredBy').value || null,
+            assigned_team_member_id: assigneeEl && assigneeEl.value ? parseInt(assigneeEl.value, 10) : null,
+        };
+
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/document-requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) { var e2 = await res.json(); throw new Error(e2.error || 'Failed'); }
+            _cdDocSubmitting = false;
+            closeAddDocModal();
+            loadClientDocumentRequests();
+        } catch(e) {
+            _cdDocSubmitting = false;
+            document.getElementById('addDocSubmitBtn').disabled = false;
+            errEl.textContent = e.message || 'Failed to create request.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    async function cdDocMarkReceived(reqId) {
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/document-requests/' + reqId + '/received', { method: 'PUT' });
+            if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+            loadClientDocumentRequests();
+        } catch(e) {
+            alert('Could not mark as received: ' + (e.message || 'Server error'));
+        }
+    }
+
     window.openAddCommModal         = openAddCommModal;
     window.closeAddCommModal        = closeAddCommModal;
     window.toggleAddCommResponseDate = toggleAddCommResponseDate;
     window.submitAddComm            = submitAddComm;
     window.markCommResponded        = markCommResponded;
+
+    window.openAddDocModal    = openAddDocModal;
+    window.closeAddDocModal   = closeAddDocModal;
+    window.submitAddDoc       = submitAddDoc;
+    window.cdDocMarkReceived  = cdDocMarkReceived;
+
+    // ── Compliance Packs (client detail section) ───────────────────────────────
+
+    var _CP_BASE         = '/api/practice/compliance-packs';
+    var _cdPackSubmitting = false;
+
+    var _cpTypeLabels = {
+        annual_financials: 'Annual Financials',
+        company_tax:       'Company Tax',
+        individual_tax:    'Individual Tax',
+        vat_period:        'VAT Period',
+        payroll_annual:    'Payroll Annual',
+        cipc_annual:       'CIPC Annual',
+        custom:            'Custom',
+    };
+
+    var _cpReadinessLabels = { incomplete: '▲', partial: '◑', ready: '✓', blocked: '✕', unknown: '·' };
+    var _cpReadinessClasses = {
+        incomplete: 'color:#f87171',
+        partial:    'color:#fbbf24',
+        ready:      'color:#4ade80',
+        blocked:    'color:var(--danger)',
+        unknown:    'color:rgba(255,255,255,0.3)',
+    };
+
+    async function loadClientCompliancePacks() {
+        var loading = document.getElementById('cpClientLoading');
+        var wrap    = document.getElementById('cpClientWrap');
+        var empty   = document.getElementById('cpClientEmpty');
+        if (loading) loading.classList.remove('hidden');
+        if (wrap)    wrap.classList.add('hidden');
+        if (empty)   empty.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_CP_BASE + '?client_id=' + clientId + '&limit=8');
+            if (!res.ok) throw new Error('Load failed');
+            var d    = await res.json();
+            var packs = (d.compliance_packs || []).filter(function(p) { return p.status !== 'cancelled'; });
+            if (loading) loading.classList.add('hidden');
+            if (packs.length === 0) {
+                if (empty) empty.classList.remove('hidden');
+            } else {
+                renderClientPackList(packs);
+                if (wrap) wrap.classList.remove('hidden');
+            }
+        } catch(e) {
+            if (loading) loading.classList.add('hidden');
+            if (wrap) { wrap.innerHTML = '<div class="error-banner">Could not load compliance packs.</div>'; wrap.classList.remove('hidden'); }
+        }
+    }
+
+    function renderClientPackList(packs) {
+        var wrap = document.getElementById('cpClientWrap');
+        if (!wrap) return;
+
+        wrap.innerHTML = packs.map(function(p) {
+            var typeLabel = _cpTypeLabels[p.pack_type] || p.pack_type;
+            var rs        = p.readiness_status || 'unknown';
+            var score     = p.readiness_score  != null ? p.readiness_score + '%' : '—';
+            var icon      = _cpReadinessLabels[rs]  || '·';
+            var iconStyle = _cpReadinessClasses[rs]  || '';
+            var statusLabels = {
+                draft: 'Draft', collecting_docs: 'Collecting', ready_for_review: 'Ready for Review',
+                reviewed: 'Reviewed', completed: 'Completed',
+            };
+            var statusLabel = statusLabels[p.status] || p.status;
+
+            return '<div class="doc-hist-row">' +
+                '<div class="doc-hist-body">' +
+                    '<div class="doc-hist-title">' + esc(p.pack_name) + '</div>' +
+                    '<div class="doc-hist-cat">' + esc(typeLabel) + ' · ' + esc(statusLabel) + '</div>' +
+                '</div>' +
+                '<div class="doc-hist-meta">' +
+                    '<span style="font-size:0.8rem;font-weight:600;' + iconStyle + '">' + icon + ' ' + esc(score) + '</span>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function openCdCreatePackModal() {
+        document.getElementById('cdCpType').value         = '';
+        document.getElementById('cdCpTaxYear').value      = '';
+        document.getElementById('cdCpName').value         = '';
+        document.getElementById('cdCpPeriodStart').value  = '';
+        document.getElementById('cdCpPeriodEnd').value    = '';
+        document.getElementById('cdCreatePackError').classList.add('hidden');
+        _cdPackSubmitting = false;
+        document.getElementById('cdCreatePackSubmitBtn').disabled = false;
+        document.getElementById('cdCreatePackModal').classList.remove('hidden');
+    }
+
+    function closeCdCreatePackModal() {
+        document.getElementById('cdCreatePackModal').classList.add('hidden');
+    }
+
+    function cdCpAutoName() {
+        var typeSel  = document.getElementById('cdCpType');
+        var yearEl   = document.getElementById('cdCpTaxYear');
+        var nameEl   = document.getElementById('cdCpName');
+        if (!typeSel.value) return;
+        var typeLabel = _cpTypeLabels[typeSel.value] || typeSel.value;
+        var year = yearEl.value ? ' ' + yearEl.value : '';
+        nameEl.value = typeLabel + year;
+    }
+
+    async function submitCdCreatePack() {
+        if (_cdPackSubmitting) return;
+        var errEl   = document.getElementById('cdCreatePackError');
+        var pack_type = document.getElementById('cdCpType').value;
+        var pack_name = document.getElementById('cdCpName').value.trim();
+
+        if (!pack_type) { errEl.textContent = 'Pack type is required.'; errEl.classList.remove('hidden'); return; }
+        if (!pack_name) { errEl.textContent = 'Pack name is required.'; errEl.classList.remove('hidden'); return; }
+
+        _cdPackSubmitting = true;
+        document.getElementById('cdCreatePackSubmitBtn').disabled = true;
+        errEl.classList.add('hidden');
+
+        var taxYearRaw = document.getElementById('cdCpTaxYear').value;
+        var payload = {
+            client_id:   clientId,
+            pack_type:   pack_type,
+            pack_name:   pack_name,
+            tax_year:    taxYearRaw ? parseInt(taxYearRaw) : null,
+            period_start: document.getElementById('cdCpPeriodStart').value || null,
+            period_end:   document.getElementById('cdCpPeriodEnd').value   || null,
+        };
+
+        try {
+            var res = await PracticeAPI.fetch(_CP_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) { var e2 = await res.json(); throw new Error(e2.error || 'Failed'); }
+            _cdPackSubmitting = false;
+            closeCdCreatePackModal();
+            PracticeAPI.showToast('Compliance pack created!');
+            loadClientCompliancePacks();
+        } catch(e) {
+            _cdPackSubmitting = false;
+            document.getElementById('cdCreatePackSubmitBtn').disabled = false;
+            errEl.textContent = e.message || 'Failed to create pack.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    window.openCdCreatePackModal  = openCdCreatePackModal;
+    window.closeCdCreatePackModal = closeCdCreatePackModal;
+    window.cdCpAutoName           = cdCpAutoName;
+    window.submitCdCreatePack     = submitCdCreatePack;
+
+    // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
+    // 18. TAXPAYER PROFILES (Codebox 25)
+    // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
+
+    var _TP_BASE = '/api/practice/taxpayer-profiles';
+    var _cdProfileSubmitting = false;
+
+    var _cdTpTypeLabels = {
+        individual: 'Individual', company: 'Company', trust: 'Trust',
+        partnership: 'Partnership', cc: 'CC'
+    };
+    var _cdTpReadinessLabels  = { incomplete: 'Incomplete', partial: 'Partial', ready: 'Ready', blocked: 'Blocked', unknown: '—' };
+    var _cdTpReadinessClasses = {
+        incomplete: 'color:#f87171;', partial: 'color:#fbbf24;',
+        ready: 'color:#4ade80;', blocked: 'color:var(--danger);', unknown: 'color:rgba(255,255,255,0.3);'
+    };
+
+    async function loadClientTaxpayerProfiles() {
+        var loading = document.getElementById('tpClientLoading');
+        var wrap    = document.getElementById('tpClientWrap');
+        var empty   = document.getElementById('tpClientEmpty');
+        if (loading) loading.classList.remove('hidden');
+        if (wrap)    wrap.classList.add('hidden');
+        if (empty)   empty.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_TP_BASE + '?client_id=' + clientId + '&limit=8');
+            if (!res.ok) throw new Error('Load failed');
+            var d        = await res.json();
+            var profiles = (d.taxpayer_profiles || []).filter(function(p) { return p.tax_status !== 'ceased'; });
+            if (loading) loading.classList.add('hidden');
+            if (profiles.length === 0) {
+                if (empty) empty.classList.remove('hidden');
+            } else {
+                renderClientProfileList(profiles);
+                if (wrap) wrap.classList.remove('hidden');
+            }
+        } catch(e) {
+            if (loading) loading.classList.add('hidden');
+            if (wrap) { wrap.innerHTML = '<div class="error-banner">Could not load taxpayer profiles.</div>'; wrap.classList.remove('hidden'); }
+        }
+    }
+
+    function renderClientProfileList(profiles) {
+        var wrap = document.getElementById('tpClientWrap');
+        if (!wrap) return;
+        wrap.innerHTML = profiles.map(function(p) {
+            var typeLabel = _cdTpTypeLabels[p.taxpayer_type]         || p.taxpayer_type;
+            var rs        = p.readiness_status                        || 'unknown';
+            var score     = p.readiness_score != null ? p.readiness_score + '%' : '—';
+            var rsLabel   = _cdTpReadinessLabels[rs]                  || '—';
+            var rsStyle   = _cdTpReadinessClasses[rs]                 || '';
+            return '<div class="doc-hist-row">' +
+                '<div class="doc-hist-body">' +
+                    '<div class="doc-hist-title">' + esc(typeLabel) + (p.income_tax_reference ? ' · ' + esc(p.income_tax_reference) : '') + '</div>' +
+                    '<div class="doc-hist-cat">' + esc(p.client_name || '') + '</div>' +
+                '</div>' +
+                '<div class="doc-hist-meta">' +
+                    '<span style="font-size:0.8rem;font-weight:600;' + rsStyle + '">' + rsLabel + ' ' + esc(score) + '</span>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function openCdCreateProfileModal() {
+        document.getElementById('cdTpType').value      = '';
+        document.getElementById('cdTpTaxRef').value    = '';
+        document.getElementById('cdTpTaxStatus').value = 'active';
+        document.getElementById('cdTpNotes').value     = '';
+        document.getElementById('cdCreateProfileError').classList.add('hidden');
+        _cdProfileSubmitting = false;
+        document.getElementById('cdCreateProfileSubmitBtn').disabled = false;
+        document.getElementById('cdCreateProfileModal').classList.remove('hidden');
+    }
+
+    function closeCdCreateProfileModal() {
+        document.getElementById('cdCreateProfileModal').classList.add('hidden');
+    }
+
+    async function submitCdCreateProfile() {
+        if (_cdProfileSubmitting) return;
+        var errEl   = document.getElementById('cdCreateProfileError');
+        var tpType  = document.getElementById('cdTpType').value;
+        if (!tpType) { errEl.textContent = 'Taxpayer type is required.'; errEl.classList.remove('hidden'); return; }
+
+        _cdProfileSubmitting = true;
+        document.getElementById('cdCreateProfileSubmitBtn').disabled = true;
+        errEl.classList.add('hidden');
+
+        var payload = {
+            client_id:            clientId,
+            taxpayer_type:        tpType,
+            income_tax_reference: document.getElementById('cdTpTaxRef').value.trim() || null,
+            tax_status:           document.getElementById('cdTpTaxStatus').value || 'active',
+            notes:                document.getElementById('cdTpNotes').value.trim() || null
+        };
+
+        try {
+            var res = await PracticeAPI.fetch(_TP_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) { var e2 = await res.json(); throw new Error(e2.error || 'Failed'); }
+            _cdProfileSubmitting = false;
+            closeCdCreateProfileModal();
+            PracticeAPI.showToast('Taxpayer profile created!');
+            loadClientTaxpayerProfiles();
+        } catch(e) {
+            _cdProfileSubmitting = false;
+            document.getElementById('cdCreateProfileSubmitBtn').disabled = false;
+            errEl.textContent = e.message || 'Failed to create profile.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    window.openCdCreateProfileModal  = openCdCreateProfileModal;
+    window.closeCdCreateProfileModal = closeCdCreateProfileModal;
+    window.submitCdCreateProfile     = submitCdCreateProfile;
+
+    // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
+    // 19. PROVISIONAL TAX PLANS (Codebox 26)
+    // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
+
+    var _PT_BASE = '/api/practice/provisional-tax';
+    var _cdPlanSubmitting   = false;
+    var _cdPtProfiles       = [];   // taxpayer profiles for this client
+
+    var _cdPtStatusLabels = {
+        draft: 'Draft', collecting_info: 'Collecting Info',
+        ready_for_review: 'Ready for Review', reviewed: 'Reviewed',
+        submitted: 'Submitted', completed: 'Completed', cancelled: 'Cancelled',
+    };
+    var _cdPtPeriodLabels = { period_1: 'P1', period_2: 'P2', topup: 'Top-up' };
+
+    async function loadClientProvisionalTaxPlans() {
+        var loading = document.getElementById('ptClientLoading');
+        var wrap    = document.getElementById('ptClientWrap');
+        var empty   = document.getElementById('ptClientEmpty');
+        if (loading) loading.classList.remove('hidden');
+        if (wrap)    wrap.classList.add('hidden');
+        if (empty)   empty.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_PT_BASE + '?client_id=' + clientId + '&limit=6');
+            if (!res.ok) throw new Error('Load failed');
+            var d     = await res.json();
+            var plans = (d.provisional_tax_plans || []).filter(function(p) { return p.status !== 'cancelled'; });
+            if (loading) loading.classList.add('hidden');
+            if (plans.length === 0) {
+                if (empty) empty.classList.remove('hidden');
+            } else {
+                renderClientPlanList(plans);
+                if (wrap) wrap.classList.remove('hidden');
+            }
+        } catch(e) {
+            if (loading) loading.classList.add('hidden');
+            if (wrap) { wrap.innerHTML = '<div class="error-banner">Could not load provisional tax plans.</div>'; wrap.classList.remove('hidden'); }
+        }
+    }
+
+    function renderClientPlanList(plans) {
+        var wrap = document.getElementById('ptClientWrap');
+        if (!wrap) return;
+        wrap.innerHTML = plans.map(function(p) {
+            var statusLabel = _cdPtStatusLabels[p.status] || p.status;
+            var nextDue     = p.period_1_due_date || p.period_2_due_date || null;
+            var dueStr      = nextDue ? 'Next due: ' + nextDue : '';
+            return '<div class="doc-hist-row">' +
+                '<div class="doc-hist-body">' +
+                    '<div class="doc-hist-title">' + esc(p.plan_name) + ' (' + p.tax_year + ')</div>' +
+                    '<div class="doc-hist-cat">' + esc(statusLabel) + (dueStr ? ' · ' + esc(dueStr) : '') + '</div>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    async function _cdPtLoadProfiles() {
+        _cdPtProfiles = [];
+        var sel = document.getElementById('cdPtProfile');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Loading…</option>';
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/taxpayer-profiles?client_id=' + clientId + '&limit=20');
+            if (!res.ok) throw new Error('Load failed');
+            var d = await res.json();
+            _cdPtProfiles = (d.taxpayer_profiles || []).filter(function(p) { return p.tax_status !== 'ceased'; });
+            if (!_cdPtProfiles.length) {
+                sel.innerHTML = '<option value="">No taxpayer profiles — create one first</option>';
+                return;
+            }
+            sel.innerHTML = '<option value="">Select profile…</option>' + _cdPtProfiles.map(function(p) {
+                var label = (p.taxpayer_type || '').charAt(0).toUpperCase() + (p.taxpayer_type || '').slice(1) +
+                    (p.income_tax_reference ? ' · ' + p.income_tax_reference : '');
+                return '<option value="' + p.id + '" data-type="' + esc(p.taxpayer_type || '') + '">' + esc(label) + '</option>';
+            }).join('');
+        } catch(e) {
+            sel.innerHTML = '<option value="">Error loading profiles</option>';
+        }
+    }
+
+    function cdPtAutoName() {
+        var year = document.getElementById('cdPtYear') ? document.getElementById('cdPtYear').value : '';
+        var nameEl = document.getElementById('cdPtName');
+        if (!nameEl || nameEl._manuallyEdited) return;
+        if (!year) return;
+        var sel = document.getElementById('cdPtProfile');
+        var selected = sel && sel.options[sel.selectedIndex];
+        var type = selected ? (selected.dataset.type || '') : '';
+        var typeLabel = type ? (type.charAt(0).toUpperCase() + type.slice(1) + ' ') : '';
+        nameEl.value = typeLabel + 'IRP6 ' + year;
+    }
+
+    async function openCdCreatePlanModal() {
+        document.getElementById('cdPtYear').value  = '';
+        document.getElementById('cdPtName').value  = '';
+        document.getElementById('cdPtNotes').value = '';
+        document.getElementById('cdCreatePlanError').classList.add('hidden');
+        var nameEl = document.getElementById('cdPtName');
+        if (nameEl) nameEl._manuallyEdited = false;
+        _cdPlanSubmitting = false;
+        document.getElementById('cdCreatePlanSubmitBtn').disabled = false;
+        document.getElementById('cdCreatePlanModal').classList.remove('hidden');
+        await _cdPtLoadProfiles();
+    }
+
+    function closeCdCreatePlanModal() {
+        document.getElementById('cdCreatePlanModal').classList.add('hidden');
+    }
+
+    async function submitCdCreatePlan() {
+        if (_cdPlanSubmitting) return;
+        var errEl     = document.getElementById('cdCreatePlanError');
+        var profileId = document.getElementById('cdPtProfile').value;
+        var year      = document.getElementById('cdPtYear').value;
+        var name      = document.getElementById('cdPtName').value.trim();
+        if (!profileId) { errEl.textContent = 'Taxpayer profile is required.'; errEl.classList.remove('hidden'); return; }
+        if (!year)      { errEl.textContent = 'Tax year is required.';         errEl.classList.remove('hidden'); return; }
+        if (!name)      { errEl.textContent = 'Plan name is required.';        errEl.classList.remove('hidden'); return; }
+
+        _cdPlanSubmitting = true;
+        document.getElementById('cdCreatePlanSubmitBtn').disabled = true;
+        errEl.classList.add('hidden');
+
+        var payload = {
+            client_id:           clientId,
+            taxpayer_profile_id: parseInt(profileId),
+            tax_year:            parseInt(year),
+            plan_name:           name,
+            notes:               document.getElementById('cdPtNotes').value.trim() || null,
+        };
+
+        try {
+            var res = await PracticeAPI.fetch(_PT_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) { var e2 = await res.json(); throw new Error(e2.error || 'Failed'); }
+            _cdPlanSubmitting = false;
+            closeCdCreatePlanModal();
+            PracticeAPI.showToast('Provisional tax plan created!');
+            loadClientProvisionalTaxPlans();
+        } catch(e) {
+            _cdPlanSubmitting = false;
+            document.getElementById('cdCreatePlanSubmitBtn').disabled = false;
+            errEl.textContent = e.message || 'Failed to create plan.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    window.openCdCreatePlanModal  = openCdCreatePlanModal;
+    window.closeCdCreatePlanModal = closeCdCreatePlanModal;
+    window.cdPtAutoName           = cdPtAutoName;
+    window.submitCdCreatePlan     = submitCdCreatePlan;
+
+    // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
+    // 20. INDIVIDUAL TAX RETURNS (Codebox 27)
+    // ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ──
+
+    var _IT_BASE = '/api/practice/individual-tax';
+    var _cdItSubmitting  = false;
+    var _cdItProfiles    = [];
+
+    var _cdItStatusLabels = {
+        draft: 'Draft', collecting_docs: 'Collecting Docs', data_captured: 'Data Captured',
+        ready_for_review: 'Ready for Review', reviewed: 'Reviewed',
+        submitted: 'Submitted', completed: 'Completed', cancelled: 'Cancelled',
+    };
+
+    var _cdItReadinessLabels = {
+        ready: '✓ Ready', partial: '~ Partial', incomplete: '✗ Incomplete',
+        blocked: '⚠ Blocked', unknown: '? Unknown',
+    };
+
+    async function loadClientIndividualTaxReturns() {
+        if (!_currentClientId) return;
+        document.getElementById('itClientLoading').classList.remove('hidden');
+        document.getElementById('itClientWrap').classList.add('hidden');
+        document.getElementById('itClientEmpty').classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_IT_BASE + '?client_id=' + _currentClientId + '&limit=6');
+            if (!res.ok) throw new Error('Failed');
+            var data = await res.json();
+            var returns = (data.individual_tax_returns || []).filter(function (r) { return r.status !== 'cancelled'; });
+
+            document.getElementById('itClientLoading').classList.add('hidden');
+            if (returns.length === 0) {
+                document.getElementById('itClientEmpty').classList.remove('hidden');
+                return;
+            }
+            var wrap = document.getElementById('itClientWrap');
+            wrap.innerHTML = returns.map(function (r) {
+                var statusLabel    = _cdItStatusLabels[r.status]          || r.status;
+                var readinessLabel = _cdItReadinessLabels[r.readiness_status] || (r.readiness_status || 'Unknown');
+                return '<div class="cd-docreq-row">' +
+                    '<div class="cd-docreq-info">' +
+                        '<div class="cd-docreq-name">Tax Year ' + r.tax_year + ' — ' + esc(r.return_name) + '</div>' +
+                        '<div class="cd-docreq-meta">' + esc(statusLabel) + ' &mdash; ' + esc(readinessLabel) +
+                            (r.readiness_score != null ? ' (' + r.readiness_score + '%)' : '') + '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+            wrap.classList.remove('hidden');
+        } catch (_) {
+            document.getElementById('itClientLoading').classList.add('hidden');
+            document.getElementById('itClientEmpty').classList.remove('hidden');
+        }
+    }
+
+    async function _cdItLoadProfiles() {
+        if (!_currentClientId) return;
+        var sel = document.getElementById('cdItProfile');
+        sel.innerHTML = '<option value="">Loading…</option>';
+        _cdItProfiles = [];
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/taxpayer-profiles?client_id=' + _currentClientId + '&limit=100');
+            if (!res.ok) return;
+            var data = await res.json();
+            _cdItProfiles = data.taxpayer_profiles || [];
+            sel.innerHTML = '<option value="">Select profile…</option>';
+            _cdItProfiles.forEach(function (p) {
+                var opt = document.createElement('option');
+                opt.value       = p.id;
+                opt.textContent = p.profile_name + ' (' + (p.taxpayer_type || 'individual') + ')';
+                sel.appendChild(opt);
+            });
+        } catch (_) {
+            sel.innerHTML = '<option value="">Failed to load profiles</option>';
+        }
+    }
+
+    function cdItAutoName() {
+        var nameEl = document.getElementById('cdItName');
+        if (nameEl._manuallyEdited) return;
+        var year = document.getElementById('cdItYear').value;
+        if (!year) return;
+        nameEl.value = 'ITR12 ' + year;
+    }
+
+    async function openCdCreateItReturnModal() {
+        document.getElementById('cdItYear').value  = '';
+        document.getElementById('cdItName').value  = '';
+        document.getElementById('cdItNotes').value = '';
+        document.getElementById('cdCreateItReturnError').classList.add('hidden');
+        var nameEl = document.getElementById('cdItName');
+        if (nameEl) nameEl._manuallyEdited = false;
+        _cdItSubmitting = false;
+        document.getElementById('cdCreateItReturnSubmitBtn').disabled = false;
+        document.getElementById('cdCreateItReturnModal').classList.remove('hidden');
+        await _cdItLoadProfiles();
+    }
+
+    function closeCdCreateItReturnModal() {
+        document.getElementById('cdCreateItReturnModal').classList.add('hidden');
+    }
+
+    async function submitCdCreateItReturn() {
+        if (_cdItSubmitting) return;
+        var errEl     = document.getElementById('cdCreateItReturnError');
+        var profileId = document.getElementById('cdItProfile').value;
+        var year      = document.getElementById('cdItYear').value;
+        var name      = document.getElementById('cdItName').value.trim();
+
+        if (!profileId) { errEl.textContent = 'Taxpayer profile is required.'; errEl.classList.remove('hidden'); return; }
+        if (!year)      { errEl.textContent = 'Tax year is required.';         errEl.classList.remove('hidden'); return; }
+        if (!name)      { errEl.textContent = 'Return name is required.';      errEl.classList.remove('hidden'); return; }
+
+        _cdItSubmitting = true;
+        document.getElementById('cdCreateItReturnSubmitBtn').disabled = true;
+        errEl.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_IT_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    client_id:           _currentClientId,
+                    taxpayer_profile_id: parseInt(profileId),
+                    tax_year:            parseInt(year),
+                    return_name:         name,
+                    notes:               document.getElementById('cdItNotes').value.trim() || null,
+                }),
+            });
+            if (!res.ok) {
+                var d = await res.json();
+                throw new Error(d.error || 'Failed to create return');
+            }
+            _cdItSubmitting = false;
+            closeCdCreateItReturnModal();
+            PracticeAPI.showToast('Individual tax return created!');
+            loadClientIndividualTaxReturns();
+        } catch (e) {
+            _cdItSubmitting = false;
+            document.getElementById('cdCreateItReturnSubmitBtn').disabled = false;
+            errEl.textContent = e.message || 'Failed to create return.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    window.openCdCreateItReturnModal  = openCdCreateItReturnModal;
+    window.closeCdCreateItReturnModal = closeCdCreateItReturnModal;
+    window.cdItAutoName               = cdItAutoName;
+    window.submitCdCreateItReturn     = submitCdCreateItReturn;
+
+    // ── Company Tax Returns (Codebox 31) ──────────────────────────────────────
+
+    var _CT_BASE       = '/api/practice/company-tax';
+    var _cdCtSubmitting = false;
+    var _cdCtProfiles   = [];
+
+    var _cdCtStatusLabels = {
+        draft: 'Draft', collecting_docs: 'Collecting Docs', data_captured: 'Data Captured',
+        ready_for_review: 'Ready for Review', reviewed: 'Reviewed',
+        submitted: 'Submitted', completed: 'Completed', cancelled: 'Cancelled',
+    };
+
+    var _cdCtReadinessLabels = {
+        ready: '✓ Ready', partial: '~ Partial', incomplete: '✗ Incomplete',
+        blocked: '⚠ Blocked', unknown: '? Unknown',
+    };
+
+    async function loadClientCompanyTaxReturns() {
+        if (!_currentClientId) return;
+        document.getElementById('ctClientLoading').classList.remove('hidden');
+        document.getElementById('ctClientWrap').classList.add('hidden');
+        document.getElementById('ctClientEmpty').classList.add('hidden');
+
+        try {
+            var res  = await PracticeAPI.fetch(_CT_BASE + '?client_id=' + _currentClientId + '&limit=6');
+            if (!res.ok) throw new Error('Failed');
+            var data = await res.json();
+            var returns = (data.company_tax_returns || []).filter(function(r) { return r.status !== 'cancelled'; });
+
+            document.getElementById('ctClientLoading').classList.add('hidden');
+            if (returns.length === 0) {
+                document.getElementById('ctClientEmpty').classList.remove('hidden');
+                return;
+            }
+            var wrap = document.getElementById('ctClientWrap');
+            wrap.innerHTML = returns.map(function(r) {
+                var statusLabel    = _cdCtStatusLabels[r.status]          || r.status;
+                var readinessLabel = _cdCtReadinessLabels[r.readiness_status] || (r.readiness_status || 'Unknown');
+                return '<div class="cd-docreq-row">' +
+                    '<div class="cd-docreq-info">' +
+                        '<div class="cd-docreq-name">Tax Year ' + r.tax_year + ' — ' + esc(r.return_name) + '</div>' +
+                        '<div class="cd-docreq-meta">' + esc(statusLabel) + ' &mdash; ' + esc(readinessLabel) +
+                            (r.readiness_score != null ? ' (' + r.readiness_score + '%)' : '') + '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+            wrap.classList.remove('hidden');
+        } catch(_) {
+            document.getElementById('ctClientLoading').classList.add('hidden');
+            document.getElementById('ctClientEmpty').classList.remove('hidden');
+        }
+    }
+
+    async function _cdCtLoadProfiles() {
+        if (!_currentClientId) return;
+        var sel = document.getElementById('cdCtProfile');
+        sel.innerHTML = '<option value="">Loading…</option>';
+        _cdCtProfiles = [];
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/taxpayer-profiles?client_id=' + _currentClientId + '&limit=100');
+            if (!res.ok) return;
+            var data = await res.json();
+            _cdCtProfiles = (data.taxpayer_profiles || []).filter(function(p) { return p.tax_status !== 'ceased'; });
+            if (_cdCtProfiles.length === 0) {
+                sel.innerHTML = '<option value="">No profiles — create one first</option>';
+            } else {
+                sel.innerHTML = '<option value="">Select profile…</option>' +
+                    _cdCtProfiles.map(function(p) {
+                        return '<option value="' + p.id + '">' + esc(p.taxpayer_name || 'Unnamed') +
+                            ' (' + esc(p.taxpayer_type) + ')' + '</option>';
+                    }).join('');
+            }
+        } catch(e) {
+            sel.innerHTML = '<option value="">Failed to load profiles</option>';
+        }
+    }
+
+    function cdCtAutoName() {
+        var nameEl = document.getElementById('cdCtName');
+        if (nameEl && nameEl._manuallyEdited) return;
+        var year = document.getElementById('cdCtYear').value;
+        if (year && nameEl) nameEl.value = 'ITR14 ' + year;
+    }
+
+    function openCdCreateCtReturnModal() {
+        _cdCtSubmitting = false;
+        document.getElementById('cdCreateCtReturnSubmitBtn').disabled = false;
+        document.getElementById('cdCreateCtReturnError').classList.add('hidden');
+        ['cdCtYear','cdCtName','cdCtNotes'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) { el.value = ''; el._manuallyEdited = false; }
+        });
+        _cdCtLoadProfiles();
+        document.getElementById('cdCreateCtReturnModal').classList.remove('hidden');
+    }
+
+    function closeCdCreateCtReturnModal() {
+        document.getElementById('cdCreateCtReturnModal').classList.add('hidden');
+    }
+
+    async function submitCdCreateCtReturn() {
+        if (_cdCtSubmitting) return;
+        var errEl     = document.getElementById('cdCreateCtReturnError');
+        var profileId = document.getElementById('cdCtProfile').value;
+        var year      = document.getElementById('cdCtYear').value;
+        var name      = document.getElementById('cdCtName').value.trim();
+
+        if (!profileId) { errEl.textContent = 'Taxpayer profile is required.'; errEl.classList.remove('hidden'); return; }
+        if (!year)      { errEl.textContent = 'Tax year is required.';         errEl.classList.remove('hidden'); return; }
+        if (!name)      { errEl.textContent = 'Return name is required.';      errEl.classList.remove('hidden'); return; }
+
+        _cdCtSubmitting = true;
+        document.getElementById('cdCreateCtReturnSubmitBtn').disabled = true;
+        errEl.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_CT_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    client_id:           _currentClientId,
+                    taxpayer_profile_id: parseInt(profileId),
+                    tax_year:            parseInt(year),
+                    return_name:         name,
+                    notes:               document.getElementById('cdCtNotes').value.trim() || null,
+                }),
+            });
+            if (!res.ok) { var d = await res.json(); throw new Error(d.error || 'Failed'); }
+            _cdCtSubmitting = false;
+            closeCdCreateCtReturnModal();
+            PracticeAPI.showToast('Company tax return created!');
+            loadClientCompanyTaxReturns();
+        } catch(e) {
+            _cdCtSubmitting = false;
+            document.getElementById('cdCreateCtReturnSubmitBtn').disabled = false;
+            errEl.textContent = e.message || 'Failed to create return.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    window.openCdCreateCtReturnModal  = openCdCreateCtReturnModal;
+    window.closeCdCreateCtReturnModal = closeCdCreateCtReturnModal;
+    window.cdCtAutoName               = cdCtAutoName;
+    window.submitCdCreateCtReturn     = submitCdCreateCtReturn;
 
     init();
 })();

@@ -1474,3 +1474,199 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     .comm-table th:nth-child(4),
     .comm-table td:nth-child(4) { display: none; }
 }
+
+/* ============================================================
+   Codebox 23 — Document Request Tracker
+   ============================================================ */
+
+/* ── Summary cards ───────────────────────────────────────── */
+.docreq-summary {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+@media (max-width: 900px) { .docreq-summary { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 480px) { .docreq-summary { grid-template-columns: repeat(2, 1fr); } }
+
+.docreq-card {
+    background: var(--surface, #1e2330);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+}
+.docreq-card-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary, #f0f4ff);
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.docreq-card-label {
+    font-size: 0.72rem;
+    color: var(--muted, #8892a4);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.docreq-card--warn   .docreq-card-value { color: var(--warning, #f59e0b); }
+.docreq-card--urgent .docreq-card-value { color: #f87171; }
+.docreq-card--accent .docreq-card-value { color: #63b3ed; }
+.docreq-card--muted  .docreq-card-value { color: var(--muted, #8892a4); }
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+.docreq-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.docreq-toolbar select,
+.docreq-toolbar .docreq-search {
+    background: var(--surface, #1e2330);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: var(--text-primary, #f0f4ff);
+    font-size: 0.82rem;
+    padding: 5px 10px;
+    outline: none;
+    height: 32px;
+}
+.docreq-toolbar select:focus,
+.docreq-toolbar .docreq-search:focus { border-color: var(--accent, #6366f1); }
+.docreq-search       { min-width: 200px; }
+.docreq-toolbar-spacer { flex: 1; }
+
+/* ── Checklist panel ─────────────────────────────────────── */
+.docreq-checklist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    margin-bottom: 12px;
+}
+.docreq-checklist-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary, #f0f4ff);
+}
+.docreq-checklist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.docreq-cl-card {
+    background: var(--surface, #1e2330);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.docreq-cl-name { font-size: 0.88rem; font-weight: 600; color: var(--text-primary, #f0f4ff); margin-bottom: 2px; }
+.docreq-cl-cat  { font-size: 0.72rem; color: var(--accent, #6366f1); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.docreq-cl-desc { font-size: 0.78rem; color: var(--muted, #8892a4); margin-bottom: 8px; }
+.docreq-cl-apply { width: 100%; margin-top: 6px; }
+
+/* ── Table ───────────────────────────────────────────────── */
+.docreq-table               { width: 100%; }
+.docreq-table .col-drcat    { width: 120px; }
+.docreq-table .col-drdue    { width: 110px; }
+.docreq-table .col-drstatus { width: 130px; }
+.docreq-table .col-dractions { width: 140px; text-align: right; }
+
+.docreq-row--overdue td { background: rgba(248,113,113,0.04); }
+.docreq-title-cell  { font-size: 0.84rem; font-weight: 500; color: var(--text-primary, #f0f4ff); }
+.docreq-type-cell   { font-size: 0.75rem; color: var(--muted, #8892a4); margin-top: 2px; }
+.docreq-client-cell { font-size: 0.82rem; }
+.docreq-due-cell    { font-size: 0.8rem;  color: var(--muted, #8892a4); }
+.docreq-actions-cell { text-align: right; }
+
+/* ── Category badge ──────────────────────────────────────── */
+.docreq-cat-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.67rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: rgba(255,255,255,0.06);
+    color: var(--muted, #8892a4);
+    white-space: nowrap;
+}
+
+/* ── Status badge ────────────────────────────────────────── */
+.docreq-status-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.67rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+.drs-requested  { background: rgba(99,179,237,0.12);  color: #63b3ed; }
+.drs-reminder   { background: rgba(245,158,11,0.12);  color: var(--warning, #f59e0b); }
+.drs-partial    { background: rgba(167,139,250,0.12); color: #a78bfa; }
+.drs-received   { background: rgba(16,185,129,0.12);  color: var(--success, #10b981); }
+.drs-waived     { background: rgba(255,255,255,0.05); color: var(--muted, #8892a4); }
+.drs-cancelled  { background: rgba(255,255,255,0.03); color: var(--muted, #8892a4); opacity: 0.6; }
+
+/* ── Reminder count badge ────────────────────────────────── */
+.docreq-rem-count {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 0.67rem;
+    background: rgba(245,158,11,0.15);
+    color: var(--warning, #f59e0b);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+}
+
+/* ── Overdue tag (view modal) ────────────────────────────── */
+.docreq-overdue-tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: rgba(248,113,113,0.15);
+    color: #f87171;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ── Apply checklist modal description ───────────────────── */
+.docreq-apply-desc {
+    font-size: 0.82rem;
+    color: var(--muted, #8892a4);
+    margin-bottom: 14px;
+}
+
+/* ── Client detail Section 16 ────────────────────────────── */
+.cd-docreq-section { margin-top: 2rem; }
+
+.doc-hist-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.doc-hist-row:last-child { border-bottom: none; }
+.doc-hist-body  { flex: 1; min-width: 0; }
+.doc-hist-title { font-size: 0.84rem; font-weight: 500; color: var(--text-primary, #f0f4ff); }
+.doc-hist-cat   { font-size: 0.75rem; color: var(--muted, #8892a4); margin-top: 1px; }
+.doc-hist-meta  { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 700px) {
+    .docreq-table .col-drdue,
+    .docreq-table th:nth-child(4),
+    .docreq-table td:nth-child(4) { display: none; }
+}

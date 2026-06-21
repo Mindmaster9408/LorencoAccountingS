@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Config — Lorenco Practice</title>
+    <link rel="stylesheet" href="css/practice.css">
+    <style>
+        /* ── Page layout ── */
+        .tc-page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .tc-page-title { font-size: 22px; font-weight: 700; }
+        .tc-page-subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+        /* ── Draft warning ── */
+        .tc-draft-warning {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 12px;
+            color: #f59e0b;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        /* ── Filter bar ── */
+        .tc-filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .tc-filter-bar select,
+        .tc-filter-bar input {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+
+        /* ── Config cards ── */
+        .tc-config-list { display: flex; flex-direction: column; gap: 10px; }
+        .tc-config-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+        .tc-config-card.tc-active { border-left: 3px solid #22c55e; }
+        .tc-config-card.tc-draft  { border-left: 3px solid #6b7280; }
+        .tc-config-card.tc-archived { border-left: 3px solid #4b5563; opacity: .7; }
+
+        .tc-config-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .tc-config-name { font-size: 15px; font-weight: 600; }
+        .tc-config-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+        .tc-config-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+
+        /* ── Status badges ── */
+        .tc-badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+        .tc-badge-active   { background: rgba(34,197,94,.15);  color: #22c55e; }
+        .tc-badge-draft    { background: rgba(107,114,128,.15); color: #9ca3af; }
+        .tc-badge-archived { background: rgba(75,85,99,.15);   color: #6b7280; }
+
+        /* ── Bracket table ── */
+        .tc-brackets-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+        .tc-brackets-table th {
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .tc-brackets-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(255,255,255,.04);
+            color: var(--text);
+        }
+        .tc-brackets-table td.amt  { text-align: right; font-variant-numeric: tabular-nums; }
+        .tc-brackets-table td.pct  { text-align: right; color: #f59e0b; font-weight: 600; }
+        .tc-brackets-table tr:last-child td { border-bottom: none; }
+        .tc-brackets-table tr:hover td { background: rgba(255,255,255,.025); }
+
+        /* ── Rebate / credit grid ── */
+        .tc-values-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .tc-value-item { display: flex; flex-direction: column; gap: 2px; }
+        .tc-value-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+        .tc-value-val   { font-size: 15px; font-weight: 600; color: var(--text); }
+        .tc-value-null  { font-size: 13px; color: #4b5563; font-style: italic; }
+
+        /* ── Modals ── */
+        .modal-wide { max-width: 780px; }
+        .tc-modal-section {
+            border-top: 1px solid var(--border);
+            padding-top: 14px;
+            margin-top: 14px;
+        }
+        .tc-modal-section-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            margin-bottom: 10px;
+        }
+
+        /* ── Tabs ── */
+        .tc-tab-bar {
+            display: flex;
+            gap: 2px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+        .tc-tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 8px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: color .15s, border-color .15s;
+        }
+        .tc-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .tc-tab-panel { display: none; }
+        .tc-tab-panel.active { display: block; }
+
+        /* ── Form helpers ── */
+        .tc-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 14px;
+        }
+        .form-field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+        .form-field input,
+        .form-field select,
+        .form-field textarea {
+            width: 100%;
+            background: rgba(255,255,255,.04);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 10px;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        .tc-error { color: #ef4444; font-size: 12px; margin-top: 8px; }
+
+        /* ── Empty / loading ── */
+        .tc-loading { color: var(--text-muted); font-size: 14px; padding: 20px 0; }
+        .tc-empty   { color: var(--text-muted); font-size: 14px; padding: 20px 0; text-align: center; }
+
+        /* ── Seed result ── */
+        .tc-seed-result { margin-top: 14px; }
+        .tc-seed-row { font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+        .tc-seed-ok   { color: #22c55e; }
+        .tc-seed-skip { color: #6b7280; }
+        .tc-seed-err  { color: #ef4444; }
+    </style>
+</head>
+<body>
+<div id="app-topbar"></div>
+<div id="app-nav"></div>
+
+<div class="page-content">
+    <!-- Page header -->
+    <div class="tc-page-header">
+        <div>
+            <div class="tc-page-title">Tax Year Configuration</div>
+            <div class="tc-page-subtitle">SARS tax brackets, rebates, and deduction limits for individual tax draft calculations</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="openSeedModal()">Seed from JS Constants</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openCreateConfigModal()">+ New Config</button>
+        </div>
+    </div>
+
+    <div class="tc-draft-warning">
+        ⚠ Tax constants configured here affect DRAFT estimates only. Verify all values against SARS published rates before activating.
+    </div>
+
+    <!-- Filters -->
+    <div class="tc-filter-bar">
+        <select id="tcFilterYear" onchange="loadConfigs()">
+            <option value="">All Years</option>
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+        </select>
+        <select id="tcFilterStatus" onchange="loadConfigs()">
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="draft">Draft</option>
+            <option value="archived">Archived</option>
+        </select>
+    </div>
+
+    <!-- Config list -->
+    <div class="tc-loading" id="tcListLoading">Loading…</div>
+    <div class="tc-config-list" id="tcConfigList"></div>
+    <div class="tc-empty hidden" id="tcListEmpty">No tax configs found. Use "Seed from JS Constants" to create starter configs.</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     CONFIG DETAIL MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="tcDetailModal" onclick="closeTcDetailModal()">
+    <div class="modal-box modal-wide" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title" id="tcDetailTitle">Tax Year Config</div>
+            <button type="button" class="modal-close" onclick="closeTcDetailModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="tc-draft-warning">
+                ⚠ Verify all values against SARS published rates. Activate only after accountant review.
+            </div>
+
+            <div class="tc-tab-bar">
+                <button class="tc-tab-btn active" onclick="tcSwitchTab('overview', this)">Overview</button>
+                <button class="tc-tab-btn" onclick="tcSwitchTab('brackets', this)">Brackets</button>
+                <button class="tc-tab-btn" onclick="tcSwitchTab('rebates', this)">Rebates &amp; Credits</button>
+                <button class="tc-tab-btn" onclick="tcSwitchTab('limits', this)">Deduction Limits</button>
+                <button class="tc-tab-btn" onclick="tcSwitchTab('history', this)">History</button>
+            </div>
+
+            <!-- OVERVIEW -->
+            <div class="tc-tab-panel active" id="tcTabOverview">
+                <div class="tc-form-grid">
+                    <div class="form-field">
+                        <label>Config Name</label>
+                        <input type="text" id="tcDName" placeholder="e.g. SARS 2026 — Budget Statement">
+                    </div>
+                    <div class="form-field">
+                        <label>Tax Year</label>
+                        <div id="tcDYear" style="font-size:20px;font-weight:700;padding:4px 0">—</div>
+                    </div>
+                    <div class="form-field">
+                        <label>Status</label>
+                        <div id="tcDStatusBadge">—</div>
+                    </div>
+                    <div class="form-field">
+                        <label>Country</label>
+                        <div id="tcDCountry" style="font-size:14px;padding:4px 0">—</div>
+                    </div>
+                    <div class="form-field">
+                        <label>Effective From</label>
+                        <input type="date" id="tcDEffFrom">
+                    </div>
+                    <div class="form-field">
+                        <label>Effective To</label>
+                        <input type="date" id="tcDEffTo">
+                    </div>
+                    <div class="form-field" style="grid-column:1/-1">
+                        <label>Source Note</label>
+                        <input type="text" id="tcDSourceNote" placeholder="e.g. SARS Budget 2026 — published 19 Feb 2026">
+                    </div>
+                    <div class="form-field" style="grid-column:1/-1">
+                        <label>Notes</label>
+                        <textarea id="tcDNotes" rows="2" placeholder="Internal notes…"></textarea>
+                    </div>
+                </div>
+                <div class="tc-error hidden" id="tcDOverviewError"></div>
+                <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="tcSaveOverview()">Save</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="tcActivateBtn" onclick="tcActivateConfig()">Activate</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="tcArchiveBtn" onclick="tcArchiveConfig()">Archive</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="tcLockBtn" onclick="tcLockConfig()">Lock Config</button>
+                </div>
+                <div id="tcDLockInfo" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
+            </div>
+
+            <!-- BRACKETS -->
+            <div class="tc-tab-panel" id="tcTabBrackets">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <div style="font-size:12px;color:var(--text-muted)">Tax = base_tax + (income − lower_bound) × rate%</div>
+                    <button type="button" class="btn btn-primary btn-sm" id="tcAddBracketBtn" onclick="openAddBracketForm()">+ Add Bracket</button>
+                </div>
+
+                <!-- Add bracket inline form -->
+                <div id="tcAddBracketForm" class="hidden" style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
+                    <div class="tc-form-grid">
+                        <div class="form-field">
+                            <label>Order</label>
+                            <input type="number" id="tcNBOrder" min="1" placeholder="1">
+                        </div>
+                        <div class="form-field">
+                            <label>Lower Bound (R)</label>
+                            <input type="number" id="tcNBLower" min="0" step="1" placeholder="0">
+                        </div>
+                        <div class="form-field">
+                            <label>Upper Bound (R, blank = unlimited)</label>
+                            <input type="number" id="tcNBUpper" min="0" step="1" placeholder="(top bracket)">
+                        </div>
+                        <div class="form-field">
+                            <label>Base Tax (R)</label>
+                            <input type="number" id="tcNBBase" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label>Marginal Rate (%)</label>
+                            <input type="number" id="tcNBRate" min="0" step="0.0001" placeholder="18.0000">
+                        </div>
+                    </div>
+                    <div class="tc-error hidden" id="tcAddBracketError"></div>
+                    <div style="margin-top:8px;display:flex;gap:8px">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="tcSubmitAddBracket()">Add Bracket</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="closeAddBracketForm()">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="tc-loading hidden" id="tcBracketsLoading">Loading brackets…</div>
+                <table class="tc-brackets-table" id="tcBracketsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Lower Bound</th>
+                            <th>Upper Bound</th>
+                            <th>Base Tax</th>
+                            <th>Rate %</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tcBracketsBody"></tbody>
+                </table>
+                <div class="tc-empty hidden" id="tcBracketsEmpty">No brackets yet. Add brackets to enable tax calculation.</div>
+            </div>
+
+            <!-- REBATES & CREDITS -->
+            <div class="tc-tab-panel" id="tcTabRebates">
+                <div class="tc-modal-section-title" style="margin-top:0">Rebates</div>
+                <div class="tc-form-grid">
+                    <div class="form-field">
+                        <label>Primary Rebate (R)</label>
+                        <input type="number" id="tcRPrimary" min="0" step="0.01" placeholder="e.g. 17235">
+                    </div>
+                    <div class="form-field">
+                        <label>Secondary Rebate — age 65+ (R)</label>
+                        <input type="number" id="tcRSecondary" min="0" step="0.01" placeholder="e.g. 9444">
+                    </div>
+                    <div class="form-field">
+                        <label>Tertiary Rebate — age 75+ (R)</label>
+                        <input type="number" id="tcRTertiary" min="0" step="0.01" placeholder="e.g. 3145">
+                    </div>
+                </div>
+                <div class="tc-modal-section">
+                    <div class="tc-modal-section-title">Thresholds (income below which no tax is payable)</div>
+                    <div class="tc-form-grid">
+                        <div class="form-field">
+                            <label>Under 65 (R)</label>
+                            <input type="number" id="tcRThresh65" min="0" step="0.01" placeholder="e.g. 95750">
+                        </div>
+                        <div class="form-field">
+                            <label>65 to 74 (R)</label>
+                            <input type="number" id="tcRThresh74" min="0" step="0.01" placeholder="e.g. 148217">
+                        </div>
+                        <div class="form-field">
+                            <label>75 and over (R)</label>
+                            <input type="number" id="tcRThresh75" min="0" step="0.01" placeholder="e.g. 165689">
+                        </div>
+                    </div>
+                </div>
+                <div class="tc-modal-section">
+                    <div class="tc-modal-section-title">Medical Tax Credits (per month)</div>
+                    <div class="tc-form-grid">
+                        <div class="form-field">
+                            <label>Main Member (R)</label>
+                            <input type="number" id="tcRMedMain" min="0" step="0.01" placeholder="e.g. 364">
+                        </div>
+                        <div class="form-field">
+                            <label>First Dependent (R)</label>
+                            <input type="number" id="tcRMedFirst" min="0" step="0.01" placeholder="e.g. 364">
+                        </div>
+                        <div class="form-field">
+                            <label>Additional Dependants (R each)</label>
+                            <input type="number" id="tcRMedAdditional" min="0" step="0.01" placeholder="e.g. 246">
+                        </div>
+                    </div>
+                </div>
+                <div class="tc-error hidden" id="tcRebatesError"></div>
+                <div style="margin-top:14px">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="tcSaveRebates()">Save Rebates &amp; Credits</button>
+                </div>
+            </div>
+
+            <!-- DEDUCTION LIMITS -->
+            <div class="tc-tab-panel" id="tcTabLimits">
+                <div class="tc-draft-warning" style="margin-bottom:12px">
+                    These limits are stored for reference. Cap enforcement in draft calculations is planned for future codeboxes.
+                </div>
+                <div class="tc-form-grid">
+                    <div class="form-field">
+                        <label>RA Percentage Limit (%)</label>
+                        <input type="number" id="tcLRAPct" min="0" step="0.0001" placeholder="e.g. 27.5">
+                    </div>
+                    <div class="form-field">
+                        <label>RA Annual Cap (R)</label>
+                        <input type="number" id="tcLRACap" min="0" step="0.01" placeholder="e.g. 350000">
+                    </div>
+                    <div class="form-field">
+                        <label>s18A Donations Limit (%)</label>
+                        <input type="number" id="tcLDonPct" min="0" step="0.0001" placeholder="e.g. 10">
+                    </div>
+                </div>
+                <div class="tc-error hidden" id="tcLimitsError"></div>
+                <div style="margin-top:14px">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="tcSaveLimits()">Save Deduction Limits</button>
+                </div>
+            </div>
+
+            <!-- HISTORY -->
+            <div class="tc-tab-panel" id="tcTabHistory">
+                <div class="tc-loading hidden" id="tcHistoryLoading">Loading…</div>
+                <div id="tcHistoryList" class="tc-empty">Select History tab to load events.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     CREATE CONFIG MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="tcCreateModal" onclick="closeTcCreateModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:480px">
+        <div class="modal-header">
+            <div class="modal-title">New Tax Year Config</div>
+            <button type="button" class="modal-close" onclick="closeTcCreateModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="tc-form-grid">
+                <div class="form-field">
+                    <label>Tax Year *</label>
+                    <input type="number" id="tcCYear" min="2020" max="2035" placeholder="e.g. 2027">
+                </div>
+                <div class="form-field">
+                    <label>Config Name *</label>
+                    <input type="text" id="tcCName" placeholder="e.g. SARS 2027 — Draft">
+                </div>
+                <div class="form-field">
+                    <label>Source Note</label>
+                    <input type="text" id="tcCSource" placeholder="e.g. SARS Budget 2026">
+                </div>
+            </div>
+            <div class="tc-error hidden" id="tcCreateError"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeTcCreateModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="tcSubmitCreate()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SEED MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="tcSeedModal" onclick="closeSeedModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px">
+        <div class="modal-header">
+            <div class="modal-title">Seed from JS Constants</div>
+            <button type="button" class="modal-close" onclick="closeSeedModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px">
+                This will create draft tax configs from the hardcoded JS constants for tax years 2023–2026.
+                Existing configs for those years will be skipped.
+                All seeded configs start in <strong>draft</strong> status — you must activate them manually after review.
+            </p>
+            <div class="tc-draft-warning">⚠ Seeded values are from internal JS constants. Verify against SARS before activating.</div>
+            <div id="tcSeedResultWrap" class="tc-seed-result hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeSeedModal()">Close</button>
+            <button type="button" class="btn btn-primary" id="tcSeedBtn" onclick="tcRunSeed()">Run Seed</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     EDIT BRACKET MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="tcEditBracketModal" onclick="closeEditBracketModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px">
+        <div class="modal-header">
+            <div class="modal-title">Edit Bracket</div>
+            <button type="button" class="modal-close" onclick="closeEditBracketModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="tc-form-grid">
+                <div class="form-field">
+                    <label>Order</label>
+                    <input type="number" id="tcEBOrder" min="1">
+                </div>
+                <div class="form-field">
+                    <label>Lower Bound (R)</label>
+                    <input type="number" id="tcEBLower" min="0" step="1">
+                </div>
+                <div class="form-field">
+                    <label>Upper Bound (R, blank = unlimited)</label>
+                    <input type="number" id="tcEBUpper" min="0" step="1">
+                </div>
+                <div class="form-field">
+                    <label>Base Tax (R)</label>
+                    <input type="number" id="tcEBBase" min="0" step="0.01">
+                </div>
+                <div class="form-field">
+                    <label>Marginal Rate (%)</label>
+                    <input type="number" id="tcEBRate" min="0" step="0.0001">
+                </div>
+            </div>
+            <div class="tc-error hidden" id="tcEditBracketError"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeEditBracketModal()">Cancel</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="tcDeleteBracket()">Delete</button>
+            <button type="button" class="btn btn-secondary" onclick="tcSubmitEditBracket()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/practice-api.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/tax-configs.js"></script>
+</body>
+</html>

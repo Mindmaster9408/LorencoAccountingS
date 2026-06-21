@@ -20,7 +20,14 @@
         { key: 'capacity',      label: 'Capacity',      href: '/practice/capacity.html' },
         { key: 'client-health', label: 'Client Health', href: '/practice/client-health.html' },
         { key: 'reminders',       label: 'Reminders',       href: '/practice/reminders.html' },
-        { key: 'communications',  label: 'Communications',  href: '/practice/communications.html' }
+        { key: 'communications',  label: 'Communications',  href: '/practice/communications.html' },
+        { key: 'documents',         label: 'Documents',         href: '/practice/document-requests.html' },
+        { key: 'compliance-packs',   label: 'Compliance Packs',   href: '/practice/compliance-packs.html' },
+        { key: 'taxpayer-profiles',  label: 'Taxpayer Profiles',  href: '/practice/taxpayer-profiles.html' },
+        { key: 'provisional-tax',    label: 'Provisional Tax',    href: '/practice/provisional-tax.html' },
+        { key: 'individual-tax',     label: 'Individual Tax',     href: '/practice/individual-tax.html' },
+        { key: 'company-tax',        label: 'Company Tax',        href: '/practice/company-tax.html' },
+        { key: 'tax-configs',        label: 'Tax Config',         href: '/practice/tax-configs.html' }
     ];
 
     function escHtml(str) {

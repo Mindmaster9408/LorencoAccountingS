@@ -464,6 +464,293 @@
         <div id="commHistoryEmpty" class="cd-comms-empty hidden">No communications logged yet.</div>
     </div>
 
+    <!-- ── 16. Document Requests (outside form — loaded after client loads) ── -->
+    <div id="docRequestsSection" class="hidden cd-docreq-section">
+        <div class="section-header cd-comms-header">
+            <div class="section-title cd-section-title-sm">Document Requests</div>
+            <div class="section-header-actions">
+                <a href="" id="docReqViewAllLink" class="btn btn-ghost btn-sm btn-link-plain">View All →</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openAddDocModal()">+ Request Document</button>
+            </div>
+        </div>
+        <div id="docreqHistoryLoading" class="cd-comms-loading">Loading…</div>
+        <div id="docreqHistoryWrap" class="hidden"></div>
+        <div id="docreqHistoryEmpty" class="cd-comms-empty hidden">No document requests yet.</div>
+    </div>
+
+    <!-- ── 17. Compliance Packs (outside form — loaded after client loads) ── -->
+    <div id="compliancePacksSection" class="hidden cd-docreq-section">
+        <div class="section-header cd-comms-header">
+            <div class="section-title cd-section-title-sm">Compliance Packs</div>
+            <div class="section-header-actions">
+                <a href="" id="cpViewAllLink" class="btn btn-ghost btn-sm btn-link-plain">View All →</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openCdCreatePackModal()">+ New Pack</button>
+            </div>
+        </div>
+        <div id="cpClientLoading" class="cd-comms-loading">Loading…</div>
+        <div id="cpClientWrap" class="hidden"></div>
+        <div id="cpClientEmpty" class="cd-comms-empty hidden">No compliance packs yet.</div>
+    </div>
+
+    <!-- ── 18. Taxpayer Profiles (outside form — loaded after client loads) ── -->
+    <div id="taxpayerProfilesSection" class="hidden cd-docreq-section">
+        <div class="section-header cd-comms-header">
+            <div class="section-title cd-section-title-sm">Taxpayer Profiles</div>
+            <div class="section-header-actions">
+                <a href="" id="tpViewAllLink" class="btn btn-ghost btn-sm btn-link-plain">View All →</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openCdCreateProfileModal()">+ New Profile</button>
+            </div>
+        </div>
+        <div id="tpClientLoading" class="cd-comms-loading">Loading…</div>
+        <div id="tpClientWrap" class="hidden"></div>
+        <div id="tpClientEmpty" class="cd-comms-empty hidden">No taxpayer profiles yet.</div>
+    </div>
+
+    <!-- ── 19. Provisional Tax Plans (outside form — loaded after client loads) ── -->
+    <div id="provisionalTaxSection" class="hidden cd-docreq-section">
+        <div class="section-header cd-comms-header">
+            <div class="section-title cd-section-title-sm">Provisional Tax Plans</div>
+            <div class="section-header-actions">
+                <a href="" id="ptViewAllLink" class="btn btn-ghost btn-sm btn-link-plain">View All →</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openCdCreatePlanModal()">+ New Plan</button>
+            </div>
+        </div>
+        <div id="ptClientLoading" class="cd-comms-loading">Loading…</div>
+        <div id="ptClientWrap" class="hidden"></div>
+        <div id="ptClientEmpty" class="cd-comms-empty hidden">No provisional tax plans yet.</div>
+    </div>
+
+    <!-- ── 20. Individual Tax Returns (outside form — loaded after client loads) ── -->
+    <div id="individualTaxSection" class="hidden cd-docreq-section">
+        <div class="section-header cd-comms-header">
+            <div class="section-title cd-section-title-sm">Individual Tax Returns</div>
+            <div class="section-header-actions">
+                <a href="" id="itViewAllLink" class="btn btn-ghost btn-sm btn-link-plain">View All →</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openCdCreateItReturnModal()">+ New Return</button>
+            </div>
+        </div>
+        <div id="itClientLoading" class="cd-comms-loading">Loading…</div>
+        <div id="itClientWrap" class="hidden"></div>
+        <div id="itClientEmpty" class="cd-comms-empty hidden">No individual tax returns yet.</div>
+    </div>
+
+    <!-- ── 21. Company Tax Returns (outside form — loaded after client loads) ── -->
+    <div id="companyTaxSection" class="hidden cd-docreq-section">
+        <div class="section-header cd-comms-header">
+            <div class="section-title cd-section-title-sm">Company Tax Returns</div>
+            <div class="section-header-actions">
+                <a href="" id="ctViewAllLink" class="btn btn-ghost btn-sm btn-link-plain">View All →</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="openCdCreateCtReturnModal()">+ New Return</button>
+            </div>
+        </div>
+        <div id="ctClientLoading" class="cd-comms-loading">Loading…</div>
+        <div id="ctClientWrap" class="hidden"></div>
+        <div id="ctClientEmpty" class="cd-comms-empty hidden">No company tax returns yet.</div>
+    </div>
+
+</div>
+
+<!-- CREATE PACK MODAL (lightweight from client detail) -->
+<div class="modal-overlay hidden" id="cdCreatePackModal" onclick="closeCdCreatePackModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">New Compliance Pack</div>
+            <button type="button" class="modal-close" onclick="closeCdCreatePackModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="cdCpType">Pack Type <span class="req">*</span></label>
+                <select id="cdCpType" title="Pack type" onchange="cdCpAutoName()">
+                    <option value="">Select type…</option>
+                    <option value="annual_financials">Annual Financials</option>
+                    <option value="company_tax">Company Tax (ITR14)</option>
+                    <option value="individual_tax">Individual Tax (ITR12)</option>
+                    <option value="vat_period">VAT Period</option>
+                    <option value="payroll_annual">Payroll Annual (EMP501)</option>
+                    <option value="cipc_annual">CIPC Annual Return</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="cdCpTaxYear">Tax Year</label>
+                <input type="number" id="cdCpTaxYear" placeholder="e.g. 2026" min="2000" max="2099" oninput="cdCpAutoName()">
+            </div>
+            <div class="form-field">
+                <label for="cdCpName">Pack Name <span class="req">*</span></label>
+                <input type="text" id="cdCpName" placeholder="e.g. Annual Financials 2026">
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="cdCpPeriodStart">Period Start</label>
+                    <input type="date" id="cdCpPeriodStart">
+                </div>
+                <div class="form-field">
+                    <label for="cdCpPeriodEnd">Period End</label>
+                    <input type="date" id="cdCpPeriodEnd">
+                </div>
+            </div>
+            <div id="cdCreatePackError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCdCreatePackModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cdCreatePackSubmitBtn" onclick="submitCdCreatePack()">Create Pack</button>
+        </div>
+    </div>
+</div>
+
+<!-- CREATE TAXPAYER PROFILE MODAL (lightweight from client detail) -->
+<div class="modal-overlay hidden" id="cdCreateProfileModal" onclick="closeCdCreateProfileModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">New Taxpayer Profile</div>
+            <button type="button" class="modal-close" onclick="closeCdCreateProfileModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="cdTpType">Taxpayer Type <span class="req">*</span></label>
+                <select id="cdTpType" title="Taxpayer type">
+                    <option value="">Select type…</option>
+                    <option value="individual">Individual</option>
+                    <option value="company">Company (Pty Ltd)</option>
+                    <option value="trust">Trust</option>
+                    <option value="partnership">Partnership</option>
+                    <option value="cc">Close Corporation (CC)</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="cdTpTaxRef">Income Tax Reference</label>
+                <input type="text" id="cdTpTaxRef" placeholder="e.g. 9876543210">
+            </div>
+            <div class="form-field">
+                <label for="cdTpTaxStatus">Tax Status</label>
+                <select id="cdTpTaxStatus" title="Tax status">
+                    <option value="active">Active</option>
+                    <option value="dormant">Dormant</option>
+                    <option value="ceased">Ceased</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="cdTpNotes">Notes</label>
+                <textarea id="cdTpNotes" rows="2" placeholder="Any notes…"></textarea>
+            </div>
+            <div id="cdCreateProfileError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCdCreateProfileModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cdCreateProfileSubmitBtn" onclick="submitCdCreateProfile()">Create Profile</button>
+        </div>
+    </div>
+</div>
+
+<!-- CREATE PROVISIONAL TAX PLAN MODAL (lightweight from client detail) -->
+<div class="modal-overlay hidden" id="cdCreatePlanModal" onclick="closeCdCreatePlanModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">New Provisional Tax Plan</div>
+            <button type="button" class="modal-close" onclick="closeCdCreatePlanModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="cdPtProfile">Taxpayer Profile <span class="req">*</span></label>
+                <select id="cdPtProfile" title="Taxpayer profile">
+                    <option value="">Loading profiles…</option>
+                </select>
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="cdPtYear">Tax Year <span class="req">*</span></label>
+                    <input type="number" id="cdPtYear" placeholder="e.g. 2026" min="2000" max="2099" oninput="cdPtAutoName()">
+                </div>
+                <div class="form-field">
+                    <label for="cdPtName">Plan Name <span class="req">*</span></label>
+                    <input type="text" id="cdPtName" placeholder="e.g. Individual IRP6 2026">
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="cdPtNotes">Notes</label>
+                <textarea id="cdPtNotes" rows="2" placeholder="Any planning notes…"></textarea>
+            </div>
+            <div id="cdCreatePlanError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCdCreatePlanModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cdCreatePlanSubmitBtn" onclick="submitCdCreatePlan()">Create Plan</button>
+        </div>
+    </div>
+</div>
+
+<!-- CREATE INDIVIDUAL TAX RETURN MODAL (lightweight from client detail) -->
+<div class="modal-overlay hidden" id="cdCreateItReturnModal" onclick="closeCdCreateItReturnModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">New Individual Tax Return</div>
+            <button type="button" class="modal-close" onclick="closeCdCreateItReturnModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="cdItProfile">Taxpayer Profile <span class="req">*</span></label>
+                <select id="cdItProfile" title="Taxpayer profile">
+                    <option value="">Loading profiles…</option>
+                </select>
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="cdItYear">Tax Year <span class="req">*</span></label>
+                    <input type="number" id="cdItYear" placeholder="e.g. 2026" min="2000" max="2099" oninput="cdItAutoName()">
+                </div>
+                <div class="form-field">
+                    <label for="cdItName">Return Name <span class="req">*</span></label>
+                    <input type="text" id="cdItName" placeholder="e.g. ITR12 2026" oninput="this._manuallyEdited=true">
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="cdItNotes">Notes</label>
+                <textarea id="cdItNotes" rows="2" placeholder="Optional notes…"></textarea>
+            </div>
+            <div id="cdCreateItReturnError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCdCreateItReturnModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cdCreateItReturnSubmitBtn" onclick="submitCdCreateItReturn()">Create Return</button>
+        </div>
+    </div>
+</div>
+
+<!-- CREATE COMPANY TAX RETURN MODAL (lightweight from client detail) -->
+<div class="modal-overlay hidden" id="cdCreateCtReturnModal" onclick="closeCdCreateCtReturnModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">New Company Tax Return</div>
+            <button type="button" class="modal-close" onclick="closeCdCreateCtReturnModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="cdCtProfile">Taxpayer Profile <span class="req">*</span></label>
+                <select id="cdCtProfile" title="Taxpayer profile">
+                    <option value="">Loading profiles…</option>
+                </select>
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="cdCtYear">Tax Year <span class="req">*</span></label>
+                    <input type="number" id="cdCtYear" placeholder="e.g. 2026" min="2000" max="2099" oninput="cdCtAutoName()">
+                </div>
+                <div class="form-field">
+                    <label for="cdCtName">Return Name <span class="req">*</span></label>
+                    <input type="text" id="cdCtName" placeholder="e.g. ITR14 2026" oninput="this._manuallyEdited=true">
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="cdCtNotes">Notes</label>
+                <textarea id="cdCtNotes" rows="2" placeholder="Optional notes…"></textarea>
+            </div>
+            <div id="cdCreateCtReturnError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCdCreateCtReturnModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="cdCreateCtReturnSubmitBtn" onclick="submitCdCreateCtReturn()">Create Return</button>
+        </div>
+    </div>
 </div>
 
 <!-- ADD COMMUNICATION MODAL (lightweight quick-log from client detail) -->
@@ -532,6 +819,60 @@
         <div class="modal-footer">
             <button type="button" class="btn btn-ghost" onclick="closeAddCommModal()">Cancel</button>
             <button type="button" class="btn btn-primary" id="addCommSubmitBtn" onclick="submitAddComm()">Log Communication</button>
+        </div>
+    </div>
+</div>
+
+<!-- ADD DOCUMENT REQUEST MODAL (lightweight from client detail) -->
+<div class="modal-overlay hidden" id="addDocModal" onclick="closeAddDocModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title">Request Document</div>
+            <button type="button" class="modal-close" onclick="closeAddDocModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="addDocCategory">Category <span class="req">*</span></label>
+                    <select id="addDocCategory" title="Document category">
+                        <option value="">Select…</option>
+                        <option value="identity">Identity</option>
+                        <option value="tax">Tax</option>
+                        <option value="vat">VAT</option>
+                        <option value="payroll">Payroll</option>
+                        <option value="accounting">Accounting</option>
+                        <option value="banking">Banking</option>
+                        <option value="cipc">CIPC</option>
+                        <option value="trust">Trust</option>
+                        <option value="legal">Legal</option>
+                        <option value="compliance">Compliance</option>
+                        <option value="financials">Financials</option>
+                        <option value="supporting_docs">Supporting Docs</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="addDocAssignee">Assigned To</label>
+                    <select id="addDocAssignee" title="Team member responsible"></select>
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="addDocTitle">Request Title <span class="req">*</span></label>
+                <input type="text" id="addDocTitle" placeholder="e.g. Bank statements — June 2026" title="Request title">
+            </div>
+            <div class="form-field">
+                <label for="addDocType">Document Type</label>
+                <input type="text" id="addDocType" placeholder="e.g. VAT201 Return" title="Document type">
+            </div>
+            <div class="form-field">
+                <label for="addDocRequiredBy">Required By Date</label>
+                <input type="date" id="addDocRequiredBy" title="Required by date">
+            </div>
+            <div id="addDocError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeAddDocModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="addDocSubmitBtn" onclick="submitAddDoc()">Request Document</button>
         </div>
     </div>
 </div>

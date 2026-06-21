@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Individual Tax — Lorenco Practice</title>
+    <link rel="stylesheet" href="css/practice.css">
+    <style>
+        /* ── Summary cards ── */
+        .it-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .it-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .it-card-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+        .it-card-val   { font-size: 28px; font-weight: 700; color: var(--text); }
+
+        /* ── Filter bar ── */
+        .it-filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .it-filter-bar select,
+        .it-filter-bar input {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+        .it-filter-bar .btn { flex-shrink: 0; }
+
+        /* ── Table ── */
+        .it-table-wrap { overflow-x: auto; }
+        .it-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .it-table th {
+            background: var(--surface);
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .it-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            vertical-align: middle;
+        }
+        .it-table tr:hover td { background: rgba(255,255,255,.03); }
+
+        /* ── Status badge ── */
+        .it-s-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+        .it-s-draft              { background: #2a2a3a; color: #aaa; }
+        .it-s-collecting_docs    { background: #1e3a5f; color: #7bb8f8; }
+        .it-s-data_captured      { background: #1a3a2a; color: #6fcf97; }
+        .it-s-ready_for_review   { background: #2d2a10; color: #f2c94c; }
+        .it-s-reviewed           { background: #1a2d40; color: #56ccf2; }
+        .it-s-submitted          { background: #2a1a4a; color: #bb6bd9; }
+        .it-s-completed          { background: #0d2918; color: #27ae60; }
+        .it-s-cancelled          { background: #2a1a1a; color: #eb5757; }
+
+        /* ── Readiness badge ── */
+        .it-r-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .it-r-ready      { background: #0d2918; color: #27ae60; }
+        .it-r-partial    { background: #2d2a10; color: #f2c94c; }
+        .it-r-incomplete { background: #2a1a1a; color: #eb5757; }
+        .it-r-blocked    { background: #3a1a1a; color: #ff6b6b; }
+        .it-r-unknown    { background: #1e1e2a; color: #888; }
+
+        /* ── Detail modal tabs ── */
+        .it-tab-bar {
+            display: flex;
+            gap: 4px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+        .it-tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 8px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }
+        .it-tab-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .it-tab-panel { display: none; }
+        .it-tab-panel.active { display: block; }
+
+        /* ── Checklist / items ── */
+        .it-item-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .it-item-row:last-child { border-bottom: none; }
+        .it-item-label { flex: 1; font-size: 13px; color: var(--text); }
+        .it-item-status-sel {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        .it-item-del-btn {
+            background: none;
+            border: none;
+            color: var(--danger, #eb5757);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .it-item-del-btn:hover { background: rgba(235,87,87,.12); }
+
+        /* ── Income / deduction entry rows ── */
+        .it-entry-row {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .it-entry-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .it-entry-type-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+        .it-entry-desc  { font-size: 13px; color: var(--text); }
+        .it-entry-amount { font-size: 15px; font-weight: 600; color: var(--text); }
+        .it-entry-ref   { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+        /* ── Events ── */
+        .it-event-row {
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .it-event-row:last-child { border-bottom: none; }
+        .it-event-type  { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+        .it-event-notes { color: var(--text); margin: 2px 0; }
+        .it-event-time  { color: var(--text-muted); font-size: 11px; }
+
+        /* ── Form grid inside modal ── */
+        .it-form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        @media (max-width: 520px) { .it-form-grid { grid-template-columns: 1fr; } }
+
+        /* ── Readiness bar ── */
+        .it-readiness-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 12px 0;
+        }
+        .it-readiness-bar-bg {
+            flex: 1;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .it-readiness-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: var(--accent);
+            transition: width .3s;
+        }
+        .it-readiness-pct { font-size: 13px; font-weight: 600; color: var(--text); min-width: 36px; text-align: right; }
+
+        /* ── Empty / loading ── */
+        .it-loading { text-align: center; color: var(--text-muted); padding: 24px; }
+        .it-empty   { text-align: center; color: var(--text-muted); padding: 24px; font-size: 13px; }
+
+        /* ── Draft warning banner ── */
+        .it-draft-warning {
+            background: #2d2200;
+            border: 1px solid #7a5c00;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 12px;
+            color: #f2c94c;
+            font-weight: 600;
+            letter-spacing: .02em;
+            margin-bottom: 14px;
+        }
+
+        /* ── Calculation cards ── */
+        .it-calc-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 8px;
+        }
+        .it-calc-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .it-calc-name    { font-size: 14px; font-weight: 600; color: var(--text); }
+        .it-calc-version { font-size: 11px; color: var(--text-muted); }
+        .it-calc-amounts {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+            margin: 8px 0;
+        }
+        .it-calc-amt-item { font-size: 12px; color: var(--text-muted); }
+        .it-calc-amt-val  { font-size: 14px; font-weight: 600; color: var(--text); }
+        .it-calc-payable  { color: #eb5757; }
+        .it-calc-refund   { color: #27ae60; }
+
+        /* ── Calculation status badges ── */
+        .it-cs-draft            { background: #2a2a3a; color: #aaa; }
+        .it-cs-ready_for_review { background: #2d2a10; color: #f2c94c; }
+        .it-cs-reviewed         { background: #1a2d40; color: #56ccf2; }
+        .it-cs-approved         { background: #0d2918; color: #27ae60; }
+        .it-cs-rejected         { background: #3a1a1a; color: #ff6b6b; }
+        .it-cs-cancelled        { background: #2a1a1a; color: #666; }
+
+        /* ── Warning flag chips ── */
+        .it-warn-chip {
+            display: inline-block;
+            background: #2d2200;
+            color: #f2c94c;
+            border: 1px solid #7a5c00;
+            border-radius: 10px;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            margin: 2px;
+            letter-spacing: .03em;
+        }
+
+        /* ── Calculation lines table ── */
+        .it-calc-lines-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+        .it-calc-lines-table th {
+            text-align: left;
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .it-calc-lines-table td {
+            padding: 7px 0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            vertical-align: top;
+        }
+        .it-calc-lines-table td.amt { text-align: right; white-space: nowrap; }
+        .it-calc-lines-table td.note { font-size: 11px; color: var(--text-muted); padding-left: 12px; }
+
+        /* ── Review Packs ── */
+        .it-rp-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 8px;
+        }
+        .it-rp-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .it-rp-name   { font-size: 14px; font-weight: 600; color: var(--text); }
+        .it-rp-meta   { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .it-rp-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+
+        /* review pack status badges */
+        .it-rps-draft            { background: #2a2a3a; color: #aaa; }
+        .it-rps-generated        { background: #1e3a5f; color: #7bb8f8; }
+        .it-rps-ready_for_review { background: #2d2a10; color: #f2c94c; }
+        .it-rps-reviewed         { background: #1a2d40; color: #56ccf2; }
+        .it-rps-approved         { background: #0d2918; color: #27ae60; }
+        .it-rps-rejected         { background: #3a1a1a; color: #ff6b6b; }
+        .it-rps-cancelled        { background: #2a1a1a; color: #666; }
+
+        /* review pack event rows */
+        .it-rpe-row {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+        .it-rpe-row:last-child { border-bottom: none; }
+        .it-rpe-type  { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+        .it-rpe-notes { color: var(--text); margin: 2px 0; }
+        .it-rpe-time  { color: var(--text-muted); font-size: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="app-topbar"></div>
+<div id="app-nav"></div>
+
+<main class="page-main">
+    <div class="page-header">
+        <div class="page-title">Individual Tax Returns</div>
+        <button class="btn btn-primary" onclick="openCreateModal()">+ New Return</button>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="it-summary-grid" id="itSummaryGrid">
+        <div class="it-card"><div class="it-card-label">Total Active</div><div class="it-card-val" id="itSumTotal">—</div></div>
+        <div class="it-card"><div class="it-card-label">Draft / Collecting</div><div class="it-card-val" id="itSumDraft">—</div></div>
+        <div class="it-card"><div class="it-card-label">Ready for Review</div><div class="it-card-val" id="itSumReady">—</div></div>
+        <div class="it-card"><div class="it-card-label">Reviewed / Done</div><div class="it-card-val" id="itSumDone">—</div></div>
+        <div class="it-card"><div class="it-card-label">Readiness: Ready</div><div class="it-card-val" id="itSumReadinessReady">—</div></div>
+        <div class="it-card"><div class="it-card-label">Readiness: Blocked</div><div class="it-card-val" id="itSumBlocked">—</div></div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="it-filter-bar">
+        <select id="itFClient" title="Filter by client" onchange="loadReturns()">
+            <option value="">All Clients</option>
+        </select>
+        <input type="number" id="itFYear" placeholder="Tax Year" min="2000" max="2099" style="width:110px" oninput="loadReturns()">
+        <select id="itFStatus" title="Filter by status" onchange="loadReturns()">
+            <option value="">All Statuses</option>
+            <option value="draft">Draft</option>
+            <option value="collecting_docs">Collecting Docs</option>
+            <option value="data_captured">Data Captured</option>
+            <option value="ready_for_review">Ready for Review</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="submitted">Submitted</option>
+            <option value="completed">Completed</option>
+        </select>
+        <select id="itFReadiness" title="Filter by readiness" onchange="loadReturns()">
+            <option value="">All Readiness</option>
+            <option value="ready">Ready</option>
+            <option value="partial">Partial</option>
+            <option value="incomplete">Incomplete</option>
+            <option value="blocked">Blocked</option>
+            <option value="unknown">Unknown</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="clearFilters()">Clear</button>
+    </div>
+
+    <!-- Returns table -->
+    <div class="it-table-wrap">
+        <div class="it-loading hidden" id="itTableLoading">Loading…</div>
+        <div class="it-empty hidden" id="itTableEmpty">No individual tax returns found.</div>
+        <table class="it-table" id="itTable">
+            <thead>
+                <tr>
+                    <th>Tax Year</th>
+                    <th>Client</th>
+                    <th>Return Name</th>
+                    <th>Status</th>
+                    <th>Readiness</th>
+                    <th>Score</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="itTableBody"></tbody>
+        </table>
+    </div>
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════
+     CREATE RETURN MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="itCreateModal" onclick="closeCreateModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px">
+        <div class="modal-header">
+            <div class="modal-title">New Individual Tax Return</div>
+            <button type="button" class="modal-close" onclick="closeCreateModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="itCClient">Client <span class="req">*</span></label>
+                <select id="itCClient" title="Client" onchange="itClientChanged()">
+                    <option value="">Select client…</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="itCProfile">Taxpayer Profile <span class="req">*</span></label>
+                <select id="itCProfile" title="Taxpayer profile">
+                    <option value="">Select profile…</option>
+                </select>
+            </div>
+            <div class="it-form-grid">
+                <div class="form-field">
+                    <label for="itCYear">Tax Year <span class="req">*</span></label>
+                    <input type="number" id="itCYear" placeholder="e.g. 2026" min="2000" max="2099" oninput="itAutoName()">
+                </div>
+                <div class="form-field">
+                    <label for="itCName">Return Name <span class="req">*</span></label>
+                    <input type="text" id="itCName" placeholder="e.g. ITR12 2026 — J Smith" oninput="this._manuallyEdited=true">
+                </div>
+            </div>
+            <div class="it-form-grid">
+                <div class="form-field">
+                    <label for="itCPlanId">Link to Provisional Plan</label>
+                    <input type="number" id="itCPlanId" placeholder="Plan ID (optional)" min="1">
+                </div>
+                <div class="form-field">
+                    <label for="itCPackId">Link to Compliance Pack</label>
+                    <input type="number" id="itCPackId" placeholder="Pack ID (optional)" min="1">
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="itCNotes">Notes</label>
+                <textarea id="itCNotes" rows="2" placeholder="Optional notes…"></textarea>
+            </div>
+            <div class="error-msg hidden" id="itCreateError"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="itCreateSubmitBtn" onclick="submitCreateReturn()">Create Return</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DETAIL MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="itDetailModal" onclick="closeDetailModal()">
+    <div class="modal-box modal-wide" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title" id="itDetailTitle">Return Details</div>
+            <button type="button" class="modal-close" onclick="closeDetailModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <!-- Tab bar -->
+            <div class="it-tab-bar">
+                <button type="button" class="it-tab-btn active" id="itTabBtnOverview" onclick="itSwitchTab('overview', this)">Overview</button>
+                <button type="button" class="it-tab-btn" id="itTabBtnItems"    onclick="itSwitchTab('items', this)">Checklist</button>
+                <button type="button" class="it-tab-btn" id="itTabBtnIncome"   onclick="itSwitchTab('income', this)">Income</button>
+                <button type="button" class="it-tab-btn" id="itTabBtnDed"      onclick="itSwitchTab('deductions', this)">Deductions</button>
+                <button type="button" class="it-tab-btn" id="itTabBtnHistory"  onclick="itSwitchTab('events', this)">History</button>
+                <button type="button" class="it-tab-btn" id="itTabBtnCalc"    onclick="itSwitchTab('calculations', this)">Calculations</button>
+                <button type="button" class="it-tab-btn" id="itTabBtnReviewPacks" onclick="itSwitchTab('review-packs', this)">Review Packs</button>
+            </div>
+
+            <!-- OVERVIEW TAB -->
+            <div class="it-tab-panel active" id="itTabOverview">
+                <div class="it-form-grid" style="margin-bottom:16px">
+                    <div class="form-field">
+                        <label>Tax Year</label>
+                        <div class="form-static" id="itDTaxYear">—</div>
+                    </div>
+                    <div class="form-field">
+                        <label>Client</label>
+                        <div class="form-static" id="itDClient">—</div>
+                    </div>
+                    <div class="form-field">
+                        <label>Status</label>
+                        <div id="itDStatusBadge">—</div>
+                    </div>
+                    <div class="form-field">
+                        <label>Readiness</label>
+                        <div id="itDReadinessBadge">—</div>
+                    </div>
+                </div>
+
+                <!-- Readiness bar -->
+                <div class="it-readiness-bar-wrap">
+                    <div class="it-readiness-bar-bg">
+                        <div class="it-readiness-bar-fill" id="itDReadinessBar" style="width:0%"></div>
+                    </div>
+                    <div class="it-readiness-pct" id="itDReadinessPct">—</div>
+                </div>
+
+                <div class="it-form-grid" style="margin-bottom:16px">
+                    <div class="form-field">
+                        <label for="itDUpdateStatus">Update Status</label>
+                        <select id="itDUpdateStatus" title="Update status">
+                            <option value="">— no change —</option>
+                            <option value="draft">Draft</option>
+                            <option value="collecting_docs">Collecting Docs</option>
+                            <option value="data_captured">Data Captured</option>
+                            <option value="ready_for_review">Ready for Review</option>
+                            <option value="reviewed">Reviewed</option>
+                            <option value="submitted">Submitted</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:flex-end;gap:8px">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="itSaveStatus()">Save Status</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="itRecalcReadiness()">Recalc Readiness</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="itGenerateItems()">Generate Checklist</button>
+                    </div>
+                </div>
+
+                <div class="form-field">
+                    <label for="itDNotes">Notes</label>
+                    <textarea id="itDNotes" rows="3"></textarea>
+                </div>
+                <div class="form-field">
+                    <label for="itDInternalNotes">Internal Notes</label>
+                    <textarea id="itDInternalNotes" rows="2"></textarea>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:8px">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="itSaveOverview()">Save Changes</button>
+                </div>
+                <div class="error-msg hidden" id="itDOverviewError" style="margin-top:8px"></div>
+            </div>
+
+            <!-- CHECKLIST TAB -->
+            <div class="it-tab-panel" id="itTabItems">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <div style="font-size:13px;color:var(--text-muted)">Document and item readiness checklist</div>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="openAddItemForm()">+ Add Item</button>
+                </div>
+
+                <!-- Add item inline form -->
+                <div class="hidden" id="itAddItemForm" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div class="it-form-grid" style="margin-bottom:8px">
+                        <div class="form-field">
+                            <label for="itNewItemType">Type <span class="req">*</span></label>
+                            <select id="itNewItemType" title="Item type">
+                                <option value="">Select type…</option>
+                                <option value="irp5">IRP5</option>
+                                <option value="it3a">IT3(a)</option>
+                                <option value="medical">Medical</option>
+                                <option value="retirement_annuity">Retirement Annuity</option>
+                                <option value="travel">Travel</option>
+                                <option value="rental">Rental</option>
+                                <option value="investment">Investment</option>
+                                <option value="donations">Donations</option>
+                                <option value="capital_gain">Capital Gain</option>
+                                <option value="business_income">Business Income</option>
+                                <option value="foreign_income">Foreign Income</option>
+                                <option value="document">Document</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewItemLabel">Label <span class="req">*</span></label>
+                            <input type="text" id="itNewItemLabel" placeholder="Item description">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="submitAddItem()">Add</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="closeAddItemForm()">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="it-loading hidden" id="itItemsLoading">Loading…</div>
+                <div id="itItemsList"></div>
+            </div>
+
+            <!-- INCOME TAB -->
+            <div class="it-tab-panel" id="itTabIncome">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <div style="font-size:13px;color:var(--text-muted)" id="itIncomeTotals">—</div>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="openAddIncomeForm()">+ Add Income</button>
+                </div>
+
+                <!-- Add income form -->
+                <div class="hidden" id="itAddIncomeForm" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div class="it-form-grid" style="margin-bottom:8px">
+                        <div class="form-field">
+                            <label for="itNewIncType">Type <span class="req">*</span></label>
+                            <select id="itNewIncType" title="Income type">
+                                <option value="">Select type…</option>
+                                <option value="salary">Salary</option>
+                                <option value="pension">Pension</option>
+                                <option value="annuity">Annuity</option>
+                                <option value="interest">Interest</option>
+                                <option value="dividends">Dividends</option>
+                                <option value="rental">Rental</option>
+                                <option value="business">Business</option>
+                                <option value="capital_gain">Capital Gain</option>
+                                <option value="foreign_income">Foreign Income</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewIncDesc">Description</label>
+                            <input type="text" id="itNewIncDesc" placeholder="e.g. Employer name">
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewIncGross">Gross Amount</label>
+                            <input type="number" id="itNewIncGross" placeholder="0.00" min="0" step="0.01">
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewIncWithheld">Tax Withheld (PAYE)</label>
+                            <input type="number" id="itNewIncWithheld" placeholder="0.00" min="0" step="0.01">
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewIncRef">Source Reference</label>
+                            <input type="text" id="itNewIncRef" placeholder="IRP5 number, etc.">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="submitAddIncome()">Add</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="closeAddIncomeForm()">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="it-loading hidden" id="itIncomeLoading">Loading…</div>
+                <div id="itIncomeList"></div>
+            </div>
+
+            <!-- DEDUCTIONS TAB -->
+            <div class="it-tab-panel" id="itTabDed">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <div style="font-size:13px;color:var(--text-muted)" id="itDedTotal">—</div>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="openAddDedForm()">+ Add Deduction</button>
+                </div>
+
+                <!-- Add deduction form -->
+                <div class="hidden" id="itAddDedForm" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px">
+                    <div class="it-form-grid" style="margin-bottom:8px">
+                        <div class="form-field">
+                            <label for="itNewDedType">Type <span class="req">*</span></label>
+                            <select id="itNewDedType" title="Deduction type">
+                                <option value="">Select type…</option>
+                                <option value="medical">Medical</option>
+                                <option value="retirement_annuity">Retirement Annuity</option>
+                                <option value="travel">Travel</option>
+                                <option value="donations">Donations (s18A)</option>
+                                <option value="home_office">Home Office</option>
+                                <option value="wear_and_tear">Wear and Tear</option>
+                                <option value="business_expense">Business Expense</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewDedDesc">Description</label>
+                            <input type="text" id="itNewDedDesc" placeholder="e.g. Discovery Health contributions">
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewDedAmt">Amount</label>
+                            <input type="number" id="itNewDedAmt" placeholder="0.00" min="0" step="0.01">
+                        </div>
+                        <div class="form-field">
+                            <label for="itNewDedRef">Source Reference</label>
+                            <input type="text" id="itNewDedRef" placeholder="Certificate number, etc.">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="submitAddDeduction()">Add</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="closeAddDedForm()">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="it-loading hidden" id="itDedLoading">Loading…</div>
+                <div id="itDedList"></div>
+            </div>
+
+            <!-- HISTORY TAB -->
+            <div class="it-tab-panel" id="itTabHistory">
+                <div class="it-loading hidden" id="itHistoryLoading">Loading…</div>
+                <div id="itHistoryList" class="it-empty">Select History tab to load events.</div>
+            </div>
+
+            <!-- CALCULATIONS TAB -->
+            <div class="it-tab-panel" id="itTabCalc">
+                <div class="it-draft-warning">
+                    ⚠ DRAFT ESTIMATE — Accountant review required. NOT SARS-final. NOT for submission.
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <div style="font-size:13px;color:var(--text-muted)">Draft calculations for this return</div>
+                    <button type="button" class="btn btn-primary btn-sm" id="itRunCalcBtn" onclick="itRunDraftCalc()">Run Draft Calculation</button>
+                </div>
+                <div class="it-loading hidden" id="itCalcLoading">Running calculation…</div>
+                <div id="itCalcList"></div>
+            </div>
+
+            <!-- REVIEW PACKS TAB -->
+            <div class="it-tab-panel" id="itTabReviewPacks">
+                <div class="it-draft-warning">
+                    ⚠ DRAFT ESTIMATE ONLY — Review packs are internal documents. NOT SARS-final. NOT for submission. Accountant review required.
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <div style="font-size:13px;color:var(--text-muted)">Draft individual tax review packs for this return</div>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="itGenerateReviewPack()">Generate Review Pack</button>
+                </div>
+                <div class="it-loading hidden" id="itRpLoading">Loading…</div>
+                <div class="it-empty hidden" id="itRpEmpty">No review packs generated yet. Click "Generate Review Pack" to create the first one.</div>
+                <div id="itRpList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     REVIEW PACK EVENTS MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="itRpEventsModal" onclick="closeRpEventsModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px">
+        <div class="modal-header">
+            <div class="modal-title">Review Pack Events</div>
+            <button type="button" class="modal-close" onclick="closeRpEventsModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="it-loading hidden" id="itRpEventsLoading">Loading…</div>
+            <div id="itRpEventsList"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Reject review pack modal -->
+<div class="modal-overlay hidden" id="itRpRejectModal" onclick="closeRpRejectModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:400px">
+        <div class="modal-header">
+            <div class="modal-title">Reject Review Pack</div>
+            <button type="button" class="modal-close" onclick="closeRpRejectModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="itRpRejectReason">Rejection Reason <span class="req">*</span></label>
+                <textarea id="itRpRejectReason" rows="3" placeholder="Explain why this review pack is rejected…"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeRpRejectModal()">Cancel</button>
+            <button type="button" class="btn btn-danger" onclick="itConfirmRejectPack()">Reject</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     CALCULATION DETAIL MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="itCalcDetailModal" onclick="closeCalcDetailModal()">
+    <div class="modal-box modal-wide" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div class="modal-title" id="itCalcDetailTitle">Calculation Detail</div>
+            <button type="button" class="modal-close" onclick="closeCalcDetailModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="it-draft-warning">
+                ⚠ DRAFT ESTIMATE — This output requires accountant review. NOT SARS-final. NOT for submission.
+            </div>
+
+            <div class="it-form-grid" style="margin-bottom:16px">
+                <div class="form-field">
+                    <label>Status</label>
+                    <div id="itCalcDStatus">—</div>
+                </div>
+                <div class="form-field">
+                    <label>Tax Year</label>
+                    <div class="form-static" id="itCalcDYear">—</div>
+                </div>
+                <div class="form-field">
+                    <label>Table Version</label>
+                    <div class="form-static" id="itCalcDVersion">—</div>
+                </div>
+                <div class="form-field">
+                    <label>Calc Version</label>
+                    <div class="form-static" id="itCalcDCalcVer">—</div>
+                </div>
+            </div>
+
+            <!-- Calculation lines -->
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Calculation Breakdown</div>
+            <table class="it-calc-lines-table">
+                <thead>
+                    <tr>
+                        <th>Line</th>
+                        <th style="text-align:right">Amount</th>
+                        <th>Note</th>
+                    </tr>
+                </thead>
+                <tbody id="itCalcDLines"></tbody>
+            </table>
+
+            <!-- Warning flags -->
+            <div style="margin-top:14px">
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Warning Flags</div>
+                <div id="itCalcDWarnings"></div>
+            </div>
+
+            <!-- Assumptions -->
+            <div style="margin-top:14px">
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Assumptions Applied</div>
+                <ul id="itCalcDAssumptions" style="font-size:12px;color:var(--text-muted);padding-left:18px;margin:0"></ul>
+            </div>
+
+            <!-- Provisional tax override -->
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+                <div class="it-form-grid">
+                    <div class="form-field">
+                        <label for="itCalcDProvTax">Provisional Tax Paid (override)</label>
+                        <input type="number" id="itCalcDProvTax" placeholder="0.00" min="0" step="0.01">
+                    </div>
+                    <div class="form-field">
+                        <label for="itCalcDNotes">Notes</label>
+                        <input type="text" id="itCalcDNotes" placeholder="Accountant notes…">
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="itSaveCalcNotes()">Save Notes &amp; Prov Tax</button>
+            </div>
+
+            <!-- Review actions -->
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap" id="itCalcDActions">
+                <button type="button" class="btn btn-secondary btn-sm" id="itCalcSubmitReviewBtn" onclick="itSubmitCalcForReview()">Submit for Review</button>
+                <button type="button" class="btn btn-primary btn-sm" id="itCalcApproveBtn" onclick="itApproveCalc()">Approve</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="itCalcRejectBtn" onclick="openCalcRejectModal()">Reject</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reject reason modal -->
+<div class="modal-overlay hidden" id="itCalcRejectModal" onclick="closeCalcRejectModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:400px">
+        <div class="modal-header">
+            <div class="modal-title">Reject Calculation</div>
+            <button type="button" class="modal-close" onclick="closeCalcRejectModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="itCalcRejectReason">Rejection Reason</label>
+                <textarea id="itCalcRejectReason" rows="3" placeholder="Explain why this calculation is rejected…"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCalcRejectModal()">Cancel</button>
+            <button type="button" class="btn btn-danger" onclick="itRejectCalc()">Reject</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     ADD INCOME EDIT MODAL (inline editing)
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="itEditIncomeModal" onclick="closeEditIncomeModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:480px">
+        <div class="modal-header">
+            <div class="modal-title">Edit Income Entry</div>
+            <button type="button" class="modal-close" onclick="closeEditIncomeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="itEditIncId">
+            <div class="it-form-grid">
+                <div class="form-field">
+                    <label for="itEditIncType">Type</label>
+                    <select id="itEditIncType" title="Income type">
+                        <option value="salary">Salary</option>
+                        <option value="pension">Pension</option>
+                        <option value="annuity">Annuity</option>
+                        <option value="interest">Interest</option>
+                        <option value="dividends">Dividends</option>
+                        <option value="rental">Rental</option>
+                        <option value="business">Business</option>
+                        <option value="capital_gain">Capital Gain</option>
+                        <option value="foreign_income">Foreign Income</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="itEditIncDesc">Description</label>
+                    <input type="text" id="itEditIncDesc">
+                </div>
+                <div class="form-field">
+                    <label for="itEditIncGross">Gross Amount</label>
+                    <input type="number" id="itEditIncGross" min="0" step="0.01">
+                </div>
+                <div class="form-field">
+                    <label for="itEditIncWith">Tax Withheld</label>
+                    <input type="number" id="itEditIncWith" min="0" step="0.01">
+                </div>
+                <div class="form-field">
+                    <label for="itEditIncRef">Source Reference</label>
+                    <input type="text" id="itEditIncRef">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeEditIncomeModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="submitEditIncome()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     EDIT DEDUCTION MODAL
+════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="itEditDedModal" onclick="closeEditDedModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:480px">
+        <div class="modal-header">
+            <div class="modal-title">Edit Deduction Entry</div>
+            <button type="button" class="modal-close" onclick="closeEditDedModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="itEditDedId">
+            <div class="it-form-grid">
+                <div class="form-field">
+                    <label for="itEditDedType">Type</label>
+                    <select id="itEditDedType" title="Deduction type">
+                        <option value="medical">Medical</option>
+                        <option value="retirement_annuity">Retirement Annuity</option>
+                        <option value="travel">Travel</option>
+                        <option value="donations">Donations (s18A)</option>
+                        <option value="home_office">Home Office</option>
+                        <option value="wear_and_tear">Wear and Tear</option>
+                        <option value="business_expense">Business Expense</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="itEditDedDesc">Description</label>
+                    <input type="text" id="itEditDedDesc">
+                </div>
+                <div class="form-field">
+                    <label for="itEditDedAmt">Amount</label>
+                    <input type="number" id="itEditDedAmt" min="0" step="0.01">
+                </div>
+                <div class="form-field">
+                    <label for="itEditDedRef">Source Reference</label>
+                    <input type="text" id="itEditDedRef">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeEditDedModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="submitEditDeduction()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/polyfills.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/api.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/individual-tax.js"></script>
+</body>
+</html>

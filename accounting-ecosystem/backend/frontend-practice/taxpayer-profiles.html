@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taxpayer Profiles — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Summary cards ──────────────────────────────────── */
+        .tp-summary {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .tp-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 20px;
+            min-width: 110px;
+            flex: 1;
+        }
+        .tp-card-value { font-size: 1.7rem; font-weight: 700; color: var(--text); }
+        .tp-card-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .tp-card--blue  .tp-card-value { color: var(--accent); }
+        .tp-card--ready .tp-card-value { color: #22c55e; }
+        .tp-card--warn  .tp-card-value { color: #f59e0b; }
+        .tp-card--block .tp-card-value { color: var(--danger); }
+
+        /* ── Toolbar ───────────────────────────────────────── */
+        .tp-toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .tp-toolbar select, .tp-toolbar input[type="text"] {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            height: 34px;
+        }
+        .tp-toolbar-spacer { flex: 1; }
+
+        /* ── Profile list table ────────────────────────────── */
+        .tp-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .tp-table th {
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+        .tp-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            color: var(--text);
+            vertical-align: middle;
+        }
+        .tp-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .tp-table .col-type    { width: 110px; }
+        .tp-table .col-ref     { width: 140px; }
+        .tp-table .col-status  { width: 90px; }
+        .tp-table .col-ready   { width: 110px; }
+        .tp-table .col-actions { width: 100px; text-align: right; }
+
+        /* ── Type badges ───────────────────────────────────── */
+        .tp-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .tp-type-individual  { background: rgba(59,130,246,0.18);  color: #60a5fa; }
+        .tp-type-company     { background: rgba(139,92,246,0.18);  color: #a78bfa; }
+        .tp-type-trust       { background: rgba(245,158,11,0.18);  color: #fbbf24; }
+        .tp-type-partnership { background: rgba(16,185,129,0.18);  color: #34d399; }
+        .tp-type-cc          { background: rgba(236,72,153,0.18);  color: #f472b6; }
+
+        /* ── Tax status badges ─────────────────────────────── */
+        .tp-status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .tp-status-active  { background: rgba(34,197,94,0.14);  color: #4ade80; }
+        .tp-status-dormant { background: rgba(245,158,11,0.14); color: #fbbf24; }
+        .tp-status-ceased  { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.35); }
+
+        /* ── Readiness badge ───────────────────────────────── */
+        .tp-ready-incomplete { color: #f87171; font-weight: 600; font-size: 0.8rem; }
+        .tp-ready-partial    { color: #fbbf24; font-weight: 600; font-size: 0.8rem; }
+        .tp-ready-ready      { color: #4ade80; font-weight: 600; font-size: 0.8rem; }
+        .tp-ready-blocked    { color: var(--danger); font-weight: 600; font-size: 0.8rem; }
+        .tp-ready-unknown    { color: rgba(255,255,255,0.3); font-size: 0.8rem; }
+
+        /* ── Detail modal tabs ─────────────────────────────── */
+        .tp-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+        .tp-tab {
+            padding: 8px 16px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        .tp-tab:hover  { color: var(--text); }
+        .tp-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        .tp-tab-panel { display: none; }
+        .tp-tab-panel.active { display: block; }
+
+        /* ── Readiness bar ─────────────────────────────────── */
+        .tp-score-bar-bg {
+            background: rgba(255,255,255,0.08);
+            border-radius: 8px;
+            height: 7px;
+            overflow: hidden;
+            margin: 8px 0 4px;
+        }
+        .tp-score-bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.4s ease;
+            background: var(--accent);
+        }
+        .tp-score-bar-fill.ready   { background: #22c55e; }
+        .tp-score-bar-fill.partial { background: #f59e0b; }
+        .tp-score-bar-fill.blocked { background: var(--danger); }
+
+        /* ── Readiness items ───────────────────────────────── */
+        .tp-item-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .tp-item-row:last-child { border-bottom: none; }
+        .tp-item-name  { flex: 1; font-size: 0.88rem; color: var(--text); }
+        .tp-item-opt   { font-size: 0.72rem; color: var(--text-muted); }
+        .tp-item-badge {
+            flex-shrink: 0;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .tp-item-required  { background: rgba(239,68,68,0.14);  color: #f87171; }
+        .tp-item-received  { background: rgba(59,130,246,0.14); color: #60a5fa; }
+        .tp-item-completed { background: rgba(34,197,94,0.14);  color: #4ade80; }
+        .tp-item-waived    { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4); }
+        .tp-item-blocked   { background: rgba(239,68,68,0.20);  color: #fca5a5; }
+
+        /* ── Source / Deduction rows ───────────────────────── */
+        .tp-src-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.85rem;
+        }
+        .tp-src-row:last-child { border-bottom: none; }
+        .tp-src-label { flex: 1; color: var(--text); }
+        .tp-src-desc  { color: var(--text-muted); font-size: 0.78rem; }
+        .tp-src-type  {
+            display: inline-block;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            background: rgba(255,255,255,0.07);
+            color: rgba(255,255,255,0.6);
+            flex-shrink: 0;
+        }
+
+        /* ── Detail overview grid ──────────────────────────── */
+        .tp-overview-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px 24px;
+            margin-bottom: 16px;
+        }
+        .tp-overview-field label {
+            display: block;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+        .tp-overview-field span {
+            font-size: 0.88rem;
+            color: var(--text);
+        }
+
+        /* ── Empty / loading ───────────────────────────────── */
+        .cap-loading { padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.88rem; }
+        .cap-empty   { padding: 32px 24px; text-align: center; }
+        .cap-empty-icon { font-size: 2.2rem; margin-bottom: 10px; opacity: 0.5; }
+        .cap-empty-text { color: var(--text-muted); font-size: 0.88rem; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <div id="app-nav"></div>
+
+    <div class="page-wrap">
+
+        <!-- ── Summary cards ─────────────────────────────────── -->
+        <div class="tp-summary" id="tpSummary">
+            <div class="tp-card">
+                <div class="tp-card-value" id="sumTpTotal">—</div>
+                <div class="tp-card-label">Total Profiles</div>
+            </div>
+            <div class="tp-card tp-card--blue">
+                <div class="tp-card-value" id="sumTpIndividual">—</div>
+                <div class="tp-card-label">Individual</div>
+            </div>
+            <div class="tp-card">
+                <div class="tp-card-value" id="sumTpCompany">—</div>
+                <div class="tp-card-label">Company / CC</div>
+            </div>
+            <div class="tp-card tp-card--warn">
+                <div class="tp-card-value" id="sumTpTrust">—</div>
+                <div class="tp-card-label">Trust / Partnership</div>
+            </div>
+            <div class="tp-card tp-card--ready">
+                <div class="tp-card-value" id="sumTpReady">—</div>
+                <div class="tp-card-label">Readiness: Ready</div>
+            </div>
+            <div class="tp-card tp-card--block">
+                <div class="tp-card-value" id="sumTpBlocked">—</div>
+                <div class="tp-card-label">Blocked</div>
+            </div>
+        </div>
+
+        <!-- ── Toolbar ───────────────────────────────────────── -->
+        <div class="tp-toolbar">
+            <select id="tpFilterType" onchange="loadProfiles()" title="Taxpayer type">
+                <option value="">All Types</option>
+                <option value="individual">Individual</option>
+                <option value="company">Company</option>
+                <option value="trust">Trust</option>
+                <option value="partnership">Partnership</option>
+                <option value="cc">Close Corporation (CC)</option>
+            </select>
+            <select id="tpFilterStatus" onchange="loadProfiles()" title="Tax status">
+                <option value="">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="dormant">Dormant</option>
+                <option value="ceased">Ceased</option>
+            </select>
+            <select id="tpFilterReadiness" onchange="loadProfiles()" title="Readiness">
+                <option value="">All Readiness</option>
+                <option value="incomplete">Incomplete</option>
+                <option value="partial">Partial</option>
+                <option value="ready">Ready</option>
+                <option value="blocked">Blocked</option>
+                <option value="unknown">Unknown</option>
+            </select>
+            <select id="tpFilterClient" onchange="loadProfiles()" title="Client">
+                <option value="">All Clients</option>
+            </select>
+            <div class="tp-toolbar-spacer"></div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openCreateProfileModal()">+ New Taxpayer Profile</button>
+        </div>
+
+        <!-- ── Profile list ──────────────────────────────────── -->
+        <div id="tpListLoading" class="cap-loading">Loading taxpayer profiles…</div>
+
+        <div id="tpListWrap" class="hidden">
+            <table class="tp-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">Type</th>
+                        <th>Client</th>
+                        <th class="col-ref">Tax Reference</th>
+                        <th class="col-status">Tax Status</th>
+                        <th class="col-ready">Readiness</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tpListBody"></tbody>
+            </table>
+        </div>
+
+        <div id="tpListEmpty" class="cap-empty hidden">
+            <div class="cap-empty-icon">🧾</div>
+            <div class="cap-empty-text">No taxpayer profiles match the current filter</div>
+        </div>
+
+        <div id="tpListError" class="error-banner hidden"></div>
+
+    </div><!-- /page-wrap -->
+
+    <!-- ── Create profile modal ──────────────────────────────── -->
+    <div id="tpCreateModal" class="modal-overlay hidden" onclick="closeCreateProfileModal()">
+        <div class="modal-box modal-box--lg" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">New Taxpayer Profile</div>
+                <button type="button" class="modal-close" onclick="closeCreateProfileModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Client <span class="req">*</span></label>
+                        <select id="tpCClient" class="form-input" title="Client"></select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Taxpayer Type <span class="req">*</span></label>
+                        <select id="tpCType" class="form-input" onchange="tpToggleIndividualFields()" title="Type">
+                            <option value="">Select type…</option>
+                            <option value="individual">Individual</option>
+                            <option value="company">Company (Pty Ltd)</option>
+                            <option value="trust">Trust</option>
+                            <option value="partnership">Partnership</option>
+                            <option value="cc">Close Corporation (CC)</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Income Tax Reference</label>
+                        <input type="text" id="tpCTaxRef" class="form-input" placeholder="e.g. 9876543210">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Tax Status</label>
+                        <select id="tpCTaxStatus" class="form-input" title="Tax status">
+                            <option value="active">Active</option>
+                            <option value="dormant">Dormant</option>
+                            <option value="ceased">Ceased</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Individual fields -->
+                <div id="tpCIndividualFields" class="comm-form-grid hidden">
+                    <div class="form-row">
+                        <label class="form-label">ID Number</label>
+                        <input type="text" id="tpCIdNumber" class="form-input" placeholder="13-digit SA ID">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Passport Number</label>
+                        <input type="text" id="tpCPassport" class="form-input" placeholder="For foreign nationals">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Marital Status</label>
+                        <select id="tpCMarital" class="form-input" title="Marital status">
+                            <option value="">Not specified</option>
+                            <option value="single">Single</option>
+                            <option value="married">Married</option>
+                            <option value="divorced">Divorced</option>
+                            <option value="widowed">Widowed</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">
+                            <input type="checkbox" id="tpCProvisional" style="margin-right:6px;">
+                            Provisional Taxpayer
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Company / Entity fields -->
+                <div id="tpCEntityFields" class="comm-form-grid hidden">
+                    <div class="form-row">
+                        <label class="form-label">Registration Number</label>
+                        <input type="text" id="tpCRegNumber" class="form-input" placeholder="e.g. 2020/123456/07">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Financial Year End</label>
+                        <input type="date" id="tpCFYE" class="form-input">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">
+                            <input type="checkbox" id="tpCVat" style="margin-right:6px;">
+                            VAT Registered
+                        </label>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">
+                            <input type="checkbox" id="tpCPaye" style="margin-right:6px;">
+                            PAYE Registered
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label class="form-label">Notes</label>
+                    <textarea id="tpCNotes" class="form-input" rows="2" placeholder="Any notes about this taxpayer…"></textarea>
+                </div>
+                <div id="tpCreateError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeCreateProfileModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="tpCreateSubmitBtn" onclick="submitCreateProfile()">Create Profile</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Profile detail modal ───────────────────────────────── -->
+    <div id="tpDetailModal" class="modal-overlay hidden" onclick="closeTpDetailModal()">
+        <div class="modal-box modal-box--lg" style="max-width:700px;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="tpDetailTitle">Profile Detail</div>
+                <button type="button" class="modal-close" onclick="closeTpDetailModal()">✕</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- Header -->
+                <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:1rem;font-weight:700;color:var(--text);" id="tpDClientName"></div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:3px;" id="tpDSub"></div>
+                    </div>
+                    <div id="tpDTypeBadge"></div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="tp-tabs">
+                    <button type="button" class="tp-tab active" onclick="tpSwitchTab('overview')">Overview</button>
+                    <button type="button" class="tp-tab" onclick="tpSwitchTab('income')">Income Sources</button>
+                    <button type="button" class="tp-tab" onclick="tpSwitchTab('deductions')">Deductions</button>
+                    <button type="button" class="tp-tab" onclick="tpSwitchTab('readiness')">Readiness</button>
+                </div>
+
+                <!-- Tab: Overview -->
+                <div id="tpTabOverview" class="tp-tab-panel active">
+                    <div class="tp-overview-grid" id="tpDOverviewGrid"></div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border);">
+                        <select id="tpDTaxStatusSel" class="form-input" style="width:auto;font-size:0.8rem;padding:4px 8px;height:30px;" onchange="tpUpdateTaxStatus()" title="Tax status">
+                            <option value="active">Active</option>
+                            <option value="dormant">Dormant</option>
+                            <option value="ceased">Ceased</option>
+                        </select>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="tpRecalculate()">⟳ Recalculate Readiness</button>
+                    </div>
+                </div>
+
+                <!-- Tab: Income Sources -->
+                <div id="tpTabIncome" class="tp-tab-panel">
+                    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openAddSourceModal()">+ Add Income Source</button>
+                    </div>
+                    <div id="tpDSourcesLoading" class="cap-loading hidden">Loading…</div>
+                    <div id="tpDSourcesWrap"></div>
+                    <div id="tpDSourcesEmpty" class="cap-empty hidden">
+                        <div class="cap-empty-icon">💼</div>
+                        <div class="cap-empty-text">No income sources declared yet</div>
+                    </div>
+                </div>
+
+                <!-- Tab: Deductions -->
+                <div id="tpTabDeductions" class="tp-tab-panel">
+                    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openAddDeductionModal()">+ Add Deduction</button>
+                    </div>
+                    <div id="tpDDedsLoading" class="cap-loading hidden">Loading…</div>
+                    <div id="tpDDedsWrap"></div>
+                    <div id="tpDDedsEmpty" class="cap-empty hidden">
+                        <div class="cap-empty-icon">🧾</div>
+                        <div class="cap-empty-text">No deductions declared yet</div>
+                    </div>
+                </div>
+
+                <!-- Tab: Readiness -->
+                <div id="tpTabReadiness" class="tp-tab-panel">
+                    <!-- Readiness bar -->
+                    <div style="margin-bottom:14px;">
+                        <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-muted);">
+                            <span id="tpDReadinessLabel">Readiness unknown</span>
+                            <span id="tpDScoreLabel">—</span>
+                        </div>
+                        <div class="tp-score-bar-bg">
+                            <div class="tp-score-bar-fill" id="tpDScoreBar" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-bottom:12px;">
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="tpGenerateDefaults()">📋 Generate Default Items</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="openAddReadinessItemModal()">+ Add Item</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="tpRecalculate()">⟳ Recalculate</button>
+                    </div>
+                    <div id="tpDItemsLoading" class="cap-loading hidden">Loading…</div>
+                    <div id="tpDItemsWrap"></div>
+                    <div id="tpDItemsEmpty" class="cap-empty hidden">
+                        <div class="cap-empty-icon">☑️</div>
+                        <div class="cap-empty-text">No readiness items yet — use "Generate Default Items" to get started</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add income source modal ───────────────────────────── -->
+    <div id="tpAddSourceModal" class="modal-overlay hidden" onclick="closeAddSourceModal()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">Add Income Source</div>
+                <button type="button" class="modal-close" onclick="closeAddSourceModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label class="form-label">Income Type <span class="req">*</span></label>
+                    <select id="tpASType" class="form-input" title="Income type">
+                        <option value="">Select type…</option>
+                        <option value="salary">Salary / Employment</option>
+                        <option value="business">Business Income</option>
+                        <option value="rental">Rental Income</option>
+                        <option value="investment">Investment Income</option>
+                        <option value="interest">Interest</option>
+                        <option value="dividends">Dividends</option>
+                        <option value="foreign_income">Foreign Income</option>
+                        <option value="capital_gain">Capital Gain</option>
+                        <option value="trust_distribution">Trust Distribution</option>
+                        <option value="pension">Pension / Annuity</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Description</label>
+                    <input type="text" id="tpASDesc" class="form-input" placeholder="e.g. ABC (Pty) Ltd salary">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Notes</label>
+                    <textarea id="tpASNotes" class="form-input" rows="2" placeholder="Any internal notes…"></textarea>
+                </div>
+                <div id="tpAddSourceError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeAddSourceModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="tpAddSourceSubmitBtn" onclick="submitAddSource()">Add Source</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add deduction modal ────────────────────────────────── -->
+    <div id="tpAddDeductionModal" class="modal-overlay hidden" onclick="closeAddDeductionModal()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">Add Deduction</div>
+                <button type="button" class="modal-close" onclick="closeAddDeductionModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label class="form-label">Deduction Type <span class="req">*</span></label>
+                    <select id="tpADType" class="form-input" title="Deduction type">
+                        <option value="">Select type…</option>
+                        <option value="retirement_annuity">Retirement Annuity (RA)</option>
+                        <option value="medical">Medical Expenses</option>
+                        <option value="travel">Travel Allowance / Logbook</option>
+                        <option value="home_office">Home Office</option>
+                        <option value="donations">Donations (s18A)</option>
+                        <option value="wear_and_tear">Wear &amp; Tear</option>
+                        <option value="business_expenses">Business Expenses</option>
+                        <option value="assessed_losses">Assessed Losses</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Description</label>
+                    <input type="text" id="tpADDesc" class="form-input" placeholder="e.g. Monthly RA contribution">
+                </div>
+                <div id="tpAddDeductionError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeAddDeductionModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="tpAddDeductionSubmitBtn" onclick="submitAddDeduction()">Add Deduction</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add readiness item modal ───────────────────────────── -->
+    <div id="tpAddReadinessModal" class="modal-overlay hidden" onclick="closeAddReadinessItemModal()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">Add Readiness Item</div>
+                <button type="button" class="modal-close" onclick="closeAddReadinessItemModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label class="form-label">Item Name <span class="req">*</span></label>
+                    <input type="text" id="tpARIName" class="form-input" placeholder="e.g. IRP5 Certificate">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Required</label>
+                    <select id="tpARIRequired" class="form-input" title="Is this item required?">
+                        <option value="true">Required</option>
+                        <option value="false">Optional</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Notes</label>
+                    <textarea id="tpARINotes" class="form-input" rows="2"></textarea>
+                </div>
+                <div id="tpAddReadinessError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeAddReadinessItemModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="tpAddReadinessSubmitBtn" onclick="submitAddReadinessItem()">Add Item</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/taxpayer-profiles.js"></script>
+</body>
+</html>

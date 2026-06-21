@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Company Tax</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Status badges ── */
+        .ct-badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
+        .ct-s-draft             { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.55); }
+        .ct-s-collecting_docs   { background:rgba(59,130,246,0.18);  color:#93c5fd; }
+        .ct-s-data_captured     { background:rgba(99,102,241,0.18);  color:#a5b4fc; }
+        .ct-s-ready_for_review  { background:rgba(245,158,11,0.18);  color:#fcd34d; }
+        .ct-s-reviewed          { background:rgba(139,92,246,0.18);  color:#c4b5fd; }
+        .ct-s-submitted         { background:rgba(16,185,129,0.18);  color:#6ee7b7; }
+        .ct-s-completed         { background:rgba(16,185,129,0.22);  color:#34d399; }
+        .ct-s-cancelled         { background:rgba(239,68,68,0.12);   color:#fca5a5; }
+        /* Readiness */
+        .ct-r-ready      { background:rgba(16,185,129,0.18);  color:#6ee7b7; }
+        .ct-r-partial    { background:rgba(245,158,11,0.18);  color:#fcd34d; }
+        .ct-r-incomplete { background:rgba(239,68,68,0.18);   color:#fca5a5; }
+        .ct-r-blocked    { background:rgba(220,38,38,0.22);   color:#f87171; }
+        .ct-r-unknown    { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.4); }
+        /* ── Return cards ── */
+        .ct-card { background:var(--surface); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:1rem 1.1rem; margin-bottom:0.6rem; display:flex; align-items:flex-start; gap:1rem; cursor:pointer; transition:border-color 0.15s; }
+        .ct-card:hover { border-color:rgba(255,255,255,0.15); }
+        .ct-card-body  { flex:1; min-width:0; }
+        .ct-card-name  { font-weight:600; font-size:0.9rem; color:rgba(255,255,255,0.9); margin-bottom:3px; }
+        .ct-card-meta  { font-size:0.78rem; color:rgba(255,255,255,0.45); display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; }
+        .ct-card-actions { display:flex; gap:0.4rem; flex-shrink:0; }
+        /* ── Summary cards ── */
+        .ct-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:0.7rem; margin-bottom:1.2rem; }
+        .ct-summary-card { background:var(--surface); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:0.85rem 1rem; text-align:center; }
+        .ct-summary-num  { font-size:1.6rem; font-weight:700; color:rgba(255,255,255,0.9); }
+        .ct-summary-lbl  { font-size:0.72rem; color:rgba(255,255,255,0.4); margin-top:2px; text-transform:uppercase; letter-spacing:0.04em; }
+        /* ── Detail modal tabs ── */
+        .ct-tab-bar { display:flex; gap:0; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:1.2rem; overflow-x:auto; flex-shrink:0; }
+        .ct-tab-btn { background:none; border:none; color:rgba(255,255,255,0.45); padding:0.65rem 1rem; cursor:pointer; font-size:0.82rem; border-bottom:2px solid transparent; transition:color 0.15s,border-color 0.15s; white-space:nowrap; }
+        .ct-tab-btn:hover  { color:rgba(255,255,255,0.75); }
+        .ct-tab-btn.active { color:rgba(255,255,255,0.95); border-bottom-color:var(--accent); }
+        .ct-tab-panel { display:none; }
+        .ct-tab-panel.active { display:block; }
+        /* ── AFS inputs ── */
+        .ct-afs-group { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:0.85rem 1rem; margin-bottom:0.8rem; }
+        .ct-afs-group-title { font-size:0.75rem; font-weight:600; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.65rem; }
+        /* ── Adjustments ── */
+        .ct-adj-row { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:0.65rem 0.85rem; margin-bottom:0.5rem; display:flex; align-items:flex-start; gap:0.8rem; }
+        .ct-adj-body  { flex:1; min-width:0; }
+        .ct-adj-desc  { font-size:0.85rem; color:rgba(255,255,255,0.85); font-weight:500; }
+        .ct-adj-meta  { font-size:0.75rem; color:rgba(255,255,255,0.4); margin-top:2px; }
+        .ct-adj-amt   { font-size:0.9rem; font-weight:600; color:rgba(255,255,255,0.8); white-space:nowrap; }
+        .ct-adj-t-add_back        { color:#fcd34d; }
+        .ct-adj-t-deduction       { color:#6ee7b7; }
+        .ct-adj-t-allowance       { color:#93c5fd; }
+        .ct-adj-t-disallowance    { color:#fca5a5; }
+        .ct-adj-t-assessed_loss   { color:#c4b5fd; }
+        .ct-adj-t-capital_allowance { color:#6ee7b7; }
+        /* ── Readiness items ── */
+        .ct-ri-row { display:flex; align-items:center; gap:0.75rem; padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .ct-ri-row:last-child { border-bottom:none; }
+        .ct-ri-name  { flex:1; font-size:0.85rem; color:rgba(255,255,255,0.8); }
+        .ct-ri-req   { font-size:0.72rem; color:rgba(255,255,255,0.3); }
+        /* ── Events ── */
+        .ct-ev-row  { padding:0.5rem 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .ct-ev-row:last-child { border-bottom:none; }
+        .ct-ev-type { font-size:0.78rem; font-weight:600; color:rgba(255,255,255,0.7); }
+        .ct-ev-meta { font-size:0.73rem; color:rgba(255,255,255,0.35); margin-top:1px; }
+        /* ── Detail modal layout ── */
+        .ct-detail-modal { max-width:820px; max-height:90vh; display:flex; flex-direction:column; }
+        .ct-detail-body  { flex:1; overflow-y:auto; padding:1.1rem 1.4rem; }
+        /* readiness score bar */
+        .ct-score-bar { background:rgba(255,255,255,0.08); border-radius:4px; height:8px; margin:6px 0 2px; overflow:hidden; }
+        .ct-score-fill { height:100%; border-radius:4px; background:var(--accent); transition:width 0.3s; }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div>
+            <div class="section-title">Company Tax Returns</div>
+            <div class="col-muted" style="font-size:0.82rem;margin-top:2px;">Data capture and readiness tracking only — not ITR14, not SARS, not calculation.</div>
+        </div>
+        <div class="controls">
+            <button type="button" class="btn btn-primary" onclick="openCreateReturnModal()">+ New Return</button>
+        </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="ct-summary" id="ctSummaryCards"></div>
+
+    <!-- Filter bar -->
+    <div class="inline-form" style="margin-bottom:1rem;">
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+            <select id="ctFilterStatus" style="width:180px;" onchange="loadReturns()" title="Filter by status">
+                <option value="">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="collecting_docs">Collecting Docs</option>
+                <option value="data_captured">Data Captured</option>
+                <option value="ready_for_review">Ready for Review</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="submitted">Submitted</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            <select id="ctFilterReadiness" style="width:160px;" onchange="loadReturns()" title="Filter by readiness">
+                <option value="">All Readiness</option>
+                <option value="ready">Ready</option>
+                <option value="partial">Partial</option>
+                <option value="incomplete">Incomplete</option>
+                <option value="blocked">Blocked</option>
+                <option value="unknown">Unknown</option>
+            </select>
+            <input type="number" id="ctFilterYear" placeholder="Tax year…" style="width:120px;" onchange="loadReturns()" min="2000" max="2099">
+        </div>
+    </div>
+
+    <div class="loading" id="ctLoading">
+        <div class="loading-spinner"></div>
+        <p>Loading company tax returns…</p>
+    </div>
+    <div class="error-banner hidden" id="ctError">Failed to load returns. Please refresh.</div>
+    <div id="ctList" class="hidden"></div>
+    <div class="col-muted" id="ctEmpty" style="display:none;padding:2rem;text-align:center;">No company tax returns yet. Click + New Return to create one.</div>
+
+</div>
+
+<!-- ═══ Create Return Modal ═══════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="ctCreateModal" onclick="closeCreateReturnModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">
+        <div class="modal-header">
+            <div class="modal-title">New Company Tax Return</div>
+            <button type="button" class="modal-close" onclick="closeCreateReturnModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field">
+                <label for="ctCrClient">Client <span class="req">*</span></label>
+                <select id="ctCrClient" onchange="ctLoadProfilesForClient()">
+                    <option value="">Loading clients…</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="ctCrProfile">Taxpayer Profile <span class="req">*</span></label>
+                <select id="ctCrProfile" onchange="ctAutoName()">
+                    <option value="">Select client first…</option>
+                </select>
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="ctCrYear">Tax Year <span class="req">*</span></label>
+                    <input type="number" id="ctCrYear" placeholder="e.g. 2026" min="2000" max="2099" oninput="ctAutoName()">
+                </div>
+                <div class="form-field">
+                    <label for="ctCrName">Return Name <span class="req">*</span></label>
+                    <input type="text" id="ctCrName" placeholder="e.g. ITR14 2026" oninput="this._manuallyEdited=true">
+                </div>
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="ctCrFyStart">Financial Year Start</label>
+                    <input type="date" id="ctCrFyStart">
+                </div>
+                <div class="form-field">
+                    <label for="ctCrFyEnd">Financial Year End</label>
+                    <input type="date" id="ctCrFyEnd">
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="ctCrNotes">Notes</label>
+                <textarea id="ctCrNotes" rows="2" placeholder="Optional notes…"></textarea>
+            </div>
+            <div id="ctCreateError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeCreateReturnModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="ctCreateSubmitBtn" onclick="submitCreateReturn()">Create Return</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Return Detail Modal ═══════════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="ctDetailModal" onclick="closeDetailModal()">
+    <div class="modal ct-detail-modal" onclick="event.stopPropagation()">
+        <div class="modal-header" style="flex-shrink:0;padding:1rem 1.4rem;">
+            <div>
+                <div class="modal-title" id="ctDetailTitle">Company Tax Return</div>
+                <div id="ctDetailSubtitle" style="font-size:0.78rem;color:rgba(255,255,255,0.4);margin-top:2px;"></div>
+            </div>
+            <button type="button" class="modal-close" onclick="closeDetailModal()">✕</button>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="ct-tab-bar" style="padding:0 1.4rem;flex-shrink:0;">
+            <button class="ct-tab-btn active" id="ctTabBtnOverview"     onclick="ctSwitchTab('overview', this)">Overview</button>
+            <button class="ct-tab-btn"        id="ctTabBtnAfs"          onclick="ctSwitchTab('afs', this)">AFS Inputs</button>
+            <button class="ct-tab-btn"        id="ctTabBtnAdjustments"  onclick="ctSwitchTab('adjustments', this)">Adjustments</button>
+            <button class="ct-tab-btn"        id="ctTabBtnReadiness"    onclick="ctSwitchTab('readiness', this)">Readiness</button>
+            <button class="ct-tab-btn"        id="ctTabBtnEvents"       onclick="ctSwitchTab('events', this)">Events</button>
+        </div>
+
+        <div class="ct-detail-body">
+
+            <!-- ── Overview tab ── -->
+            <div id="ctTabOverview" class="ct-tab-panel active">
+                <div id="ctOverviewLoading" class="col-muted" style="padding:1rem 0;">Loading…</div>
+                <div id="ctOverviewContent" class="hidden">
+
+                    <!-- Status bar -->
+                    <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap;">
+                        <span id="ctOvStatus" class="ct-badge"></span>
+                        <span id="ctOvReadiness" class="ct-badge"></span>
+                        <div id="ctOvScoreWrap" class="hidden" style="flex:1;min-width:80px;">
+                            <div class="ct-score-bar"><div class="ct-score-fill" id="ctOvScoreFill" style="width:0%"></div></div>
+                            <div style="font-size:0.7rem;color:rgba(255,255,255,0.35);" id="ctOvScoreLabel"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-grid" style="margin-bottom:0.8rem;">
+                        <div class="form-field">
+                            <label for="ctOvStatus2">Status</label>
+                            <select id="ctOvStatus2" title="Return status">
+                                <option value="draft">Draft</option>
+                                <option value="collecting_docs">Collecting Docs</option>
+                                <option value="data_captured">Data Captured</option>
+                                <option value="ready_for_review">Ready for Review</option>
+                                <option value="reviewed">Reviewed</option>
+                                <option value="submitted">Submitted</option>
+                                <option value="completed">Completed</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label for="ctOvYear">Tax Year</label>
+                            <input type="number" id="ctOvYear" min="2000" max="2099">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctOvFyStart">Financial Year Start</label>
+                            <input type="date" id="ctOvFyStart">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctOvFyEnd">Financial Year End</label>
+                            <input type="date" id="ctOvFyEnd">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctOvResponsible">Responsible</label>
+                            <select id="ctOvResponsible" title="Responsible team member"><option value="">Not assigned</option></select>
+                        </div>
+                        <div class="form-field">
+                            <label for="ctOvReviewer">Reviewer</label>
+                            <select id="ctOvReviewer" title="Reviewer team member"><option value="">Not assigned</option></select>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label for="ctOvNotes">Notes</label>
+                        <textarea id="ctOvNotes" rows="2"></textarea>
+                    </div>
+                    <div class="form-field">
+                        <label for="ctOvInternalNotes">Internal Notes</label>
+                        <textarea id="ctOvInternalNotes" rows="2"></textarea>
+                    </div>
+                    <div id="ctOvSaveError" class="error-banner hidden"></div>
+                    <div style="display:flex;gap:0.5rem;margin-top:0.8rem;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="ctSaveOverview()">Save Changes</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="ctRecalculateReadiness()">Recalculate Readiness</button>
+                        <button type="button" class="btn btn-danger btn-sm" id="ctCancelReturnBtn" onclick="ctCancelReturn()">Cancel Return</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── AFS Inputs tab ── -->
+            <div id="ctTabAfs" class="ct-tab-panel">
+                <p class="col-muted" style="font-size:0.8rem;margin-bottom:1rem;">
+                    Accounting figures from the Annual Financial Statements — placeholder captures only.
+                    These are not used in any tax calculation.
+                </p>
+
+                <div class="ct-afs-group">
+                    <div class="ct-afs-group-title">Income Statement</div>
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label for="ctAfsAccProfit">Accounting Profit / (Loss)</label>
+                            <input type="number" id="ctAfsAccProfit" step="0.01" placeholder="e.g. 1200000.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsTurnover">Turnover</label>
+                            <input type="number" id="ctAfsTurnover" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsCos">Cost of Sales</label>
+                            <input type="number" id="ctAfsCos" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsGrossProfit">Gross Profit</label>
+                            <input type="number" id="ctAfsGrossProfit" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsOpEx">Operating Expenses</label>
+                            <input type="number" id="ctAfsOpEx" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsFinance">Finance Costs</label>
+                            <input type="number" id="ctAfsFinance" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsOtherIncome">Other Income</label>
+                            <input type="number" id="ctAfsOtherIncome" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ct-afs-group">
+                    <div class="ct-afs-group-title">Tax Estimates (Placeholders Only)</div>
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label for="ctAfsTaxableEst">Taxable Income Estimate</label>
+                            <input type="number" id="ctAfsTaxableEst" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsAlBf">Assessed Loss B/F</label>
+                            <input type="number" id="ctAfsAlBf" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsAlUtilised">Assessed Loss Utilised</label>
+                            <input type="number" id="ctAfsAlUtilised" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-field">
+                            <label for="ctAfsAlCf">Assessed Loss C/F</label>
+                            <input type="number" id="ctAfsAlCf" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="ctAfsSaveError" class="error-banner hidden"></div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="ctSaveAfs()">Save AFS Inputs</button>
+            </div>
+
+            <!-- ── Adjustments tab ── -->
+            <div id="ctTabAdjustments" class="ct-tab-panel">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;">
+                    <div class="col-muted" style="font-size:0.8rem;">Tax computation adjustments — add-backs, deductions, allowances, and disallowances.</div>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="openAddAdjModal()">+ Add</button>
+                </div>
+                <div id="ctAdjLoading" class="col-muted">Loading…</div>
+                <div id="ctAdjList" class="hidden"></div>
+                <div id="ctAdjEmpty" class="col-muted hidden" style="padding:1.2rem 0;">No adjustments yet.</div>
+                <div id="ctAdjTotals" class="hidden" style="background:rgba(255,255,255,0.04);border-radius:6px;padding:0.7rem 0.9rem;margin-top:0.8rem;font-size:0.82rem;"></div>
+            </div>
+
+            <!-- ── Readiness tab ── -->
+            <div id="ctTabReadiness" class="ct-tab-panel">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap;gap:0.5rem;">
+                    <div class="col-muted" style="font-size:0.8rem;">Document and data readiness checklist.</div>
+                    <div style="display:flex;gap:0.4rem;">
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="ctGenerateDefaultItems()">Generate Defaults</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="ctRecalculateReadiness()">Recalculate</button>
+                    </div>
+                </div>
+                <div id="ctReadinessScore" class="hidden" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:0.7rem 0.9rem;margin-bottom:0.8rem;font-size:0.82rem;"></div>
+                <div id="ctRiLoading" class="col-muted">Loading…</div>
+                <div id="ctRiList" class="hidden"></div>
+                <div id="ctRiEmpty" class="col-muted hidden" style="padding:1.2rem 0;">No readiness items yet. Click "Generate Defaults" to add standard items.</div>
+            </div>
+
+            <!-- ── Events tab ── -->
+            <div id="ctTabEvents" class="ct-tab-panel">
+                <div id="ctEvLoading" class="col-muted">Loading…</div>
+                <div id="ctEvList" class="hidden"></div>
+                <div id="ctEvEmpty" class="col-muted hidden" style="padding:1.2rem 0;">No events recorded yet.</div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Add/Edit Adjustment Modal ════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="ctAdjModal" onclick="closeAdjModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:480px;">
+        <div class="modal-header">
+            <div class="modal-title" id="ctAdjModalTitle">Add Adjustment</div>
+            <button type="button" class="modal-close" onclick="closeAdjModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="ctAdjType">Type <span class="req">*</span></label>
+                    <select id="ctAdjType" title="Adjustment type">
+                        <option value="add_back">Add Back</option>
+                        <option value="deduction">Deduction</option>
+                        <option value="allowance">Allowance</option>
+                        <option value="disallowance">Disallowance</option>
+                        <option value="assessed_loss">Assessed Loss</option>
+                        <option value="capital_allowance">Capital Allowance</option>
+                        <option value="section_24c">Section 24C</option>
+                        <option value="doubtful_debt">Doubtful Debt</option>
+                        <option value="donation">Donation</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label for="ctAdjCategory">Category</label>
+                    <input type="text" id="ctAdjCategory" placeholder="Optional grouping label">
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="ctAdjDesc">Description <span class="req">*</span></label>
+                <input type="text" id="ctAdjDesc" placeholder="e.g. Entertainment add-back per s11(a)">
+            </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="ctAdjAmount">Amount (R) <span class="req">*</span></label>
+                    <input type="number" id="ctAdjAmount" step="0.01" placeholder="0.00">
+                </div>
+                <div class="form-field">
+                    <label for="ctAdjTaxEffect">Tax Effect</label>
+                    <input type="text" id="ctAdjTaxEffect" placeholder="e.g. Increases taxable income">
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="ctAdjSourceRef">Source Reference</label>
+                <input type="text" id="ctAdjSourceRef" placeholder="e.g. AFS p.12 note 5">
+            </div>
+            <div class="form-field">
+                <label for="ctAdjNotes">Notes</label>
+                <textarea id="ctAdjNotes" rows="2"></textarea>
+            </div>
+            <div id="ctAdjError" class="error-banner hidden"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeAdjModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="ctAdjSubmitBtn" onclick="submitAdj()">Save Adjustment</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/company-tax.js"></script>
+</body>
+</html>

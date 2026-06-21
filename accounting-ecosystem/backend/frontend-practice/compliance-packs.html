@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compliance Packs — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Summary cards ──────────────────────────────────── */
+        .cp-summary {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .cp-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 20px;
+            min-width: 120px;
+            flex: 1;
+        }
+        .cp-card-value { font-size: 1.7rem; font-weight: 700; color: var(--text); }
+        .cp-card-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .cp-card--blue  .cp-card-value { color: var(--accent); }
+        .cp-card--warn  .cp-card-value { color: #f59e0b; }
+        .cp-card--ready .cp-card-value { color: #22c55e; }
+        .cp-card--block .cp-card-value { color: var(--danger); }
+
+        /* ── Toolbar ───────────────────────────────────────── */
+        .cp-toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .cp-toolbar select, .cp-toolbar input[type="text"] {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            height: 34px;
+        }
+        .cp-toolbar-spacer { flex: 1; }
+
+        /* ── Pack list table ───────────────────────────────── */
+        .cp-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .cp-table th {
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+        .cp-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            color: var(--text);
+            vertical-align: middle;
+        }
+        .cp-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .cp-table .col-type    { width: 130px; }
+        .cp-table .col-client  { min-width: 130px; }
+        .cp-table .col-period  { width: 120px; }
+        .cp-table .col-status  { width: 120px; }
+        .cp-table .col-ready   { width: 110px; }
+        .cp-table .col-actions { width: 130px; text-align: right; }
+
+        /* ── Pack type badges ──────────────────────────────── */
+        .cp-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.7);
+        }
+        .cp-type-annual_financials { background: rgba(139,92,246,0.18); color: #a78bfa; }
+        .cp-type-company_tax       { background: rgba(245,158,11,0.18); color: #fbbf24; }
+        .cp-type-individual_tax    { background: rgba(59,130,246,0.18); color: #60a5fa; }
+        .cp-type-vat_period        { background: rgba(16,185,129,0.18); color: #34d399; }
+        .cp-type-payroll_annual    { background: rgba(236,72,153,0.18); color: #f472b6; }
+        .cp-type-cipc_annual       { background: rgba(249,115,22,0.18); color: #fb923c; }
+        .cp-type-custom            { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
+
+        /* ── Pack status badges ────────────────────────────── */
+        .cp-status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .cp-status-draft            { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5); }
+        .cp-status-collecting_docs  { background: rgba(245,158,11,0.18); color: #fbbf24; }
+        .cp-status-ready_for_review { background: rgba(59,130,246,0.18); color: #60a5fa; }
+        .cp-status-reviewed         { background: rgba(139,92,246,0.18); color: #a78bfa; }
+        .cp-status-completed        { background: rgba(34,197,94,0.18);  color: #4ade80; }
+        .cp-status-cancelled        { background: rgba(239,68,68,0.12);  color: #f87171; }
+
+        /* ── Readiness badge ───────────────────────────────── */
+        .cp-ready-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        .cp-ready-incomplete { color: #f87171; }
+        .cp-ready-partial    { color: #fbbf24; }
+        .cp-ready-ready      { color: #4ade80; }
+        .cp-ready-blocked    { color: var(--danger); }
+        .cp-ready-unknown    { color: rgba(255,255,255,0.35); }
+
+        /* ── Readiness bar (detail view) ───────────────────── */
+        .cp-score-bar-wrap { margin: 12px 0; }
+        .cp-score-bar-bg {
+            background: rgba(255,255,255,0.08);
+            border-radius: 8px;
+            height: 8px;
+            overflow: hidden;
+        }
+        .cp-score-bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.4s ease;
+            background: var(--accent);
+        }
+        .cp-score-bar-fill.ready   { background: #22c55e; }
+        .cp-score-bar-fill.partial { background: #f59e0b; }
+        .cp-score-bar-fill.blocked { background: var(--danger); }
+        .cp-score-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ── Checklist items ───────────────────────────────── */
+        .cp-item-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .cp-item-row:last-child { border-bottom: none; }
+        .cp-item-name  { flex: 1; font-size: 0.88rem; color: var(--text); min-width: 0; }
+        .cp-item-desc  { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
+        .cp-item-badge {
+            flex-shrink: 0;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+        .cp-item-required    { background: rgba(239,68,68,0.14);  color: #f87171; }
+        .cp-item-requested   { background: rgba(245,158,11,0.14); color: #fbbf24; }
+        .cp-item-received    { background: rgba(59,130,246,0.14); color: #60a5fa; }
+        .cp-item-completed   { background: rgba(34,197,94,0.14);  color: #4ade80; }
+        .cp-item-waived      { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.45); }
+        .cp-item-blocked     { background: rgba(239,68,68,0.20);  color: #fca5a5; }
+        .cp-item-not_applicable { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.25); text-decoration: line-through; }
+
+        /* ── Detail panel modal ────────────────────────────── */
+        .cp-detail-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+        .cp-detail-meta   { flex: 1; min-width: 0; }
+        .cp-detail-name   { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+        .cp-detail-sub    { font-size: 0.8rem; color: var(--text-muted); margin-top: 3px; }
+        .cp-detail-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+        .cp-items-header  { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .cp-items-title   { font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+
+        /* ── Empty / loading ───────────────────────────────── */
+        .cap-loading { padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.88rem; }
+        .cap-empty   { padding: 40px 24px; text-align: center; }
+        .cap-empty-icon { font-size: 2.4rem; margin-bottom: 10px; opacity: 0.5; }
+        .cap-empty-text { color: var(--text-muted); font-size: 0.88rem; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <div id="app-nav"></div>
+
+    <div class="page-wrap">
+
+        <!-- ── Summary cards ────────────────────────────────── -->
+        <div class="cp-summary" id="cpSummary">
+            <div class="cp-card">
+                <div class="cp-card-value" id="sumCpTotal">—</div>
+                <div class="cp-card-label">Total Active</div>
+            </div>
+            <div class="cp-card cp-card--warn">
+                <div class="cp-card-value" id="sumCpCollecting">—</div>
+                <div class="cp-card-label">Collecting Docs</div>
+            </div>
+            <div class="cp-card cp-card--blue">
+                <div class="cp-card-value" id="sumCpReview">—</div>
+                <div class="cp-card-label">Ready for Review</div>
+            </div>
+            <div class="cp-card cp-card--ready">
+                <div class="cp-card-value" id="sumCpReady">—</div>
+                <div class="cp-card-label">Readiness: Ready</div>
+            </div>
+            <div class="cp-card cp-card--block">
+                <div class="cp-card-value" id="sumCpBlocked">—</div>
+                <div class="cp-card-label">Blocked</div>
+            </div>
+        </div>
+
+        <!-- ── Toolbar ───────────────────────────────────────── -->
+        <div class="cp-toolbar">
+            <select id="cpFilterType" onchange="loadPacks()" title="Pack type">
+                <option value="">All Types</option>
+                <option value="annual_financials">Annual Financials</option>
+                <option value="company_tax">Company Tax</option>
+                <option value="individual_tax">Individual Tax</option>
+                <option value="vat_period">VAT Period</option>
+                <option value="payroll_annual">Payroll Annual</option>
+                <option value="cipc_annual">CIPC Annual</option>
+                <option value="custom">Custom</option>
+            </select>
+            <select id="cpFilterStatus" onchange="loadPacks()" title="Status">
+                <option value="">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="collecting_docs">Collecting Docs</option>
+                <option value="ready_for_review">Ready for Review</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="completed">Completed</option>
+            </select>
+            <select id="cpFilterReadiness" onchange="loadPacks()" title="Readiness">
+                <option value="">All Readiness</option>
+                <option value="incomplete">Incomplete</option>
+                <option value="partial">Partial</option>
+                <option value="ready">Ready</option>
+                <option value="blocked">Blocked</option>
+                <option value="unknown">Unknown</option>
+            </select>
+            <select id="cpFilterClient" onchange="loadPacks()" title="Client">
+                <option value="">All Clients</option>
+            </select>
+            <div class="cp-toolbar-spacer"></div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openCreatePackModal()">+ New Compliance Pack</button>
+        </div>
+
+        <!-- ── Pack list ─────────────────────────────────────── -->
+        <div id="cpListLoading" class="cap-loading">Loading compliance packs…</div>
+
+        <div id="cpListWrap" class="hidden">
+            <table class="cp-table">
+                <thead>
+                    <tr>
+                        <th class="col-type">Type</th>
+                        <th>Pack Name</th>
+                        <th class="col-client">Client</th>
+                        <th class="col-period">Period / Year</th>
+                        <th class="col-status">Status</th>
+                        <th class="col-ready">Readiness</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="cpListBody"></tbody>
+            </table>
+        </div>
+
+        <div id="cpListEmpty" class="cap-empty hidden">
+            <div class="cap-empty-icon">📋</div>
+            <div class="cap-empty-text">No compliance packs match the current filter</div>
+        </div>
+
+        <div id="cpListError" class="error-banner hidden"></div>
+
+    </div><!-- /page-wrap -->
+
+    <!-- ── Create compliance pack modal ─────────────────────── -->
+    <div id="cpCreateModal" class="modal-overlay hidden" onclick="closeCreatePackModal()">
+        <div class="modal-box modal-box--lg" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">New Compliance Pack</div>
+                <button type="button" class="modal-close" onclick="closeCreatePackModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Client <span class="req">*</span></label>
+                        <select id="cpCClient" class="form-input" onchange="cpAutoName()" title="Client"></select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Pack Type <span class="req">*</span></label>
+                        <select id="cpCType" class="form-input" onchange="cpAutoName(); cpTogglePeriodFields()" title="Pack type">
+                            <option value="">Select type…</option>
+                            <option value="annual_financials">Annual Financials</option>
+                            <option value="company_tax">Company Tax (ITR14)</option>
+                            <option value="individual_tax">Individual Tax (ITR12)</option>
+                            <option value="vat_period">VAT Period</option>
+                            <option value="payroll_annual">Payroll Annual (EMP501)</option>
+                            <option value="cipc_annual">CIPC Annual Return</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Tax Year</label>
+                        <input type="number" id="cpCTaxYear" class="form-input" placeholder="e.g. 2026" min="2000" max="2099" oninput="cpAutoName()">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Owner</label>
+                        <select id="cpCOwner" class="form-input" title="Pack owner"></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Pack Name <span class="req">*</span></label>
+                    <input type="text" id="cpCName" class="form-input" placeholder="e.g. ABC (Pty) Ltd — Annual Financials 2026">
+                </div>
+                <div class="comm-form-grid" id="cpPeriodFields">
+                    <div class="form-row">
+                        <label class="form-label">Period Start</label>
+                        <input type="date" id="cpCPeriodStart" class="form-input">
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Period End</label>
+                        <input type="date" id="cpCPeriodEnd" class="form-input">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Notes</label>
+                    <textarea id="cpCNotes" class="form-input" rows="2" placeholder="Any context or instructions for this pack…"></textarea>
+                </div>
+                <div id="cpCreateError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeCreatePackModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="cpCreateSubmitBtn" onclick="submitCreatePack()">Create Pack</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Pack detail modal ─────────────────────────────────── -->
+    <div id="cpDetailModal" class="modal-overlay hidden" onclick="closeCpDetailModal()">
+        <div class="modal-box modal-box--lg" style="max-width:680px;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="cpDetailTitle">Pack Detail</div>
+                <button type="button" class="modal-close" onclick="closeCpDetailModal()">✕</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- Detail header -->
+                <div class="cp-detail-header">
+                    <div class="cp-detail-meta">
+                        <div class="cp-detail-name" id="cpDName"></div>
+                        <div class="cp-detail-sub"  id="cpDSub"></div>
+                    </div>
+                    <div id="cpDStatusBadge"></div>
+                </div>
+
+                <!-- Readiness bar -->
+                <div class="cp-score-bar-wrap" id="cpDReadinessWrap">
+                    <div class="cp-score-bar-bg">
+                        <div class="cp-score-bar-fill" id="cpDScoreBar" style="width:0%"></div>
+                    </div>
+                    <div class="cp-score-label">
+                        <span id="cpDReadinessLabel">Readiness unknown</span>
+                        <span id="cpDScoreLabel"></span>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="cp-detail-actions">
+                    <button type="button" class="btn btn-ghost btn-sm" id="cpDRecalcBtn" onclick="cpRecalculate()">⟳ Recalculate Readiness</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cpDGenDefaultBtn" onclick="cpGenerateDefaults()">📋 Generate Default Items</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cpDGenDocsBtn" onclick="cpGenerateFromDocs()">📄 Link Document Requests</button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cpDAddItemBtn" onclick="openCpAddItemModal()">+ Add Item</button>
+                    <div style="flex:1"></div>
+                    <select id="cpDStatusSelect" class="form-input" style="width:auto;font-size:0.8rem;padding:4px 8px;height:30px;" onchange="cpUpdateStatus()" title="Change status">
+                        <option value="draft">Draft</option>
+                        <option value="collecting_docs">Collecting Docs</option>
+                        <option value="ready_for_review">Ready for Review</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="cpCancelPack()">Cancel Pack</button>
+                </div>
+
+                <!-- Items checklist -->
+                <div class="cp-items-header">
+                    <div class="cp-items-title" id="cpDItemsTitle">Items</div>
+                </div>
+                <div id="cpDItemsLoading" class="cap-loading">Loading items…</div>
+                <div id="cpDItemsWrap" class="hidden"></div>
+                <div id="cpDItemsEmpty" class="cap-empty hidden">
+                    <div class="cap-empty-icon">☑️</div>
+                    <div class="cap-empty-text">No items yet — use "Generate Default Items" or "Add Item" to get started</div>
+                </div>
+                <div id="cpDItemsError" class="error-banner hidden"></div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add item modal ────────────────────────────────────── -->
+    <div id="cpAddItemModal" class="modal-overlay hidden" onclick="closeCpAddItemModal()">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">Add Pack Item</div>
+                <button type="button" class="modal-close" onclick="closeCpAddItemModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="comm-form-grid">
+                    <div class="form-row">
+                        <label class="form-label">Item Type</label>
+                        <select id="cpAIType" class="form-input" title="Item type">
+                            <option value="document">Document</option>
+                            <option value="task">Task</option>
+                            <option value="review">Review</option>
+                            <option value="checklist">Checklist</option>
+                            <option value="deadline">Deadline</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Required</label>
+                        <select id="cpAIRequired" class="form-input" title="Is this item required?">
+                            <option value="true">Required</option>
+                            <option value="false">Optional</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Item Name <span class="req">*</span></label>
+                    <input type="text" id="cpAIName" class="form-input" placeholder="e.g. Bank statements">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Description</label>
+                    <input type="text" id="cpAIDesc" class="form-input" placeholder="e.g. All accounts for the financial year">
+                </div>
+                <div class="form-row">
+                    <label class="form-label">Notes</label>
+                    <textarea id="cpAINotes" class="form-input" rows="2" placeholder="Internal notes…"></textarea>
+                </div>
+                <div id="cpAddItemError" class="error-banner hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeCpAddItemModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="cpAddItemSubmitBtn" onclick="submitCpAddItem()">Add Item</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/compliance-packs.js"></script>
+</body>
+</html>
