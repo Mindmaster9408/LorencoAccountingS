@@ -290,11 +290,13 @@
     }
 
     var _ctPanelMap = {
-        overview:    'ctTabOverview',
-        afs:         'ctTabAfs',
-        adjustments: 'ctTabAdjustments',
-        readiness:   'ctTabReadiness',
-        events:      'ctTabEvents',
+        overview:      'ctTabOverview',
+        afs:           'ctTabAfs',
+        adjustments:   'ctTabAdjustments',
+        readiness:     'ctTabReadiness',
+        events:        'ctTabEvents',
+        calculations:  'ctTabCalc',
+        review_packs:  'ctTabReview',
     };
 
     function ctSwitchTab(tab, btn) {
@@ -307,10 +309,12 @@
         });
 
         // Lazy-load tab data
-        if (tab === 'afs')         loadCtAfs();
-        if (tab === 'adjustments') loadCtAdjustments();
-        if (tab === 'readiness')   loadCtReadiness();
-        if (tab === 'events')      loadCtEvents();
+        if (tab === 'afs')          loadCtAfs();
+        if (tab === 'adjustments')  loadCtAdjustments();
+        if (tab === 'readiness')    loadCtReadiness();
+        if (tab === 'events')       loadCtEvents();
+        if (tab === 'calculations') loadCtCalcs();
+        if (tab === 'review_packs') loadCtReviewPacks();
     }
 
     // ── Overview tab ───────────────────────────────────────────────────────────
@@ -794,6 +798,537 @@
         }
     }
 
+    // ── Calculations tab ───────────────────────────────────────────────────────
+
+    var _CALC_BASE        = '/api/practice/company-tax';
+    var _calcSubmitting   = false;
+    var _calcRejectId     = null;
+    var _calcDetailId     = null;
+
+    var CT_CALC_STATUS_LABELS = {
+        draft:            'Draft',
+        ready_for_review: 'Ready for Review',
+        reviewed:         'Reviewed',
+        approved:         'Approved',
+        rejected:         'Rejected',
+        cancelled:        'Cancelled',
+    };
+
+    async function loadCtCalcs() {
+        if (!_currentReturnId) return;
+        var loadEl  = document.getElementById('ctCalcLoading');
+        var listEl  = document.getElementById('ctCalcList');
+        var emptyEl = document.getElementById('ctCalcEmpty');
+        var detailEl = document.getElementById('ctCalcDetail');
+
+        loadEl.classList.remove('hidden');
+        listEl.classList.add('hidden');
+        emptyEl.classList.add('hidden');
+        if (detailEl) detailEl.classList.add('hidden');
+        _calcDetailId = null;
+
+        try {
+            var res = await PracticeAPI.fetch(_CALC_BASE + '/' + _currentReturnId + '/calculations');
+            if (!res.ok) throw new Error('Failed to load calculations');
+            var d = await res.json();
+            var calcs = d.calculations || [];
+
+            loadEl.classList.add('hidden');
+
+            if (calcs.length === 0) {
+                emptyEl.classList.remove('hidden');
+                return;
+            }
+
+            listEl.innerHTML = calcs.map(function(c) {
+                var statusCls = 'ct-calc-cs-' + (c.calculation_status || 'draft');
+                var ts = c.created_at ? new Date(c.created_at).toLocaleDateString('en-ZA') : '';
+                return '<div class="ct-calc-card" onclick="ctOpenCalcDetail(' + c.id + ')" data-calc-id="' + c.id + '">' +
+                    '<div class="ct-calc-card-name">' + esc(c.calculation_name) + '</div>' +
+                    '<div class="ct-calc-card-meta">' +
+                        '<span class="ct-badge ' + statusCls + '">' + esc(CT_CALC_STATUS_LABELS[c.calculation_status] || c.calculation_status) + '</span>' +
+                        '<span>v' + (c.calculation_version || 1) + '</span>' +
+                        '<span>Year ' + (c.tax_year || '') + '</span>' +
+                        (c.taxable_income_estimate != null ? '<span>Taxable: R ' + _fmtNum(c.taxable_income_estimate) + '</span>' : '') +
+                        (c.normal_tax_estimate != null ? '<span>Est. Tax: R ' + _fmtNum(c.normal_tax_estimate) + '</span>' : '') +
+                        '<span>' + esc(ts) + '</span>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+            listEl.classList.remove('hidden');
+
+        } catch (e) {
+            loadEl.textContent = 'Failed to load calculations.';
+        }
+    }
+
+    async function ctRunDraft() {
+        if (!_currentReturnId || _calcSubmitting) return;
+        _calcSubmitting = true;
+        var btn = document.getElementById('ctRunDraftBtn');
+        if (btn) btn.disabled = true;
+
+        try {
+            var res = await PracticeAPI.fetch(
+                _CALC_BASE + '/' + _currentReturnId + '/calculations/run-draft',
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed to run draft calculation');
+
+            PracticeAPI.showToast('Draft calculation created.');
+            _calcSubmitting = false;
+            if (btn) btn.disabled = false;
+            await loadCtCalcs();
+            // Auto-open the new calculation
+            if (d.calculation && d.calculation.id) {
+                ctOpenCalcDetail(d.calculation.id);
+            }
+        } catch (e) {
+            _calcSubmitting = false;
+            if (btn) btn.disabled = false;
+            PracticeAPI.showToast('Error: ' + (e.message || 'Failed to run calculation.'));
+        }
+    }
+
+    async function ctOpenCalcDetail(calcId) {
+        _calcDetailId = calcId;
+        var detailEl  = document.getElementById('ctCalcDetail');
+        var titleEl   = document.getElementById('ctCalcDetailTitle');
+        var linesBody = document.getElementById('ctCalcLinesBody');
+        var warnWrap  = document.getElementById('ctCalcWarningsWrap');
+        var warnList  = document.getElementById('ctCalcWarnList');
+        var assumWrap = document.getElementById('ctCalcAssumptionsWrap');
+        var assumList = document.getElementById('ctCalcAssumptionsList');
+        var actWrap   = document.getElementById('ctCalcActionsWrap');
+        var errEl     = document.getElementById('ctCalcDetailErr');
+
+        if (!detailEl) return;
+
+        // Reset
+        if (linesBody) linesBody.innerHTML = '<tr><td colspan="3" class="col-muted">Loading…</td></tr>';
+        if (warnWrap)  warnWrap.classList.add('hidden');
+        if (assumWrap) assumWrap.classList.add('hidden');
+        if (actWrap)   actWrap.innerHTML = '';
+        if (errEl)     errEl.classList.add('hidden');
+        detailEl.classList.remove('hidden');
+
+        // Highlight selected card
+        document.querySelectorAll('.ct-calc-card').forEach(function(card) {
+            card.style.borderColor = card.dataset.calcId == calcId
+                ? 'var(--accent)' : '';
+        });
+
+        try {
+            var res = await PracticeAPI.fetch(_CALC_BASE + '/calculations/' + calcId);
+            if (!res.ok) throw new Error('Calculation not found');
+            var d   = await res.json();
+            var c   = d.calculation;
+
+            if (titleEl) {
+                titleEl.textContent = esc(c.calculation_name) + ' — v' + (c.calculation_version || 1) +
+                    ' [' + (CT_CALC_STATUS_LABELS[c.calculation_status] || c.calculation_status) + ']';
+            }
+
+            // Render calculation lines
+            var lines = c.calculation_lines || [];
+            if (linesBody) {
+                if (lines.length === 0) {
+                    linesBody.innerHTML = '<tr><td colspan="3" class="col-muted">No calculation lines.</td></tr>';
+                } else {
+                    linesBody.innerHTML = lines.map(function(ln, idx) {
+                        var isTaxable = ln.label && ln.label.toLowerCase().indexOf('taxable income') !== -1;
+                        var isPayable = ln.label && (ln.label.toLowerCase().indexOf('payable') !== -1 || ln.label.toLowerCase().indexOf('refund') !== -1);
+                        var rowCls = (isTaxable || isPayable) ? ' class="ct-line-total"' : '';
+                        var amtCell = '';
+                        if (ln.amount != null) {
+                            amtCell = '<td class="ct-line-amt">R ' + _fmtNum(ln.amount) + '</td>';
+                        } else if (ln.rate) {
+                            amtCell = '<td class="ct-line-amt" style="color:rgba(255,255,255,0.5);">' + esc(ln.rate) + '</td>';
+                        } else {
+                            amtCell = '<td class="ct-line-amt" style="color:rgba(255,255,255,0.3);">—</td>';
+                        }
+                        return '<tr' + rowCls + '><td>' + esc(ln.label || '') + '</td>' + amtCell +
+                            '<td style="color:rgba(255,255,255,0.35);font-size:0.72rem;">' + esc(ln.note || '') + '</td></tr>';
+                    }).join('');
+                }
+            }
+
+            // Warning flags
+            var flags = c.warning_flags || [];
+            if (flags.length > 0 && warnWrap && warnList) {
+                warnList.innerHTML = flags.map(function(f) {
+                    return '<li>' + esc(f.replace(/_/g, ' ')) + '</li>';
+                }).join('');
+                warnWrap.classList.remove('hidden');
+            }
+
+            // Assumptions
+            var assumptions = c.assumptions || [];
+            if (assumptions.length > 0 && assumWrap && assumList) {
+                assumList.innerHTML = assumptions.map(function(a) {
+                    return '<li>' + esc(a) + '</li>';
+                }).join('');
+                assumWrap.classList.remove('hidden');
+            }
+
+            // Action buttons per status
+            if (actWrap) {
+                var btns = '';
+                var st = c.calculation_status;
+                if (st === 'draft' || st === 'rejected') {
+                    btns += '<button type="button" class="btn btn-primary btn-sm" onclick="ctSubmitForReview(' + calcId + ')">Submit for Review</button>';
+                }
+                if (st === 'ready_for_review' || st === 'reviewed') {
+                    btns += '<button type="button" class="btn btn-success btn-sm" onclick="ctApproveCalc(' + calcId + ')">Approve</button>';
+                    btns += '<button type="button" class="btn btn-danger btn-sm" onclick="ctOpenRejectModal(' + calcId + ')">Reject</button>';
+                }
+                actWrap.innerHTML = btns;
+            }
+
+        } catch (e) {
+            if (linesBody) linesBody.innerHTML = '<tr><td colspan="3" style="color:#f87171;">Failed to load calculation detail.</td></tr>';
+        }
+    }
+
+    function ctCloseCalcDetail() {
+        _calcDetailId = null;
+        var detailEl = document.getElementById('ctCalcDetail');
+        if (detailEl) detailEl.classList.add('hidden');
+        document.querySelectorAll('.ct-calc-card').forEach(function(card) {
+            card.style.borderColor = '';
+        });
+    }
+
+    async function ctSubmitForReview(calcId) {
+        var errEl = document.getElementById('ctCalcDetailErr');
+        if (errEl) errEl.classList.add('hidden');
+        try {
+            var res = await PracticeAPI.fetch(_CALC_BASE + '/calculations/' + calcId + '/submit-review', { method: 'POST' });
+            var d   = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed');
+            PracticeAPI.showToast('Submitted for review.');
+            await loadCtCalcs();
+            ctOpenCalcDetail(calcId);
+        } catch (e) {
+            if (errEl) { errEl.textContent = e.message || 'Failed to submit.'; errEl.classList.remove('hidden'); }
+        }
+    }
+
+    async function ctApproveCalc(calcId) {
+        var errEl = document.getElementById('ctCalcDetailErr');
+        if (errEl) errEl.classList.add('hidden');
+        try {
+            var res = await PracticeAPI.fetch(_CALC_BASE + '/calculations/' + calcId + '/approve', { method: 'POST' });
+            var d   = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed');
+            PracticeAPI.showToast('Calculation approved.');
+            await loadCtCalcs();
+            ctOpenCalcDetail(calcId);
+        } catch (e) {
+            if (errEl) { errEl.textContent = e.message || 'Failed to approve.'; errEl.classList.remove('hidden'); }
+        }
+    }
+
+    function ctOpenRejectModal(calcId) {
+        _calcRejectId = calcId;
+        var ta = document.getElementById('ctCalcRejectReason');
+        var errEl = document.getElementById('ctCalcRejectErr');
+        var btn = document.getElementById('ctCalcRejectSubmitBtn');
+        if (ta) ta.value = '';
+        if (errEl) errEl.classList.add('hidden');
+        if (btn) btn.disabled = false;
+        document.getElementById('ctCalcRejectModal').classList.remove('hidden');
+    }
+
+    function ctCloseRejectModal() {
+        document.getElementById('ctCalcRejectModal').classList.add('hidden');
+        _calcRejectId = null;
+    }
+
+    async function ctConfirmReject() {
+        if (!_calcRejectId) return;
+        var reason = (document.getElementById('ctCalcRejectReason').value || '').trim();
+        var errEl  = document.getElementById('ctCalcRejectErr');
+        var btn    = document.getElementById('ctCalcRejectSubmitBtn');
+
+        if (!reason) {
+            errEl.textContent = 'Rejection reason is required.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+
+        if (btn) btn.disabled = true;
+        if (errEl) errEl.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(
+                _CALC_BASE + '/calculations/' + _calcRejectId + '/reject',
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rejection_reason: reason }) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed');
+            PracticeAPI.showToast('Calculation rejected.');
+            var rejectedId = _calcRejectId;
+            ctCloseRejectModal();
+            await loadCtCalcs();
+            ctOpenCalcDetail(rejectedId);
+        } catch (e) {
+            if (btn) btn.disabled = false;
+            errEl.textContent = e.message || 'Failed to reject.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    // ── Review Packs ───────────────────────────────────────────────────────────
+
+    var _RP_BASE      = '/api/practice/company-tax';
+    var _rpSubmitting = false;
+    var _rpRejectId   = null;
+    var _rpDetailId   = null;
+
+    var CT_RP_STATUS_LABELS = {
+        draft: 'Draft', generated: 'Generated', ready_for_review: 'Ready for Review',
+        reviewed: 'Reviewed', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled',
+    };
+
+    async function loadCtReviewPacks() {
+        if (!_currentReturnId) return;
+        var loadEl  = document.getElementById('ctRpLoading');
+        var emptyEl = document.getElementById('ctRpEmpty');
+        var listEl  = document.getElementById('ctRpList');
+        if (!loadEl) return;
+
+        loadEl.classList.remove('hidden');
+        emptyEl.classList.add('hidden');
+        listEl.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_RP_BASE + '/' + _currentReturnId + '/review-packs');
+            if (!res.ok) throw new Error('Failed to load review packs');
+            var d = await res.json();
+            var packs = d.packs || [];
+            loadEl.classList.add('hidden');
+
+            if (packs.length === 0) { emptyEl.classList.remove('hidden'); return; }
+
+            listEl.innerHTML = packs.map(function(p) {
+                var cls     = 'ct-rp-cs-' + (p.pack_status || 'draft');
+                var genDate = p.report_generated_at ? new Date(p.report_generated_at).toLocaleDateString('en-ZA') : '—';
+                var wc      = (p.warning_flags || []).length;
+                return '<div class="ct-rp-card" id="ct-rp-card-' + p.id + '" onclick="ctOpenRpDetail(' + p.id + ')">' +
+                    '<div class="ct-rp-card-name">' + esc(p.pack_name) + '</div>' +
+                    '<div class="ct-rp-card-meta">' +
+                        '<span class="ct-badge ' + cls + '">' + esc(CT_RP_STATUS_LABELS[p.pack_status] || p.pack_status) + '</span>' +
+                        '<span>Year: ' + esc(p.tax_year) + '</span>' +
+                        '<span>Generated: ' + esc(genDate) + '</span>' +
+                        (wc > 0 ? '<span style="color:#fcd34d;">⚠ ' + wc + ' flag' + (wc > 1 ? 's' : '') + '</span>' : '') +
+                    '</div>' +
+                '</div>';
+            }).join('');
+            listEl.classList.remove('hidden');
+        } catch (e) {
+            loadEl.textContent = 'Failed to load review packs.';
+        }
+    }
+
+    async function ctGenerateReviewPack() {
+        if (_rpSubmitting || !_currentReturnId) return;
+        _rpSubmitting = true;
+        var btn = document.getElementById('ctGenerateRpBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+        try {
+            var res = await PracticeAPI.fetch(
+                _RP_BASE + '/' + _currentReturnId + '/review-packs/generate',
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed to generate');
+            PracticeAPI.showToast('Review pack generated.');
+            await loadCtReviewPacks();
+            ctOpenRpDetail(d.pack.id);
+        } catch (e) {
+            PracticeAPI.showToast('Error: ' + (e.message || 'Failed to generate review pack.'));
+        } finally {
+            _rpSubmitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Generate Review Pack'; }
+        }
+    }
+
+    async function ctOpenRpDetail(packId) {
+        _rpDetailId = packId;
+        document.querySelectorAll('.ct-rp-card').forEach(function(c) {
+            c.style.borderColor = (c.id === 'ct-rp-card-' + packId) ? 'var(--accent)' : '';
+        });
+        var detailEl  = document.getElementById('ctRpDetail');
+        var titleEl   = document.getElementById('ctRpDetailTitle');
+        var metaEl    = document.getElementById('ctRpDetailMeta');
+        var warnWrap  = document.getElementById('ctRpWarnWrap');
+        var warnList  = document.getElementById('ctRpWarnList');
+        var actionsEl = document.getElementById('ctRpActionsWrap');
+        var errEl     = document.getElementById('ctRpDetailErr');
+
+        detailEl.classList.remove('hidden');
+        errEl.classList.add('hidden');
+        if (actionsEl) actionsEl.innerHTML = '';
+        if (warnWrap) warnWrap.classList.add('hidden');
+
+        try {
+            var res = await PracticeAPI.fetch(_RP_BASE + '/review-packs/' + packId);
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Not found');
+            var p = d.pack;
+            var cls = 'ct-rp-cs-' + (p.pack_status || 'draft');
+            var genDate = p.report_generated_at ? new Date(p.report_generated_at).toLocaleString('en-ZA') : '—';
+
+            if (titleEl) titleEl.textContent = p.pack_name || 'Pack Detail';
+            if (metaEl) {
+                metaEl.innerHTML =
+                    '<span class="ct-badge ' + cls + '">' + esc(CT_RP_STATUS_LABELS[p.pack_status] || p.pack_status) + '</span>' +
+                    ' &nbsp; Year: ' + esc(p.tax_year) + ' &nbsp;|&nbsp; Generated: ' + esc(genDate) +
+                    (p.reviewed_at ? ' &nbsp;|&nbsp; Reviewed: ' + new Date(p.reviewed_at).toLocaleString('en-ZA') : '') +
+                    (p.approval_notes ? '<br><span style="color:rgba(255,255,255,0.45);font-size:0.73rem;margin-top:3px;display:block">Notes: ' + esc(p.approval_notes) + '</span>' : '') +
+                    (p.rejection_reason ? '<br><span style="color:#fca5a5;font-size:0.73rem;margin-top:3px;display:block">Rejected: ' + esc(p.rejection_reason) + '</span>' : '');
+            }
+
+            var flags = p.warning_flags || [];
+            if (flags.length > 0 && warnWrap && warnList) {
+                warnList.innerHTML = flags.map(function(f) {
+                    return '<span style="display:inline-block;background:rgba(245,158,11,0.12);color:#fcd34d;border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:2px 8px;font-size:0.72rem;font-weight:600;margin:2px;">' + esc(f) + '</span>';
+                }).join('');
+                warnWrap.classList.remove('hidden');
+            }
+
+            var actions = [];
+            actions.push('<button type="button" class="btn btn-ghost btn-sm" onclick="ctViewRpReport(' + p.id + ')">View Report</button>');
+            actions.push('<button type="button" class="btn btn-ghost btn-sm" onclick="ctDownloadRpPdf(' + p.id + ')">Download PDF</button>');
+            if (['generated', 'draft', 'rejected'].includes(p.pack_status))
+                actions.push('<button type="button" class="btn btn-primary btn-sm" onclick="ctSubmitRpReview(' + p.id + ')">Submit for Review</button>');
+            if (['ready_for_review', 'reviewed'].includes(p.pack_status)) {
+                actions.push('<button type="button" class="btn btn-primary btn-sm" onclick="ctApproveRp(' + p.id + ')">Approve</button>');
+                actions.push('<button type="button" class="btn btn-danger btn-sm" onclick="ctOpenRpRejectModal(' + p.id + ')">Reject</button>');
+            }
+            if (actionsEl) actionsEl.innerHTML = actions.join('');
+        } catch (e) {
+            if (errEl) { errEl.textContent = e.message || 'Failed to load pack.'; errEl.classList.remove('hidden'); }
+        }
+    }
+
+    function ctCloseRpDetail() {
+        _rpDetailId = null;
+        var el = document.getElementById('ctRpDetail');
+        if (el) el.classList.add('hidden');
+        document.querySelectorAll('.ct-rp-card').forEach(function(c) { c.style.borderColor = ''; });
+    }
+
+    async function ctViewRpReport(packId) {
+        try {
+            var res = await PracticeAPI.fetch(_RP_BASE + '/review-packs/' + packId + '/report-html');
+            if (!res.ok) throw new Error('Failed to load report');
+            var html = await res.text();
+            var blob = new Blob([html], { type: 'text/html' });
+            var url  = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(function() { URL.revokeObjectURL(url); }, 30000);
+        } catch (e) {
+            PracticeAPI.showToast('Error: ' + (e.message || 'Could not open report.'));
+        }
+    }
+
+    async function ctDownloadRpPdf(packId) {
+        try {
+            var res = await PracticeAPI.fetch(_RP_BASE + '/review-packs/' + packId + '/report-pdf');
+            if (res.status === 501) {
+                PracticeAPI.showToast('PDF not available — use "View Report" for the HTML version.');
+                return;
+            }
+            if (!res.ok) throw new Error('Failed to generate PDF');
+            var blob = await res.blob();
+            var url  = URL.createObjectURL(blob);
+            var a    = document.createElement('a');
+            a.href   = url;
+            a.download = 'draft-co-tax-review.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+        } catch (e) {
+            PracticeAPI.showToast('Error: ' + (e.message || 'Could not download PDF.'));
+        }
+    }
+
+    async function ctSubmitRpReview(packId) {
+        try {
+            var res = await PracticeAPI.fetch(_RP_BASE + '/review-packs/' + packId + '/submit-review', { method: 'PUT' });
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed');
+            PracticeAPI.showToast('Submitted for review.');
+            await loadCtReviewPacks();
+            ctOpenRpDetail(packId);
+        } catch (e) { PracticeAPI.showToast('Error: ' + (e.message || 'Failed.')); }
+    }
+
+    async function ctApproveRp(packId) {
+        try {
+            var res = await PracticeAPI.fetch(
+                _RP_BASE + '/review-packs/' + packId + '/approve',
+                { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed');
+            PracticeAPI.showToast('Review pack approved.');
+            await loadCtReviewPacks();
+            ctOpenRpDetail(packId);
+        } catch (e) { PracticeAPI.showToast('Error: ' + (e.message || 'Failed.')); }
+    }
+
+    function ctOpenRpRejectModal(packId) {
+        _rpRejectId = packId;
+        var reasonEl = document.getElementById('ctRpRejectReason');
+        var errEl    = document.getElementById('ctRpRejectErr');
+        var btn      = document.getElementById('ctRpRejectSubmitBtn');
+        if (reasonEl) reasonEl.value = '';
+        if (errEl) errEl.classList.add('hidden');
+        if (btn) btn.disabled = false;
+        document.getElementById('ctRpRejectModal').classList.remove('hidden');
+    }
+
+    function ctCloseRpRejectModal() {
+        _rpRejectId = null;
+        document.getElementById('ctRpRejectModal').classList.add('hidden');
+    }
+
+    async function ctConfirmRpReject() {
+        var reason = (document.getElementById('ctRpRejectReason').value || '').trim();
+        var errEl  = document.getElementById('ctRpRejectErr');
+        var btn    = document.getElementById('ctRpRejectSubmitBtn');
+
+        if (!reason) {
+            errEl.textContent = 'Rejection reason is required.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        if (btn) btn.disabled = true;
+        errEl.classList.add('hidden');
+        try {
+            var res = await PracticeAPI.fetch(
+                _RP_BASE + '/review-packs/' + _rpRejectId + '/reject',
+                { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rejection_reason: reason }) }
+            );
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Failed');
+            PracticeAPI.showToast('Review pack rejected.');
+            var rejectedId = _rpRejectId;
+            ctCloseRpRejectModal();
+            await loadCtReviewPacks();
+            ctOpenRpDetail(rejectedId);
+        } catch (e) {
+            if (btn) btn.disabled = false;
+            errEl.textContent = e.message || 'Failed to reject.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
     // ── Utility ────────────────────────────────────────────────────────────────
 
     function _fmtNum(n) {
@@ -823,6 +1358,26 @@
     window.ctUpdateItemStatus    = ctUpdateItemStatus;
     window.ctDeleteReadinessItem = ctDeleteReadinessItem;
     window.ctGenerateDefaultItems= ctGenerateDefaultItems;
+    window.loadCtCalcs           = loadCtCalcs;
+    window.ctRunDraft            = ctRunDraft;
+    window.ctOpenCalcDetail      = ctOpenCalcDetail;
+    window.ctCloseCalcDetail     = ctCloseCalcDetail;
+    window.ctSubmitForReview     = ctSubmitForReview;
+    window.ctApproveCalc         = ctApproveCalc;
+    window.ctOpenRejectModal     = ctOpenRejectModal;
+    window.ctCloseRejectModal    = ctCloseRejectModal;
+    window.ctConfirmReject       = ctConfirmReject;
+    window.loadCtReviewPacks     = loadCtReviewPacks;
+    window.ctGenerateReviewPack  = ctGenerateReviewPack;
+    window.ctOpenRpDetail        = ctOpenRpDetail;
+    window.ctCloseRpDetail       = ctCloseRpDetail;
+    window.ctViewRpReport        = ctViewRpReport;
+    window.ctDownloadRpPdf       = ctDownloadRpPdf;
+    window.ctSubmitRpReview      = ctSubmitRpReview;
+    window.ctApproveRp           = ctApproveRp;
+    window.ctOpenRpRejectModal   = ctOpenRpRejectModal;
+    window.ctCloseRpRejectModal  = ctCloseRpRejectModal;
+    window.ctConfirmRpReject     = ctConfirmRpReject;
 
     init();
 })();

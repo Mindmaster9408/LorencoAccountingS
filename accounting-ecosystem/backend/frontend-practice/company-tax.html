@@ -44,6 +44,32 @@
         /* ── AFS inputs ── */
         .ct-afs-group { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:0.85rem 1rem; margin-bottom:0.8rem; }
         .ct-afs-group-title { font-size:0.75rem; font-weight:600; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.65rem; }
+        /* ── Calculations ── */
+        .ct-calc-draft-warn { background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:0.65rem 0.9rem; margin-bottom:1rem; font-size:0.8rem; color:#fcd34d; font-weight:600; }
+        .ct-calc-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:7px; padding:0.85rem 1rem; margin-bottom:0.6rem; cursor:pointer; transition:border-color 0.15s; }
+        .ct-calc-card:hover { border-color:rgba(255,255,255,0.16); }
+        .ct-calc-card-name  { font-size:0.87rem; font-weight:600; color:rgba(255,255,255,0.9); margin-bottom:3px; }
+        .ct-calc-card-meta  { font-size:0.75rem; color:rgba(255,255,255,0.4); display:flex; gap:0.5rem; flex-wrap:wrap; }
+        .ct-calc-cs-draft          { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.55); }
+        .ct-calc-cs-ready_for_review { background:rgba(245,158,11,0.18); color:#fcd34d; }
+        .ct-calc-cs-reviewed       { background:rgba(139,92,246,0.18);  color:#c4b5fd; }
+        .ct-calc-cs-approved       { background:rgba(16,185,129,0.22);  color:#34d399; }
+        .ct-calc-cs-rejected       { background:rgba(239,68,68,0.18);   color:#fca5a5; }
+        .ct-calc-cs-cancelled      { background:rgba(239,68,68,0.1);    color:#fca5a5; }
+        .ct-calc-detail { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:7px; padding:1rem 1.1rem; margin-top:0.8rem; }
+        .ct-calc-detail-title { font-size:0.82rem; font-weight:600; color:rgba(255,255,255,0.7); margin-bottom:0.7rem; text-transform:uppercase; letter-spacing:0.04em; }
+        .ct-lines-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+        .ct-lines-table th { color:rgba(255,255,255,0.35); font-weight:600; text-align:left; padding:0.3rem 0.5rem; border-bottom:1px solid rgba(255,255,255,0.07); font-size:0.72rem; text-transform:uppercase; }
+        .ct-lines-table td { padding:0.35rem 0.5rem; color:rgba(255,255,255,0.78); border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:top; }
+        .ct-lines-table tr:last-child td { border-bottom:none; }
+        .ct-lines-table td.ct-line-amt { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .ct-lines-table tr.ct-line-total td { font-weight:700; color:rgba(255,255,255,0.95); border-top:1px solid rgba(255,255,255,0.12); }
+        .ct-warn-list { list-style:none; padding:0; margin:0; }
+        .ct-warn-list li { font-size:0.78rem; color:#fcd34d; padding:0.22rem 0; display:flex; align-items:flex-start; gap:0.4rem; }
+        .ct-warn-list li::before { content:'⚠'; flex-shrink:0; }
+        .ct-assumptions { font-size:0.75rem; color:rgba(255,255,255,0.4); line-height:1.5; }
+        .ct-assumptions li { padding:0.15rem 0; }
+        .ct-calc-actions { display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.8rem; }
         /* ── Adjustments ── */
         .ct-adj-row { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:0.65rem 0.85rem; margin-bottom:0.5rem; display:flex; align-items:flex-start; gap:0.8rem; }
         .ct-adj-body  { flex:1; min-width:0; }
@@ -56,6 +82,20 @@
         .ct-adj-t-disallowance    { color:#fca5a5; }
         .ct-adj-t-assessed_loss   { color:#c4b5fd; }
         .ct-adj-t-capital_allowance { color:#6ee7b7; }
+        /* ── Review Packs ── */
+        .ct-rp-warn { background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:0.65rem 0.9rem; margin-bottom:1rem; font-size:0.8rem; color:#fcd34d; font-weight:600; }
+        .ct-rp-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:7px; padding:0.85rem 1rem; margin-bottom:0.6rem; cursor:pointer; transition:border-color 0.15s; }
+        .ct-rp-card:hover { border-color:rgba(255,255,255,0.16); }
+        .ct-rp-card-name { font-size:0.87rem; font-weight:600; color:rgba(255,255,255,0.9); margin-bottom:3px; }
+        .ct-rp-card-meta { font-size:0.75rem; color:rgba(255,255,255,0.4); display:flex; gap:0.5rem; flex-wrap:wrap; }
+        .ct-rp-cs-draft            { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.55); }
+        .ct-rp-cs-generated        { background:rgba(59,130,246,0.18);  color:#93c5fd; }
+        .ct-rp-cs-ready_for_review { background:rgba(245,158,11,0.18);  color:#fcd34d; }
+        .ct-rp-cs-reviewed         { background:rgba(139,92,246,0.18);  color:#c4b5fd; }
+        .ct-rp-cs-approved         { background:rgba(16,185,129,0.22);  color:#34d399; }
+        .ct-rp-cs-rejected         { background:rgba(239,68,68,0.18);   color:#fca5a5; }
+        .ct-rp-detail { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:7px; padding:1rem 1.1rem; margin-top:0.8rem; }
+        .ct-rp-actions { display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.8rem; }
         /* ── Readiness items ── */
         .ct-ri-row { display:flex; align-items:center; gap:0.75rem; padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.05); }
         .ct-ri-row:last-child { border-bottom:none; }
@@ -201,6 +241,8 @@
             <button class="ct-tab-btn"        id="ctTabBtnAdjustments"  onclick="ctSwitchTab('adjustments', this)">Adjustments</button>
             <button class="ct-tab-btn"        id="ctTabBtnReadiness"    onclick="ctSwitchTab('readiness', this)">Readiness</button>
             <button class="ct-tab-btn"        id="ctTabBtnEvents"       onclick="ctSwitchTab('events', this)">Events</button>
+            <button class="ct-tab-btn"        id="ctTabBtnCalc"         onclick="ctSwitchTab('calculations', this)">Calculations</button>
+            <button class="ct-tab-btn"        id="ctTabBtnReview"       onclick="ctSwitchTab('review_packs', this)">Review Packs</button>
         </div>
 
         <div class="ct-detail-body">
@@ -372,6 +414,118 @@
                 <div id="ctEvEmpty" class="col-muted hidden" style="padding:1.2rem 0;">No events recorded yet.</div>
             </div>
 
+            <!-- ── Calculations tab ── -->
+            <div id="ctTabCalc" class="ct-tab-panel">
+
+                <!-- Permanent draft warning — always visible on this tab -->
+                <div class="ct-calc-draft-warn">
+                    ⚠ DRAFT COMPANY TAX ESTIMATE — accountant review required. Not SARS-final. Not for submission.
+                </div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap;gap:0.5rem;">
+                    <div class="col-muted" style="font-size:0.8rem;">Draft calculation from captured AFS inputs and adjustments.</div>
+                    <button type="button" class="btn btn-primary btn-sm" id="ctRunDraftBtn" onclick="ctRunDraft()">Run Draft Calculation</button>
+                </div>
+
+                <div id="ctCalcLoading" class="col-muted hidden">Loading…</div>
+                <div id="ctCalcEmpty" class="col-muted hidden" style="padding:1.2rem 0;">
+                    No calculations yet. Click "Run Draft Calculation" to generate a draft estimate from the AFS inputs and adjustments captured on this return.
+                </div>
+                <div id="ctCalcList" class="hidden"></div>
+
+                <!-- Calculation detail (shown inline when a calc card is clicked) -->
+                <div id="ctCalcDetail" class="hidden">
+                    <div class="ct-calc-detail">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.7rem;flex-wrap:wrap;gap:0.5rem;">
+                            <div class="ct-calc-detail-title" id="ctCalcDetailTitle">Calculation Detail</div>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="ctCloseCalcDetail()" style="font-size:0.75rem;">✕ Close</button>
+                        </div>
+
+                        <div class="ct-calc-draft-warn" style="margin-bottom:0.8rem;">
+                            ⚠ DRAFT COMPANY TAX ESTIMATE — accountant review required. Not SARS-final.
+                        </div>
+
+                        <!-- Calculation lines table -->
+                        <div id="ctCalcLinesWrap">
+                            <div style="font-size:0.75rem;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.5rem;">Calculation Lines</div>
+                            <table class="ct-lines-table">
+                                <thead>
+                                    <tr>
+                                        <th>Line</th>
+                                        <th style="text-align:right;">Amount (ZAR)</th>
+                                        <th style="min-width:160px;">Note</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ctCalcLinesBody"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- Warning flags -->
+                        <div id="ctCalcWarningsWrap" class="hidden" style="margin-top:1rem;">
+                            <div style="font-size:0.75rem;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem;">Warning Flags</div>
+                            <ul class="ct-warn-list" id="ctCalcWarnList"></ul>
+                        </div>
+
+                        <!-- Assumptions -->
+                        <div id="ctCalcAssumptionsWrap" class="hidden" style="margin-top:0.8rem;">
+                            <div style="font-size:0.75rem;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem;">Assumptions</div>
+                            <ul class="ct-assumptions" id="ctCalcAssumptionsList"></ul>
+                        </div>
+
+                        <!-- Action buttons -->
+                        <div class="ct-calc-actions" id="ctCalcActionsWrap"></div>
+
+                        <div id="ctCalcDetailErr" class="error-banner hidden" style="margin-top:0.6rem;"></div>
+                    </div>
+                </div>
+
+            </div>
+
+
+            <!-- ── Review Packs tab ── -->
+            <div id="ctTabReview" class="ct-tab-panel">
+
+                <div class="ct-rp-warn">
+                    ⚠ DRAFT COMPANY TAX ESTIMATE ONLY — accountant review required. Not SARS-final. Not for submission.
+                </div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap;gap:0.5rem;">
+                    <div class="col-muted" style="font-size:0.8rem;">Generate a review pack from the current return data and latest draft calculation.</div>
+                    <button type="button" class="btn btn-primary btn-sm" id="ctGenerateRpBtn" onclick="ctGenerateReviewPack()">Generate Review Pack</button>
+                </div>
+
+                <div id="ctRpLoading" class="col-muted hidden">Loading…</div>
+                <div id="ctRpEmpty" class="col-muted hidden" style="padding:1.2rem 0;">
+                    No review packs yet. Click "Generate Review Pack" to create one from the captured AFS inputs and latest calculation.
+                </div>
+                <div id="ctRpList" class="hidden"></div>
+
+                <!-- Pack detail (inline) -->
+                <div id="ctRpDetail" class="hidden">
+                    <div class="ct-rp-detail">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.7rem;flex-wrap:wrap;gap:0.5rem;">
+                            <div style="font-size:0.82rem;font-weight:600;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.04em;" id="ctRpDetailTitle">Pack Detail</div>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="ctCloseRpDetail()" style="font-size:0.75rem;">✕ Close</button>
+                        </div>
+
+                        <div class="ct-rp-warn" style="margin-bottom:0.8rem;">
+                            ⚠ DRAFT COMPANY TAX ESTIMATE — accountant review required. Not SARS-final.
+                        </div>
+
+                        <div id="ctRpDetailMeta" style="font-size:0.78rem;color:rgba(255,255,255,0.4);margin-bottom:0.8rem;"></div>
+
+                        <div id="ctRpWarnWrap" class="hidden" style="margin-bottom:0.8rem;">
+                            <div style="font-size:0.75rem;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem;">Warning Flags</div>
+                            <div id="ctRpWarnList"></div>
+                        </div>
+
+                        <div class="ct-rp-actions" id="ctRpActionsWrap"></div>
+                        <div id="ctRpDetailErr" class="error-banner hidden" style="margin-top:0.6rem;"></div>
+                    </div>
+                </div>
+
+            </div>
+
         </div>
     </div>
 </div>
@@ -440,6 +594,54 @@
 
 <script src="/practice/js/polyfills.js"></script>
 <script src="/practice/js/auth.js"></script>
+<!-- ═══ Reject Calculation Modal ═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="ctCalcRejectModal" onclick="ctCloseRejectModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px;">
+        <div class="modal-header">
+            <div class="modal-title">Reject Calculation</div>
+            <button type="button" class="modal-close" onclick="ctCloseRejectModal()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:1rem 1.2rem;">
+            <div class="ct-calc-draft-warn" style="margin-bottom:0.8rem;">
+                DRAFT COMPANY TAX ESTIMATE — provide a rejection reason so the preparer can revise.
+            </div>
+            <div class="form-field">
+                <label for="ctCalcRejectReason">Rejection Reason <span style="color:#f87171;">*</span></label>
+                <textarea id="ctCalcRejectReason" rows="3" placeholder="Explain what needs to be corrected…"></textarea>
+            </div>
+            <div id="ctCalcRejectErr" class="error-banner hidden" style="margin-top:0.5rem;"></div>
+        </div>
+        <div class="modal-footer" style="padding:0.8rem 1.2rem;display:flex;gap:0.5rem;justify-content:flex-end;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="ctCloseRejectModal()">Cancel</button>
+            <button type="button" class="btn btn-danger btn-sm" id="ctCalcRejectSubmitBtn" onclick="ctConfirmReject()">Reject</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Reject Review Pack Modal ══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="ctRpRejectModal" onclick="ctCloseRpRejectModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px;">
+        <div class="modal-header">
+            <div class="modal-title">Reject Review Pack</div>
+            <button type="button" class="modal-close" onclick="ctCloseRpRejectModal()">✕</button>
+        </div>
+        <div class="modal-body" style="padding:1rem 1.2rem;">
+            <div class="ct-rp-warn" style="margin-bottom:0.8rem;">
+                DRAFT COMPANY TAX ESTIMATE — provide a rejection reason so the preparer can revise and regenerate.
+            </div>
+            <div class="form-field">
+                <label for="ctRpRejectReason">Rejection Reason <span style="color:#f87171;">*</span></label>
+                <textarea id="ctRpRejectReason" rows="3" placeholder="Explain what needs to be corrected or re-run…"></textarea>
+            </div>
+            <div id="ctRpRejectErr" class="error-banner hidden" style="margin-top:0.5rem;"></div>
+        </div>
+        <div class="modal-footer" style="padding:0.8rem 1.2rem;display:flex;gap:0.5rem;justify-content:flex-end;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="ctCloseRpRejectModal()">Cancel</button>
+            <button type="button" class="btn btn-danger btn-sm" id="ctRpRejectSubmitBtn" onclick="ctConfirmRpReject()">Reject Pack</button>
+        </div>
+    </div>
+</div>
+
 <script src="/practice/js/api.js"></script>
 <script src="/practice/js/layout.js"></script>
 <script src="/practice/js/company-tax.js"></script>

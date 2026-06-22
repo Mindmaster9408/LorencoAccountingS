@@ -2440,6 +2440,17 @@ router.use('/tax-configs', taxConfigRouter);
 // Company Tax Data Capture Foundation (Codebox 31)
 router.use('/company-tax', companyTaxRouter);
 
+// Company Tax Draft Calculation Engine (Codebox 32)
+// Mounted at same /company-tax path — Express tries companyTaxRouter first,
+// then falls through to companyTaxCalcRouter for unmatched routes.
+const companyTaxCalcRouter = require('./company-tax-calculations');
+router.use('/company-tax', companyTaxCalcRouter);
+
+// Company Tax Review Pack + Draft PDF (Codebox 33)
+// Mounted last — handles /review-packs/* routes not matched above.
+const companyTaxReviewPacksRouter = require('./company-tax-review-packs');
+router.use('/company-tax', companyTaxReviewPacksRouter);
+
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
 router.use('/dashboard', dashboardRouter);
