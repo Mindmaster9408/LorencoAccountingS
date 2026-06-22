@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Bulk Operations — Lorenco Practice</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+        #app-topbar { display: flex; align-items: center; justify-content: space-between; background: #1a1f2e; border-bottom: 1px solid #2d3748; padding: 0.75rem 1.5rem; position: sticky; top: 0; z-index: 100; }
+        .topbar-left { display: flex; align-items: center; gap: 0.75rem; }
+        .app-icon { font-size: 1.5rem; }
+        .app-title { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
+        .app-subtitle { font-size: 0.75rem; color: #718096; }
+        .topbar-right { display: flex; align-items: center; gap: 0.75rem; }
+        .company-badge { background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; padding: 0.25rem 0.6rem; font-size: 0.75rem; color: #a0aec0; }
+        .btn-back { background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.75rem; color: #a0aec0; text-decoration: none; }
+
+        #app-nav { background: #1a1f2e; border-bottom: 1px solid #2d3748; padding: 0 1.5rem; display: flex; gap: 0; overflow-x: auto; }
+        .nav-tab { padding: 0.6rem 0.9rem; font-size: 0.72rem; color: #718096; text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+        .nav-tab:hover { color: #e2e8f0; }
+        .nav-tab.active { color: #63b3ed; border-bottom-color: #63b3ed; }
+
+        .page-wrap { max-width: 1280px; margin: 0 auto; padding: 1.5rem; }
+
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+        .page-title { font-size: 1.3rem; font-weight: 700; color: #e2e8f0; }
+        .page-subtitle { font-size: 0.8rem; color: #718096; margin-top: 0.2rem; }
+
+        .btn { padding: 0.45rem 1rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: none; }
+        .btn-primary { background: #3182ce; color: #fff; }
+        .btn-primary:hover { background: #2b6cb0; }
+        .btn-primary:disabled { background: #2d3748; color: #718096; cursor: not-allowed; }
+        .btn-secondary { background: #2d3748; color: #a0aec0; border: 1px solid #4a5568; }
+        .btn-secondary:hover { background: #374151; }
+        .btn-danger { background: #c53030; color: #fff; }
+        .btn-sm { padding: 0.3rem 0.65rem; font-size: 0.75rem; border-radius: 5px; cursor: pointer; border: none; background: #2d3748; color: #a0aec0; }
+        .btn-sm:hover { background: #374151; }
+        .btn-sm-primary { background: #2b4c7e; color: #90cdf4; }
+        .btn-sm-primary:hover { background: #2c5282; }
+        .btn-sm-danger { background: #4a1818; color: #fc8181; }
+        .btn-sm-danger:hover { background: #742a2a; }
+
+        /* ── Cards ── */
+        .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; }
+        .card-header { padding: 1rem 1.25rem; border-bottom: 1px solid #2d3748; display: flex; align-items: center; justify-content: space-between; }
+        .card-title { font-weight: 600; color: #e2e8f0; }
+        .card-body { padding: 1.25rem; }
+
+        /* ── Filter row ── */
+        .filter-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 0.3rem; }
+        .filter-group label { font-size: 0.72rem; color: #718096; }
+        select, input[type="text"], input[type="number"], input[type="date"] {
+            background: #0f1117; border: 1px solid #4a5568; border-radius: 6px; color: #e2e8f0;
+            padding: 0.4rem 0.65rem; font-size: 0.8rem; min-width: 140px; }
+        select:focus, input:focus { outline: none; border-color: #63b3ed; }
+
+        /* ── Tables ── */
+        .tbo-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .tbo-table th { text-align: left; padding: 0.6rem 0.75rem; color: #718096; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        .tbo-table td { padding: 0.65rem 0.75rem; border-bottom: 1px solid #1a202c; color: #cbd5e0; vertical-align: top; }
+        .tbo-table tr:hover td { background: #1e2535; }
+
+        /* ── Badges ── */
+        .tbo-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: capitalize; }
+        .tbo-badge-draft               { background: #2d3748; color: #a0aec0; }
+        .tbo-badge-previewed           { background: #2c3a5e; color: #90cdf4; }
+        .tbo-badge-running             { background: #4a2e0a; color: #f6ad55; }
+        .tbo-badge-completed           { background: #1c3d2e; color: #68d391; }
+        .tbo-badge-completed-with-warnings { background: #3d3000; color: #f6e05e; }
+        .tbo-badge-failed              { background: #4a1818; color: #fc8181; }
+        .tbo-badge-cancelled           { background: #2d3748; color: #718096; }
+        .tbo-badge-success             { background: #1c3d2e; color: #68d391; }
+        .tbo-badge-warning             { background: #3d3000; color: #f6e05e; }
+        .tbo-badge-skipped             { background: #2d3748; color: #a0aec0; }
+        .tbo-badge-pending             { background: #2c3a5e; color: #90cdf4; }
+        .tbo-badge-failed              { background: #4a1818; color: #fc8181; }
+
+        /* ── Wizard ── */
+        .tbo-wizard { margin-top: 1.5rem; }
+        .tbo-step-bar { display: flex; gap: 0; margin-bottom: 1.5rem; }
+        .tbo-step-pill { flex: 1; text-align: center; padding: 0.5rem; font-size: 0.72rem; color: #718096; background: #1a1f2e; border: 1px solid #2d3748; cursor: default; }
+        .tbo-step-pill:first-child { border-radius: 6px 0 0 6px; }
+        .tbo-step-pill:last-child  { border-radius: 0 6px 6px 0; }
+        .tbo-step-pill.active { background: #2b4c7e; color: #90cdf4; border-color: #3182ce; }
+        .tbo-step-pill.done   { background: #1c3d2e; color: #68d391; border-color: #276749; }
+
+        .tbo-step { display: none; }
+
+        /* ── Op Type Cards ── */
+        .op-type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
+        .tbo-op-card { background: #1e2535; border: 2px solid #2d3748; border-radius: 8px; padding: 1rem; cursor: pointer; transition: border-color 0.15s; }
+        .tbo-op-card:hover { border-color: #4a5568; }
+        .tbo-op-card.selected { border-color: #3182ce; background: #1a2744; }
+        .tbo-op-card-title { font-weight: 600; color: #e2e8f0; font-size: 0.85rem; margin-bottom: 0.3rem; }
+        .tbo-op-card-desc  { font-size: 0.72rem; color: #718096; line-height: 1.4; }
+        .tbo-op-card-icon  { font-size: 1.4rem; margin-bottom: 0.5rem; }
+
+        /* ── Filters / Options grid ── */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+        .form-group label { font-size: 0.75rem; color: #a0aec0; font-weight: 500; }
+        .form-check { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; }
+        .form-check input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+        .form-check label { font-size: 0.8rem; color: #cbd5e0; cursor: pointer; margin: 0; }
+        textarea { background: #0f1117; border: 1px solid #4a5568; border-radius: 6px; color: #e2e8f0; padding: 0.5rem 0.65rem; font-size: 0.8rem; width: 100%; resize: vertical; }
+
+        /* ── Options panel sections ── */
+        .opts-section { border: 1px solid #2d3748; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #171c29; }
+        .opts-section-title { font-size: 0.75rem; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.75rem; }
+
+        /* ── Preview ── */
+        .tbo-preview-summary { display: flex; gap: 1.5rem; flex-wrap: wrap; padding: 1rem; background: #1e2535; border-radius: 8px; margin-bottom: 1rem; }
+        .tbo-preview-summary span { font-size: 0.85rem; color: #a0aec0; }
+        .tbo-preview-summary strong { color: #63b3ed; }
+        .tbo-preview-summary em { color: #f6ad55; font-style: normal; }
+        .tbo-preview-table-wrap { max-height: 320px; overflow-y: auto; border: 1px solid #2d3748; border-radius: 6px; }
+        .tbo-warning-box { background: #3d3000; border: 1px solid #744210; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+        .tbo-warning-box p { font-size: 0.8rem; color: #f6e05e; margin-bottom: 0.25rem; }
+        .tbo-warning-box p:last-child { margin-bottom: 0; }
+
+        /* ── Execute step ── */
+        .tbo-execute-summary { background: #1e2535; border: 1px solid #2d3748; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .tbo-execute-summary p { font-size: 0.85rem; color: #a0aec0; margin-bottom: 0.4rem; }
+        .tbo-execute-summary p:last-child { margin-bottom: 0; }
+        .tbo-execute-summary strong { color: #e2e8f0; }
+        .tbo-execute-warning { background: #4a2e0a; border: 1px solid #744210; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: #f6ad55; }
+
+        /* ── Result stats ── */
+        .tbo-result-summary { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .tbo-result-stat { display: flex; flex-direction: column; align-items: center; background: #1e2535; border: 1px solid #2d3748; border-radius: 8px; padding: 0.75rem 1.25rem; min-width: 90px; }
+        .tbo-result-stat strong { font-size: 1.4rem; }
+        .tbo-result-stat span  { font-size: 0.7rem; color: #718096; margin-top: 0.15rem; }
+        .tbo-stat-success strong { color: #68d391; }
+        .tbo-stat-warning strong { color: #f6e05e; }
+        .tbo-stat-skip    strong { color: #a0aec0; }
+        .tbo-stat-fail    strong { color: #fc8181; }
+        .tbo-result-items { max-height: 400px; overflow-y: auto; border: 1px solid #2d3748; border-radius: 6px; }
+
+        /* ── Items panel ── */
+        #tboItemsPanel { margin-top: 1.5rem; }
+
+        /* ── Wizard nav buttons ── */
+        .wizard-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #2d3748; }
+        .wizard-nav-right { display: flex; gap: 0.75rem; }
+
+        /* ── Step header ── */
+        .step-header { margin-bottom: 1.25rem; }
+        .step-title  { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
+        .step-desc   { font-size: 0.78rem; color: #718096; margin-top: 0.2rem; }
+
+        .section-gap { margin-bottom: 1.5rem; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-wrap">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Tax Bulk Operations</div>
+                <div class="page-subtitle">User-triggered bulk preparation for tax season. Preview before execute.</div>
+            </div>
+            <button class="btn btn-primary" onclick="tboNewOp()">+ New Operation</button>
+        </div>
+
+        <!-- ── Operations List ── -->
+        <div class="card section-gap">
+            <div class="card-header">
+                <span class="card-title">Operations</span>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Type</label>
+                        <select id="tboListType" onchange="tboLoadOps()">
+                            <option value="">All Types</option>
+                            <option value="create_compliance_packs">Create Compliance Packs</option>
+                            <option value="apply_tax_checklist">Apply Tax Checklist</option>
+                            <option value="create_document_requests">Create Doc Requests</option>
+                            <option value="assign_tax_owners">Assign Owners</option>
+                            <option value="assign_reviewers">Assign Reviewers</option>
+                            <option value="create_tax_actions">Create Tax Actions</option>
+                            <option value="mixed_tax_season_setup">Mixed Tax Season Setup</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Status</label>
+                        <select id="tboListStatus" onchange="tboLoadOps()">
+                            <option value="">All Statuses</option>
+                            <option value="draft">Draft</option>
+                            <option value="previewed">Previewed</option>
+                            <option value="running">Running</option>
+                            <option value="completed">Completed</option>
+                            <option value="completed_with_warnings">Completed w/ Warnings</option>
+                            <option value="failed">Failed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body" style="padding:0">
+                <table class="tbo-table">
+                    <thead><tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Tax Year</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr></thead>
+                    <tbody id="tboList">
+                        <tr><td colspan="6" style="text-align:center;color:#718096;padding:2rem">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ── Wizard ── -->
+        <div class="tbo-wizard card" id="tboWizard" style="display:none">
+            <div class="card-header">
+                <span class="card-title">New Bulk Operation</span>
+                <button class="btn btn-secondary" onclick="tboCloseWizard()" style="font-size:0.75rem;padding:0.3rem 0.7rem">✕ Close</button>
+            </div>
+            <div class="card-body">
+
+                <!-- Step indicator bar -->
+                <div class="tbo-step-bar">
+                    <div class="tbo-step-pill active" id="tboStepPill1">1. Type</div>
+                    <div class="tbo-step-pill"        id="tboStepPill2">2. Filters</div>
+                    <div class="tbo-step-pill"        id="tboStepPill3">3. Options</div>
+                    <div class="tbo-step-pill"        id="tboStepPill4">4. Preview</div>
+                    <div class="tbo-step-pill"        id="tboStepPill5">5. Execute</div>
+                </div>
+
+                <!-- ── Step 1: Operation Type ── -->
+                <div class="tbo-step" id="tboStep1">
+                    <div class="step-header">
+                        <div class="step-title">Choose Operation Type</div>
+                        <div class="step-desc">Select what you want to do for selected clients in bulk.</div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:1rem;max-width:400px">
+                        <label>Operation Name</label>
+                        <input type="text" id="tboOpName" placeholder="e.g. Tax Season 2025 Setup">
+                    </div>
+                    <div class="op-type-grid">
+                        <div class="tbo-op-card" data-type="create_compliance_packs" onclick="tboSetOpType('create_compliance_packs')">
+                            <div class="tbo-op-card-icon">📁</div>
+                            <div class="tbo-op-card-title">Create Compliance Packs</div>
+                            <div class="tbo-op-card-desc">Bulk-create compliance packs for selected clients. Skips clients that already have a pack.</div>
+                        </div>
+                        <div class="tbo-op-card" data-type="apply_tax_checklist" onclick="tboSetOpType('apply_tax_checklist')">
+                            <div class="tbo-op-card-icon">📋</div>
+                            <div class="tbo-op-card-title">Apply Tax Checklist</div>
+                            <div class="tbo-op-card-desc">Create document requests from a checklist template for multiple clients at once.</div>
+                        </div>
+                        <div class="tbo-op-card" data-type="create_document_requests" onclick="tboSetOpType('create_document_requests')">
+                            <div class="tbo-op-card-icon">📄</div>
+                            <div class="tbo-op-card-title">Create Document Requests</div>
+                            <div class="tbo-op-card-desc">Bulk-create specific document requests from a template for selected clients.</div>
+                        </div>
+                        <div class="tbo-op-card" data-type="assign_tax_owners" onclick="tboSetOpType('assign_tax_owners')">
+                            <div class="tbo-op-card-icon">👤</div>
+                            <div class="tbo-op-card-title">Assign Tax Owners</div>
+                            <div class="tbo-op-card-desc">Assign a responsible team member to multiple clients at once.</div>
+                        </div>
+                        <div class="tbo-op-card" data-type="assign_reviewers" onclick="tboSetOpType('assign_reviewers')">
+                            <div class="tbo-op-card-icon">🔍</div>
+                            <div class="tbo-op-card-title">Assign Reviewers</div>
+                            <div class="tbo-op-card-desc">Set a reviewer on individual and company tax returns for selected clients.</div>
+                        </div>
+                        <div class="tbo-op-card" data-type="create_tax_actions" onclick="tboSetOpType('create_tax_actions')">
+                            <div class="tbo-op-card-icon">⚡</div>
+                            <div class="tbo-op-card-title">Create Tax Actions</div>
+                            <div class="tbo-op-card-desc">Create a follow-up action for each selected client. Skips clients with an existing open action.</div>
+                        </div>
+                        <div class="tbo-op-card" data-type="mixed_tax_season_setup" onclick="tboSetOpType('mixed_tax_season_setup')">
+                            <div class="tbo-op-card-icon">🚀</div>
+                            <div class="tbo-op-card-title">Mixed Tax Season Setup</div>
+                            <div class="tbo-op-card-desc">Create compliance packs + apply checklist template + assign owner — all in one operation.</div>
+                        </div>
+                    </div>
+                    <div class="wizard-nav">
+                        <div></div>
+                        <button class="btn btn-primary" onclick="tboNextStep()">Next: Filters →</button>
+                    </div>
+                </div>
+
+                <!-- ── Step 2: Filters ── -->
+                <div class="tbo-step" id="tboStep2">
+                    <div class="step-header">
+                        <div class="step-title">Client Filters</div>
+                        <div class="step-desc">Select which clients this operation applies to. The preview will show the matched list.</div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Tax Year</label>
+                            <input type="number" id="tboFilterYear" placeholder="e.g. 2025" min="2020" max="2035">
+                        </div>
+                        <div class="form-group">
+                            <label>Client Type</label>
+                            <select id="tboFilterClientType">
+                                <option value="">All Types</option>
+                                <option value="individual">Individual</option>
+                                <option value="company">Company</option>
+                                <option value="trust">Trust</option>
+                                <option value="close_corporation">Close Corporation</option>
+                                <option value="partnership">Partnership</option>
+                                <option value="sole_proprietor">Sole Proprietor</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Responsible Owner</label>
+                            <select id="tboFilterOwner">
+                                <option value="">Any</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" id="tboFilterProvisional">
+                        <label for="tboFilterProvisional">Provisional taxpayers only (requires taxpayer profile)</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" id="tboFilterHasEngagement">
+                        <label for="tboFilterHasEngagement">Only clients with an active engagement</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" id="tboFilterMissingPack">
+                        <label for="tboFilterMissingPack">Only clients missing a compliance pack (for selected pack type)</label>
+                    </div>
+                    <div class="wizard-nav">
+                        <button class="btn btn-secondary" onclick="tboPrevStep()">← Back</button>
+                        <button class="btn btn-primary" onclick="tboNextStep()">Next: Options →</button>
+                    </div>
+                </div>
+
+                <!-- ── Step 3: Options ── -->
+                <div class="tbo-step" id="tboStep3">
+                    <div class="step-header">
+                        <div class="step-title">Operation Options</div>
+                        <div class="step-desc">Configure what will be created or updated.</div>
+                    </div>
+
+                    <!-- Pack options (create_compliance_packs, mixed) -->
+                    <div class="opts-section" id="tboOptPackSection" style="display:none">
+                        <div class="opts-section-title">Compliance Pack Settings</div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Pack Type *</label>
+                                <select id="tboOptPackType">
+                                    <option value="individual_tax">Individual Tax</option>
+                                    <option value="company_tax">Company Tax</option>
+                                    <option value="annual_financials">Annual Financials</option>
+                                    <option value="vat_period">VAT Period</option>
+                                    <option value="payroll_annual">Payroll Annual</option>
+                                    <option value="cipc_annual">CIPC Annual</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Period Start</label>
+                                <input type="date" id="tboOptPeriodStart">
+                            </div>
+                            <div class="form-group">
+                                <label>Period End</label>
+                                <input type="date" id="tboOptPeriodEnd">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Template options (apply_tax_checklist, create_document_requests, mixed) -->
+                    <div class="opts-section" id="tboOptTemplateSection" style="display:none">
+                        <div class="opts-section-title">Checklist Template</div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Template</label>
+                                <select id="tboOptTemplate">
+                                    <option value="">— Select Template —</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Document Request Due Date</label>
+                                <input type="date" id="tboOptDueDate">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Owner assignment (create_compliance_packs, assign_tax_owners, mixed) -->
+                    <div class="opts-section" id="tboOptOwnerSection" style="display:none">
+                        <div class="opts-section-title">Responsible Owner Assignment</div>
+                        <div class="form-group" style="max-width:280px">
+                            <label>Assign Owner</label>
+                            <select id="tboOptOwner">
+                                <option value="">— None —</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Reviewer assignment (create_compliance_packs, assign_reviewers, mixed) -->
+                    <div class="opts-section" id="tboOptReviewerSection" style="display:none">
+                        <div class="opts-section-title">Reviewer Assignment</div>
+                        <div class="form-group" style="max-width:280px">
+                            <label>Assign Reviewer</label>
+                            <select id="tboOptReviewer">
+                                <option value="">— None —</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Override existing (assign_tax_owners, assign_reviewers) -->
+                    <div class="opts-section" id="tboOptOverrideSection" style="display:none">
+                        <div class="opts-section-title">Override Settings</div>
+                        <div class="form-check">
+                            <input type="checkbox" id="tboOptOverrideExisting">
+                            <label for="tboOptOverrideExisting">Override existing assignments (replaces current owner/reviewer)</label>
+                        </div>
+                    </div>
+
+                    <!-- Tax Action options (create_tax_actions) -->
+                    <div class="opts-section" id="tboOptActionSection" style="display:none">
+                        <div class="opts-section-title">Tax Action Settings</div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Action Type</label>
+                                <select id="tboOptActionType">
+                                    <option value="general_followup">General Follow-up</option>
+                                    <option value="request_document">Request Document</option>
+                                    <option value="assign_owner">Assign Owner</option>
+                                    <option value="assign_reviewer">Assign Reviewer</option>
+                                    <option value="create_task">Create Task</option>
+                                    <option value="submit_for_review">Submit for Review</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Action Title (optional)</label>
+                                <input type="text" id="tboOptActionTitle" placeholder="Auto-generated if blank">
+                            </div>
+                            <div class="form-group">
+                                <label>Due Date</label>
+                                <input type="date" id="tboOptActionDueDate">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wizard-nav">
+                        <button class="btn btn-secondary" onclick="tboPrevStep()">← Back</button>
+                        <button class="btn btn-primary" onclick="tboPreview()">Preview Clients →</button>
+                    </div>
+                </div>
+
+                <!-- ── Step 4: Preview ── -->
+                <div class="tbo-step" id="tboStep4">
+                    <div class="step-header">
+                        <div class="step-title">Preview</div>
+                        <div class="step-desc">Review the clients and estimated actions before saving.</div>
+                    </div>
+                    <div id="tboPreviewContent">
+                        <p style="color:#718096">Loading preview...</p>
+                    </div>
+                    <div class="wizard-nav">
+                        <button class="btn btn-secondary" onclick="tboPrevStep()">← Change Options</button>
+                        <div class="wizard-nav-right">
+                            <button class="btn btn-secondary" onclick="tboPreview()">Re-preview</button>
+                            <button class="btn btn-primary" onclick="tboSaveAndContinue()">Save &amp; Continue →</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Step 5: Execute ── -->
+                <div class="tbo-step" id="tboStep5">
+                    <div class="step-header">
+                        <div class="step-title">Execute</div>
+                        <div class="step-desc">This is the final step. Confirm and execute the operation.</div>
+                    </div>
+                    <div id="tboExecuteSummary"></div>
+                    <div class="tbo-execute-warning">
+                        ⚠ Executing will create records in the database. This cannot be undone automatically.
+                        Duplicate prevention is active — existing records will be skipped.
+                    </div>
+                    <div id="tboExecuteResult"></div>
+                    <div class="wizard-nav">
+                        <button class="btn btn-secondary" onclick="tboPrevStep()">← Back</button>
+                        <button class="btn btn-primary" id="tboExecuteBtn" onclick="tboExecute()">Execute Now</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ── Items Panel ── -->
+        <div class="card" id="tboItemsPanel" style="display:none;margin-top:1.5rem">
+            <div class="card-header">
+                <span class="card-title">Operation Results</span>
+                <button class="btn btn-secondary" onclick="document.getElementById('tboItemsPanel').style.display='none'" style="font-size:0.75rem;padding:0.3rem 0.7rem">✕ Close</button>
+            </div>
+            <div class="card-body" style="padding:0">
+                <table class="tbo-table">
+                    <thead><tr>
+                        <th>Client</th>
+                        <th>Status</th>
+                        <th>Message</th>
+                        <th>Error</th>
+                    </tr></thead>
+                    <tbody id="tboItemsList">
+                        <tr><td colspan="4" style="text-align:center;color:#718096;padding:1.5rem">No results</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /.page-wrap -->
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/tax-bulk-operations.js"></script>
+</body>
+</html>

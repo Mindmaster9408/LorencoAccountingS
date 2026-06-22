@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Tax Checklists</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Template table ── */
+        .tc-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+        .tc-table th { text-align:left; padding:0.4rem 0.6rem; color:rgba(255,255,255,0.4); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid rgba(255,255,255,0.06); font-weight:600; }
+        .tc-table td { padding:0.45rem 0.6rem; color:rgba(255,255,255,0.8); border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle; }
+        .tc-table tr:last-child td { border-bottom:none; }
+        .tc-table tr:hover td { background:rgba(255,255,255,0.02); }
+        /* ── Badges ── */
+        .tc-badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
+        .tc-b-individual_tax   { background:rgba(99,102,241,0.18); color:#a5b4fc; }
+        .tc-b-company_tax      { background:rgba(59,130,246,0.18);  color:#93c5fd; }
+        .tc-b-provisional_tax  { background:rgba(139,92,246,0.18);  color:#c4b5fd; }
+        .tc-b-annual_financials{ background:rgba(245,158,11,0.18);  color:#fcd34d; }
+        .tc-b-vat_period       { background:rgba(16,185,129,0.18);  color:#6ee7b7; }
+        .tc-b-payroll_annual   { background:rgba(20,184,166,0.18);  color:#5eead4; }
+        .tc-b-cipc_annual      { background:rgba(244,114,182,0.18); color:#f9a8d4; }
+        .tc-b-custom           { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.5); }
+        .tc-b-default          { background:rgba(16,185,129,0.12);  color:#6ee7b7; font-size:0.62rem; }
+        .tc-b-inactive         { background:rgba(239,68,68,0.12);   color:#fca5a5; }
+        /* ── Action buttons ── */
+        .tc-btn { background:none; border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.55); border-radius:4px; padding:3px 9px; font-size:0.73rem; cursor:pointer; transition:background 0.15s; }
+        .tc-btn:hover { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.85); }
+        .tc-btn.apply  { border-color:rgba(16,185,129,0.35);  color:#6ee7b7; }
+        .tc-btn.apply:hover  { background:rgba(16,185,129,0.12); }
+        .tc-btn.items  { border-color:rgba(99,102,241,0.35); color:#a5b4fc; }
+        .tc-btn.items:hover  { background:rgba(99,102,241,0.1); }
+        .tc-btn.danger { border-color:rgba(239,68,68,0.25); color:#fca5a5; }
+        .tc-btn.danger:hover { background:rgba(239,68,68,0.1); }
+        /* ── Item editor panel ── */
+        .tc-item-panel { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:1rem 1.1rem; margin-top:0.8rem; }
+        .tc-item-panel-title { font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:rgba(255,255,255,0.4); margin-bottom:0.8rem; }
+        .tc-item-row { display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0; border-bottom:1px solid rgba(255,255,255,0.04); font-size:0.8rem; }
+        .tc-item-row:last-child { border-bottom:none; }
+        .tc-item-name { flex:1; color:rgba(255,255,255,0.85); }
+        .tc-item-meta { font-size:0.7rem; color:rgba(255,255,255,0.35); min-width:80px; }
+        .tc-item-req  { font-size:0.68rem; color:#34d399; }
+        .tc-item-opt  { font-size:0.68rem; color:rgba(255,255,255,0.3); }
+        /* ── Modal ── */
+        .tc-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:900; display:none; align-items:center; justify-content:center; }
+        .tc-modal-overlay.open { display:flex; }
+        .tc-modal-box { background:#1a1c23; border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:1.5rem; width:min(520px,95vw); max-height:90vh; overflow-y:auto; }
+        .tc-modal-title { font-size:0.95rem; font-weight:700; color:rgba(255,255,255,0.9); margin-bottom:1.2rem; }
+        .tc-modal-row { margin-bottom:0.85rem; }
+        .tc-modal-row label { display:block; font-size:0.75rem; color:rgba(255,255,255,0.5); margin-bottom:4px; }
+        .tc-modal-row input, .tc-modal-row select, .tc-modal-row textarea {
+            width:100%; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12);
+            color:rgba(255,255,255,0.88); border-radius:5px; padding:0.4rem 0.6rem; font-size:0.82rem; box-sizing:border-box;
+        }
+        .tc-modal-row textarea { resize:vertical; min-height:60px; }
+        .tc-modal-row input:focus, .tc-modal-row select:focus, .tc-modal-row textarea:focus { outline:none; border-color:rgba(255,255,255,0.25); }
+        .tc-modal-footer { display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1.2rem; }
+        .tc-modal-error { color:#f87171; font-size:0.78rem; margin-top:0.5rem; display:none; }
+        /* ── Checkbox row ── */
+        .tc-check-row { display:flex; align-items:center; gap:0.6rem; margin-bottom:0.6rem; font-size:0.83rem; color:rgba(255,255,255,0.75); }
+        .tc-check-row input[type="checkbox"] { width:auto; }
+        /* ── States ── */
+        .tc-loading { color:rgba(255,255,255,0.35); font-size:0.82rem; padding:0.6rem 0; }
+        .tc-empty   { color:rgba(255,255,255,0.3);  font-size:0.82rem; padding:0.6rem 0; }
+        .tc-error   { color:#f87171; font-size:0.8rem; padding:0.4rem 0; }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div>
+            <div class="section-title">Tax Checklist Templates</div>
+            <div class="col-muted" style="font-size:0.82rem;margin-top:2px;">
+                Reusable checklists — generate document requests, pack items, and tax return items.
+            </div>
+        </div>
+        <div class="controls">
+            <button type="button" class="btn btn-secondary" onclick="tcSeedDefaults()">Seed Defaults</button>
+            <button type="button" class="btn btn-primary"   onclick="tcOpenCreateModal()">+ Template</button>
+        </div>
+    </div>
+
+    <!-- ── Filters ── -->
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.9rem;">
+        <select id="tcFltType" title="Filter by template type" onchange="tcLoad()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.85);border-radius:5px;padding:0.35rem 0.55rem;font-size:0.8rem;">
+            <option value="">All types</option>
+            <option value="individual_tax">Individual Tax</option>
+            <option value="company_tax">Company Tax</option>
+            <option value="provisional_tax">Provisional Tax</option>
+            <option value="annual_financials">Annual Financials</option>
+            <option value="vat_period">VAT Period</option>
+            <option value="payroll_annual">Payroll Annual</option>
+            <option value="cipc_annual">CIPC Annual</option>
+            <option value="custom">Custom</option>
+        </select>
+        <select id="tcFltActive" title="Filter by active status" onchange="tcLoad()" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.85);border-radius:5px;padding:0.35rem 0.55rem;font-size:0.8rem;">
+            <option value="true">Active only</option>
+            <option value="all">All</option>
+        </select>
+        <button type="button" class="btn btn-secondary" onclick="tcLoad()">Refresh</button>
+    </div>
+
+    <!-- ── Template list ── -->
+    <div class="panel" id="tcPanel">
+        <div id="tcList" class="tc-loading">Loading templates…</div>
+    </div>
+
+    <!-- ── Item editor panel (shown below selected template) ── -->
+    <div class="tc-item-panel" id="tcItemPanel" style="display:none;">
+        <div class="tc-item-panel-title" id="tcItemPanelTitle">Template Items</div>
+        <div id="tcItemList"></div>
+        <div style="margin-top:0.8rem;">
+            <button type="button" class="btn btn-secondary" onclick="tcOpenAddItemModal()">+ Add Item</button>
+        </div>
+    </div>
+
+</div><!-- /main -->
+
+<!-- ── Create / Edit Template Modal ── -->
+<div class="tc-modal-overlay" id="tcTemplateModal" onclick="tcCloseModal('tcTemplateModal', event)">
+    <div class="tc-modal-box">
+        <div class="tc-modal-title" id="tcTplModalTitle">Create Template</div>
+        <input type="hidden" id="tcTplId">
+        <div class="tc-modal-row">
+            <label>Template Name *</label>
+            <input type="text" id="tcTplName" placeholder="e.g. Individual Tax Return 2026" maxlength="200">
+        </div>
+        <div class="tc-modal-row">
+            <label>Template Type *</label>
+            <select id="tcTplType" title="Template type">
+                <option value="individual_tax">Individual Tax</option>
+                <option value="company_tax">Company Tax</option>
+                <option value="provisional_tax">Provisional Tax</option>
+                <option value="annual_financials">Annual Financials</option>
+                <option value="vat_period">VAT Period</option>
+                <option value="payroll_annual">Payroll Annual</option>
+                <option value="cipc_annual">CIPC Annual</option>
+                <option value="custom">Custom</option>
+            </select>
+        </div>
+        <div class="tc-modal-row">
+            <label>Client Type (optional — leave blank for all)</label>
+            <select id="tcTplClientType" title="Client type filter">
+                <option value="">Any client type</option>
+                <option value="individual">Individual</option>
+                <option value="company">Company</option>
+                <option value="trust">Trust</option>
+                <option value="close_corporation">Close Corporation</option>
+                <option value="partnership">Partnership</option>
+                <option value="sole_proprietor">Sole Proprietor</option>
+                <option value="other">Other</option>
+            </select>
+        </div>
+        <div class="tc-modal-row">
+            <label>Tax Year (optional)</label>
+            <input type="number" id="tcTplTaxYear" placeholder="e.g. 2026" min="2020" max="2040">
+        </div>
+        <div class="tc-modal-row">
+            <label>Description</label>
+            <textarea id="tcTplDescription" placeholder="What is this checklist for?"></textarea>
+        </div>
+        <div class="tc-modal-error" id="tcTplError"></div>
+        <div class="tc-modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="tcCloseModal('tcTemplateModal')">Cancel</button>
+            <button type="button" class="btn btn-primary" id="tcTplSubmitBtn" onclick="tcSubmitTemplate()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Add Item Modal ── -->
+<div class="tc-modal-overlay" id="tcItemModal" onclick="tcCloseModal('tcItemModal', event)">
+    <div class="tc-modal-box">
+        <div class="tc-modal-title">Add Template Item</div>
+        <input type="hidden" id="tcItTemplateId">
+        <div class="tc-modal-row">
+            <label>Item Name *</label>
+            <input type="text" id="tcItName" placeholder="e.g. IRP5 / IT3(a)" maxlength="300">
+        </div>
+        <div class="tc-modal-row">
+            <label>Description</label>
+            <textarea id="tcItDescription" placeholder="What should the client provide?" style="min-height:50px;"></textarea>
+        </div>
+        <div class="tc-modal-row">
+            <label>Item Category</label>
+            <select id="tcItCategory" title="Item category">
+                <option value="document">Document</option>
+                <option value="tax_data">Tax Data</option>
+                <option value="review">Review</option>
+                <option value="compliance">Compliance</option>
+                <option value="calculation">Calculation</option>
+                <option value="approval">Approval</option>
+                <option value="custom">Custom</option>
+            </select>
+        </div>
+        <div class="tc-modal-row">
+            <label>Target Output Type</label>
+            <select id="tcItTargetType" title="What to create when applying this item" onchange="tcItemTargetChanged()">
+                <option value="document_request">Document Request</option>
+                <option value="compliance_pack_item">Compliance Pack Item</option>
+                <option value="individual_tax_item">Individual Tax Return Item</option>
+                <option value="company_tax_item">Company Tax Return Item</option>
+            </select>
+        </div>
+        <div class="tc-modal-row" id="tcItDocCatRow">
+            <label>Document Category (for document requests)</label>
+            <select id="tcItDocCat" title="Document category">
+                <option value="supporting_docs">Supporting Docs</option>
+                <option value="tax">Tax</option>
+                <option value="vat">VAT</option>
+                <option value="payroll">Payroll</option>
+                <option value="accounting">Accounting</option>
+                <option value="banking">Banking</option>
+                <option value="financials">Financials</option>
+                <option value="compliance">Compliance</option>
+                <option value="cipc">CIPC</option>
+                <option value="identity">Identity</option>
+                <option value="legal">Legal</option>
+                <option value="trust">Trust</option>
+                <option value="custom">Custom</option>
+            </select>
+        </div>
+        <div class="tc-modal-row">
+            <label>Default Due Offset (days from apply date, optional)</label>
+            <input type="number" id="tcItDueOffset" placeholder="e.g. 14" min="0" max="365">
+        </div>
+        <div class="tc-check-row">
+            <input type="checkbox" id="tcItRequired" checked>
+            <label for="tcItRequired" style="margin:0;font-size:0.83rem;color:rgba(255,255,255,0.75);">Required item</label>
+        </div>
+        <div class="tc-modal-error" id="tcItError"></div>
+        <div class="tc-modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="tcCloseModal('tcItemModal')">Cancel</button>
+            <button type="button" class="btn btn-primary" id="tcItSubmitBtn" onclick="tcSubmitItem()">Add Item</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Apply Template Modal ── -->
+<div class="tc-modal-overlay" id="tcApplyModal" onclick="tcCloseModal('tcApplyModal', event)">
+    <div class="tc-modal-box">
+        <div class="tc-modal-title">Apply Template</div>
+        <div id="tcApplyTemplateName" style="font-size:0.8rem;color:rgba(255,255,255,0.4);margin-bottom:1rem;"></div>
+        <input type="hidden" id="tcApplyTemplateId">
+        <div class="tc-modal-row">
+            <label>Client *</label>
+            <select id="tcApplyClient" title="Select client">
+                <option value="">— Select client —</option>
+            </select>
+        </div>
+        <div class="tc-modal-row">
+            <label>Due Date (for document requests, optional)</label>
+            <input type="date" id="tcApplyDueDate">
+        </div>
+        <div style="margin-bottom:0.9rem;">
+            <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.04em;">What to create</div>
+            <div class="tc-check-row">
+                <input type="checkbox" id="tcApplyCreateDocReqs" checked onchange="tcApplyCheckboxChanged()">
+                <label for="tcApplyCreateDocReqs" style="margin:0;">Create Document Requests</label>
+            </div>
+            <div class="tc-check-row">
+                <input type="checkbox" id="tcApplyCreatePackItems" onchange="tcApplyCheckboxChanged()">
+                <label for="tcApplyCreatePackItems" style="margin:0;">Create Compliance Pack Items</label>
+            </div>
+            <div class="tc-check-row">
+                <input type="checkbox" id="tcApplyCreateTaxItems" onchange="tcApplyCheckboxChanged()">
+                <label for="tcApplyCreateTaxItems" style="margin:0;">Create Tax Return Items</label>
+            </div>
+        </div>
+        <!-- Conditional selects — shown/hidden by checkbox state -->
+        <div class="tc-modal-row" id="tcApplyPackRow" style="display:none;">
+            <label>Compliance Pack</label>
+            <select id="tcApplyPackId" title="Select compliance pack">
+                <option value="">— Select pack —</option>
+            </select>
+        </div>
+        <div class="tc-modal-row" id="tcApplyIndRow" style="display:none;">
+            <label>Individual Tax Return</label>
+            <select id="tcApplyIndReturnId" title="Select individual tax return">
+                <option value="">— Select return —</option>
+            </select>
+        </div>
+        <div class="tc-modal-row" id="tcApplyCoRow" style="display:none;">
+            <label>Company Tax Return</label>
+            <select id="tcApplyCoReturnId" title="Select company tax return">
+                <option value="">— Select return —</option>
+            </select>
+        </div>
+        <div class="tc-modal-error" id="tcApplyError"></div>
+        <div class="tc-modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="tcCloseModal('tcApplyModal')">Cancel</button>
+            <button type="button" class="btn btn-primary" id="tcApplySubmitBtn" onclick="tcSubmitApply()">Apply</button>
+        </div>
+    </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/tax-checklists.js"></script>
+</body>
+</html>

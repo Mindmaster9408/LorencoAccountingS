@@ -27,6 +27,10 @@
         { key: 'provisional-tax',    label: 'Provisional Tax',    href: '/practice/provisional-tax.html' },
         { key: 'individual-tax',     label: 'Individual Tax',     href: '/practice/individual-tax.html' },
         { key: 'company-tax',        label: 'Company Tax',        href: '/practice/company-tax.html' },
+        { key: 'tax-dashboard',      label: 'Tax Dashboard',      href: '/practice/tax-dashboard.html' },
+        { key: 'tax-actions',        label: 'Tax Actions',        href: '/practice/tax-actions.html' },
+        { key: 'tax-checklists',     label: 'Tax Checklists',     href: '/practice/tax-checklists.html' },
+        { key: 'tax-bulk-ops',       label: 'Tax Bulk Ops',       href: '/practice/tax-bulk-operations.html' },
         { key: 'tax-configs',        label: 'Tax Config',         href: '/practice/tax-configs.html' }
     ];
 

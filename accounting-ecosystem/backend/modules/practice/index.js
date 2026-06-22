@@ -2451,6 +2451,26 @@ router.use('/company-tax', companyTaxCalcRouter);
 const companyTaxReviewPacksRouter = require('./company-tax-review-packs');
 router.use('/company-tax', companyTaxReviewPacksRouter);
 
+// Tax Dashboard: Tax Season Command Center (Codebox 34)
+// Aggregates individual/company/provisional tax data into 5 read-only endpoints.
+const taxDashboardRouter = require('./tax-dashboard');
+router.use('/tax-dashboard', taxDashboardRouter);
+
+// Tax Work Actions + Review Queue (Codebox 35)
+// Follow-up action tracking, review queue controls, action execution helpers.
+const taxActionsRouter = require('./tax-actions');
+router.use('/tax-actions', taxActionsRouter);
+
+// Tax Checklist Templates (Codebox 36)
+// Reusable tax document checklist templates with controlled apply.
+const taxChecklistsRouter = require('./tax-checklists');
+router.use('/tax-checklists', taxChecklistsRouter);
+
+// Tax Bulk Operations (Codebox 37)
+// User-triggered bulk preparation for tax season.
+const taxBulkOperationsRouter = require('./tax-bulk-operations');
+router.use('/tax-bulk-operations', taxBulkOperationsRouter);
+
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
 router.use('/dashboard', dashboardRouter);
