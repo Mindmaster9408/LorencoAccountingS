@@ -281,7 +281,8 @@ function parseRows(dataRows, colMap, headerOffset = 0) {
   };
 
   const lines    = [];
-  let skippedSummary = 0;
+  let skippedSummary    = 0;
+  let currentAccountName = null; // carry-forward for Sage grouped-account section headers
 
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
@@ -289,7 +290,19 @@ function parseRows(dataRows, colMap, headerOffset = 0) {
 
     const rawDate = m.transaction_date !== undefined ? row[m.transaction_date] : null;
     const txDate  = normalizeDate(rawDate);
-    if (!txDate) continue; // skip rows with no parseable date
+
+    if (!txDate) {
+      // No parseable date — check if this is a Sage account section header row.
+      // Sage Account Transactions Reports start each account block with an undated
+      // heading row (e.g. "Accounting Fees") before the dated transaction rows.
+      const nameHint   = get(row, 'source_account_name') || get(row, 'source_description');
+      const firstCell  = row.map(c => String(c || '').trim()).find(Boolean) || '';
+      const nameCandidate = nameHint || firstCell;
+      if (nameCandidate && !SUMMARY_ROW_PATTERNS.some(p => p.test(nameCandidate))) {
+        currentAccountName = nameCandidate;
+      }
+      continue;
+    }
 
     let debit  = 0;
     let credit = 0;
@@ -316,18 +329,25 @@ function parseRows(dataRows, colMap, headerOffset = 0) {
     // Skip rows that are purely zero (likely blank filler rows)
     if (debit === 0 && credit === 0) continue;
 
+    const rawAccountCode = get(row, 'source_account_code');
+    const rawAccountName = get(row, 'source_account_name');
+    // Carry forward account section name to child rows that have no explicit account name
+    const source_account_name = rawAccountName || currentAccountName || null;
+    const noContext = !rawAccountCode && !rawAccountName && !currentAccountName;
+
     const candidate = {
       source_row_number:   headerOffset + i + 2, // header offset + 1-indexed + skip header row itself
       transaction_date:    txDate,
-      source_account_code: get(row, 'source_account_code') || null,
-      source_account_name: get(row, 'source_account_name') || null,
+      source_account_code: rawAccountCode || null,
+      source_account_name,
       source_description:  get(row, 'source_description')  || null,
       source_reference:    get(row, 'source_reference')     || null,
       debit,
       credit,
       source_currency:   'ZAR',
       mapping_status:    'unmapped',
-      validation_status: 'pending',
+      validation_status: noContext ? 'warning' : 'pending',
+      validation_notes:  noContext ? 'ACCOUNT_CONTEXT_MISSING' : null,
     };
 
     // Phase 4: filter summary/balance control rows before staging
@@ -348,7 +368,7 @@ async function insertLinesBulk(pgClient, batchId, cid, lines) {
   const cols = [
     'batch_id','company_id','source_row_number','transaction_date',
     'source_account_code','source_account_name','source_description','source_reference',
-    'debit','credit','source_currency','mapping_status','validation_status',
+    'debit','credit','source_currency','mapping_status','validation_status','validation_notes',
   ];
   for (let i = 0; i < lines.length; i += CHUNK) {
     const chunk = lines.slice(i, i + CHUNK);
@@ -360,7 +380,8 @@ async function insertLinesBulk(pgClient, batchId, cid, lines) {
       params.push(
         batchId, cid, ln.source_row_number, ln.transaction_date,
         ln.source_account_code, ln.source_account_name, ln.source_description, ln.source_reference,
-        ln.debit, ln.credit, ln.source_currency, ln.mapping_status, ln.validation_status
+        ln.debit, ln.credit, ln.source_currency, ln.mapping_status, ln.validation_status,
+        ln.validation_notes || null
       );
     }
     await pgClient.query(
@@ -606,7 +627,20 @@ router.get('/batches/:id', authenticate, hasPermission('legacy_gl.view'), async 
   if (error)  return res.status(500).json({ error: error.message });
   if (!batch) return res.status(404).json({ error: 'Batch not found' });
 
-  res.json({ batch });
+  // Include warning line count (e.g. ACCOUNT_CONTEXT_MISSING) for the stats panel
+  const pgClient = await db.getClient();
+  let warningLines = 0;
+  try {
+    const { rows: [wc] } = await pgClient.query(
+      `SELECT COUNT(*) AS cnt FROM legacy_gl_import_lines WHERE batch_id = $1 AND validation_status = 'warning'`,
+      [bid]
+    );
+    warningLines = parseInt(wc.cnt || 0);
+  } finally {
+    pgClient.release();
+  }
+
+  res.json({ batch: { ...batch, warning_lines: warningLines } });
 });
 
 // ─── GET /batches/:id/lines — paginated staged lines ─────────────────────────
@@ -617,7 +651,8 @@ router.get('/batches/:id/lines', authenticate, hasPermission('legacy_gl.view'), 
   const page   = Math.max(1, parseInt(req.query.page   || '1'));
   const limit  = Math.min(200, Math.max(10, parseInt(req.query.limit || '100')));
   const offset = (page - 1) * limit;
-  const filterStatus = req.query.mapping_status || null;
+  const filterStatus     = req.query.mapping_status    || null;
+  const filterValidation = req.query.validation_status || null;
 
   // Verify ownership
   const { data: batch } = await supabase
@@ -635,7 +670,8 @@ router.get('/batches/:id/lines', authenticate, hasPermission('legacy_gl.view'), 
     .order('source_row_number', { ascending: true })
     .range(offset, offset + limit - 1);
 
-  if (filterStatus) query = query.eq('mapping_status', filterStatus);
+  if (filterValidation)       query = query.eq('validation_status', filterValidation);
+  else if (filterStatus)      query = query.eq('mapping_status', filterStatus);
 
   const { data: lines, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
@@ -824,6 +860,164 @@ router.post('/batches/:id/map-account', authenticate, hasPermission('legacy_gl.i
   res.json({ success: true, batch: updated });
 });
 
+// ─── PATCH /batches/:id/lines/:lineId — per-line skip / unskip / map ─────────
+
+router.patch('/batches/:id/lines/:lineId', authenticate, hasPermission('legacy_gl.import'), async (req, res) => {
+  const cid    = parseInt(companyId(req));
+  const bid    = parseInt(req.params.id);
+  const lineId = parseInt(req.params.lineId);
+  const { action, mapped_account_id } = req.body;
+
+  if (!['skip', 'unskip', 'map'].includes(action)) {
+    return res.status(400).json({ error: 'action must be skip, unskip, or map' });
+  }
+  if (action === 'map' && !mapped_account_id) {
+    return res.status(400).json({ error: 'mapped_account_id required for map action' });
+  }
+
+  const { data: batch } = await supabase
+    .from('legacy_gl_import_batches')
+    .select('id, status')
+    .eq('id', bid)
+    .eq('company_id', cid)
+    .maybeSingle();
+  if (!batch) return res.status(404).json({ error: 'Batch not found' });
+  if (['imported','cancelled'].includes(batch.status)) {
+    return res.status(409).json({ error: `Cannot modify lines on a ${batch.status} batch` });
+  }
+
+  if (action === 'map' && mapped_account_id) {
+    const { data: acct } = await supabase
+      .from('accounts').select('id,company_id').eq('id', parseInt(mapped_account_id)).maybeSingle();
+    if (!acct) return res.status(404).json({ error: 'Account not found' });
+    if (String(acct.company_id) !== String(cid)) return res.status(403).json({ error: 'Account belongs to different company' });
+  }
+
+  const pgClient = await db.getClient();
+  try {
+    await pgClient.query('BEGIN');
+    if (action === 'skip') {
+      await pgClient.query(
+        `UPDATE legacy_gl_import_lines SET mapping_status='skipped', mapping_source='manual' WHERE id=$1 AND batch_id=$2 AND company_id=$3`,
+        [lineId, bid, cid]
+      );
+    } else if (action === 'unskip') {
+      await pgClient.query(
+        `UPDATE legacy_gl_import_lines SET mapping_status='unmapped', mapped_account_id=NULL, mapping_source=NULL WHERE id=$1 AND batch_id=$2 AND company_id=$3`,
+        [lineId, bid, cid]
+      );
+    } else {
+      await pgClient.query(
+        `UPDATE legacy_gl_import_lines SET mapping_status='mapped', mapped_account_id=$1, mapping_source='manual' WHERE id=$2 AND batch_id=$3 AND company_id=$4`,
+        [mapped_account_id, lineId, bid, cid]
+      );
+    }
+    await refreshBatchCounts(pgClient, bid);
+    await pgClient.query('COMMIT');
+  } catch (err) {
+    await pgClient.query('ROLLBACK');
+    pgClient.release();
+    return res.status(500).json({ error: 'Failed to update line', detail: err.message });
+  }
+  pgClient.release();
+
+  const { data: updated } = await supabase
+    .from('legacy_gl_import_batches')
+    .select('id,total_lines,mapped_lines,unmapped_lines,skipped_lines')
+    .eq('id', bid).single();
+
+  res.json({ success: true, batch: updated });
+});
+
+// ─── POST /batches/:id/lines/bulk-action — bulk skip / unskip / map ──────────
+
+router.post('/batches/:id/lines/bulk-action', authenticate, hasPermission('legacy_gl.import'), async (req, res) => {
+  const cid = parseInt(companyId(req));
+  const bid = parseInt(req.params.id);
+  const { action, line_ids, mapped_account_id } = req.body;
+
+  if (!['skip', 'unskip', 'map'].includes(action)) {
+    return res.status(400).json({ error: 'action must be skip, unskip, or map' });
+  }
+  if (!Array.isArray(line_ids) || line_ids.length === 0) {
+    return res.status(400).json({ error: 'line_ids must be a non-empty array' });
+  }
+  if (line_ids.length > 500) {
+    return res.status(400).json({ error: 'Maximum 500 lines per bulk action' });
+  }
+  if (action === 'map' && !mapped_account_id) {
+    return res.status(400).json({ error: 'mapped_account_id required for map action' });
+  }
+
+  const { data: batch } = await supabase
+    .from('legacy_gl_import_batches')
+    .select('id, status')
+    .eq('id', bid)
+    .eq('company_id', cid)
+    .maybeSingle();
+  if (!batch) return res.status(404).json({ error: 'Batch not found' });
+  if (['imported','cancelled'].includes(batch.status)) {
+    return res.status(409).json({ error: `Cannot modify lines on a ${batch.status} batch` });
+  }
+
+  if (action === 'map' && mapped_account_id) {
+    const { data: acct } = await supabase
+      .from('accounts').select('id,company_id').eq('id', parseInt(mapped_account_id)).maybeSingle();
+    if (!acct) return res.status(404).json({ error: 'Account not found' });
+    if (String(acct.company_id) !== String(cid)) return res.status(403).json({ error: 'Account belongs to different company' });
+  }
+
+  const safeIds = line_ids.map(Number).filter(n => !isNaN(n) && n > 0);
+  if (safeIds.length === 0) return res.status(400).json({ error: 'No valid line IDs provided' });
+
+  const pgClient = await db.getClient();
+  let affectedRows = 0;
+  try {
+    await pgClient.query('BEGIN');
+
+    if (action === 'skip') {
+      const idList = safeIds.map((_, i) => `$${i + 3}`).join(',');
+      const r = await pgClient.query(
+        `UPDATE legacy_gl_import_lines SET mapping_status='skipped', mapping_source='manual'
+         WHERE batch_id=$1 AND company_id=$2 AND id IN (${idList})`,
+        [bid, cid, ...safeIds]
+      );
+      affectedRows = r.rowCount;
+    } else if (action === 'unskip') {
+      const idList = safeIds.map((_, i) => `$${i + 3}`).join(',');
+      const r = await pgClient.query(
+        `UPDATE legacy_gl_import_lines SET mapping_status='unmapped', mapped_account_id=NULL, mapping_source=NULL
+         WHERE batch_id=$1 AND company_id=$2 AND id IN (${idList})`,
+        [bid, cid, ...safeIds]
+      );
+      affectedRows = r.rowCount;
+    } else {
+      const idList = safeIds.map((_, i) => `$${i + 4}`).join(',');
+      const r = await pgClient.query(
+        `UPDATE legacy_gl_import_lines SET mapping_status='mapped', mapped_account_id=$3, mapping_source='manual'
+         WHERE batch_id=$1 AND company_id=$2 AND id IN (${idList})`,
+        [bid, cid, mapped_account_id, ...safeIds]
+      );
+      affectedRows = r.rowCount;
+    }
+
+    await refreshBatchCounts(pgClient, bid);
+    await pgClient.query('COMMIT');
+  } catch (err) {
+    await pgClient.query('ROLLBACK');
+    pgClient.release();
+    return res.status(500).json({ error: 'Bulk action failed', detail: err.message });
+  }
+  pgClient.release();
+
+  const { data: updated } = await supabase
+    .from('legacy_gl_import_batches')
+    .select('id,total_lines,mapped_lines,unmapped_lines,skipped_lines')
+    .eq('id', bid).single();
+
+  res.json({ success: true, affected: affectedRows, batch: updated });
+});
+
 // ─── POST /batches/:id/validate — run validation checks ──────────────────────
 
 router.post('/batches/:id/validate', authenticate, hasPermission('legacy_gl.import'), async (req, res) => {
@@ -847,16 +1041,17 @@ router.post('/batches/:id/validate', authenticate, hasPermission('legacy_gl.impo
     // Fetch aggregate validation stats
     const { rows: [s] } = await pgClient.query(`
       SELECT
-        COUNT(*)                                              AS total,
-        COUNT(*) FILTER (WHERE mapping_status = 'unmapped')  AS unmapped,
-        COUNT(*) FILTER (WHERE mapping_status = 'skipped')   AS skipped,
-        COUNT(*) FILTER (WHERE transaction_date IS NULL)     AS missing_date,
-        COUNT(*) FILTER (WHERE debit = 0 AND credit = 0)    AS zero_amount,
-        COALESCE(SUM(debit), 0)                             AS total_debit,
-        COALESCE(SUM(credit), 0)                            AS total_credit,
-        COUNT(DISTINCT transaction_date)                    AS distinct_dates,
-        MIN(transaction_date)                               AS min_date,
-        MAX(transaction_date)                               AS max_date
+        COUNT(*)                                                         AS total,
+        COUNT(*) FILTER (WHERE mapping_status = 'unmapped')             AS unmapped,
+        COUNT(*) FILTER (WHERE mapping_status = 'skipped')              AS skipped,
+        COUNT(*) FILTER (WHERE transaction_date IS NULL)                AS missing_date,
+        COUNT(*) FILTER (WHERE debit = 0 AND credit = 0)               AS zero_amount,
+        COUNT(*) FILTER (WHERE validation_notes = 'ACCOUNT_CONTEXT_MISSING') AS missing_context,
+        COALESCE(SUM(debit), 0)                                         AS total_debit,
+        COALESCE(SUM(credit), 0)                                        AS total_credit,
+        COUNT(DISTINCT transaction_date)                                AS distinct_dates,
+        MIN(transaction_date)                                           AS min_date,
+        MAX(transaction_date)                                           AS max_date
       FROM legacy_gl_import_lines
       WHERE batch_id = $1 AND mapping_status <> 'skipped'
     `, [bid]);
@@ -904,6 +1099,14 @@ router.post('/batches/:id/validate', authenticate, hasPermission('legacy_gl.impo
         : `${stats.zero_amount} line(s) have zero debit and zero credit — these will create empty journal lines`,
     },
     {
+      check:   'account_context',
+      label:   'Account section context on all lines',
+      status:  parseInt(stats.missing_context) === 0 ? 'PASS' : 'WARNING',
+      detail:  parseInt(stats.missing_context) === 0
+        ? 'All lines have an account section context'
+        : `${stats.missing_context} line(s) had no account section header — verify these are mapped to the correct GL account (filter "Warnings" in preview to review)`,
+    },
+    {
       check:   'date_range',
       label:   'Date range',
       status:  'INFO',
@@ -927,8 +1130,9 @@ router.post('/batches/:id/validate', authenticate, hasPermission('legacy_gl.impo
     await pgClient2.query(`
       UPDATE legacy_gl_import_lines
       SET validation_status = CASE
-            WHEN mapping_status = 'unmapped' THEN 'fail'
-            WHEN debit = 0 AND credit = 0    THEN 'warning'
+            WHEN mapping_status = 'unmapped'                        THEN 'fail'
+            WHEN debit = 0 AND credit = 0                           THEN 'warning'
+            WHEN validation_notes = 'ACCOUNT_CONTEXT_MISSING'       THEN 'warning'
             ELSE 'pass'
           END
       WHERE batch_id = $1

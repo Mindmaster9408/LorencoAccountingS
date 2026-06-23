@@ -173,6 +173,19 @@
     .empty-state p { margin-top: 6px; font-size: 13px; }
 
     .warn-banner { background: rgba(234,179,8,.1); border: 1px solid rgba(234,179,8,.3); border-radius: 8px; padding: 12px 16px; color: #facc15; font-size: 12px; margin-bottom: 16px; }
+
+    /* ── Bulk action bar ──────────────────────────────────────────────── */
+    .bulk-bar { display: none; align-items: center; gap: 10px; flex-wrap: wrap; background: rgba(124,106,247,.08); border: 1px solid rgba(124,106,247,.25); border-radius: 8px; padding: 10px 14px; margin-top: 10px; }
+    .bulk-bar.visible { display: flex; }
+    .bulk-bar select { width: auto; min-width: 200px; }
+
+    /* ── Row-level warning highlight ─────────────────────────────────── */
+    tr.row-warn td { background: rgba(234,179,8,.04); }
+    .warn-inline { color: var(--yellow); font-size: 11px; margin-left: 4px; }
+
+    /* ── Checkbox column ─────────────────────────────────────────────── */
+    input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+    th.cb-col, td.cb-col { width: 32px; padding: 8px 6px; }
   </style>
 </head>
 <body>
@@ -291,21 +304,25 @@
     <!-- Preview tab -->
     <div class="tab-content active" id="tcPreview">
       <div class="preview-toolbar">
-        <select id="previewFilter" onchange="loadLines(1)">
+        <select id="previewFilter" onchange="loadLines(1)" title="Filter lines">
           <option value="">All lines</option>
           <option value="unmapped">Unmapped only</option>
           <option value="mapped">Mapped only</option>
           <option value="skipped">Skipped only</option>
+          <option value="warnings">Warnings only</option>
         </select>
         <span id="previewCount" style="font-size:12px;color:var(--text-dim)"></span>
       </div>
+      <!-- Bulk action bar — visible when rows are selected -->
+      <div class="bulk-bar" id="bulkActionBar"></div>
       <div class="table-scroll">
         <table>
           <thead>
             <tr>
+              <th class="cb-col"><input type="checkbox" id="selectAllCb" title="Select all on page" onchange="toggleSelectAll(this.checked)"></th>
               <th>Row</th><th>Date</th><th>Acc. Code</th><th>Acc. Name</th><th>Description</th>
               <th>Reference</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th>
-              <th>Mapping</th><th>Target Account</th><th>Validation</th>
+              <th>Mapping</th><th>Target Account</th><th>Val.</th><th>Action</th>
             </tr>
           </thead>
           <tbody id="linesTbody"></tbody>
@@ -344,6 +361,7 @@ let currentBatch   = null;
 let currentPage    = 1;
 let totalPages     = 1;
 let allGLAccounts  = [];
+let selectedLineIds = new Set(); // tracks checked rows across pages
 
 // ─── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -606,6 +624,7 @@ async function loadDetail(batchId) {
   const data = await r.json();
   currentBatch = data.batch;
   currentPage  = 1;
+  selectedLineIds.clear();
   renderDetail();
   document.getElementById('detailPanel').style.display = 'block';
   document.getElementById('detailPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -626,10 +645,11 @@ function renderDetail() {
     `<span class="badge-pill s-${b.status}" id="detailStatusBadge">${b.status.replace(/_/g,' ')}</span>`;
 
   // Stats
-  const mapped   = parseInt(b.mapped_lines || 0);
-  const total    = parseInt(b.total_lines  || 0);
+  const mapped   = parseInt(b.mapped_lines   || 0);
+  const total    = parseInt(b.total_lines    || 0);
   const unmapped = parseInt(b.unmapped_lines || 0);
   const skipped  = parseInt(b.skipped_lines  || 0);
+  const warnings = parseInt(b.warning_lines  || 0);
   const pct      = total > 0 ? Math.round(mapped / total * 100) : 0;
 
   document.getElementById('detailStats').innerHTML = `
@@ -637,6 +657,7 @@ function renderDetail() {
     <div class="stat-item"><span class="sv sv-green">${mapped}</span><span class="sl">Mapped</span></div>
     <div class="stat-item"><span class="sv sv-${unmapped>0?'red':'green'}">${unmapped}</span><span class="sl">Unmapped</span></div>
     <div class="stat-item"><span class="sv">${skipped}</span><span class="sl">Skipped</span></div>
+    ${warnings > 0 ? `<div class="stat-item"><span class="sv sv-yellow">${warnings}</span><span class="sl">Warnings</span></div>` : ''}
     <div class="stat-item"><span class="sv sv-${pct===100?'green':pct>50?'yellow':'red'}">${pct}%</span><span class="sl">Mapping Progress</span></div>
     <div class="stat-item"><span class="sv">${fmt(b.total_debits)}</span><span class="sl">Total Debits</span></div>
     <div class="stat-item"><span class="sv">${fmt(b.total_credits)}</span><span class="sl">Total Credits</span></div>
@@ -696,8 +717,11 @@ function switchTab(tab) {
 async function loadLines(page) {
   if (!currentBatch) return;
   currentPage = page;
-  const filter = document.getElementById('previewFilter').value;
-  const url    = `/api/accounting/legacy-gl/batches/${currentBatch.id}/lines?page=${page}&limit=100${filter ? '&mapping_status='+filter : ''}`;
+  const filterVal = document.getElementById('previewFilter').value;
+  let filterParam = '';
+  if (filterVal === 'warnings')  filterParam = '&validation_status=warning';
+  else if (filterVal)            filterParam = '&mapping_status=' + filterVal;
+  const url = `/api/accounting/legacy-gl/batches/${currentBatch.id}/lines?page=${page}&limit=100${filterParam}`;
 
   const r    = await fetch(url, { headers: authHeaders() });
   const data = await r.json();
@@ -706,28 +730,48 @@ async function loadLines(page) {
 
   totalPages = Math.ceil((pg.total || 0) / (pg.limit || 100)) || 1;
 
-  document.getElementById('previewCount').textContent =
-    `${pg.total || 0} line(s)`;
+  document.getElementById('previewCount').textContent = `${pg.total || 0} line(s)`;
 
   const tbody = document.getElementById('linesTbody');
   if (!lines.length) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text-dim)">No lines to display.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text-dim)">No lines to display.</td></tr>`;
   } else {
-    tbody.innerHTML = lines.map(l => `
-      <tr>
-        <td style="color:var(--text-dim)">${l.source_row_number}</td>
-        <td>${fmtDate(l.transaction_date)}</td>
-        <td>${l.source_account_code || ''}</td>
-        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.source_account_name||''}">${l.source_account_name || ''}</td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.source_description||''}">${l.source_description || ''}</td>
-        <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.source_reference || ''}</td>
-        <td style="text-align:right">${l.debit > 0 ? fmt(l.debit) : ''}</td>
-        <td style="text-align:right">${l.credit > 0 ? fmt(l.credit) : ''}</td>
-        <td>${mappingBadge(l.mapping_status)}</td>
-        <td style="font-size:11px;color:var(--text-dim)">${l.mapped_account ? `${l.mapped_account.code} ${l.mapped_account.name}` : '—'}</td>
-        <td>${validBadge(l.validation_status)}</td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = lines.map(l => {
+      const isWarn   = l.validation_notes === 'ACCOUNT_CONTEXT_MISSING';
+      const isChecked = selectedLineIds.has(l.id);
+      let actionBtn = '';
+      if (l.mapping_status === 'unmapped') {
+        actionBtn = `<button type="button" class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px" onclick="doRowAction(${l.id},'skip')">Skip</button>`;
+      } else if (l.mapping_status === 'skipped') {
+        actionBtn = `<button type="button" class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px" onclick="doRowAction(${l.id},'unskip')">Unskip</button>`;
+      }
+      return `
+        <tr class="${isWarn ? 'row-warn' : ''}">
+          <td class="cb-col"><input type="checkbox" class="line-cb" data-line-id="${l.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectLine(${l.id}, this.checked)"></td>
+          <td style="color:var(--text-dim)">${l.source_row_number}</td>
+          <td>${fmtDate(l.transaction_date)}</td>
+          <td>${escHtml(l.source_account_code || '')}</td>
+          <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(l.source_account_name||'')}">
+            ${escHtml(l.source_account_name || '')}${isWarn ? '<span class="warn-inline" title="No account section context found">⚠</span>' : ''}
+          </td>
+          <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(l.source_description||'')}">${escHtml(l.source_description || '')}</td>
+          <td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(l.source_reference || '')}</td>
+          <td style="text-align:right">${l.debit > 0 ? fmt(l.debit) : ''}</td>
+          <td style="text-align:right">${l.credit > 0 ? fmt(l.credit) : ''}</td>
+          <td>${mappingBadge(l.mapping_status)}</td>
+          <td style="font-size:11px;color:var(--text-dim)">${l.mapped_account ? `${escHtml(l.mapped_account.code)} ${escHtml(l.mapped_account.name)}` : '—'}</td>
+          <td>${validBadge(l.validation_status)}</td>
+          <td>${actionBtn}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  // Sync select-all checkbox state
+  const allCb = document.getElementById('selectAllCb');
+  if (allCb) {
+    const rowCbs = document.querySelectorAll('.line-cb');
+    allCb.checked = rowCbs.length > 0 && [...rowCbs].every(cb => selectedLineIds.has(parseInt(cb.dataset.lineId)));
+    allCb.indeterminate = !allCb.checked && [...rowCbs].some(cb => selectedLineIds.has(parseInt(cb.dataset.lineId)));
   }
 
   // Pagination controls
@@ -912,6 +956,107 @@ async function doCancel() {
   renderActionBar();
   loadBatches();
   toast('Batch cancelled', 'inf');
+}
+
+// ─── Row selection ─────────────────────────────────────────────────────────
+function toggleSelectLine(lineId, checked) {
+  if (checked) selectedLineIds.add(lineId);
+  else         selectedLineIds.delete(lineId);
+  renderBulkBar();
+  // Update select-all state
+  const allCb  = document.getElementById('selectAllCb');
+  const rowCbs = document.querySelectorAll('.line-cb');
+  if (allCb && rowCbs.length) {
+    allCb.checked       = [...rowCbs].every(cb  => selectedLineIds.has(parseInt(cb.dataset.lineId)));
+    allCb.indeterminate = !allCb.checked && [...rowCbs].some(cb => selectedLineIds.has(parseInt(cb.dataset.lineId)));
+  }
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.line-cb').forEach(cb => {
+    cb.checked = checked;
+    const id = parseInt(cb.dataset.lineId);
+    if (checked) selectedLineIds.add(id);
+    else         selectedLineIds.delete(id);
+  });
+  renderBulkBar();
+}
+
+function renderBulkBar() {
+  const bar = document.getElementById('bulkActionBar');
+  if (!bar) return;
+  if (selectedLineIds.size === 0) {
+    bar.classList.remove('visible');
+    bar.innerHTML = '';
+    return;
+  }
+  bar.classList.add('visible');
+  const selHtml = buildAccountSelect('bulkAccountSel', null);
+  bar.innerHTML = `
+    <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;flex-shrink:0">${selectedLineIds.size} row(s) selected</span>
+    <div style="flex:1;min-width:180px">${selHtml}</div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="doBulkAction('map')">Map Selected</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="doBulkAction('skip')">Skip Selected</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="doBulkAction('unskip')">Unskip Selected</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="selectedLineIds.clear();renderBulkBar();loadLines(currentPage)">&times; Clear</button>
+  `;
+}
+
+// ─── Per-row action ────────────────────────────────────────────────────────
+async function doRowAction(lineId, action, accountId) {
+  const payload = { action };
+  if (accountId) payload.mapped_account_id = accountId;
+  try {
+    const r    = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/lines/${lineId}`, {
+      method: 'PATCH', headers: authHeaders(), body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) { toast(data.error || 'Action failed', 'err'); return; }
+    currentBatch = { ...currentBatch, ...data.batch };
+    loadLines(currentPage);
+    if (activeTab === 'mapping') loadMappingPanel();
+  } catch (err) {
+    toast('Error: ' + err.message, 'err');
+  }
+}
+
+// ─── Bulk action ───────────────────────────────────────────────────────────
+async function doBulkAction(action) {
+  const ids = [...selectedLineIds];
+  if (!ids.length) { toast('Select rows first', 'err'); return; }
+
+  let accountId = null;
+  if (action === 'map') {
+    const sel = document.getElementById('bulkAccountSel');
+    accountId  = sel ? parseInt(sel.value) : null;
+    if (!accountId) { toast('Select a target account first', 'err'); return; }
+  }
+
+  const payload = { action, line_ids: ids };
+  if (accountId) payload.mapped_account_id = accountId;
+
+  try {
+    const r    = await fetch(`/api/accounting/legacy-gl/batches/${currentBatch.id}/lines/bulk-action`, {
+      method: 'POST', headers: authHeaders(), body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) { toast(data.error || 'Bulk action failed', 'err'); return; }
+
+    const verb = action === 'skip' ? 'Skipped' : action === 'unskip' ? 'Unskipped' : 'Mapped';
+    toast(`${verb} ${data.affected || ids.length} line(s)`, 'ok');
+    selectedLineIds.clear();
+    currentBatch = { ...currentBatch, ...data.batch };
+    renderBulkBar();
+    loadLines(currentPage);
+    if (activeTab === 'mapping') loadMappingPanel();
+  } catch (err) {
+    toast('Error: ' + err.message, 'err');
+  }
+}
+
+// ─── HTML escape helpers ───────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 </script>
 </body>
