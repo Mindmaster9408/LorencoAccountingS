@@ -16,17 +16,23 @@ router.use(requireCompany);
 
 /**
  * GET /api/pos/tills
- * List all tills for the company
+ * List tills for the company.
+ * Default: active only (?include_inactive omitted or falsy).
+ * Pass ?include_inactive=true for settings/management views.
  */
 router.get('/', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('tills')
       .select('*')
       .eq('company_id', req.companyId)
-      .eq('is_active', true)
       .order('till_number');
 
+    if (!req.query.include_inactive) {
+      query = query.eq('is_active', true);
+    }
+
+    const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
     res.json({ tills: data || [] });
   } catch (err) {
@@ -66,16 +72,26 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
 
 /**
  * PATCH /api/pos/tills/:id
- * Update a till (e.g. deactivate: { is_active: false })
+ * Update a till — name, number, location, or is_active flag.
  */
 router.patch('/:id', requirePermission('SALES.CREATE'), async (req, res) => {
   try {
     const tillId = parseInt(req.params.id);
-    const { is_active } = req.body;
+    const { is_active, till_name, till_number, location } = req.body;
+
+    const updates = {};
+    if (typeof is_active === 'boolean') updates.is_active = is_active;
+    if (till_name)   updates.till_name   = till_name.trim();
+    if (till_number) updates.till_number = till_number.trim();
+    if (location !== undefined) updates.location = location ? location.trim() : null;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
 
     const { data, error } = await supabase
       .from('tills')
-      .update({ is_active: !!is_active })
+      .update(updates)
       .eq('id', tillId)
       .eq('company_id', req.companyId)
       .select()

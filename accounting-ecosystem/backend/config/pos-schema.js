@@ -320,6 +320,65 @@ async function ensurePosSchema(pool) {
         ON pos_pin_attempts(company_id, user_id, success, created_at DESC)
     `);
 
+    // ── tills ─────────────────────────────────────────────────────────────────
+    // Core table; may already exist from database/schema.sql initial deploy.
+    // ADD COLUMN IF NOT EXISTS is safe to run on every startup.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tills (
+        id          SERIAL PRIMARY KEY,
+        company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        till_name   VARCHAR(255) NOT NULL,
+        till_number VARCHAR(50) NOT NULL,
+        location    VARCHAR(255),
+        is_active   BOOLEAN NOT NULL DEFAULT true,
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, till_number)
+      )
+    `);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS is_locked               BOOLEAN NOT NULL DEFAULT FALSE`);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS locked_reason            TEXT`);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS locked_at                TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS locked_by_email          TEXT`);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS is_printer_degraded      BOOLEAN NOT NULL DEFAULT FALSE`);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS printer_degraded_reason  TEXT`);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS printer_degraded_at      TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE tills ADD COLUMN IF NOT EXISTS printer_degraded_by_email TEXT`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tills_company ON tills(company_id)`);
+
+    // ── till_sessions ──────────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS till_sessions (
+        id               SERIAL PRIMARY KEY,
+        company_id       INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        till_id          INTEGER NOT NULL REFERENCES tills(id),
+        user_id          INTEGER NOT NULL REFERENCES users(id),
+        opening_balance  DECIMAL(10,2) NOT NULL,
+        closing_balance  DECIMAL(10,2),
+        expected_balance DECIMAL(10,2),
+        variance         DECIMAL(10,2),
+        status           VARCHAR(20) DEFAULT 'open',
+        opened_at        TIMESTAMPTZ DEFAULT NOW(),
+        closed_at        TIMESTAMPTZ,
+        notes            TEXT
+      )
+    `);
+    await client.query(`ALTER TABLE till_sessions ADD COLUMN IF NOT EXISTS float_amount DECIMAL(10,2)`);
+    await client.query(`ALTER TABLE till_sessions ADD COLUMN IF NOT EXISTS cashup_id    INTEGER`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_till_sessions_company ON till_sessions(company_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_till_sessions_status  ON till_sessions(company_id, status)`);
+
+    // ── pos_emergency_state ───────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_emergency_state (
+        company_id         INTEGER PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
+        sync_paused        BOOLEAN NOT NULL DEFAULT FALSE,
+        sync_paused_by     TEXT,
+        sync_paused_reason TEXT,
+        sync_paused_at     TIMESTAMPTZ,
+        updated_at         TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     // ── pos_user_product_shortcuts ────────────────────────────────────────────
     // Per-user, per-company shortcut products (star pinned to top of Shortcuts tab).
     // Never stored in localStorage — DB-authoritative only.

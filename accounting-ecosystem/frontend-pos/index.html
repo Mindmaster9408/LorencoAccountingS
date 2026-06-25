@@ -2330,6 +2330,7 @@
                     <div class="settings-menu-item" onclick="showSettings('brands', event)">Brands</div>
                     <div class="settings-menu-item" onclick="showSettings('suppliers', event)">Suppliers</div>
                     <div class="settings-menu-item" onclick="showSettings('sites', event)">Sites</div>
+                    <div class="settings-menu-item manager-only" onclick="showSettings('tills', event)">Tills</div>
                 </div>
 
                 <div class="settings-content">
@@ -2680,6 +2681,51 @@
                         </div>
 
                         <button class="btn btn-primary" onclick="saveGeneralSettings()" style="padding: 12px 30px;">Save All Settings</button>
+                    </div>
+
+                    <!-- Tills Section -->
+                    <div id="tillsSection" style="display: none;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                            <h3 style="margin:0; color:#333;">Tills</h3>
+                            <button class="btn btn-primary manager-only" onclick="showCreateTillForm()">+ Add Till</button>
+                        </div>
+
+                        <div id="createTillForm" style="display:none; background:#f8f9fa; border-radius:8px; padding:20px; margin-bottom:20px; border:1px solid #e0e0e0;">
+                            <h4 style="margin:0 0 15px 0; color:#333;">New Till</h4>
+                            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                                <div>
+                                    <label style="display:block; margin-bottom:5px; font-size:13px; font-weight:600;">Till Name *</label>
+                                    <input id="newTillName" type="text" placeholder="e.g. Till 1" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; font-size:14px;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom:5px; font-size:13px; font-weight:600;">Till Number *</label>
+                                    <input id="newTillNumber" type="text" placeholder="e.g. 1" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; font-size:14px;">
+                                </div>
+                                <div>
+                                    <label style="display:block; margin-bottom:5px; font-size:13px; font-weight:600;">Location</label>
+                                    <input id="newTillLocation" type="text" placeholder="e.g. Checkout 1" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; font-size:14px;">
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                <button class="btn btn-secondary" onclick="hideCreateTillForm()">Cancel</button>
+                                <button class="btn btn-primary" onclick="saveTill()">Create Till</button>
+                            </div>
+                        </div>
+
+                        <table class="products-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Number</th>
+                                    <th>Location</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tillsTableBody">
+                                <tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">Loading tills...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -4579,7 +4625,7 @@
                         const tillsResult = await tillsResponse.json();
 
                         if (tillsResult.tills.length === 0) {
-                            showNotification('No tills available', 'error');
+                            showNotification('No active till configured. Go to Settings → Tills to create one.', 'error');
                             return;
                         }
 
@@ -10391,6 +10437,116 @@
                 }
             } catch (e) {
                 showNotification('Failed to save settings: ' + e.message, 'error');
+            }
+        }
+
+        // ========== TILLS MANAGEMENT ==========
+
+        async function loadSettingsTills() {
+            const tbody = document.getElementById('tillsTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#999;">Loading...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/pos/tills?include_inactive=true`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed');
+                const result = await res.json();
+                renderTillsTable(result.tills || []);
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#e53935;">Error loading tills.</td></tr>';
+            }
+        }
+
+        function renderTillsTable(tills) {
+            const tbody = document.getElementById('tillsTableBody');
+            if (!tbody) return;
+            if (tills.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#999;">No tills yet. Click "+ Add Till" to create your first till.</td></tr>';
+                return;
+            }
+            const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            tbody.innerHTML = tills.map(t => `
+                <tr>
+                    <td style="font-weight:600;">${esc(t.till_name)}</td>
+                    <td>${esc(t.till_number)}</td>
+                    <td>${esc(t.location || '—')}</td>
+                    <td>
+                        <span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${t.is_active ? '#e8f5e9' : '#fce4ec'};color:${t.is_active ? '#2e7d32' : '#c62828'};">
+                            ${t.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                        ${t.is_locked ? '<span style="margin-left:6px;padding:3px 8px;border-radius:12px;font-size:11px;background:#fff3e0;color:#e65100;">Locked</span>' : ''}
+                    </td>
+                    <td>
+                        <button class="btn btn-secondary manager-only"
+                                onclick="toggleTillActive(${t.id}, ${t.is_active})"
+                                style="padding:4px 10px;font-size:11px;">
+                            ${t.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function showCreateTillForm() {
+            document.getElementById('createTillForm').style.display = 'block';
+            document.getElementById('newTillName').focus();
+        }
+
+        function hideCreateTillForm() {
+            document.getElementById('createTillForm').style.display = 'none';
+            document.getElementById('newTillName').value = '';
+            document.getElementById('newTillNumber').value = '';
+            document.getElementById('newTillLocation').value = '';
+        }
+
+        async function saveTill() {
+            const name   = (document.getElementById('newTillName').value || '').trim();
+            const number = (document.getElementById('newTillNumber').value || '').trim();
+            const loc    = (document.getElementById('newTillLocation').value || '').trim();
+
+            if (!name || !number) {
+                showNotification('Till name and number are required', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/tills`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ till_name: name, till_number: number, location: loc || null })
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    showNotification(result.error || 'Failed to create till', 'error');
+                    return;
+                }
+                showNotification(`Till "${name}" created`, 'success');
+                hideCreateTillForm();
+                loadSettingsTills();
+            } catch (e) {
+                showNotification('Error creating till', 'error');
+            }
+        }
+
+        async function toggleTillActive(tillId, currentlyActive) {
+            const action = currentlyActive ? 'deactivate' : 'activate';
+            if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} this till?`)) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/tills/${tillId}`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: !currentlyActive })
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    showNotification(result.error || 'Failed to update till', 'error');
+                    return;
+                }
+                showNotification(`Till ${action}d`, 'success');
+                loadSettingsTills();
+            } catch (e) {
+                showNotification('Error updating till', 'error');
             }
         }
 
