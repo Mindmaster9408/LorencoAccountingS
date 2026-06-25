@@ -9559,21 +9559,35 @@
 
         async function loadCompaniesForUserFilter() {
             try {
-                const res = await fetch(`${API_URL}/auth/companies/all`, {
+                const res = await fetch(`${API_URL}/companies`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (res.ok) {
-                    const data = await res.json();
-                    const companies = data.companies || [];
-                    const select = document.getElementById('userCompanyFilter');
-                    const userSelect = document.getElementById('userCompanySelect');
-                    const opts = '<option value="">Select company...</option>' +
-                        companies.map(c => `<option value="${c.id}">${c.company_name}${c.trading_name ? ' (' + c.trading_name + ')' : ''}</option>`).join('');
-                    select.innerHTML = opts;
-                    userSelect.innerHTML = opts;
+                if (!res.ok) {
+                    const tbody = document.getElementById('usersTableBody');
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:20px;">Failed to load companies. Please refresh and try again.</td></tr>';
+                    return;
+                }
+                const data = await res.json();
+                const companies = data.companies || [];
+                const select = document.getElementById('userCompanyFilter');
+                const userSelect = document.getElementById('userCompanySelect');
+                const opts = '<option value="">Select company...</option>' +
+                    companies.map(c => `<option value="${c.id}">${c.company_name}${c.trading_name ? ' (' + c.trading_name + ')' : ''}</option>`).join('');
+                select.innerHTML = opts;
+                if (userSelect) userSelect.innerHTML = opts;
+
+                // Auto-select the active company and load its users
+                if (currentCompanyId) {
+                    const match = companies.find(c => c.id === currentCompanyId || String(c.id) === String(currentCompanyId));
+                    if (match) {
+                        select.value = match.id;
+                        loadCompanyUsers();
+                    }
                 }
             } catch (e) {
-                console.log('Error loading companies for filter:', e);
+                console.error('[settings/users] loadCompaniesForUserFilter error:', e);
+                const tbody = document.getElementById('usersTableBody');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:20px;">Failed to load companies — network error.</td></tr>';
             }
         }
 
