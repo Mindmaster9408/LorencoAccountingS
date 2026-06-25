@@ -69,6 +69,7 @@ async function ensurePosSchema(pool) {
     // Add sku and unit as optional columns that the backend accepts.
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(100)`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS unit VARCHAR(50) DEFAULT 'each'`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100)`);
 
     // ── sales: add cashier_id alias + notes ──────────────────────────────────
     // The code uses cashier_id (the acting user). Schema has user_id NOT NULL.

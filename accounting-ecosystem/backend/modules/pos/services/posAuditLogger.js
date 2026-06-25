@@ -69,6 +69,7 @@ const POS_EVENTS = {
     PRODUCT_PRICE_CHANGED:  'PRODUCT_PRICE_CHANGED',
     PRODUCT_DEACTIVATED:    'PRODUCT_DEACTIVATED',   // soft delete: is_active = false
     PRODUCT_DELETED:        'PRODUCT_DELETED',       // hard delete (future)
+    PRODUCT_IMPORT:         'PRODUCT_IMPORT',        // bulk import (workstream 17)
 
     // Inventory events
     STOCK_ADJUSTED:              'STOCK_ADJUSTED',
@@ -131,6 +132,7 @@ const EVENT_CATEGORY = {
     PRODUCT_PRICE_CHANGED:  'product',
     PRODUCT_DEACTIVATED:    'product',
     PRODUCT_DELETED:        'product',
+    PRODUCT_IMPORT:         'product',
     STOCK_ADJUSTED:              'inventory',
     STOCK_TAKE_COMPLETED:        'inventory',
     SUPPLIER_RECEIVE_COMPLETED:  'inventory',

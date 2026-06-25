@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Import — Checkout Charlie</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+/* ── Reset + Base ───────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --card:      #1c2230;
+    --border:    #30363d;
+    --accent:    #3b82f6;
+    --accent2:   #8b5cf6;
+    --success:   #10b981;
+    --warning:   #f59e0b;
+    --danger:    #ef4444;
+    --skip:      #6b7280;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --radius:    10px;
+    --radius-sm: 6px;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ── Layout ─────────────────────────────────────────────────────────────────── */
+.page-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+.page-header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+.page-header a { color: var(--muted); text-decoration: none; font-size: 13px; }
+.page-header a:hover { color: var(--text); }
+.page-header h1 { font-size: 22px; font-weight: 700; }
+.badge { font-size: 11px; background: var(--accent2); color: white; padding: 2px 8px; border-radius: 12px; font-weight: 600; letter-spacing: .4px; }
+
+/* ── Step Indicator ─────────────────────────────────────────────────────────── */
+.steps { display: flex; align-items: center; margin-bottom: 32px; }
+.step-item { display: flex; align-items: center; gap: 8px; }
+.step-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; transition: background .2s, color .2s; background: var(--border); color: var(--muted); }
+.step-label { font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.step-item.active .step-num { background: var(--accent); color: white; }
+.step-item.active .step-label { color: var(--text); }
+.step-item.done .step-num { background: var(--success); color: white; }
+.step-item.done .step-label { color: var(--success); }
+.step-connector { flex: 1; height: 2px; background: var(--border); margin: 0 8px; min-width: 20px; }
+.step-connector.done { background: var(--success); }
+
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+.card-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+.card-subtitle { font-size: 13px; color: var(--muted); margin-top: -10px; margin-bottom: 16px; }
+
+/* ── Panels ─────────────────────────────────────────────────────────────────── */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* ── Drop zone ──────────────────────────────────────────────────────────────── */
+.drop-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius); padding: 56px 24px;
+    text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(59,130,246,.06); }
+.drop-zone svg { margin-bottom: 14px; opacity: .5; }
+.drop-zone h3 { font-size: 17px; margin-bottom: 6px; }
+.drop-zone p { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+.drop-zone .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+#fileInput { display: none; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: opacity .15s, filter .15s; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary   { background: var(--accent);  color: white; }
+.btn-success   { background: var(--success); color: white; }
+.btn-ghost     { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-danger    { background: var(--danger);  color: white; }
+.btn-sm        { padding: 6px 12px; font-size: 12px; }
+.btn:not(:disabled):hover { filter: brightness(1.1); }
+
+/* ── Forms ──────────────────────────────────────────────────────────────────── */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.form-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .4px; }
+select, input[type=text] {
+    width: 100%; background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 10px; border-radius: var(--radius-sm); font-size: 13px;
+}
+select:focus, input[type=text]:focus { outline: none; border-color: var(--accent); }
+.toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; cursor: pointer; }
+.toggle-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+
+/* ── Column mapping table ───────────────────────────────────────────────────── */
+.map-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.map-table th { text-align: left; padding: 9px 10px; font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+.map-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+.map-table tr:last-child td { border-bottom: none; }
+.required-badge { font-size: 10px; background: rgba(239,68,68,.15); color: #f87171; padding: 1px 6px; border-radius: 8px; margin-left: 4px; }
+.auto-badge { font-size: 10px; background: rgba(16,185,129,.12); color: var(--success); padding: 1px 6px; border-radius: 8px; margin-left: 4px; }
+
+/* ── Import options ─────────────────────────────────────────────────────────── */
+.option-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.option-card { border: 2px solid var(--border); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+.option-card:hover { border-color: var(--accent); }
+.option-card.selected { border-color: var(--accent); background: rgba(59,130,246,.07); }
+.option-card h4 { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.option-card p { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+/* ── Preview counts ─────────────────────────────────────────────────────────── */
+.count-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.count-card { background: var(--card); border-radius: var(--radius); padding: 16px; text-align: center; }
+.count-num { font-size: 28px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+.count-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.count-new     .count-num { color: var(--success); }
+.count-update  .count-num { color: var(--accent); }
+.count-skip    .count-num { color: var(--skip); }
+.count-error   .count-num { color: var(--danger); }
+
+/* ── Preview table ──────────────────────────────────────────────────────────── */
+.preview-wrap { max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 700px; }
+.preview-table th { position: sticky; top: 0; background: var(--card); padding: 9px 10px; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+.preview-table td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,.03); }
+.preview-table tr.row-new    td:first-child { border-left: 3px solid var(--success); }
+.preview-table tr.row-update td:first-child { border-left: 3px solid var(--accent); }
+.preview-table tr.row-skip   td:first-child { border-left: 3px solid var(--skip); }
+.preview-table tr.row-error  td:first-child { border-left: 3px solid var(--danger); }
+.preview-table tr.row-error  { background: rgba(239,68,68,.05); }
+.status-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.pill-new    { background: rgba(16,185,129,.15);  color: var(--success); }
+.pill-update { background: rgba(59,130,246,.15);  color: #60a5fa; }
+.pill-skip   { background: rgba(107,114,128,.15); color: #9ca3af; }
+.pill-error  { background: rgba(239,68,68,.15);   color: #f87171; }
+.error-msg { font-size: 11px; color: #f87171; margin-top: 2px; }
+
+/* ── Progress ───────────────────────────────────────────────────────────────── */
+.progress-wrap { margin-bottom: 24px; }
+.progress-bar-bg { background: var(--border); border-radius: 99px; height: 8px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 99px; transition: width .3s; }
+.progress-text { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; }
+.spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Summary ────────────────────────────────────────────────────────────────── */
+.summary-hero { text-align: center; padding: 32px 0 20px; }
+.summary-hero .icon { font-size: 48px; margin-bottom: 12px; }
+.summary-hero h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.summary-hero p { font-size: 14px; color: var(--muted); }
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
+
+/* ── Alerts ─────────────────────────────────────────────────────────────────── */
+.alert { padding: 12px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 14px; }
+.alert-info    { background: rgba(59,130,246,.1);  border: 1px solid rgba(59,130,246,.2);  color: #93c5fd; }
+.alert-warn    { background: rgba(245,158,11,.1);  border: 1px solid rgba(245,158,11,.2);  color: #fcd34d; }
+.alert-danger  { background: rgba(239,68,68,.1);   border: 1px solid rgba(239,68,68,.2);   color: #fca5a5; }
+.alert-success { background: rgba(16,185,129,.1);  border: 1px solid rgba(16,185,129,.2);  color: #6ee7b7; }
+
+/* ── Action bar ─────────────────────────────────────────────────────────────── */
+.action-bar { display: flex; align-items: center; justify-content: space-between; padding-top: 20px; border-top: 1px solid var(--border); margin-top: 20px; gap: 12px; }
+.action-bar-right { display: flex; gap: 10px; align-items: center; }
+
+/* ── Notice ─────────────────────────────────────────────────────────────────── */
+.categories-notice { font-size: 12px; color: var(--warning); margin-top: 8px; }
+.supplier-notice   { font-size: 12px; color: var(--muted);   margin-top: 4px;  }
+
+/* ── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+    .steps { flex-wrap: wrap; gap: 4px; }
+    .step-connector { min-width: 10px; }
+    .step-label { display: none; }
+    .count-grid { grid-template-columns: repeat(2, 1fr); }
+    .option-cards { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .form-row, .form-row-3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="page-wrap">
+
+    <!-- Header -->
+    <div class="page-header">
+        <a href="/pos/index.html">&#8592; Back to POS</a>
+        <h1>Product Import</h1>
+        <span class="badge">MANAGEMENT</span>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="steps" id="stepIndicator">
+        <div class="step-item active" id="si-1"><div class="step-num">1</div><div class="step-label">Upload</div></div>
+        <div class="step-connector" id="sc-1"></div>
+        <div class="step-item" id="si-2"><div class="step-num">2</div><div class="step-label">Map Columns</div></div>
+        <div class="step-connector" id="sc-2"></div>
+        <div class="step-item" id="si-3"><div class="step-num">3</div><div class="step-label">Options</div></div>
+        <div class="step-connector" id="sc-3"></div>
+        <div class="step-item" id="si-4"><div class="step-num">4</div><div class="step-label">Preview</div></div>
+        <div class="step-connector" id="sc-4"></div>
+        <div class="step-item" id="si-5"><div class="step-num">5</div><div class="step-label">Done</div></div>
+    </div>
+
+    <!-- ── STEP 1: UPLOAD ──────────────────────────────────────────────────── -->
+    <div class="panel active" id="panel-1">
+        <div class="card">
+            <div class="card-title">Upload your product file</div>
+            <div class="card-subtitle">Supports Excel (.xlsx) and CSV (.csv). Excel preferred.</div>
+
+            <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <h3>Drop file here or click to browse</h3>
+                <p>Excel (.xlsx) or CSV (.csv) — max 10,000 rows</p>
+                <input type="file" id="fileInput" accept=".xlsx,.csv,.xls">
+                <button class="btn btn-primary" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">Browse Files</button>
+                <div class="hint">No personal or financial data is stored in your browser</div>
+            </div>
+
+            <div id="fileInfo" style="display:none; margin-top:16px;" class="alert alert-info"></div>
+            <div id="parseError" style="display:none; margin-top:16px;" class="alert alert-danger"></div>
+        </div>
+
+        <div class="card" style="display:none" id="templateCard">
+            <div class="card-title">Download template</div>
+            <div class="card-subtitle">Use this to prepare your file in the correct format.</div>
+            <button class="btn btn-ghost btn-sm" onclick="downloadTemplate()">&#8681; Download CSV template</button>
+        </div>
+
+        <div id="step1-actions" class="action-bar" style="display:none">
+            <div></div>
+            <div class="action-bar-right">
+                <button class="btn btn-primary" id="btnToStep2" onclick="goToStep(2)">Map Columns &#8594;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── STEP 2: COLUMN MAPPING ─────────────────────────────────────────── -->
+    <div class="panel" id="panel-2">
+        <div class="card">
+            <div class="card-title">Map spreadsheet columns</div>
+            <div class="card-subtitle">We've auto-detected the likely mapping. Review and adjust if needed.</div>
+            <table class="map-table" id="mapTable">
+                <thead>
+                    <tr>
+                        <th style="width:34%">Target field</th>
+                        <th style="width:44%">Your column</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="mapTableBody"></tbody>
+            </table>
+        </div>
+
+        <div class="action-bar">
+            <button class="btn btn-ghost" onclick="goToStep(1)">&#8592; Back</button>
+            <div class="action-bar-right">
+                <button class="btn btn-primary" onclick="goToStep(3)">Import Options &#8594;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── STEP 3: OPTIONS ────────────────────────────────────────────────── -->
+    <div class="panel" id="panel-3">
+        <div class="card">
+            <div class="card-title">Import mode</div>
+            <div class="card-subtitle">How should existing products (matched by barcode or product code) be handled?</div>
+            <div class="option-cards">
+                <div class="option-card selected" data-mode="create_only" onclick="selectMode(this)">
+                    <h4>Create only</h4>
+                    <p>Skip rows that match an existing product. Only new products are imported.</p>
+                </div>
+                <div class="option-card" data-mode="update_existing" onclick="selectMode(this)">
+                    <h4>Update existing</h4>
+                    <p>Only update products that already exist. New products in the file are skipped.</p>
+                </div>
+                <div class="option-card" data-mode="create_and_update" onclick="selectMode(this)">
+                    <h4>Create + Update</h4>
+                    <p>Create new products and update existing ones in a single pass.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Unknown values</div>
+            <div class="card-subtitle">What to do when category or supplier names are not found in the database.</div>
+            <label class="toggle-row">
+                <input type="checkbox" id="optAutoCreateCats">
+                Automatically create new categories found in the file
+            </label>
+            <label class="toggle-row">
+                <input type="checkbox" id="optAutoCreateSups">
+                Automatically create new suppliers found in the file
+            </label>
+            <div class="alert alert-info" style="margin-top:12px; font-size:12px;">
+                If unchecked, products with unknown categories or suppliers are still imported — the category/supplier field is simply left blank.
+            </div>
+        </div>
+
+        <div class="action-bar">
+            <button class="btn btn-ghost" onclick="goToStep(2)">&#8592; Back</button>
+            <div class="action-bar-right">
+                <button class="btn btn-primary" id="btnPreview" onclick="runPreview()">
+                    Preview Import &#8594;
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── STEP 4: PREVIEW ────────────────────────────────────────────────── -->
+    <div class="panel" id="panel-4">
+        <div id="previewLoading" class="card" style="text-align:center; padding:40px;">
+            <div class="spinner"></div> Analysing <span id="previewRowCount">0</span> products against the database…
+        </div>
+
+        <div id="previewResults" style="display:none">
+            <div class="card">
+                <div class="card-title">Preview summary</div>
+                <div class="count-grid">
+                    <div class="count-card count-new">
+                        <div class="count-num" id="cnt-new">0</div>
+                        <div class="count-label">New</div>
+                    </div>
+                    <div class="count-card count-update">
+                        <div class="count-num" id="cnt-update">0</div>
+                        <div class="count-label">Update</div>
+                    </div>
+                    <div class="count-card count-skip">
+                        <div class="count-num" id="cnt-skip">0</div>
+                        <div class="count-label">Skip</div>
+                    </div>
+                    <div class="count-card count-error">
+                        <div class="count-num" id="cnt-error">0</div>
+                        <div class="count-label">Errors</div>
+                    </div>
+                </div>
+
+                <div id="categoryNotice" class="categories-notice" style="display:none"></div>
+                <div id="supplierNotice" class="supplier-notice"   style="display:none"></div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <div class="card-title" style="margin-bottom:0">Row preview <span id="previewRowLabel" style="font-size:12px; color:var(--muted); font-weight:400;"></span></div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="previewFilter" onchange="renderPreviewGrid()" style="width:auto; font-size:12px; padding:5px 8px;">
+                            <option value="all">All rows</option>
+                            <option value="new">New only</option>
+                            <option value="update">Updates only</option>
+                            <option value="skip">Skipped only</option>
+                            <option value="error">Errors only</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="preview-wrap">
+                    <table class="preview-table">
+                        <thead>
+                            <tr>
+                                <th style="width:30px">#</th>
+                                <th>Status</th>
+                                <th>Product Name</th>
+                                <th>Code</th>
+                                <th>Barcode</th>
+                                <th>Category</th>
+                                <th>Price</th>
+                                <th>Stock</th>
+                                <th>Issue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="previewErrorBlock" style="display:none" class="alert alert-danger">
+                <strong>&#9888; Errors found.</strong> Rows marked as Error will be skipped during import.
+                You can go back and fix the source file, or proceed to import the valid rows.
+            </div>
+            <div id="previewNothingBlock" style="display:none" class="alert alert-warn">
+                No rows will be created or updated with the current options. Check your import mode and file.
+            </div>
+
+            <div class="action-bar">
+                <button class="btn btn-ghost" onclick="goToStep(3)">&#8592; Back</button>
+                <div class="action-bar-right">
+                    <button class="btn btn-success" id="btnExecute" onclick="runExecute()">
+                        &#10003; Import Now
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── STEP 5: DONE ───────────────────────────────────────────────────── -->
+    <div class="panel" id="panel-5">
+        <div id="importingBlock" class="card" style="text-align:center; padding:40px; display:none;">
+            <div class="spinner"></div> Importing products — please wait…
+            <div class="progress-wrap" style="margin-top:20px; max-width:400px; margin-left:auto; margin-right:auto;">
+                <div class="progress-bar-bg"><div class="progress-bar-fill" id="execBar" style="width:0%"></div></div>
+                <div class="progress-text" id="execStatus">Sending to server…</div>
+            </div>
+        </div>
+
+        <div id="doneBlock" style="display:none">
+            <div class="card">
+                <div class="summary-hero">
+                    <div class="icon" id="doneIcon">✅</div>
+                    <h2 id="doneTitle">Import complete</h2>
+                    <p id="doneSubtitle"></p>
+                </div>
+                <div class="summary-grid">
+                    <div class="count-card count-new">
+                        <div class="count-num" id="done-created">0</div>
+                        <div class="count-label">Created</div>
+                    </div>
+                    <div class="count-card count-update">
+                        <div class="count-num" id="done-updated">0</div>
+                        <div class="count-label">Updated</div>
+                    </div>
+                    <div class="count-card count-skip">
+                        <div class="count-num" id="done-skipped">0</div>
+                        <div class="count-label">Skipped</div>
+                    </div>
+                    <div class="count-card count-error">
+                        <div class="count-num" id="done-failed">0</div>
+                        <div class="count-label">Failed</div>
+                    </div>
+                </div>
+                <div id="doneTimeTaken" style="text-align:center; font-size:12px; color:var(--muted); margin-top:4px;"></div>
+            </div>
+
+            <div id="doneErrorCard" class="card" style="display:none">
+                <div class="card-title">&#9888; Failed rows</div>
+                <div class="preview-wrap" style="max-height:300px;">
+                    <table class="preview-table">
+                        <thead><tr><th>Row</th><th>Product Name</th><th>Code</th><th>Reason</th></tr></thead>
+                        <tbody id="doneErrorTableBody"></tbody>
+                    </table>
+                </div>
+                <div style="margin-top:12px;">
+                    <button class="btn btn-ghost btn-sm" onclick="downloadErrorCSV()">&#8681; Download Failed Rows CSV</button>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn btn-ghost" onclick="startOver()">Import another file</button>
+                <div class="action-bar-right">
+                    <a href="/pos/index.html" class="btn btn-primary">&#8592; Back to POS</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div><!-- /page-wrap -->
+
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const API_URL = window.location.origin + '/api';
+
+const FIELD_DEFS = [
+    { key: 'product_name',  label: 'Product Name',   required: true  },
+    { key: 'product_code',  label: 'Product Code',   required: false },
+    { key: 'barcode',       label: 'Barcode',        required: false },
+    { key: 'category',      label: 'Category',       required: false },
+    { key: 'brand',         label: 'Brand',          required: false },
+    { key: 'supplier',      label: 'Supplier',       required: false },
+    { key: 'selling_price', label: 'Selling Price',  required: false },
+    { key: 'cost_price',    label: 'Cost Price',     required: false },
+    { key: 'vat_rate',      label: 'VAT Rate (%)',   required: false },
+    { key: 'stock_quantity',label: 'Current Stock',  required: false },
+    { key: 'reorder_level', label: 'Reorder Level',  required: false },
+    { key: 'unit',          label: 'Unit of Measure',required: false },
+    { key: 'description',   label: 'Description',    required: false },
+    { key: 'active',        label: 'Active',         required: false },
+    { key: 'notes',         label: 'Notes',          required: false },
+];
+
+const FIELD_ALIASES = {
+    product_name:   ['product name','name','item name','product','item','title','product_name','item_name'],
+    product_code:   ['product code','sku','code','item code','ref','reference','stock code','stockcode','product_code','sku code','item_code','internal code','art no','article no','part number'],
+    barcode:        ['barcode','ean','upc','gtin','scan code','barcode number','ean13','upc code','scan'],
+    category:       ['category','cat','department','group','product group','category name','product category','dept'],
+    brand:          ['brand','manufacturer','make','brand name','make/brand'],
+    supplier:       ['supplier','vendor','supplier name','vendor name','supplier/vendor'],
+    selling_price:  ['selling price','price','retail price','sale price','unit price','selling_price','unitprice','retail','excl price','excl. price','price excl','incl price','vat incl price'],
+    cost_price:     ['cost price','cost','buy price','purchase price','cost_price','landed cost','nett cost','buy-in'],
+    vat_rate:       ['vat rate','vat','tax rate','vat%','vat_rate','tax%','vat rate %'],
+    stock_quantity: ['stock','quantity','stock quantity','on hand','qty','stock_quantity','current stock','qty on hand','stock on hand','onhand','qoh'],
+    reorder_level:  ['reorder level','min stock','reorder point','minimum stock','reorder_level','min level','reorder','minimum qty','min qty','rop'],
+    unit:           ['unit','uom','unit of measure','unit of measurement','unit type','measure'],
+    description:    ['description','product description','long description','full description','item description'],
+    active:         ['active','status','enabled','is_active','active status','active?'],
+    notes:          ['notes','comment','internal notes','remarks','internal comment','note'],
+};
+
+// ── State (never touches localStorage) ───────────────────────────────────────
+
+let state = {
+    step:          1,
+    parsedRows:    [],     // raw rows from file
+    fileHeaders:   [],
+    columnMapping: {},     // fieldKey → header name
+    importMode:    'create_only',
+    autoCreateCats:false,
+    autoCreateSups:false,
+    previewResult: null,
+    importResult:  null,
+};
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+function getToken() {
+    return localStorage.getItem('token') || '';
+}
+
+function authHeaders() {
+    return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' };
+}
+
+// ── Step navigation ───────────────────────────────────────────────────────────
+
+function goToStep(n) {
+    for (let i = 1; i <= 5; i++) {
+        document.getElementById('panel-' + i).classList.toggle('active', i === n);
+        const si = document.getElementById('si-' + i);
+        si.classList.remove('active', 'done');
+        if (i < n)  si.classList.add('done');
+        if (i === n) si.classList.add('active');
+        if (i < 5) {
+            const sc = document.getElementById('sc-' + i);
+            sc.classList.toggle('done', i < n);
+        }
+    }
+    state.step = n;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Step 1: File upload / parse ───────────────────────────────────────────────
+
+function initUpload() {
+    const dz   = document.getElementById('dropZone');
+    const fi   = document.getElementById('fileInput');
+
+    dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop',      e => {
+        e.preventDefault(); dz.classList.remove('drag-over');
+        const f = e.dataTransfer.files[0];
+        if (f) handleFile(f);
+    });
+    fi.addEventListener('change', () => { if (fi.files[0]) handleFile(fi.files[0]); });
+
+    document.getElementById('templateCard').style.display = 'block';
+}
+
+function handleFile(file) {
+    const infoEl  = document.getElementById('fileInfo');
+    const errEl   = document.getElementById('parseError');
+    errEl.style.display = 'none';
+
+    infoEl.style.display = 'block';
+    infoEl.textContent   = 'Reading ' + file.name + '…';
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data     = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet    = workbook.Sheets[workbook.SheetNames[0]];
+            const rows     = XLSX.utils.sheet_to_json(sheet, { raw: true, defval: '' });
+
+            if (rows.length === 0) {
+                showParseError('The file appears to be empty or has no data rows.');
+                return;
+            }
+            if (rows.length > 10000) {
+                showParseError('File contains ' + rows.length.toLocaleString() + ' rows. Maximum is 10,000 per import. Please split the file.');
+                return;
+            }
+
+            state.parsedRows  = rows;
+            state.fileHeaders = Object.keys(rows[0]);
+
+            infoEl.textContent = '✓ ' + file.name + ' — ' + rows.length.toLocaleString() + ' data rows, ' + state.fileHeaders.length + ' columns detected';
+
+            buildColumnMapping();
+            document.getElementById('step1-actions').style.display = 'flex';
+
+        } catch (err) {
+            showParseError('Could not read the file: ' + err.message + '. Make sure it is a valid Excel or CSV file.');
+        }
+    };
+    reader.onerror = () => showParseError('Failed to read the file.');
+    reader.readAsArrayBuffer(file);
+}
+
+function showParseError(msg) {
+    const el = document.getElementById('parseError');
+    el.textContent    = msg;
+    el.style.display  = 'block';
+    document.getElementById('fileInfo').style.display = 'none';
+    document.getElementById('step1-actions').style.display = 'none';
+}
+
+// ── Step 2: Column mapping ────────────────────────────────────────────────────
+
+function buildColumnMapping() {
+    const auto = autoMap(state.fileHeaders);
+    state.columnMapping = { ...auto };
+
+    const tbody = document.getElementById('mapTableBody');
+    tbody.innerHTML = '';
+
+    FIELD_DEFS.forEach(fd => {
+        const matched = auto[fd.key] || '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                ${fd.label}
+                ${fd.required ? '<span class="required-badge">Required</span>' : ''}
+            </td>
+            <td>
+                <select id="map_${fd.key}" onchange="onMappingChange('${fd.key}', this.value)">
+                    <option value="">— Skip —</option>
+                    ${state.fileHeaders.map(h => `<option value="${h}"${h === matched ? ' selected' : ''}>${h}</option>`).join('')}
+                </select>
+            </td>
+            <td>
+                <span id="mapstatus_${fd.key}">${matched ? '<span class="auto-badge">Auto</span>' : '<span style="font-size:11px;color:var(--muted)">Not mapped</span>'}</span>
+            </td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function autoMap(headers) {
+    const mapping  = {};
+    const usedHdrs = new Set();
+    FIELD_DEFS.forEach(fd => {
+        const aliases = FIELD_ALIASES[fd.key] || [];
+        for (const h of headers) {
+            if (usedHdrs.has(h)) continue;
+            if (aliases.includes(h.trim().toLowerCase())) {
+                mapping[fd.key] = h;
+                usedHdrs.add(h);
+                break;
+            }
+        }
+    });
+    return mapping;
+}
+
+function onMappingChange(fieldKey, headerVal) {
+    state.columnMapping[fieldKey] = headerVal || null;
+    const statusEl = document.getElementById('mapstatus_' + fieldKey);
+    statusEl.innerHTML = headerVal ? '<span class="auto-badge">Mapped</span>' : '<span style="font-size:11px;color:var(--muted)">Not mapped</span>';
+}
+
+// ── Step 3: Options ───────────────────────────────────────────────────────────
+
+function selectMode(el) {
+    document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    state.importMode = el.dataset.mode;
+}
+
+// ── Extract rows using current column mapping ─────────────────────────────────
+
+function extractMappedRows() {
+    return state.parsedRows.map(raw => {
+        const out = {};
+        FIELD_DEFS.forEach(fd => {
+            const col = state.columnMapping[fd.key];
+            out[fd.key] = col ? String(raw[col] !== undefined ? raw[col] : '').trim() : '';
+        });
+        return out;
+    });
+}
+
+// ── Step 4: Preview ───────────────────────────────────────────────────────────
+
+async function runPreview() {
+    const token = getToken();
+    if (!token) { alert('Session expired. Please log in again.'); return; }
+
+    state.importMode    = document.querySelector('.option-card.selected').dataset.mode;
+    state.autoCreateCats = document.getElementById('optAutoCreateCats').checked;
+    state.autoCreateSups = document.getElementById('optAutoCreateSups').checked;
+
+    goToStep(4);
+    document.getElementById('previewLoading').style.display  = 'block';
+    document.getElementById('previewResults').style.display  = 'none';
+    document.getElementById('previewRowCount').textContent   = state.parsedRows.length.toLocaleString();
+
+    const mappedRows = extractMappedRows();
+
+    try {
+        const resp = await fetch(API_URL + '/pos/import/preview', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+                rows:    mappedRows,
+                options: {
+                    mode:                  state.importMode,
+                    auto_create_categories: state.autoCreateCats,
+                    auto_create_suppliers:  state.autoCreateSups,
+                },
+            }),
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || 'Server error ' + resp.status);
+        }
+
+        state.previewResult = await resp.json();
+        renderPreviewSummary();
+    } catch (err) {
+        document.getElementById('previewLoading').style.display = 'none';
+        document.getElementById('previewResults').style.display = 'block';
+        document.getElementById('previewResults').innerHTML =
+            '<div class="alert alert-danger"><strong>Preview failed:</strong> ' + escHtml(err.message) + '</div>' +
+            '<div class="action-bar"><button class="btn btn-ghost" onclick="goToStep(3)">&#8592; Back</button></div>';
+    }
+}
+
+function renderPreviewSummary() {
+    const r = state.previewResult;
+    document.getElementById('previewLoading').style.display = 'none';
+    document.getElementById('previewResults').style.display = 'block';
+
+    document.getElementById('cnt-new').textContent    = r.preview.new_count;
+    document.getElementById('cnt-update').textContent = r.preview.update_count;
+    document.getElementById('cnt-skip').textContent   = r.preview.skip_count;
+    document.getElementById('cnt-error').textContent  = r.preview.error_count;
+
+    // Category / supplier notices
+    const catNotice = document.getElementById('categoryNotice');
+    if (r.categories_to_create && r.categories_to_create.length > 0) {
+        catNotice.style.display  = 'block';
+        catNotice.textContent    = '⚠ ' + r.categories_to_create.length + ' new categor' + (r.categories_to_create.length === 1 ? 'y' : 'ies') + ' will be created: ' + r.categories_to_create.slice(0, 5).join(', ') + (r.categories_to_create.length > 5 ? '…' : '');
+    } else {
+        catNotice.style.display = 'none';
+    }
+    const supNotice = document.getElementById('supplierNotice');
+    if (r.suppliers_to_create && r.suppliers_to_create.length > 0) {
+        supNotice.style.display = 'block';
+        supNotice.textContent   = r.suppliers_to_create.length + ' new supplier' + (r.suppliers_to_create.length === 1 ? '' : 's') + ' will be created.';
+    } else {
+        supNotice.style.display = 'none';
+    }
+
+    document.getElementById('previewErrorBlock').style.display   = r.preview.error_count > 0 ? 'block' : 'none';
+    const actionable = r.preview.new_count + r.preview.update_count;
+    document.getElementById('previewNothingBlock').style.display = actionable === 0 ? 'block' : 'none';
+    document.getElementById('btnExecute').disabled               = actionable === 0;
+
+    renderPreviewGrid();
+}
+
+function renderPreviewGrid() {
+    if (!state.previewResult) return;
+    const filter = document.getElementById('previewFilter').value;
+    const rows   = state.previewResult.rows.filter(r => filter === 'all' || r._status === filter);
+    const MAX_DISPLAY = 200;
+
+    document.getElementById('previewRowLabel').textContent =
+        '(' + Math.min(rows.length, MAX_DISPLAY) + ' of ' + rows.length + (filter !== 'all' ? ' ' + filter : '') + ')';
+
+    const tbody = document.getElementById('previewTableBody');
+    tbody.innerHTML = '';
+
+    rows.slice(0, MAX_DISPLAY).forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'row-' + row._status;
+        tr.innerHTML = `
+            <td>${row._row_index + 2}</td>
+            <td><span class="status-pill pill-${row._status}">${row._status}</span></td>
+            <td>${escHtml(row.product_name || '—')}${row._errors.length ? '<div class="error-msg">' + escHtml(row._errors.join('; ')) + '</div>' : ''}</td>
+            <td>${escHtml(row.product_code || '—')}</td>
+            <td>${escHtml(row.barcode || '—')}</td>
+            <td>${escHtml(row.category || '—')}</td>
+            <td>${row.selling_price !== null && row.selling_price !== '' ? 'R ' + parseFloat(row.selling_price || 0).toFixed(2) : '—'}</td>
+            <td>${row.stock_quantity !== '' && row.stock_quantity !== null ? row.stock_quantity : '—'}</td>
+            <td>${row._errors.length ? escHtml(row._errors.join('; ')) : ''}</td>`;
+        tbody.appendChild(tr);
+    });
+
+    if (rows.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">No rows to display for this filter</td>';
+        tbody.appendChild(tr);
+    }
+}
+
+// ── Step 5: Execute ───────────────────────────────────────────────────────────
+
+async function runExecute() {
+    const token = getToken();
+    if (!token) { alert('Session expired. Please log in again.'); return; }
+
+    const btn = document.getElementById('btnExecute');
+    btn.disabled = true;
+
+    goToStep(5);
+    document.getElementById('importingBlock').style.display = 'flex';
+    document.getElementById('importingBlock').style.flexDirection = 'column';
+    document.getElementById('importingBlock').style.alignItems = 'center';
+    document.getElementById('doneBlock').style.display = 'none';
+
+    animateBar();
+
+    const mappedRows = extractMappedRows();
+
+    try {
+        const resp = await fetch(API_URL + '/pos/import/execute', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+                rows:    mappedRows,
+                options: {
+                    mode:                  state.importMode,
+                    auto_create_categories: state.autoCreateCats,
+                    auto_create_suppliers:  state.autoCreateSups,
+                },
+            }),
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || 'Server error ' + resp.status);
+        }
+
+        state.importResult = await resp.json();
+        renderSummary();
+    } catch (err) {
+        document.getElementById('importingBlock').style.display = 'none';
+        document.getElementById('doneBlock').style.display = 'block';
+        document.getElementById('doneTitle').textContent   = 'Import failed';
+        document.getElementById('doneSubtitle').textContent = err.message;
+        document.getElementById('doneIcon').textContent    = '❌';
+    }
+}
+
+let barInterval = null;
+function animateBar() {
+    let pct = 0;
+    const bar = document.getElementById('execBar');
+    const txt = document.getElementById('execStatus');
+    clearInterval(barInterval);
+    barInterval = setInterval(() => {
+        pct = Math.min(pct + (pct < 60 ? 4 : pct < 85 ? 1.5 : 0.3), 94);
+        bar.style.width = pct + '%';
+        if (pct < 30) txt.textContent = 'Sending to server…';
+        else if (pct < 60) txt.textContent = 'Writing products to database…';
+        else txt.textContent = 'Finalising…';
+    }, 300);
+}
+
+function renderSummary() {
+    clearInterval(barInterval);
+    document.getElementById('execBar').style.width = '100%';
+    const r = state.importResult;
+
+    setTimeout(() => {
+        document.getElementById('importingBlock').style.display = 'none';
+        document.getElementById('doneBlock').style.display      = 'block';
+
+        document.getElementById('done-created').textContent = r.created;
+        document.getElementById('done-updated').textContent = r.updated;
+        document.getElementById('done-skipped').textContent = r.skipped;
+        document.getElementById('done-failed').textContent  = r.failed;
+        document.getElementById('doneTimeTaken').textContent =
+            'Completed in ' + (r.duration_ms / 1000).toFixed(1) + 's';
+
+        const allGood = r.failed === 0;
+        document.getElementById('doneIcon').textContent    = allGood ? '✅' : '⚠️';
+        document.getElementById('doneTitle').textContent   = allGood ? 'Import complete' : 'Import complete with errors';
+        document.getElementById('doneSubtitle').textContent =
+            r.created + ' created, ' + r.updated + ' updated' + (r.failed ? ', ' + r.failed + ' failed' : '');
+
+        if (r.errors && r.errors.length > 0) {
+            document.getElementById('doneErrorCard').style.display = 'block';
+            const tbody = document.getElementById('doneErrorTableBody');
+            tbody.innerHTML = '';
+            r.errors.forEach(e => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${e.row}</td><td>${escHtml(e.product_name)}</td><td>${escHtml(e.product_code)}</td><td style="color:var(--danger)">${escHtml(e.reason)}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+    }, 400);
+}
+
+// ── Error CSV download ────────────────────────────────────────────────────────
+
+function downloadErrorCSV() {
+    const errors = state.importResult && state.importResult.errors;
+    if (!errors || errors.length === 0) return;
+    const rows = [['Row', 'Product Name', 'Product Code', 'Reason']];
+    errors.forEach(e => rows.push([e.row, e.product_name, e.product_code, e.reason]));
+    const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'), { href: url, download: 'import_errors.csv' });
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ── Template download ─────────────────────────────────────────────────────────
+
+function downloadTemplate() {
+    const headers = ['product_name','product_code','barcode','category','brand','supplier','selling_price','cost_price','vat_rate','stock_quantity','reorder_level','unit','description','active','notes'];
+    const sample  = ['Widget A','WGT-001','5901234123457','Electronics','BrandCo','Main Supplier','99.99','45.00','15','50','5','each','A great widget','yes',''];
+    const csv     = [headers.join(','), sample.join(',')].join('\r\n');
+    const blob    = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url     = URL.createObjectURL(blob);
+    const a       = Object.assign(document.createElement('a'), { href: url, download: 'product_import_template.csv' });
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+
+function startOver() {
+    state = {
+        step: 1, parsedRows: [], fileHeaders: [], columnMapping: {},
+        importMode: 'create_only', autoCreateCats: false, autoCreateSups: false,
+        previewResult: null, importResult: null,
+    };
+    document.getElementById('fileInput').value = '';
+    document.getElementById('fileInfo').style.display   = 'none';
+    document.getElementById('parseError').style.display = 'none';
+    document.getElementById('step1-actions').style.display = 'none';
+    document.getElementById('previewResults').style.display = 'none';
+    document.getElementById('previewLoading').style.display = 'block';
+    document.getElementById('doneBlock').style.display      = 'none';
+    document.getElementById('importingBlock').style.display = 'none';
+    document.getElementById('doneErrorCard').style.display  = 'none';
+    document.querySelectorAll('.option-card').forEach((c, i) => c.classList.toggle('selected', i === 0));
+    goToStep(1);
+}
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Auth guard ────────────────────────────────────────────────────────────────
+
+function checkAuth() {
+    const token = getToken();
+    if (!token) {
+        alert('You must be logged in to access product import.');
+        window.location.href = '/pos/index.html';
+        return false;
+    }
+    return true;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (!checkAuth()) return;
+    initUpload();
+});
+</script>
+
+</body>
+</html>

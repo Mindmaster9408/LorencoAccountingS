@@ -22,6 +22,7 @@ const supportRoutes        = require('./routes/support');
 const emergencyRoutes      = require('./routes/emergency');
 const suppliersRoutes      = require('./routes/suppliers');
 const reportsRoutes        = require('./routes/reports');
+const importRoutes         = require('./routes/import');
 
 const router = express.Router();
 
@@ -47,6 +48,7 @@ router.use('/support',    supportRoutes);
 router.use('/emergency',  emergencyRoutes);
 router.use('/suppliers',  suppliersRoutes);
 router.use('/reports',    reportsRoutes);
+router.use('/import',     importRoutes);
 
 // Health check for POS module
 router.get('/status', (req, res) => {
