@@ -11,6 +11,7 @@
 const express = require('express');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
+const { requireCompany } = require('../../middleware/auth');
 const workflowsRouter        = require('./workflows');
 const billingRouter          = require('./billing');
 const engagementsRouter      = require('./engagements');
@@ -77,6 +78,10 @@ const COMPLIANCE_RULE_OFFSET_BASIS = [
 router.get('/status', (req, res) => {
   res.json({ module: 'practice', status: 'active', version: '1.0.0' });
 });
+
+// All routes below require a company context in the JWT.
+// /status is exempt (health check only — no data access).
+router.use(requireCompany);
 
 // ─── KV Store (UI preferences only — not business data) ──────────────────────
 router.get('/kv/:key', async (req, res) => {
@@ -2470,6 +2475,21 @@ router.use('/tax-checklists', taxChecklistsRouter);
 // User-triggered bulk preparation for tax season.
 const taxBulkOperationsRouter = require('./tax-bulk-operations');
 router.use('/tax-bulk-operations', taxBulkOperationsRouter);
+
+// Tax Season Progress Reports (Codebox 38)
+// Read-only reporting: progress, status, documents, reviews, partner summary, risk.
+const taxReportsRouter = require('./tax-reports');
+router.use('/tax-reports', taxReportsRouter);
+
+// Tax Filing Pipeline (Codebox 40)
+// Unified filing lifecycle across individual/company returns + provisional plans.
+const taxPipelineRouter = require('./tax-pipeline');
+router.use('/tax-pipeline', taxPipelineRouter);
+
+// Tax Submission Register (Codebox 41)
+// Manual submission register + evidence tracking across all tax entity types.
+const taxSubmissionsRouter = require('./tax-submissions');
+router.use('/tax-submissions', taxSubmissionsRouter);
 
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
