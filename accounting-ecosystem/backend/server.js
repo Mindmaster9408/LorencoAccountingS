@@ -744,6 +744,16 @@ async function start() {
     } catch (migErr) {
       console.warn('  ⚠️  Sean coaching schema probe failed:', migErr.message);
     }
+
+    // 4f. Auto-migrate auth tables (password_reset_tokens, etc.)
+    try {
+      const { ensureAuthSchema } = require('./config/auth-schema');
+      const accountingDb = require('./modules/accounting/config/database');
+      await ensureAuthSchema(accountingDb.pool);
+    } catch (migErr) {
+      console.warn('  ⚠️  Auth schema migration skipped:', migErr.message);
+      console.warn('     Set DATABASE_URL (Supabase direct connection string, port 5432) to enable auto-migration.');
+    }
   }
 
   // 4. Display module status

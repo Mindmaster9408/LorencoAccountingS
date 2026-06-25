@@ -9,6 +9,7 @@
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../../config/database');
 const { authenticateToken, JWT_SECRET } = require('../../middleware/auth');
@@ -703,18 +704,31 @@ router.get('/companies', authenticateToken, async (req, res) => {
 });
 
 /**
- * POST /api/auth/forgot-password/check
- * Step 1 — verify that an account exists for the given email.
- * Returns 200 { exists: true } if found, 404 otherwise.
- * Deliberately avoids leaking whether the user is active to prevent enumeration.
+ * POST /api/auth/forgot-password/request
+ * Step 1 — generate a secure, time-limited, single-use reset token.
+ *
+ * Always returns the same generic response regardless of whether the email
+ * exists — prevents user enumeration attacks.
+ *
+ * The raw token is written to the server console so an administrator can
+ * retrieve it from server logs and provide it to the requesting user.
+ * WHEN AN EMAIL SERVICE IS AVAILABLE: replace the console.log block with
+ * a call to your email provider (SendGrid / Resend / AWS SES).
  */
-router.post('/forgot-password/check', async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email || typeof email !== 'string' || !email.includes('@')) {
-      return res.status(400).json({ error: 'Valid email address is required' });
-    }
+router.post('/forgot-password/request', async (req, res) => {
+  const { email } = req.body;
 
+  // Generic response returned in ALL paths — success or failure
+  const GENERIC_OK = {
+    success: true,
+    message: 'If an account exists for that email address, a one-time reset code has been generated. Please contact your administrator to obtain the code.'
+  };
+
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email address is required' });
+  }
+
+  try {
     const { data: user } = await supabase
       .from('users')
       .select('id, email, full_name')
@@ -723,48 +737,102 @@ router.post('/forgot-password/check', async (req, res) => {
       .maybeSingle();
 
     if (!user) {
-      // Return 404 — but with a generic message to avoid user enumeration
-      return res.status(404).json({ error: 'No active account found for that email address' });
+      // No account — return same generic response, do not reveal non-existence
+      return res.json(GENERIC_OK);
     }
 
-    res.json({ exists: true, maskedName: user.full_name ? user.full_name.split(' ')[0] : null });
+    // Invalidate any existing unused tokens for this user before issuing a new one
+    await supabase
+      .from('password_reset_tokens')
+      .update({ used_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .is('used_at', null);
+
+    // Generate cryptographically secure token (64-char hex = 256 bits of entropy)
+    const rawToken   = crypto.randomBytes(32).toString('hex');
+    const tokenHash  = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt  = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+    const requestedIp = String(req.ip || req.headers['x-forwarded-for'] || '').slice(0, 45) || null;
+    const userAgent   = String(req.headers['user-agent'] || '').slice(0, 500) || null;
+
+    await supabase.from('password_reset_tokens').insert({
+      user_id:      user.id,
+      token_hash:   tokenHash,
+      expires_at:   expiresAt.toISOString(),
+      requested_ip: requestedIp,
+      user_agent:   userAgent
+    });
+
+    // ── EMAIL PLACEHOLDER ─────────────────────────────────────────────────────
+    // When an email service is configured, replace this block with:
+    //   await emailService.sendPasswordReset(user.email, rawToken, expiresAt);
+    // Until then, the raw token is logged server-side for administrator retrieval.
+    console.log('\n🔑 PASSWORD RESET REQUEST');
+    console.log(`   Email  : ${user.email}`);
+    console.log(`   Code   : ${rawToken}`);
+    console.log(`   Expiry : ${expiresAt.toISOString()} (1 hour)`);
+    console.log('   Action : Provide this code to the user. It is single-use.\n');
+    // ─────────────────────────────────────────────────────────────────────────
+
+    await supabase.from('audit_log').insert({
+      action:      'PASSWORD_RESET_REQUESTED',
+      entity_type: 'user',
+      entity_id:   String(user.id),
+      user_id:     user.id,
+      metadata:    { email: user.email, requested_ip: requestedIp, expires_at: expiresAt.toISOString() }
+    }).catch(() => {});
+
+    return res.json(GENERIC_OK);
   } catch (err) {
-    console.error('Forgot password check error:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Forgot password request error:', err);
+    return res.json(GENERIC_OK); // Always generic — never leak server errors
   }
 });
 
 /**
+ * POST /api/auth/forgot-password/check
+ * DEPRECATED — this endpoint performed an unauthenticated password reset.
+ * Returns 410 Gone. Clients must use /forgot-password/request + /forgot-password/reset.
+ */
+router.post('/forgot-password/check', (_req, res) => {
+  return res.status(410).json({
+    error: 'This endpoint is deprecated. Use POST /api/auth/forgot-password/request to begin a password reset.',
+    code:  'ENDPOINT_DEPRECATED'
+  });
+});
+
+/**
  * POST /api/auth/forgot-password/reset
- * Step 2 — set a new password directly.
+ * Final step — set a new password using a valid, unexpired, unused reset token.
  *
- * Security note: This is a self-service reset WITHOUT email token verification.
- * It is acceptable for this product (known accounting practitioners) because:
- *   1. The Lorenco ecosystem has no outbound email service configured.
- *   2. All users are known practitioners onboarded by their firm admin.
- *   3. The endpoint still requires a valid, active account email to succeed.
- * A token-based email reset should be added once an email service is available.
+ * Body: { email, token, newPassword }
  *
- * FOLLOW-UP NOTE
- * - Area: Password Reset
- * - Dependency: Email delivery service (SendGrid / Resend / AWS SES)
- * - What is done now: Direct self-service reset (email + new password)
- * - What still needs: Token-based email verification flow
- * - Risk if not upgraded: Anyone who knows a user's email can reset their password
- * - Recommended next step: Integrate email provider and add password_reset_tokens table
+ * Security:
+ *   - `token` is the raw value; compared against SHA-256 hash in password_reset_tokens
+ *   - Token must not be expired (expires_at > NOW())
+ *   - Token must not have been used (used_at IS NULL)
+ *   - Token is marked used before password is updated (atomic guard against races)
+ *   - All failure paths return the same generic error to prevent enumeration
  */
 router.post('/forgot-password/reset', async (req, res) => {
   try {
-    const { email, newPassword } = req.body;
+    const { email, token, newPassword } = req.body;
 
-    if (!email || !newPassword) {
-      return res.status(400).json({ error: 'email and newPassword are required' });
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({ error: 'email, token, and newPassword are required' });
     }
     if (typeof newPassword !== 'string' || newPassword.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
+    if (typeof token !== 'string' || token.trim().length < 10) {
+      return res.status(400).json({ error: 'Invalid reset code' });
+    }
 
-    // Find the active user
+    // Generic failure — used for all invalid-token paths to prevent enumeration
+    const FAIL = { error: 'Invalid or expired reset code. Please request a new one.' };
+
+    // Look up active user
     const { data: user } = await supabase
       .from('users')
       .select('id, email')
@@ -772,29 +840,47 @@ router.post('/forgot-password/reset', async (req, res) => {
       .eq('is_active', true)
       .maybeSingle();
 
-    if (!user) {
-      return res.status(404).json({ error: 'No active account found for that email address' });
-    }
+    if (!user) return res.status(400).json(FAIL);
 
-    // Hash and update
+    // Hash the provided raw token and look up in DB
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+    const { data: resetRecord } = await supabase
+      .from('password_reset_tokens')
+      .select('id, expires_at, used_at')
+      .eq('user_id',    user.id)
+      .eq('token_hash', tokenHash)
+      .maybeSingle();
+
+    if (!resetRecord)                                   return res.status(400).json(FAIL);
+    if (resetRecord.used_at !== null)                   return res.status(400).json(FAIL);
+    if (new Date(resetRecord.expires_at) < new Date())  return res.status(400).json(FAIL);
+
+    // Mark token used BEFORE updating password — prevents race conditions
+    const { error: useErr } = await supabase
+      .from('password_reset_tokens')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', resetRecord.id)
+      .is('used_at', null); // CAS guard
+
+    if (useErr) return res.status(500).json({ error: 'Server error' });
+
+    // Hash new password and update user record
     const password_hash = await bcrypt.hash(newPassword, 12);
     const { error: updateErr } = await supabase
       .from('users')
       .update({ password_hash })
       .eq('id', user.id);
 
-    if (updateErr) {
-      return res.status(500).json({ error: 'Failed to update password' });
-    }
+    if (updateErr) return res.status(500).json({ error: 'Failed to update password' });
 
-    // Audit trail
     await supabase.from('audit_log').insert({
-      action: 'SELF_SERVICE_PASSWORD_RESET',
+      action:      'PASSWORD_RESET_COMPLETED',
       entity_type: 'user',
-      entity_id: String(user.id),
-      user_id: user.id,
-      metadata: { method: 'self_service_no_token', email: user.email }
-    }).catch(() => {}); // non-fatal
+      entity_id:   String(user.id),
+      user_id:     user.id,
+      metadata:    { email: user.email, method: 'token_based', token_id: resetRecord.id }
+    }).catch(() => {});
 
     res.json({ success: true, message: 'Password updated successfully. You can now log in.' });
   } catch (err) {

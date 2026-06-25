@@ -545,7 +545,7 @@
                 <div id="forgot-step-1">
                     <a class="back-link" onclick="switchTab('login')">&larr; Back to Login</a>
                     <h3 style="color: #667eea; margin-bottom: 10px; font-size: 1.1rem;">Forgot Password</h3>
-                    <p style="color: #888; font-size: 0.9rem; margin-bottom: 20px;">Enter your email address and we'll check if your account exists.</p>
+                    <p style="color: #888; font-size: 0.9rem; margin-bottom: 20px;">Enter your email address. Your administrator will provide you with a one-time reset code.</p>
 
                     <div class="step-indicator">
                         <div class="step-dot active"></div>
@@ -568,15 +568,15 @@
                             <div class="spinner"></div>
                         </div>
 
-                        <button type="submit" class="btn" id="forgot-step1-btn">Find My Account</button>
+                        <button type="submit" class="btn" id="forgot-step1-btn">Request Reset Code</button>
                     </form>
                 </div>
 
-                <!-- STEP 2: Set New Password -->
+                <!-- STEP 2: Enter reset code + new password -->
                 <div id="forgot-step-2" style="display: none;">
                     <a class="back-link" onclick="forgotGoBackToStep1()">&larr; Back</a>
-                    <h3 style="color: #667eea; margin-bottom: 10px; font-size: 1.1rem;">Set New Password</h3>
-                    <p style="color: #888; font-size: 0.9rem; margin-bottom: 5px;">Account found for:</p>
+                    <h3 style="color: #667eea; margin-bottom: 10px; font-size: 1.1rem;">Reset Password</h3>
+                    <p style="color: #888; font-size: 0.9rem; margin-bottom: 5px;">Reset code sent for:</p>
                     <p id="forgot-found-email" style="color: #667eea; font-weight: 600; font-size: 0.95rem; margin-bottom: 20px;"></p>
 
                     <div class="step-indicator">
@@ -587,11 +587,22 @@
 
                     <form onsubmit="handleForgotStep2(event)">
                         <div class="form-group">
+                            <label for="forgot-reset-token">Reset Code (from your administrator)</label>
+                            <input
+                                type="text"
+                                id="forgot-reset-token"
+                                placeholder="Paste the reset code here"
+                                autocomplete="off"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
                             <label for="forgot-new-password">New Password</label>
                             <input
                                 type="password"
                                 id="forgot-new-password"
-                                placeholder="Enter new password"
+                                placeholder="Enter new password (min 8 characters)"
                                 required
                             >
                         </div>
@@ -870,6 +881,8 @@
             document.getElementById('forgot-error').classList.remove('show');
             document.getElementById('forgot-success').classList.remove('show');
             document.getElementById('forgot-email').value = '';
+            const tokenField = document.getElementById('forgot-reset-token');
+            if (tokenField) tokenField.value = '';
         }
 
         async function handleForgotStep1(event) {
@@ -886,23 +899,25 @@
             document.getElementById('forgot-step1-btn').disabled = true;
 
             try {
-                const res = await fetch('/api/auth/forgot-password/check', {
+                // Calls /request — always returns generic success (no enumeration).
+                // Backend generates a token and logs it server-side for admin retrieval.
+                const res = await fetch('/api/auth/forgot-password/request', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email })
                 });
-                const json = await res.json();
 
                 document.getElementById('forgot-step1-loading').style.display = 'none';
                 document.getElementById('forgot-step1-btn').disabled = false;
 
                 if (!res.ok) {
-                    errorDiv.textContent = json.error || 'No account found for that email address.';
+                    const json = await res.json().catch(() => ({}));
+                    errorDiv.textContent = json.error || 'Request failed. Please try again.';
                     errorDiv.classList.add('show');
                     return;
                 }
 
-                // Account found — advance to step 2
+                // Always advance — backend never confirms whether email exists
                 forgotEmail = email;
                 document.getElementById('forgot-found-email').textContent = email;
                 document.getElementById('forgot-step-1').style.display = 'none';
@@ -918,6 +933,7 @@
         async function handleForgotStep2(event) {
             event.preventDefault();
 
+            const token = document.getElementById('forgot-reset-token').value.trim();
             const newPassword = document.getElementById('forgot-new-password').value;
             const confirmPassword = document.getElementById('forgot-confirm-password').value;
             const errorDiv = document.getElementById('forgot-error');
@@ -926,12 +942,16 @@
             errorDiv.classList.remove('show');
             successDiv.classList.remove('show');
 
+            if (!token) {
+                errorDiv.textContent = 'Please enter the reset code provided by your administrator.';
+                errorDiv.classList.add('show');
+                return;
+            }
             if (newPassword.length < 8) {
                 errorDiv.textContent = 'Password must be at least 8 characters long.';
                 errorDiv.classList.add('show');
                 return;
             }
-
             if (newPassword !== confirmPassword) {
                 errorDiv.textContent = 'Passwords do not match.';
                 errorDiv.classList.add('show');
@@ -945,7 +965,7 @@
                 const res = await fetch('/api/auth/forgot-password/reset', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: forgotEmail, newPassword })
+                    body: JSON.stringify({ email: forgotEmail, token, newPassword })
                 });
                 const json = await res.json();
 
@@ -975,6 +995,7 @@
             document.getElementById('forgot-step-2').style.display = 'none';
             document.getElementById('forgot-error').classList.remove('show');
             document.getElementById('forgot-success').classList.remove('show');
+            document.getElementById('forgot-reset-token').value = '';
             document.getElementById('forgot-new-password').value = '';
             document.getElementById('forgot-confirm-password').value = '';
         }
