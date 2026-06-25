@@ -2460,17 +2460,18 @@
                     <!-- Users Section -->
                     <div id="usersSection" style="display: none;">
                         <div class="products-header">
-                            <div style="display:flex;align-items:center;gap:15px;">
+                            <div style="display:flex;align-items:center;gap:12px;">
                                 <h3 style="margin:0;">User Management</h3>
-                                <select id="userCompanyFilter" onchange="loadCompanyUsers()" style="padding:8px;border:1px solid #ddd;border-radius:6px;">
-                                    <option value="">Select company...</option>
-                                </select>
+                                <!-- Company scope chip — always shows the active POS company, never a global list -->
+                                <span id="userCompanyLabel" style="padding:4px 14px;background:#e8eaf6;color:#3949ab;border-radius:20px;font-size:13px;font-weight:600;white-space:nowrap;"></span>
+                                <!-- Hidden select — keeps loadCompanyUsers() JS compatibility; set from currentCompanyId only -->
+                                <select id="userCompanyFilter" style="display:none;"></select>
                             </div>
                             <div class="header-actions">
                                 <button class="btn btn-primary" onclick="showAddUserModal()">+ Add User</button>
                             </div>
                         </div>
-                        <p style="color: #666; margin: 10px 0 20px; font-size: 13px;">Users belong to specific companies. Each user can have a different role per company. Select a company above to manage its users.</p>
+                        <p style="color: #666; margin: 10px 0 20px; font-size: 13px;">Manage users for the active company. Each user has a role specific to this company.</p>
                         <div class="products-container">
                             <table class="products-table">
                                 <thead>
@@ -3160,10 +3161,10 @@
             <div class="modal-body" style="padding:20px;">
                 <div style="display:grid;gap:15px;">
                     <div>
-                        <label style="font-weight:600;display:block;margin-bottom:5px;">Company *</label>
-                        <select id="userCompanySelect" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;">
-                            <option value="">Select company...</option>
-                        </select>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Company</label>
+                        <!-- Read-only company name — user cannot assign to a different company from POS Settings -->
+                        <div id="userCompanyDisplay" style="padding:10px;border:1px solid #e0e0e0;border-radius:6px;background:#f8f9fa;color:#555;font-size:14px;"></div>
+                        <select id="userCompanySelect" style="display:none;"></select>
                     </div>
                     <div>
                         <label style="font-weight:600;display:block;margin-bottom:5px;">Full Name *</label>
@@ -9972,58 +9973,55 @@
         }
 
         function viewCompanyUsers(companyId) {
-            // Switch to Users section and pre-select the company
+            // Navigate to Users section — always scoped to the active POS company.
+            // The companyId argument is ignored: cross-company navigation is not
+            // permitted from the POS Settings context.
             showSettings('users', null);
             document.querySelectorAll('.settings-menu-item').forEach(item => {
                 item.classList.remove('active');
                 if (item.textContent === 'Users') item.classList.add('active');
             });
-            loadCompaniesForUserFilter().then(() => {
-                document.getElementById('userCompanyFilter').value = companyId;
-                loadCompanyUsers();
-            });
+            // loadCompaniesForUserFilter() is already called by showSettings('users')
         }
 
         async function loadCompaniesForUserFilter() {
-            try {
-                const res = await fetch(`${API_URL}/companies`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) {
-                    const tbody = document.getElementById('usersTableBody');
-                    if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:20px;">Failed to load companies. Please refresh and try again.</td></tr>';
-                    return;
-                }
-                const data = await res.json();
-                const companies = data.companies || [];
-                const select = document.getElementById('userCompanyFilter');
-                const userSelect = document.getElementById('userCompanySelect');
-                const opts = '<option value="">Select company...</option>' +
-                    companies.map(c => `<option value="${c.id}">${c.company_name}${c.trading_name ? ' (' + c.trading_name + ')' : ''}</option>`).join('');
-                select.innerHTML = opts;
-                if (userSelect) userSelect.innerHTML = opts;
+            // ISOLATION: Settings → Users is always scoped to the active POS company.
+            // Never calls /api/companies (which returns all companies for super_admin).
+            // currentCompanyId comes from the JWT selected at login — not from browser storage.
+            const cId   = currentCompanyId;
+            const cName = currentCompanyName || 'Active Company';
 
-                // Auto-select the active company and load its users
-                if (currentCompanyId) {
-                    const match = companies.find(c => c.id === currentCompanyId || String(c.id) === String(currentCompanyId));
-                    if (match) {
-                        select.value = match.id;
-                        loadCompanyUsers();
-                    }
-                }
-            } catch (e) {
-                console.error('[settings/users] loadCompaniesForUserFilter error:', e);
+            if (!cId) {
                 const tbody = document.getElementById('usersTableBody');
-                if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:20px;">Failed to load companies — network error.</td></tr>';
+                if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:20px;">No active company context. Please log in again.</td></tr>';
+                return;
             }
+
+            // Update company label chip
+            const label = document.getElementById('userCompanyLabel');
+            if (label) label.textContent = cName;
+
+            // Set hidden selects to single option for JS reads in loadCompanyUsers / saveUser
+            const singleOpt = `<option value="${cId}" selected>${cName}</option>`;
+            const filterSel = document.getElementById('userCompanyFilter');
+            if (filterSel) filterSel.innerHTML = singleOpt;
+            const modalSel = document.getElementById('userCompanySelect');
+            if (modalSel) modalSel.innerHTML = singleOpt;
+
+            // Update Add User modal company display
+            const companyDisplay = document.getElementById('userCompanyDisplay');
+            if (companyDisplay) companyDisplay.textContent = cName;
+
+            // Auto-load users for the active company
+            loadCompanyUsers();
         }
 
         async function loadCompanyUsers() {
-            const companyId = document.getElementById('userCompanyFilter').value;
+            const companyId = document.getElementById('userCompanyFilter')?.value || currentCompanyId;
             const tbody = document.getElementById('usersTableBody');
 
             if (!companyId) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Select a company to view its users</td></tr>';
+                if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">No active company context.</td></tr>';
                 return;
             }
 
