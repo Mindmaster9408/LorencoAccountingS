@@ -1236,4 +1236,204 @@ router.delete('/companies/:companyId/users/:userId', authenticateToken, async (r
   }
 });
 
+// ── PIN timing-safe dummy hash (one synchronous hash at module load, ~150ms) ──
+// Prevents timing attacks when user not found: compare always runs, always takes same time.
+const _PIN_TIMING_DUMMY = bcrypt.hashSync('__cc_pin_timing_dummy__', 10);
+
+/**
+ * POST /api/auth/pos/pin-login
+ * PIN-based login for cashier-level POS users. Returns the same token shape as
+ * POST /api/auth/select-company so the POS frontend can use the same completeLogin() flow.
+ *
+ * Body: { company_id?, company_name?, user_identifier, pin }
+ *   company_id or company_name — which company to log into
+ *   user_identifier            — username, email, or employee_id
+ *   pin                        — 4–6 digit string (never stored, compared via bcrypt only)
+ *
+ * Security:
+ *   - PIN never returned in any response or log
+ *   - Timing-safe: bcrypt.compare runs even when user/PIN not found
+ *   - Lockout: ≥5 failures in 15 min blocks further attempts (server-side only)
+ *   - Company isolation enforced: lookups scoped to resolved company_id
+ *   - Only PIN-eligible roles allowed: cashier, senior_cashier, shift_supervisor, assistant_manager
+ */
+router.post('/pos/pin-login', async (req, res) => {
+  try {
+    const { company_id, company_name, user_identifier, pin } = req.body;
+
+    if (!user_identifier || !pin) {
+      return res.status(400).json({ error: 'user_identifier and pin are required' });
+    }
+    if (!/^\d{4,6}$/.test(String(pin))) {
+      return res.status(400).json({ error: 'Invalid PIN format' });
+    }
+
+    // ── Resolve company ──────────────────────────────────────────────────────
+    let company = null;
+    if (company_id) {
+      const { data } = await supabase
+        .from('companies')
+        .select('id, company_name, trading_name, modules_enabled, is_active')
+        .eq('id', parseInt(company_id, 10))
+        .maybeSingle();
+      company = data;
+    } else if (company_name) {
+      const { data } = await supabase
+        .from('companies')
+        .select('id, company_name, trading_name, modules_enabled, is_active')
+        .ilike('company_name', String(company_name).trim())
+        .maybeSingle();
+      company = data;
+    }
+
+    if (!company || !company.is_active) {
+      await bcrypt.compare(String(pin), _PIN_TIMING_DUMMY); // timing protection
+      return res.status(400).json({ error: 'Company not found' });
+    }
+
+    // Check POS module is enabled
+    const enabledModules = company.modules_enabled || [];
+    if (!enabledModules.includes('pos') && !enabledModules.includes('all')) {
+      await bcrypt.compare(String(pin), _PIN_TIMING_DUMMY);
+      return res.status(403).json({ error: 'POS module is not enabled for this company' });
+    }
+
+    const PIN_ELIGIBLE_ROLES = ['cashier', 'senior_cashier', 'shift_supervisor', 'assistant_manager'];
+
+    // ── Resolve user (try username → email → employee_id) ────────────────────
+    let userData = null;
+    {
+      const { data: u1 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('username', String(user_identifier)).eq('is_active', true).maybeSingle();
+      userData = u1;
+    }
+    if (!userData) {
+      const { data: u2 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('email', String(user_identifier)).eq('is_active', true).maybeSingle();
+      userData = u2;
+    }
+    if (!userData) {
+      const { data: u3 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('employee_id', String(user_identifier)).eq('is_active', true).maybeSingle();
+      userData = u3;
+    }
+
+    // ── Resolve company access and role ──────────────────────────────────────
+    let userRole = null;
+    if (userData) {
+      const { data: access } = await supabase
+        .from('user_company_access')
+        .select('role, is_active')
+        .eq('company_id', company.id)
+        .eq('user_id', userData.id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (access) userRole = access.role;
+    }
+
+    // ── Fetch PIN hash (only if we have a real user+role) ────────────────────
+    let pinRecord = null;
+    if (userData && userRole) {
+      const { data: pr } = await supabase
+        .from('user_pos_pins')
+        .select('pin_hash, is_active')
+        .eq('company_id', company.id)
+        .eq('user_id', userData.id)
+        .maybeSingle();
+      pinRecord = pr;
+    }
+
+    // ── Timing-safe compare — always runs ────────────────────────────────────
+    const hashToCompare = (pinRecord && pinRecord.is_active) ? pinRecord.pin_hash : _PIN_TIMING_DUMMY;
+    const pinMatches = await bcrypt.compare(String(pin), hashToCompare);
+
+    // ── Now enforce all business rules (after compare) ────────────────────────
+    const logAttempt = (success, reason) =>
+      supabase.from('pos_pin_attempts').insert({
+        company_id:           company.id,
+        user_id:              userData ? userData.id : null,
+        attempted_identifier: user_identifier,
+        success,
+        failure_reason:       reason,
+        ip_address:           req.ip || null,
+        user_agent:           req.headers['user-agent'] || null,
+      }).then(() => {});
+
+    if (!userData || !userRole) {
+      logAttempt(false, 'user_not_found');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (!PIN_ELIGIBLE_ROLES.includes(userRole)) {
+      logAttempt(false, 'role_not_eligible');
+      return res.status(403).json({
+        error: 'PIN login is not available for management roles. Please use password login.',
+      });
+    }
+
+    // Lockout check: count failures in last 15 minutes
+    const lockoutSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { count: failCount } = await supabase
+      .from('pos_pin_attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_id', company.id)
+      .eq('user_id', userData.id)
+      .eq('success', false)
+      .gte('created_at', lockoutSince);
+
+    if ((failCount || 0) >= 5) {
+      logAttempt(false, 'lockout');
+      return res.status(429).json({
+        error: 'Account temporarily locked due to too many failed attempts. Please try again in 15 minutes.',
+      });
+    }
+
+    if (!pinMatches || !(pinRecord && pinRecord.is_active)) {
+      const reason  = pinRecord ? 'wrong_pin' : 'no_pin_set';
+      const remain  = Math.max(0, 4 - (failCount || 0));
+      logAttempt(false, reason);
+      const errMsg  = pinRecord
+        ? `Invalid PIN. ${remain} attempt${remain !== 1 ? 's' : ''} remaining before lockout.`
+        : 'No PIN is set for this account. Please ask a manager to set up your PIN.';
+      return res.status(401).json({ error: errMsg, attempts_remaining: remain });
+    }
+
+    // ── Success ───────────────────────────────────────────────────────────────
+    logAttempt(true, null);
+    supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', userData.id).then(() => {});
+
+    const permissions = getRolePermissions(userRole);
+    const token = jwt.sign({
+      userId:            userData.id,
+      username:          userData.username,
+      email:             userData.email,
+      fullName:          userData.full_name,
+      isSuperAdmin:      false,
+      hasCoachingAccess: false,
+      companyId:         company.id,
+      role:              userRole,
+      permissions,
+    }, JWT_SECRET, { expiresIn: '8h' });
+
+    res.json({
+      success:     true,
+      token,
+      companyId:   company.id,
+      role:        userRole,
+      loginMethod: 'pin',
+      company: {
+        id:              company.id,
+        company_name:    company.company_name,
+        trading_name:    company.trading_name,
+        modules_enabled: company.modules_enabled,
+      },
+      user: {
+        id:       userData.id,
+        username: userData.username,
+        fullName: userData.full_name,
+      },
+    });
+  } catch (err) {
+    console.error('[auth/pos/pin-login] error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

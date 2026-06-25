@@ -1278,15 +1278,67 @@
     <div id="loginScreen" class="login-screen">
         <div class="login-box" id="loginBox">
             <h1>🛒 Checkout Charlie</h1>
-            <div class="form-group">
-                <label>Username or Email</label>
-                <input type="text" id="loginUsername" placeholder="Username or email" autofocus>
+
+            <!-- Login mode tabs -->
+            <div style="display:flex;gap:0;margin-bottom:22px;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0;">
+                <button id="loginTabPassword" onclick="switchLoginTab('password')" style="flex:1;padding:10px;background:#667eea;color:#fff;border:none;cursor:pointer;font-weight:600;font-size:14px;">Password</button>
+                <button id="loginTabPin" onclick="switchLoginTab('pin')" style="flex:1;padding:10px;background:#fff;color:#667eea;border:none;cursor:pointer;font-weight:600;font-size:14px;border-left:1px solid #e0e0e0;">PIN Login</button>
             </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" id="loginPassword" placeholder="Password">
+
+            <!-- Password login -->
+            <div id="passwordLoginSection">
+                <div class="form-group">
+                    <label>Username or Email</label>
+                    <input type="text" id="loginUsername" placeholder="Username or email" autofocus>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" placeholder="Password">
+                </div>
+                <button class="btn btn-primary" style="width: 100%;" onclick="login()">Login</button>
             </div>
-            <button class="btn btn-primary" style="width: 100%;" onclick="login()">Login</button>
+
+            <!-- PIN login -->
+            <div id="pinLoginSection" style="display:none;">
+                <!-- Company context (shown only when company not already known from SSO/previous login) -->
+                <div id="pinCompanyRow" style="margin-bottom:12px;display:none;">
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;color:#444;">Company</label>
+                    <input type="text" id="pinCompanyInput" placeholder="Enter company name or ID" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;">
+                </div>
+                <div id="pinCompanyDisplay" style="margin-bottom:12px;padding:8px 12px;background:#eff3ff;border-radius:6px;font-size:13px;color:#3949ab;display:none;">
+                    Logging in to: <strong id="pinCompanyName"></strong>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;color:#444;">Username or Employee Code</label>
+                    <input type="text" id="pinUsername" placeholder="e.g. jsmith or EMP-001" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;" autocomplete="username">
+                </div>
+                <!-- PIN dot display -->
+                <div style="text-align:center;margin-bottom:16px;">
+                    <div style="display:inline-flex;gap:14px;padding:12px 24px;background:#f5f7fa;border-radius:10px;border:2px solid #e0e0e0;">
+                        <span id="pd0" style="width:16px;height:16px;border-radius:50%;background:#ddd;display:inline-block;transition:background 0.12s;"></span>
+                        <span id="pd1" style="width:16px;height:16px;border-radius:50%;background:#ddd;display:inline-block;transition:background 0.12s;"></span>
+                        <span id="pd2" style="width:16px;height:16px;border-radius:50%;background:#ddd;display:inline-block;transition:background 0.12s;"></span>
+                        <span id="pd3" style="width:16px;height:16px;border-radius:50%;background:#ddd;display:inline-block;transition:background 0.12s;"></span>
+                    </div>
+                </div>
+                <!-- Numeric keypad -->
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+                    <button onclick="pinKeyPress('1')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">1</button>
+                    <button onclick="pinKeyPress('2')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">2</button>
+                    <button onclick="pinKeyPress('3')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">3</button>
+                    <button onclick="pinKeyPress('4')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">4</button>
+                    <button onclick="pinKeyPress('5')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">5</button>
+                    <button onclick="pinKeyPress('6')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">6</button>
+                    <button onclick="pinKeyPress('7')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">7</button>
+                    <button onclick="pinKeyPress('8')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">8</button>
+                    <button onclick="pinKeyPress('9')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">9</button>
+                    <button onclick="pinLoginClear()" style="padding:15px;font-size:14px;font-weight:700;background:#fff0f0;border:1px solid #ffcdd2;border-radius:8px;cursor:pointer;color:#c62828;">C</button>
+                    <button onclick="pinKeyPress('0')" style="padding:15px;font-size:20px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#333;">0</button>
+                    <button onclick="pinLoginBackspace()" style="padding:15px;font-size:18px;font-weight:600;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:8px;cursor:pointer;color:#555;">⌫</button>
+                </div>
+                <button class="btn btn-primary" style="width:100%;" onclick="loginWithPin()">Login with PIN</button>
+            </div>
+
             <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
                 <span style="color: #666;">Don't have an account?</span>
                 <button onclick="showRegisterForm()" style="background: none; border: none; color: #667eea; cursor: pointer; font-weight: 600; text-decoration: underline;">Register your company</button>
@@ -3107,6 +3159,44 @@
         </div>
     </div>
 
+    <!-- PIN Management Modal — Settings → Users → PIN button -->
+    <div id="pinModal" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width:400px;">
+            <div class="modal-header">
+                <h2>Manage PIN — <span id="pinModalUserTitle"></span></h2>
+                <button class="close-btn" onclick="closePinModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:13px;color:#666;">Role:</span>
+                    <span id="pinModalRole" style="font-size:13px;font-weight:600;color:#333;text-transform:capitalize;"></span>
+                    <span id="pinModalStatus" style="margin-left:auto;"></span>
+                </div>
+                <div style="display:grid;gap:14px;">
+                    <div>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;font-size:13px;">New PIN <span style="color:#999;font-weight:400;">(4–6 digits)</span></label>
+                        <input type="password" id="pinModalNewPin" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="Enter new PIN" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:18px;letter-spacing:6px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;font-size:13px;">Confirm PIN</label>
+                        <input type="password" id="pinModalConfirmPin" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="Confirm new PIN" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:18px;letter-spacing:6px;box-sizing:border-box;">
+                    </div>
+                </div>
+                <div style="margin-top:12px;padding:10px;background:#e3f2fd;border-radius:6px;font-size:12px;color:#1565c0;">
+                    PIN allows this user to log in quickly at the till without entering a password.
+                    Weak PINs (1234, 0000, etc.) are rejected.
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:15px 20px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+                <button id="pinModalRemoveBtn" class="btn btn-secondary" style="color:#c62828;" onclick="removePinForUser()">Remove PIN</button>
+                <div style="display:flex;gap:10px;">
+                    <button class="btn btn-secondary" onclick="closePinModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="savePinForUser()">Set PIN</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Printer Modal -->
     <div id="printerModal" class="modal-overlay" style="display:none;">
         <div class="modal" style="max-width:450px;">
@@ -4047,6 +4137,194 @@
                 }
             } catch (error) {
                 alert('Login failed: ' + error.message);
+            }
+        }
+
+        // ── PIN login functions (Workstream 18) ──────────────────────────────────
+
+        let _pinLoginEntry = '';
+
+        function switchLoginTab(tab) {
+            const passSection = document.getElementById('passwordLoginSection');
+            const pinSection  = document.getElementById('pinLoginSection');
+            const tabPass     = document.getElementById('loginTabPassword');
+            const tabPin      = document.getElementById('loginTabPin');
+            if (tab === 'pin') {
+                passSection.style.display = 'none';
+                pinSection.style.display  = 'block';
+                tabPass.style.background  = '#fff';
+                tabPass.style.color       = '#667eea';
+                tabPin.style.background   = '#667eea';
+                tabPin.style.color        = '#fff';
+                // Show company context if already known (SSO or prior login)
+                const compRow  = document.getElementById('pinCompanyRow');
+                const compDisp = document.getElementById('pinCompanyDisplay');
+                if (currentCompanyId && currentCompanyName) {
+                    compRow.style.display  = 'none';
+                    compDisp.style.display = 'block';
+                    document.getElementById('pinCompanyName').textContent = currentCompanyName;
+                } else {
+                    compRow.style.display  = 'block';
+                    compDisp.style.display = 'none';
+                }
+            } else {
+                passSection.style.display = 'block';
+                pinSection.style.display  = 'none';
+                tabPass.style.background  = '#667eea';
+                tabPass.style.color       = '#fff';
+                tabPin.style.background   = '#fff';
+                tabPin.style.color        = '#667eea';
+            }
+        }
+
+        function pinKeyPress(digit) {
+            if (_pinLoginEntry.length >= 4) return;
+            _pinLoginEntry += digit;
+            updatePinDots();
+            // Auto-submit on 4th digit
+            if (_pinLoginEntry.length === 4) setTimeout(loginWithPin, 200);
+        }
+
+        function pinLoginBackspace() {
+            _pinLoginEntry = _pinLoginEntry.slice(0, -1);
+            updatePinDots();
+        }
+
+        function pinLoginClear() {
+            _pinLoginEntry = '';
+            updatePinDots();
+        }
+
+        function updatePinDots() {
+            for (let i = 0; i < 4; i++) {
+                const dot = document.getElementById('pd' + i);
+                if (dot) dot.style.background = i < _pinLoginEntry.length ? '#667eea' : '#ddd';
+            }
+        }
+
+        async function loginWithPin() {
+            const username = (document.getElementById('pinUsername')?.value || '').trim();
+            if (!username) {
+                showNotification('Please enter your username or employee code', 'error');
+                return;
+            }
+            if (_pinLoginEntry.length < 4) {
+                showNotification('Please enter your 4-digit PIN', 'error');
+                return;
+            }
+            // Collect pin then immediately clear from memory
+            const pinToSend   = _pinLoginEntry;
+            _pinLoginEntry    = '';
+            updatePinDots();
+
+            const body = { user_identifier: username, pin: pinToSend };
+
+            if (currentCompanyId) {
+                body.company_id = currentCompanyId;
+            } else {
+                const compInput = (document.getElementById('pinCompanyInput')?.value || '').trim();
+                if (!compInput) {
+                    showNotification('Please enter your company name or ID', 'error');
+                    return;
+                }
+                if (/^\d+$/.test(compInput)) body.company_id = parseInt(compInput, 10);
+                else body.company_name = compInput;
+            }
+
+            try {
+                const res    = await fetch(`${API_URL}/auth/pos/pin-login`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify(body),
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    token              = result.token;
+                    localStorage.setItem('token', token);
+                    userRole           = result.role;
+                    userPermissions    = result.permissions || {};
+                    currentCompanyId   = result.companyId || result.company?.id;
+                    currentCompanyName = result.company?.company_name || result.company?.trading_name;
+                    currentUser        = result.user;
+                    completeLogin();
+                } else {
+                    showNotification(result.error || 'PIN login failed', 'error');
+                }
+            } catch (e) {
+                showNotification('Login failed — please try again', 'error');
+            }
+        }
+
+        // ── PIN management modal (Settings → Users) ──────────────────────────────
+
+        let _pinModalUserId    = null;
+        let _pinModalCompanyId = null;
+
+        async function showPinModal(userId, companyId) {
+            _pinModalUserId    = userId;
+            _pinModalCompanyId = companyId;
+            try {
+                const res = await fetch(`${API_URL}/pos/users/${userId}/pin-status`, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!res.ok) { showNotification('Failed to load PIN status', 'error'); return; }
+                const data = await res.json();
+                document.getElementById('pinModalUserTitle').textContent = data.fullName || data.username || 'User';
+                document.getElementById('pinModalRole').textContent      = (data.role || '').replace(/_/g, ' ');
+                const statusEl = document.getElementById('pinModalStatus');
+                if (data.hasPinSet) {
+                    statusEl.innerHTML = '<span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">● Active</span>';
+                    document.getElementById('pinModalRemoveBtn').style.display = 'inline-block';
+                } else {
+                    statusEl.innerHTML = '<span style="background:#fff3e0;color:#e65100;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">○ Not set</span>';
+                    document.getElementById('pinModalRemoveBtn').style.display = 'none';
+                }
+                document.getElementById('pinModalNewPin').value     = '';
+                document.getElementById('pinModalConfirmPin').value = '';
+                document.getElementById('pinModal').style.display   = 'flex';
+            } catch (e) {
+                showNotification('Failed to load PIN status', 'error');
+            }
+        }
+
+        function closePinModal() {
+            document.getElementById('pinModal').style.display = 'none';
+            _pinModalUserId    = null;
+            _pinModalCompanyId = null;
+        }
+
+        async function savePinForUser() {
+            const newPin     = document.getElementById('pinModalNewPin').value.trim();
+            const confirmPin = document.getElementById('pinModalConfirmPin').value.trim();
+            if (!newPin)                              { showNotification('Please enter a PIN', 'error'); return; }
+            if (!/^\d{4,6}$/.test(newPin))           { showNotification('PIN must be 4–6 digits', 'error'); return; }
+            if (newPin !== confirmPin)                { showNotification('PINs do not match', 'error'); return; }
+            try {
+                const res  = await fetch(`${API_URL}/pos/users/${_pinModalUserId}/pin`, {
+                    method:  'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ pin: newPin }),
+                });
+                const data = await res.json();
+                if (res.ok) { showNotification('PIN set successfully', 'success'); closePinModal(); }
+                else        { showNotification(data.error || 'Failed to set PIN', 'error'); }
+            } catch (e) {
+                showNotification('Failed to set PIN', 'error');
+            }
+        }
+
+        async function removePinForUser() {
+            if (!confirm('Remove this user\'s PIN? They will not be able to log in with PIN until a new one is set.')) return;
+            try {
+                const res  = await fetch(`${API_URL}/pos/users/${_pinModalUserId}/pin`, {
+                    method:  'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const data = await res.json();
+                if (res.ok) { showNotification('PIN removed', 'success'); closePinModal(); }
+                else        { showNotification(data.error || 'Failed to remove PIN', 'error'); }
+            } catch (e) {
+                showNotification('Failed to remove PIN', 'error');
             }
         }
 
@@ -9619,7 +9897,8 @@
                                 <td>${u.employee_id || '-'}</td>
                                 <td><span class="status-badge ${u.is_active ? 'active' : 'closed'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
                                 <td>${u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'Never'}</td>
-                                <td>
+                                <td style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;">
+                                    ${['cashier','senior_cashier','shift_supervisor','assistant_manager'].includes(u.role) ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;color:#1565c0;" onclick="showPinModal(${u.id},${companyId})">PIN</button>` : ''}
                                     <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;color:#c62828;" onclick="removeUserFromCompany(${companyId}, ${u.id}, '${u.full_name}')">Remove</button>
                                 </td>
                             </tr>

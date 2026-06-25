@@ -98,6 +98,13 @@ const POS_EVENTS = {
     EMERGENCY_USER_FORCE_LOGOUT:    'EMERGENCY_USER_FORCE_LOGOUT',    // manager force-closed all sessions for a user
     EMERGENCY_PRINTER_DEGRADED:     'EMERGENCY_PRINTER_DEGRADED',     // manager marked till printer as degraded
     EMERGENCY_PRINTER_RESTORED:     'EMERGENCY_PRINTER_RESTORED',     // manager marked till printer as restored
+
+    // PIN authentication events (Workstream 18)
+    USER_PIN_SET:           'USER_PIN_SET',     // manager set or replaced a user's PIN
+    USER_PIN_REMOVED:       'USER_PIN_REMOVED', // manager removed a user's PIN
+    PIN_LOGIN_SUCCESS:      'PIN_LOGIN_SUCCESS', // cashier successfully logged in with PIN
+    PIN_LOGIN_FAILED:       'PIN_LOGIN_FAILED',  // wrong PIN attempt
+    PIN_LOGIN_LOCKED:       'PIN_LOGIN_LOCKED',  // account locked after max failed attempts
 };
 
 // Maps each event type to its action_category column value.
@@ -154,6 +161,11 @@ const EVENT_CATEGORY = {
     EMERGENCY_USER_FORCE_LOGOUT:    'override',
     EMERGENCY_PRINTER_DEGRADED:     'override',
     EMERGENCY_PRINTER_RESTORED:     'override',
+    USER_PIN_SET:           'pin',
+    USER_PIN_REMOVED:       'pin',
+    PIN_LOGIN_SUCCESS:      'auth',
+    PIN_LOGIN_FAILED:       'auth',
+    PIN_LOGIN_LOCKED:       'auth',
 };
 
 // ── Core logger ───────────────────────────────────────────────────────────────

@@ -278,6 +278,48 @@ async function ensurePosSchema(pool) {
       )
     `);
 
+    // ── user_pos_pins ─────────────────────────────────────────────────────────
+    // Stores bcrypt-hashed PINs for PIN-eligible POS users (cashier, senior_cashier,
+    // shift_supervisor, assistant_manager). One row per user per company.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_pos_pins (
+        id          SERIAL PRIMARY KEY,
+        company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        pin_hash    VARCHAR(255) NOT NULL,
+        is_active   BOOLEAN NOT NULL DEFAULT true,
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ DEFAULT NOW(),
+        created_by  INTEGER REFERENCES users(id),
+        updated_by  INTEGER REFERENCES users(id),
+        UNIQUE(company_id, user_id)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_pins_company_user
+        ON user_pos_pins(company_id, user_id)
+    `);
+
+    // ── pos_pin_attempts ──────────────────────────────────────────────────────
+    // Append-only log of PIN login attempts. >= 5 failures in 15 min = lockout.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_pin_attempts (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        user_id               INTEGER REFERENCES users(id),
+        attempted_identifier  VARCHAR(255),
+        success               BOOLEAN NOT NULL DEFAULT false,
+        failure_reason        VARCHAR(100),
+        ip_address            VARCHAR(45),
+        user_agent            TEXT,
+        created_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_pin_attempts_lookup
+        ON pos_pin_attempts(company_id, user_id, success, created_at DESC)
+    `);
+
     console.log('  ✅ POS schema ready.');
   } catch (err) {
     console.error('  ❌ POS schema migration error:', err.message);
