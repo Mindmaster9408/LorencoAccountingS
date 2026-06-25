@@ -306,7 +306,7 @@ var BulkImportUtils = {
                 var data = new Uint8Array(e.target.result);
                 var workbook = XLSX.read(data, { type: 'array' });
                 var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                var jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                var jsonData = XLSX.utils.sheet_to_json(firstSheet, { raw: true, defval: '' });
                 if (jsonData.length === 0) {
                     callback(null, 'File is empty or has no data rows.');
                     return;
