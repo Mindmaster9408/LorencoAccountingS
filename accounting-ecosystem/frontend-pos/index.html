@@ -113,24 +113,29 @@
         .main-container {
             display: none;
             height: calc(100vh - 50px);
+            overflow: hidden;
         }
 
         /* Till Interface */
         .till-interface {
             display: none;
-            height: 100%;
+            height: calc(100vh - 50px);
+            overflow: hidden;
         }
         .till-grid {
             display: grid;
             grid-template-columns: 2fr 1fr;
             height: 100%;
             gap: 0;
+            overflow: hidden;
         }
         .products-panel {
             background: white;
             display: flex;
             flex-direction: column;
             border-right: 2px solid #e0e0e0;
+            overflow: hidden;
+            min-height: 0;
         }
         .search-bar {
             padding: 20px;
@@ -209,7 +214,25 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            position: relative;
         }
+        .shortcut-star {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: none;
+            border: none;
+            font-size: 15px;
+            cursor: pointer;
+            color: #ccc;
+            line-height: 1;
+            padding: 2px 4px;
+            z-index: 1;
+            transition: color 0.15s;
+            border-radius: 4px;
+        }
+        .shortcut-star:hover { color: #f5a623; }
+        .shortcut-star.starred { color: #f5a623; }
         .product-tile:hover {
             border-color: #667eea;
             transform: translateY(-2px);
@@ -239,6 +262,8 @@
             background: #f8f9fa;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
         }
         .cart-header {
             background: white;
@@ -317,6 +342,7 @@
             background: white;
             padding: 20px;
             border-top: 2px solid #e0e0e0;
+            flex-shrink: 0;
         }
         .summary-row {
             display: flex;
@@ -336,6 +362,7 @@
             padding: 20px;
             background: white;
             border-top: 2px solid #e0e0e0;
+            flex-shrink: 0;
         }
         .payment-methods {
             display: grid;
@@ -3459,6 +3486,7 @@
         let cart = [];
         let categories = new Set();
         let selectedCategory = 'all';
+        let shortcutIds = new Set();   // in-memory only — server is source of truth
         let forceUpdatePending = false; // set true by onForceUpdateRequired; gates addToCart/checkout
         let selectedPayment = 'CASH';
         let editingProductId = null;
@@ -4427,6 +4455,7 @@
             // so the product grid shows correct stock state from the first paint.
             await loadCompanySettings();
 
+            await loadShortcuts();  // populate shortcutIds before first product render
             loadProducts();
             checkSession();
             showTab('till');
@@ -5026,21 +5055,91 @@
             container.innerHTML = '';
 
             categories.forEach(cat => {
+                // 'Produksie' is a legacy development category — never shown to cashiers
+                if (cat.toLowerCase() === 'produksie') return;
+
                 const btn = document.createElement('button');
                 btn.className = 'category-btn' + (cat === selectedCategory ? ' active' : '');
-                btn.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+                btn.textContent = cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1);
                 btn.onclick = () => filterByCategory(cat);
                 container.appendChild(btn);
             });
+
+            // Shortcuts chip — always last; always visible
+            const shortcutBtn = document.createElement('button');
+            shortcutBtn.className = 'category-btn' + (selectedCategory === '__shortcuts__' ? ' active' : '');
+            shortcutBtn.textContent = '★ Shortcuts';
+            shortcutBtn.onclick = () => filterByCategory('__shortcuts__');
+            container.appendChild(shortcutBtn);
         }
 
         function filterByCategory(category) {
             selectedCategory = category;
             renderCategories();
-            const filtered = selectedCategory === 'all'
+            if (category === '__shortcuts__') {
+                displayProductsGrid(products.filter(p => shortcutIds.has(p.id)));
+                // Refresh shortcuts from server in the background
+                loadShortcuts(true);
+                return;
+            }
+            const filtered = category === 'all'
                 ? products
-                : products.filter(p => p.category === selectedCategory);
+                : products.filter(p => p.category === category);
             displayProductsGrid(filtered);
+        }
+
+        async function loadShortcuts(reRender) {
+            if (!token) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/shortcuts`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                shortcutIds = new Set((data.shortcuts || []).map(s => s.product_id));
+                // Re-render so star state is correct; also refreshes the shortcuts view
+                if (reRender && products.length > 0) {
+                    const shown = selectedCategory === 'all'
+                        ? products
+                        : selectedCategory === '__shortcuts__'
+                            ? products.filter(p => shortcutIds.has(p.id))
+                            : products.filter(p => p.category === selectedCategory);
+                    displayProductsGrid(shown);
+                }
+            } catch (e) {
+                console.warn('[Shortcuts] Could not load:', e.message);
+            }
+        }
+
+        async function toggleShortcut(productId, btnEl) {
+            if (!token) return;
+            const wasStarred = shortcutIds.has(productId);
+            try {
+                if (wasStarred) {
+                    const res = await fetch(`${API_URL}/pos/shortcuts/${productId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!res.ok) return;
+                    shortcutIds.delete(productId);
+                    btnEl.classList.remove('starred');
+                    // If shortcuts view is active, remove the tile immediately
+                    if (selectedCategory === '__shortcuts__') {
+                        displayProductsGrid(products.filter(p => shortcutIds.has(p.id)));
+                    }
+                } else {
+                    const res = await fetch(`${API_URL}/pos/shortcuts`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ product_id: productId })
+                    });
+                    if (!res.ok) return;
+                    shortcutIds.add(productId);
+                    btnEl.classList.add('starred');
+                }
+            } catch (e) {
+                console.warn('[Shortcuts] Toggle failed:', e.message);
+            }
         }
 
         function displayProductsGrid(productsToShow) {
@@ -5079,7 +5178,11 @@
                         stockHtml = `<div class="product-stock">Stock: ${qty}</div>`;
                     }
                 }
+                const isStarred = shortcutIds.has(product.id);
                 return `<div class="product-tile" data-product-id="${product.id}">
+                    <button class="shortcut-star${isStarred ? ' starred' : ''}"
+                            data-shortcut-btn="${product.id}"
+                            onclick="event.stopPropagation(); toggleShortcut(${product.id}, this)">★</button>
                     <div class="product-name">${product.product_name}</div>
                     <div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>
                     ${stockHtml}

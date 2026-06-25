@@ -24,6 +24,7 @@ const suppliersRoutes      = require('./routes/suppliers');
 const reportsRoutes        = require('./routes/reports');
 const importRoutes         = require('./routes/import');
 const pinRoutes            = require('./routes/pin');
+const shortcutsRoutes      = require('./routes/shortcuts');
 
 const router = express.Router();
 
@@ -50,6 +51,7 @@ router.use('/emergency',  emergencyRoutes);
 router.use('/suppliers',  suppliersRoutes);
 router.use('/reports',    reportsRoutes);
 router.use('/import',     importRoutes);
+router.use('/shortcuts',  shortcutsRoutes);  // User product shortcuts: /api/pos/shortcuts
 router.use('/users',      pinRoutes);   // PIN management: /api/pos/users/:id/pin
 
 // Health check for POS module

@@ -320,6 +320,30 @@ async function ensurePosSchema(pool) {
         ON pos_pin_attempts(company_id, user_id, success, created_at DESC)
     `);
 
+    // ── pos_user_product_shortcuts ────────────────────────────────────────────
+    // Per-user, per-company shortcut products (star pinned to top of Shortcuts tab).
+    // Never stored in localStorage — DB-authoritative only.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_user_product_shortcuts (
+        id          SERIAL PRIMARY KEY,
+        company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        sort_order  INTEGER DEFAULT 0,
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, user_id, product_id)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_shortcuts_user
+        ON pos_user_product_shortcuts(company_id, user_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_shortcuts_user_order
+        ON pos_user_product_shortcuts(company_id, user_id, sort_order)
+    `);
+
     console.log('  ✅ POS schema ready.');
   } catch (err) {
     console.error('  ❌ POS schema migration error:', err.message);
