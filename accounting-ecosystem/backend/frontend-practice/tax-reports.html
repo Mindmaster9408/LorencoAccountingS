@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Reports — Lorenco Practice</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+        #app-topbar { display: flex; align-items: center; justify-content: space-between; background: #1a1f2e; border-bottom: 1px solid #2d3748; padding: 0.75rem 1.5rem; position: sticky; top: 0; z-index: 100; }
+        .topbar-left { display: flex; align-items: center; gap: 0.75rem; }
+        .app-icon { font-size: 1.5rem; }
+        .app-title { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
+        .app-subtitle { font-size: 0.75rem; color: #718096; }
+        .topbar-right { display: flex; align-items: center; gap: 0.75rem; }
+        .company-badge { background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; padding: 0.25rem 0.6rem; font-size: 0.75rem; color: #a0aec0; }
+        .btn-back { background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.75rem; color: #a0aec0; text-decoration: none; }
+
+        #app-nav { background: #1a1f2e; border-bottom: 1px solid #2d3748; padding: 0 1.5rem; display: flex; gap: 0; overflow-x: auto; }
+        .nav-tab { padding: 0.6rem 0.9rem; font-size: 0.72rem; color: #718096; text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+        .nav-tab:hover { color: #e2e8f0; }
+        .nav-tab.active { color: #63b3ed; border-bottom-color: #63b3ed; }
+
+        .page-wrap { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+
+        .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem; }
+        .page-title { font-size: 1.3rem; font-weight: 700; color: #e2e8f0; }
+        .page-subtitle { font-size: 0.8rem; color: #718096; margin-top: 0.2rem; }
+
+        .btn { padding: 0.45rem 1rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: none; }
+        .btn-primary   { background: #3182ce; color: #fff; }
+        .btn-primary:hover   { background: #2b6cb0; }
+        .btn-secondary { background: #2d3748; color: #a0aec0; border: 1px solid #4a5568; }
+        .btn-secondary:hover { background: #374151; }
+
+        /* ── Filter bar ── */
+        .filter-bar { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; }
+        .filter-group { display: flex; flex-direction: column; gap: 0.3rem; }
+        .filter-group label { font-size: 0.72rem; color: #718096; font-weight: 500; }
+        select, input[type="number"] { background: #0f1117; border: 1px solid #4a5568; border-radius: 6px; color: #e2e8f0; padding: 0.4rem 0.65rem; font-size: 0.8rem; min-width: 140px; }
+        select:focus, input:focus { outline: none; border-color: #63b3ed; }
+
+        /* ── Cards ── */
+        .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; margin-bottom: 1.5rem; }
+        .card-header { padding: 1rem 1.25rem; border-bottom: 1px solid #2d3748; display: flex; align-items: center; justify-content: space-between; }
+        .card-title { font-weight: 700; color: #e2e8f0; font-size: 0.95rem; }
+        .card-body { padding: 1.25rem; }
+
+        /* ── Progress section ── */
+        .progress-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .progress-stat { background: #1e2535; border: 1px solid #2d3748; border-radius: 8px; padding: 1rem; text-align: center; }
+        .progress-stat .stat-val  { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+        .progress-stat .stat-lbl  { font-size: 0.72rem; color: #718096; margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        .pct-bar-wrap { background: #2d3748; border-radius: 4px; height: 8px; overflow: hidden; margin-bottom: 0.5rem; }
+        .pct-bar      { background: #3182ce; height: 8px; border-radius: 4px; transition: width 0.4s ease; }
+        .pct-label    { font-size: 0.75rem; color: #a0aec0; text-align: right; }
+        .stat-completed   .stat-val { color: #68d391; }
+        .stat-reviewed    .stat-val { color: #63b3ed; }
+        .stat-ready       .stat-val { color: #f6ad55; }
+        .stat-inprogress  .stat-val { color: #a0aec0; }
+        .stat-blocked     .stat-val { color: #fc8181; }
+        .stat-total       .stat-val { color: #e2e8f0; }
+        .stat-pct         .stat-val { color: #63b3ed; font-size: 2.2rem; }
+
+        /* ── Tables ── */
+        .trr-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .trr-table th { text-align: left; padding: 0.55rem 0.75rem; color: #718096; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        .trr-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #1a202c; color: #cbd5e0; vertical-align: top; }
+        .trr-table tr:hover td { background: #1e2535; }
+
+        /* ── Status breakdown ── */
+        .breakdown-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem; }
+        .breakdown-card { background: #171c29; border: 1px solid #2d3748; border-radius: 8px; padding: 1rem; }
+        .breakdown-card-title { font-size: 0.75rem; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.75rem; }
+        .breakdown-row { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; border-bottom: 1px solid #1e2535; font-size: 0.8rem; }
+        .breakdown-row:last-child { border-bottom: none; }
+        .breakdown-row .status-lbl { color: #a0aec0; text-transform: capitalize; }
+        .breakdown-row .status-cnt { font-weight: 700; color: #e2e8f0; }
+
+        /* ── Badges ── */
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+        .badge-warn  { background: #3d3000; color: #f6e05e; }
+        .badge-ok    { background: #1c3d2e; color: #68d391; }
+        .badge-info  { background: #2c3a5e; color: #90cdf4; }
+        .badge-err   { background: #4a1818; color: #fc8181; }
+        .badge-grey  { background: #2d3748; color: #a0aec0; }
+
+        /* ── Section spacing ── */
+        .section-gap { margin-bottom: 1.5rem; }
+
+        /* ── Loading / empty ── */
+        .loading-msg { color: #718096; font-size: 0.8rem; padding: 1.5rem; text-align: center; }
+        .empty-msg   { color: #718096; font-size: 0.8rem; padding: 1.5rem; text-align: center; font-style: italic; }
+
+        /* ── Two-col layout ── */
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+        @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+        /* ── Number formatting ── */
+        .num-good { color: #68d391; font-weight: 700; }
+        .num-warn { color: #f6e05e; font-weight: 700; }
+        .num-bad  { color: #fc8181; font-weight: 700; }
+        .num-info { color: #90cdf4; font-weight: 700; }
+
+        /* ── Export buttons ── */
+        .export-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        .btn-export { padding: 0.3rem 0.7rem; border-radius: 5px; font-size: 0.72rem; font-weight: 600; cursor: pointer; border: 1px solid #4a5568; background: #2d3748; color: #a0aec0; }
+        .btn-export:hover:not(:disabled) { background: #374151; color: #e2e8f0; }
+        .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-export-pdf { border-color: #2b6cb0; color: #90cdf4; }
+        .btn-export-html { border-color: #276749; color: #68d391; }
+
+        /* ── Full pack bar ── */
+        .pack-bar { background: #1a1f2e; border: 1px solid #2b4b7e; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
+        .pack-bar-label { font-size: 0.82rem; color: #90cdf4; font-weight: 600; }
+
+        /* ── Toast ── */
+        .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #2d3748; color: #e2e8f0; padding: 0.65rem 1.1rem; border-radius: 8px; font-size: 0.82rem; box-shadow: 0 4px 12px rgba(0,0,0,0.4); opacity: 0; transform: translateY(8px); transition: all 0.25s ease; pointer-events: none; z-index: 999; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { background: #4a1818; color: #fc8181; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+    <div id="toast" class="toast"></div>
+
+    <div class="page-wrap">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Tax Season Reports</div>
+                <div class="page-subtitle">Progress, status, documents, review bottlenecks, partner summary, and risk. Read-only.</div>
+            </div>
+            <div style="display:flex;gap:0.75rem;align-items:center">
+                <a href="/practice/tax-dashboard.html" class="btn btn-secondary" style="text-decoration:none">← Dashboard</a>
+                <button class="btn btn-primary" onclick="trrRefresh()">Refresh All</button>
+            </div>
+        </div>
+
+        <!-- ── Full Tax Season Pack Export ── -->
+        <div class="pack-bar">
+            <span class="pack-bar-label">Full Tax Season Pack — all 7 reports in one</span>
+            <div class="export-row">
+                <button type="button" id="packHtmlBtn" class="btn-export btn-export-html" onclick="trrOpenPackHtml('packHtmlBtn')">View HTML Pack</button>
+                <button type="button" id="packPdfBtn"  class="btn-export btn-export-pdf"  onclick="trrDownloadPackPdf('packPdfBtn')">Download PDF Pack</button>
+            </div>
+        </div>
+
+        <!-- ── Filter Bar ── -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>Tax Year</label>
+                <input type="number" id="trrYear" placeholder="e.g. 2025" min="2020" max="2035" style="width:110px">
+            </div>
+            <div class="filter-group">
+                <label>Client Type</label>
+                <select id="trrClientType">
+                    <option value="">All Types</option>
+                    <option value="individual">Individual</option>
+                    <option value="company">Company</option>
+                    <option value="trust">Trust</option>
+                    <option value="close_corporation">Close Corporation</option>
+                    <option value="partnership">Partnership</option>
+                    <option value="sole_proprietor">Sole Proprietor</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Responsible</label>
+                <select id="trrResponsible">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Reviewer</label>
+                <select id="trrReviewer">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="trrRefresh()">Apply Filters</button>
+        </div>
+
+        <!-- ── 1. Progress Overview ── -->
+        <div class="card section-gap">
+            <div class="card-header">
+                <span class="card-title">Tax Season Progress</span>
+                <div class="export-row">
+                    <span id="trrProgressMeta" style="font-size:0.75rem;color:#718096"></span>
+                    <button type="button" id="progHtmlBtn" class="btn-export btn-export-html" onclick="trrOpenHtml('progress','progHtmlBtn')">HTML</button>
+                    <button type="button" id="progPdfBtn"  class="btn-export btn-export-pdf"  onclick="trrDownloadPdf('progress','tax-progress-report.pdf','progPdfBtn')">PDF</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="pct-bar-wrap"><div class="pct-bar" id="trrPctBar" style="width:0%"></div></div>
+                <div class="pct-label" id="trrPctLabel">0%</div>
+                <div class="progress-grid" id="trrProgressGrid">
+                    <div class="loading-msg">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 2. Status Breakdown ── -->
+        <div class="card section-gap">
+            <div class="card-header">
+                <span class="card-title">Status Breakdown</span>
+            </div>
+            <div class="card-body">
+                <div class="breakdown-grid" id="trrBreakdownGrid">
+                    <div class="loading-msg">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 3. Outstanding Documents + 6. Partner Summary ── -->
+        <div class="two-col section-gap">
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Outstanding Documents</span>
+                    <div class="export-row">
+                        <span id="trrDocMeta" style="font-size:0.75rem;color:#718096"></span>
+                        <button type="button" id="docHtmlBtn" class="btn-export btn-export-html" onclick="trrOpenHtml('document-outstanding','docHtmlBtn')">HTML</button>
+                        <button type="button" id="docPdfBtn"  class="btn-export btn-export-pdf"  onclick="trrDownloadPdf('document-outstanding','document-outstanding.pdf','docPdfBtn')">PDF</button>
+                    </div>
+                </div>
+                <div class="card-body" style="padding:0">
+                    <div style="padding:0.75rem 1.25rem;border-bottom:1px solid #2d3748;font-size:0.72rem;color:#718096;font-weight:600;text-transform:uppercase">By Client (top 20)</div>
+                    <div style="max-height:260px;overflow-y:auto">
+                        <table class="trr-table"><thead><tr><th>Client</th><th>Outstanding</th><th>Overdue</th></tr></thead>
+                        <tbody id="trrDocByClient"><tr><td colspan="3" class="loading-msg">Loading...</td></tr></tbody></table>
+                    </div>
+                    <div style="padding:0.75rem 1.25rem;border-top:1px solid #2d3748;border-bottom:1px solid #2d3748;font-size:0.72rem;color:#718096;font-weight:600;text-transform:uppercase">By Category</div>
+                    <div style="max-height:180px;overflow-y:auto">
+                        <table class="trr-table"><thead><tr><th>Category</th><th>Count</th></tr></thead>
+                        <tbody id="trrDocByCategory"><tr><td colspan="2" class="loading-msg">Loading...</td></tr></tbody></table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Partner / Team Summary</span>
+                    <div class="export-row">
+                        <button type="button" id="partHtmlBtn" class="btn-export btn-export-html" onclick="trrOpenHtml('partner-summary','partHtmlBtn')">HTML</button>
+                        <button type="button" id="partPdfBtn"  class="btn-export btn-export-pdf"  onclick="trrDownloadPdf('partner-summary','partner-summary.pdf','partPdfBtn')">PDF</button>
+                    </div>
+                </div>
+                <div style="overflow-x:auto">
+                    <table class="trr-table">
+                        <thead><tr>
+                            <th>Member</th>
+                            <th>Clients</th>
+                            <th>Returns</th>
+                            <th>Ready</th>
+                            <th>Packs</th>
+                            <th>Docs</th>
+                            <th>Actions</th>
+                            <th>Overdue</th>
+                        </tr></thead>
+                        <tbody id="trrPartnerTable"><tr><td colspan="8" class="loading-msg">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ── 4. Review Bottlenecks ── -->
+        <div class="card section-gap">
+            <div class="card-header">
+                <span class="card-title">Review Bottlenecks</span>
+                <div class="export-row">
+                    <span id="trrReviewMeta" style="font-size:0.75rem;color:#718096"></span>
+                    <button type="button" id="revHtmlBtn" class="btn-export btn-export-html" onclick="trrOpenHtml('review-bottlenecks','revHtmlBtn')">HTML</button>
+                    <button type="button" id="revPdfBtn"  class="btn-export btn-export-pdf"  onclick="trrDownloadPdf('review-bottlenecks','review-bottlenecks.pdf','revPdfBtn')">PDF</button>
+                </div>
+            </div>
+            <div class="two-col" style="padding:1.25rem;gap:1.25rem">
+                <div>
+                    <div style="font-size:0.72rem;color:#718096;font-weight:600;text-transform:uppercase;margin-bottom:0.75rem">By Reviewer</div>
+                    <table class="trr-table"><thead><tr><th>Reviewer</th><th>Waiting</th><th>Oldest</th></tr></thead>
+                    <tbody id="trrReviewByReviewer"><tr><td colspan="3" class="loading-msg">Loading...</td></tr></tbody></table>
+                </div>
+                <div>
+                    <div style="font-size:0.72rem;color:#718096;font-weight:600;text-transform:uppercase;margin-bottom:0.75rem">Oldest Waiting Items</div>
+                    <table class="trr-table"><thead><tr><th>Item</th><th>Client</th><th>Waiting Since</th></tr></thead>
+                    <tbody id="trrReviewOldest"><tr><td colspan="3" class="loading-msg">Loading...</td></tr></tbody></table>
+                </div>
+            </div>
+            <div style="padding:0 1.25rem 1.25rem">
+                <div style="font-size:0.72rem;color:#718096;font-weight:600;text-transform:uppercase;margin-bottom:0.75rem">Rejected Review Packs</div>
+                <table class="trr-table"><thead><tr><th>Pack</th><th>Client</th><th>Type</th><th>Updated</th></tr></thead>
+                <tbody id="trrRejected"><tr><td colspan="4" class="loading-msg">Loading...</td></tr></tbody></table>
+            </div>
+        </div>
+
+        <!-- ── 5. Risk Summary ── -->
+        <div class="card section-gap">
+            <div class="card-header">
+                <span class="card-title">Risk Summary</span>
+                <div class="export-row">
+                    <button type="button" id="riskHtmlBtn" class="btn-export btn-export-html" onclick="trrOpenHtml('risk-summary','riskHtmlBtn')">HTML</button>
+                    <button type="button" id="riskPdfBtn"  class="btn-export btn-export-pdf"  onclick="trrDownloadPdf('risk-summary','risk-summary.pdf','riskPdfBtn')">PDF</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="progress-grid" id="trrRiskGrid">
+                    <div class="loading-msg">Loading...</div>
+                </div>
+                <div style="margin-top:1.25rem" id="trrRiskDetails"></div>
+            </div>
+        </div>
+
+        <!-- ── 7. Bulk Operation Summary ── -->
+        <div class="card section-gap">
+            <div class="card-header">
+                <span class="card-title">Bulk Operation Summary</span>
+            </div>
+            <div class="card-body" style="padding:0">
+                <table class="trr-table">
+                    <thead><tr>
+                        <th>Operation</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Year</th>
+                        <th>Success</th>
+                        <th>Warnings</th>
+                        <th>Failed</th>
+                        <th>Date</th>
+                    </tr></thead>
+                    <tbody id="trrBulkTable"><tr><td colspan="8" class="loading-msg">Loading...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /.page-wrap -->
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/tax-reports.js"></script>
+</body>
+</html>

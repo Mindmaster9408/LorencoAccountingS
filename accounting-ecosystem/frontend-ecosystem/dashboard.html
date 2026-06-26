@@ -991,6 +991,7 @@
                 <span class="user-name" id="userName"></span>
             </div>
             <button id="btnAdminPanel" class="btn-logout" style="display:none; background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.25); color:#fca5a5;" onclick="window.location.href='/admin'">&#9876; Admin Panel</button>
+            <button id="btnDashV2" class="btn-logout" style="display:none; background:rgba(124,106,247,0.12); border-color:rgba(124,106,247,0.25); color:#a89ff8;" onclick="window.location.href='/dashboard-v2'">&#10022; New Dashboard</button>
             <button class="btn-logout" onclick="logout()">Sign Out</button>
         </div>
     </div>
@@ -1938,22 +1939,21 @@
             try {
                 currentUser = JSON.parse(localStorage.getItem('eco_user'));
                 companies = JSON.parse(localStorage.getItem('eco_companies') || '[]');
-                isSuperAdmin = localStorage.getItem('eco_super_admin') === 'true';
 
-                // Fallback: decode JWT in case eco_super_admin wasn't saved (old sessions)
-                // Also backfill hasCoachingAccess from the JWT for sessions pre-dating that field.
+                // isSuperAdmin is ALWAYS derived from the JWT — localStorage is never the authority.
+                // The JWT is tamper-evident (signed by the server); localStorage is not.
+                // The /me call below then confirms isSuperAdmin from the DB as a second source of truth.
                 try {
                     const tok = localStorage.getItem('eco_token');
                     const payload = JSON.parse(atob(tok.split('.')[1]));
-                    if (!isSuperAdmin && payload.isSuperAdmin) {
-                        isSuperAdmin = true;
-                        localStorage.setItem('eco_super_admin', 'true');
-                    }
+                    isSuperAdmin = !!payload.isSuperAdmin;
                     if (currentUser && currentUser.hasCoachingAccess === undefined && payload.hasCoachingAccess) {
                         currentUser.hasCoachingAccess = true;
                         localStorage.setItem('eco_user', JSON.stringify(currentUser));
                     }
-                } catch (_) {}
+                } catch (_) {
+                    isSuperAdmin = false;
+                }
             } catch (e) {
                 window.location.href = '/';
                 return;
@@ -1977,6 +1977,8 @@
                 if (meRes.ok) {
                     const meData = await meRes.json();
                     currentUser.hasCoachingAccess = !!(meData.hasCoachingAccess);
+                    // Confirm isSuperAdmin from DB — authoritative source overrides JWT initial value
+                    isSuperAdmin = !!(meData.user?.is_super_admin);
                     localStorage.setItem('eco_user', JSON.stringify(currentUser));
                 } else {
                     currentUser.hasCoachingAccess = false;
@@ -2025,6 +2027,7 @@
             if (isSuperAdmin) {
                 document.getElementById('btnAdminPanel').style.display = '';
                 document.getElementById('superAdminSection').style.display = '';
+                document.getElementById('btnDashV2').style.display = '';
             }
 
             // Show user management section for super admins & business owners
@@ -2117,7 +2120,9 @@
             if (selectedCompany) {
                 const tradingOk = selectedCompany.trading_name &&
                     selectedCompany.trading_name.toLowerCase() !== 'default';
-                badge.textContent = (tradingOk ? selectedCompany.trading_name : selectedCompany.company_name) + ' ✏';
+                const dispName = tradingOk ? selectedCompany.trading_name : selectedCompany.company_name;
+                const codeTag = selectedCompany.practice_code ? ` · ${selectedCompany.practice_code}` : '';
+                badge.textContent = dispName + codeTag + ' ✏';
                 badge.style.display = '';
             }
         }
@@ -2192,6 +2197,15 @@
             _clientsCache = null;
             _usersCache   = null;
             document.getElementById('statRole').textContent = (selectedCompany.role || 'user').replace('_', ' ');
+            // Update topbar badge with new company name and practice_code if present
+            const _badge = document.getElementById('practiceNameBadge');
+            if (_badge && selectedCompany) {
+                const _tradingOk = selectedCompany.trading_name &&
+                    selectedCompany.trading_name.toLowerCase() !== 'default';
+                const _dispName = _tradingOk ? selectedCompany.trading_name : selectedCompany.company_name;
+                const _codeTag = selectedCompany.practice_code ? ` · ${selectedCompany.practice_code}` : '';
+                _badge.textContent = _dispName + _codeTag + ' ✏';
+            }
             renderApps();
 
             // Show/hide user management section based on role in this company
@@ -3015,6 +3029,7 @@
                                 <div class="client-card-name">
                                     <button type="button" onclick="window.location.href='/client/${c.id}'" style="background:none;border:none;color:inherit;font:inherit;font-weight:700;cursor:pointer;padding:0;text-align:left;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.2);text-underline-offset:3px;" onmouseenter="this.style.textDecorationColor='var(--accent)'" onmouseleave="this.style.textDecorationColor='rgba(255,255,255,0.2)'">${escHtml(c.name)}</button>${sharedBadge}
                                 </div>
+                                ${c.client_code ? `<div style="font-size:0.7rem;color:var(--text-muted);font-family:monospace;margin-top:1px;letter-spacing:0.04em;">${escHtml(c.client_code)}</div>` : ''}
                                 ${c.company_name ? `<div class="client-card-meta"><span class="icon">🏢</span> ${escHtml(c.company_name)}</div>` : ''}
                             </div>
                             <span class="client-card-type${typeCls}">${typeLabel}</span>
@@ -3974,8 +3989,9 @@
                 // Update topbar badge + local state
                 const tradingOk = data.company.trading_name &&
                     data.company.trading_name.toLowerCase() !== 'default';
-                const displayName = (tradingOk ? data.company.trading_name : data.company.company_name) + ' ✏';
-                document.getElementById('practiceNameBadge').textContent = displayName;
+                const dispNameSave = tradingOk ? data.company.trading_name : data.company.company_name;
+                const codeTagSave = selectedCompany.practice_code ? ` · ${selectedCompany.practice_code}` : '';
+                document.getElementById('practiceNameBadge').textContent = dispNameSave + codeTagSave + ' ✏';
                 selectedCompany.company_name = data.company.company_name;
                 selectedCompany.trading_name = data.company.trading_name;
                 // Update localStorage

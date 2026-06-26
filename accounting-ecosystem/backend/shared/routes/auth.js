@@ -95,7 +95,7 @@ router.post('/login', async (req, res) => {
         role,
         is_primary,
         apps_access,
-        companies:company_id (id, company_name, trading_name, modules_enabled)
+        companies:company_id (id, company_name, trading_name, modules_enabled, practice_code, account_holder_type)
       `)
       .eq('user_id', user.id)
       .eq('is_active', true);
@@ -111,6 +111,8 @@ router.post('/login', async (req, res) => {
         company_name: c.companies.company_name,
         trading_name: c.companies.trading_name,
         modules_enabled: c.companies.modules_enabled,
+        practice_code: c.companies.practice_code || null,
+        account_holder_type: c.companies.account_holder_type || null,
         role: isSuperAdmin ? 'super_admin' : c.role,
         is_primary: c.is_primary,
         apps_access: c.apps_access || null,
@@ -307,6 +309,20 @@ router.post('/register', async (req, res) => {
 
       company = newCompany;
 
+      // Generate practice_code for accounting practices (non-fatal if column not yet migrated)
+      if (holderType === 'accounting_practice') {
+        try {
+          const practiceCode = `PRAC-${String(company.id).padStart(4, '0')}`;
+          const { error: pcErr } = await supabase
+            .from('companies')
+            .update({ practice_code: practiceCode })
+            .eq('id', company.id);
+          if (!pcErr) company.practice_code = practiceCode;
+        } catch (_) {
+          // Non-fatal — migration 092 backfill handles existing rows
+        }
+      }
+
       // Link main user to company as owner
       await supabase.from('user_company_access').insert({
         user_id: mainUser.id,
@@ -476,7 +492,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
     // Fetch company details (needed by POS and other frontends)
     const { data: company, error: compErr } = await supabase
       .from('companies')
-      .select('id, company_name, trading_name, modules_enabled, subscription_status')
+      .select('id, company_name, trading_name, modules_enabled, subscription_status, practice_code, account_holder_type')
       .eq('id', parsedCompanyId)
       .eq('is_active', true)
       .single();
@@ -596,6 +612,8 @@ router.post('/select-company', authenticateToken, async (req, res) => {
         trading_name: company.trading_name,
         modules_enabled: company.modules_enabled,
         subscription_status: company.subscription_status,
+        practice_code: company.practice_code || null,
+        account_holder_type: company.account_holder_type || null,
       }
     });
   } catch (err) {
@@ -651,7 +669,7 @@ router.get('/companies', authenticateToken, async (req, res) => {
       .from('user_company_access')
       .select(`
         company_id, role, is_primary,
-        companies:company_id (id, company_name, trading_name, modules_enabled)
+        companies:company_id (id, company_name, trading_name, modules_enabled, practice_code, account_holder_type)
       `)
       .eq('user_id', req.user.userId)
       .eq('is_active', true);
@@ -667,6 +685,8 @@ router.get('/companies', authenticateToken, async (req, res) => {
         company_name: r.companies.company_name,
         trading_name: r.companies.trading_name,
         modules_enabled: r.companies.modules_enabled,
+        practice_code: r.companies.practice_code || null,
+        account_holder_type: r.companies.account_holder_type || null,
         // Super admins always surface as 'super_admin' in the role field for UI rendering
         role: isSuperAdmin ? 'super_admin' : r.role,
         is_primary: r.is_primary,

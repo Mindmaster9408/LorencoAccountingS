@@ -450,8 +450,10 @@ app.get('/pos/service-worker.js',     (req, res) => serveSW(res, path.join(posFr
 app.get('/payroll/service-worker.js', (req, res) => serveSW(res, path.join(payrollFrontendPath, 'service-worker.js')));
 
 // ── Ecosystem frontend (dashboard, admin, login) ──────────────────────────────
-app.use('/dashboard', express.static(ecosystemFrontendPath, staticOptions));
-app.get('/dashboard', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'dashboard.html')));
+app.use('/dashboard',    express.static(ecosystemFrontendPath, staticOptions));
+app.get('/dashboard',    (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'dashboard.html')));
+app.use('/dashboard-v2', express.static(ecosystemFrontendPath, staticOptions));
+app.get('/dashboard-v2', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'dashboard-v2.html')));
 
 app.get('/admin',     (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'admin.html')));
 app.get('/qa-hub',    (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'ecosystem-qa-hub.html')));

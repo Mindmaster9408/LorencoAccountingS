@@ -31,6 +31,9 @@
         { key: 'tax-actions',        label: 'Tax Actions',        href: '/practice/tax-actions.html' },
         { key: 'tax-checklists',     label: 'Tax Checklists',     href: '/practice/tax-checklists.html' },
         { key: 'tax-bulk-ops',       label: 'Tax Bulk Ops',       href: '/practice/tax-bulk-operations.html' },
+        { key: 'tax-reports',        label: 'Tax Reports',        href: '/practice/tax-reports.html' },
+        { key: 'tax-pipeline',       label: 'Tax Pipeline',       href: '/practice/tax-pipeline.html' },
+        { key: 'tax-submissions',    label: 'Tax Submissions',    href: '/practice/tax-submissions.html' },
         { key: 'tax-configs',        label: 'Tax Config',         href: '/practice/tax-configs.html' }
     ];
 

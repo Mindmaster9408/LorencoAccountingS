@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lorenco Ecosystem — Dashboard</title>
+  <link rel="icon" href="assets/branding/lorenco/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="css/dashboard-v2.css">
+</head>
+<body>
+
+  <!-- ── Topbar ─────────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <img src="lorenco-logo-exact-reference.png" alt="Lorenco" onerror="this.style.display='none'">
+      <div class="topbar-brand-text">
+        <span class="topbar-brand-name">LORENCO</span>
+        <span class="topbar-brand-sub">Ecosystem</span>
+      </div>
+    </div>
+
+    <div class="workspace-selector" id="workspaceSelector">
+      <button class="workspace-btn" id="workspaceBtn" onclick="toggleWorkspaceMenu()">
+        <span>Loading…</span>
+        <span class="workspace-chevron">▾</span>
+      </button>
+      <div class="workspace-menu hidden" id="workspaceMenu"></div>
+    </div>
+
+    <div class="topbar-spacer"></div>
+
+    <div id="topbarUser" class="topbar-user"></div>
+
+    <a href="/dashboard" class="btn-classic">← Classic</a>
+  </header>
+
+  <!-- ── Layout ─────────────────────────────────────────────────────────────── -->
+  <div class="layout">
+
+    <!-- Side Nav -->
+    <nav class="sidenav">
+      <button class="nav-item active" data-nav="apps" onclick="setNav('apps')">
+        <span class="nav-icon">⬡</span> Apps
+      </button>
+      <button class="nav-item" data-nav="clients" id="navClients" onclick="setNav('clients')">
+        <span class="nav-icon">👥</span> Clients
+      </button>
+      <button class="nav-item" data-nav="team" id="navTeam" onclick="setNav('team')">
+        <span class="nav-icon">🔑</span> Team &amp; Access
+      </button>
+      <div class="nav-divider"></div>
+      <button class="nav-item" data-nav="platform" id="navPlatform" style="display:none" onclick="setNav('platform')">
+        <span class="nav-icon">⚙</span> Platform
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-welcome">
+          <h1>Welcome back, <span id="heroName"></span></h1>
+          <div class="hero-badges">
+            <span id="accountTypeBadge" class="badge">Loading…</span>
+            <span id="practiceCodeBadge" class="badge badge-code" style="display:none"></span>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-card">
+            <div class="stat-value" id="statApps">—</div>
+            <div class="stat-label">Apps Active</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statClients">—</div>
+            <div class="stat-label">Clients</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statTeam">—</div>
+            <div class="stat-label">My Role</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statStatus">—</div>
+            <div class="stat-label">Status</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Apps Panel -->
+      <section id="panelApps" class="panel">
+        <div class="section-title">Your Applications</div>
+        <div class="apps-grid" id="appsGrid"></div>
+      </section>
+
+      <!-- Clients Panel -->
+      <section id="panelClients" class="panel hidden">
+        <div class="panel-header">
+          <h2>Managed Clients</h2>
+        </div>
+        <div class="clients-grid" id="clientsGrid"></div>
+      </section>
+
+      <!-- Team Panel -->
+      <section id="panelTeam" class="panel hidden">
+        <div id="teamContent"></div>
+      </section>
+
+      <!-- Platform Panel (super admin only) -->
+      <section id="panelPlatform" class="panel hidden">
+        <div id="platformContent"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Launch Overlay -->
+  <div id="launchOverlay" class="launch-overlay">
+    <div class="spinner"></div>
+    <p id="launchText">Launching…</p>
+  </div>
+
+  <script src="js/dashboard-v2.js"></script>
+</body>
+</html>

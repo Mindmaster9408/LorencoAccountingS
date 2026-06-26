@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Filing Pipeline — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Page layout ── */
+        .page-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+        .page-title  { font-size:1.4rem; font-weight:700; color:#e2e8f0; margin:0; }
+        .page-sub    { font-size:0.82rem; color:#718096; margin:4px 0 0; }
+
+        /* ── Summary cards ── */
+        .summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; margin-bottom:22px; }
+        .sum-card { background:#1a202c; border:1px solid #2d3748; border-radius:8px; padding:12px 14px; cursor:pointer; transition:border-color .15s; }
+        .sum-card:hover { border-color:#4a5568; }
+        .sum-card.active { border-color:#667eea; background:#2d3748; }
+        .sum-card-count { font-size:1.6rem; font-weight:700; color:#e2e8f0; line-height:1; }
+        .sum-card-label { font-size:0.72rem; color:#a0aec0; margin-top:4px; text-transform:uppercase; letter-spacing:.04em; }
+        .sum-card-count.c-alert  { color:#fc8181; }
+        .sum-card-count.c-warn   { color:#f6ad55; }
+        .sum-card-count.c-ok     { color:#68d391; }
+        .sum-card-count.c-info   { color:#63b3ed; }
+
+        /* ── Filter bar ── */
+        .filter-bar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:18px; }
+        .filter-bar select, .filter-bar input { background:#1a202c; border:1px solid #2d3748; color:#e2e8f0; border-radius:6px; padding:6px 10px; font-size:0.82rem; }
+        .filter-bar select:focus, .filter-bar input:focus { outline:none; border-color:#667eea; }
+        .btn-sm { padding:6px 14px; border-radius:6px; font-size:0.82rem; font-weight:600; cursor:pointer; border:none; }
+        .btn-primary-sm { background:#667eea; color:#fff; }
+        .btn-primary-sm:hover { background:#5a67d8; }
+        .btn-ghost-sm   { background:transparent; color:#a0aec0; border:1px solid #2d3748; }
+        .btn-ghost-sm:hover { border-color:#4a5568; color:#e2e8f0; }
+        .view-toggle { display:flex; gap:6px; }
+        .view-btn { padding:5px 12px; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer; border:1px solid #2d3748; background:transparent; color:#a0aec0; }
+        .view-btn.active { background:#667eea; border-color:#667eea; color:#fff; }
+
+        /* ── Type badges ── */
+        .type-badge { font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:4px; text-transform:uppercase; letter-spacing:.04em; }
+        .type-ind  { background:#2c3e7a; color:#90cdf4; }
+        .type-comp { background:#2d4a2d; color:#68d391; }
+        .type-prov { background:#4a3820; color:#f6ad55; }
+
+        /* ── Board (Kanban) ── */
+        #boardWrap { display:none; overflow-x:auto; padding-bottom:10px; }
+        .board { display:flex; gap:12px; min-width:max-content; }
+        .board-col { width:195px; flex-shrink:0; }
+        .board-col-header { font-size:0.75rem; font-weight:700; color:#a0aec0; text-transform:uppercase; letter-spacing:.05em; padding:6px 0 8px; display:flex; align-items:center; gap:8px; }
+        .board-col-count { font-size:0.72rem; background:#2d3748; color:#718096; border-radius:10px; padding:1px 7px; font-weight:600; }
+        .board-col-body { display:flex; flex-direction:column; gap:8px; min-height:40px; }
+        .pipeline-card { background:#1a202c; border:1px solid #2d3748; border-radius:8px; padding:11px 12px; cursor:pointer; transition:border-color .15s,transform .1s; }
+        .pipeline-card:hover { border-color:#667eea; transform:translateY(-1px); }
+        .pipeline-card-name { font-size:0.82rem; font-weight:600; color:#e2e8f0; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .pipeline-card-client { font-size:0.74rem; color:#a0aec0; margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .pipeline-card-meta { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px; }
+        .pipeline-card-year { font-size:0.7rem; color:#718096; }
+        .member-chip { font-size:0.65rem; background:#2d3748; color:#a0aec0; border-radius:10px; padding:1px 6px; }
+
+        /* ── List view ── */
+        #listWrap { display:none; }
+        .pipeline-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+        .pipeline-table th { text-align:left; padding:8px 12px; font-size:0.72rem; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid #2d3748; }
+        .pipeline-table td { padding:9px 12px; border-bottom:1px solid #1e2535; color:#e2e8f0; vertical-align:middle; }
+        .pipeline-table tr:hover td { background:#1e2535; cursor:pointer; }
+        .stage-pill { font-size:0.68rem; font-weight:700; padding:3px 9px; border-radius:12px; text-transform:uppercase; letter-spacing:.04em; }
+        .stage-not_started           { background:#252525; color:#718096; }
+        .stage-docs_requested        { background:#1e2d4a; color:#90cdf4; }
+        .stage-docs_received         { background:#1a3040; color:#63b3ed; }
+        .stage-data_captured         { background:#2d3820; color:#9ae6b4; }
+        .stage-calculation_completed { background:#2a3520; color:#68d391; }
+        .stage-review_pack_generated { background:#3a2d1a; color:#f6ad55; }
+        .stage-under_review          { background:#3a2820; color:#fc8181; }
+        .stage-ready_to_submit       { background:#2a2a40; color:#a78bfa; }
+        .stage-submitted             { background:#1a2f3a; color:#76e4f7; }
+        .stage-completed             { background:#1a3a2a; color:#68d391; }
+        .stage-cancelled             { background:#252525; color:#4a5568; }
+
+        /* ── Detail modal ── */
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:200; align-items:center; justify-content:center; padding:20px; }
+        .modal-overlay.open { display:flex; }
+        .modal-box { background:#1a202c; border:1px solid #2d3748; border-radius:12px; width:100%; max-width:620px; max-height:90vh; display:flex; flex-direction:column; }
+        .modal-header { display:flex; align-items:center; justify-content:space-between; padding:18px 22px 14px; border-bottom:1px solid #2d3748; }
+        .modal-title  { font-size:1rem; font-weight:700; color:#e2e8f0; }
+        .modal-close  { background:none; border:none; color:#718096; font-size:1.3rem; cursor:pointer; padding:0 4px; }
+        .modal-close:hover { color:#e2e8f0; }
+        .modal-body   { padding:20px 22px; overflow-y:auto; flex:1; }
+        .modal-footer { padding:14px 22px; border-top:1px solid #2d3748; display:flex; gap:10px; justify-content:flex-end; }
+        .detail-section { margin-bottom:18px; }
+        .detail-section-title { font-size:0.72rem; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+        .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+        .detail-field { background:#0f1724; border-radius:6px; padding:8px 10px; }
+        .detail-field-label { font-size:0.68rem; color:#718096; margin-bottom:2px; }
+        .detail-field-value { font-size:0.82rem; color:#e2e8f0; font-weight:600; }
+        .history-list { display:flex; flex-direction:column; gap:8px; }
+        .history-item { display:flex; gap:10px; align-items:flex-start; }
+        .history-dot  { width:8px; height:8px; border-radius:50%; background:#667eea; margin-top:5px; flex-shrink:0; }
+        .history-content { flex:1; }
+        .history-stages { font-size:0.8rem; color:#e2e8f0; font-weight:600; }
+        .history-meta   { font-size:0.72rem; color:#718096; margin-top:2px; }
+        .history-notes  { font-size:0.75rem; color:#a0aec0; margin-top:3px; font-style:italic; }
+
+        /* ── Stage change modal ── */
+        .form-group { margin-bottom:16px; }
+        .form-label { display:block; font-size:0.78rem; font-weight:600; color:#a0aec0; margin-bottom:6px; }
+        .form-select, .form-textarea { width:100%; background:#0f1724; border:1px solid #2d3748; color:#e2e8f0; border-radius:6px; padding:8px 10px; font-size:0.82rem; box-sizing:border-box; }
+        .form-select:focus, .form-textarea:focus { outline:none; border-color:#667eea; }
+        .form-textarea { resize:vertical; min-height:70px; font-family:inherit; }
+        .validation-msg { font-size:0.78rem; padding:10px 12px; border-radius:6px; margin-bottom:14px; }
+        .validation-msg.error { background:#2d1515; color:#fc8181; border:1px solid #742a2a; }
+        .validation-msg.warn  { background:#2d2015; color:#f6ad55; border:1px solid #744210; }
+        .btn-action   { padding:8px 18px; border-radius:7px; font-size:0.84rem; font-weight:700; cursor:pointer; border:none; }
+        .btn-primary  { background:#667eea; color:#fff; }
+        .btn-primary:hover  { background:#5a67d8; }
+        .btn-danger   { background:#e53e3e; color:#fff; }
+        .btn-danger:hover   { background:#c53030; }
+        .btn-secondary{ background:transparent; border:1px solid #2d3748; color:#a0aec0; }
+        .btn-secondary:hover{ border-color:#4a5568; color:#e2e8f0; }
+        .btn-action:disabled { opacity:.5; cursor:not-allowed; }
+
+        /* ── Empty / loading ── */
+        .empty-state { text-align:center; padding:48px 0; color:#718096; }
+        .empty-state-icon { font-size:2.5rem; margin-bottom:10px; }
+        .loading-spinner { text-align:center; padding:40px; color:#718096; font-size:0.85rem; }
+
+        /* ── Toast ── */
+        .toast { position:fixed; bottom:24px; right:24px; background:#2d3748; color:#e2e8f0; padding:12px 18px; border-radius:8px; font-size:0.83rem; z-index:999; opacity:0; transition:opacity .25s; pointer-events:none; }
+        .toast.show { opacity:1; }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+<div id="toast" class="toast"></div>
+
+<main class="main-content">
+
+    <!-- Page header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Tax Filing Pipeline</h1>
+            <p class="page-sub">Unified lifecycle view across individual, company, and provisional tax</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <div class="view-toggle">
+                <button type="button" class="view-btn active" id="viewBoardBtn" onclick="tplSetView('board')">Board</button>
+                <button type="button" class="view-btn" id="viewListBtn"  onclick="tplSetView('list')">List</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div id="summaryGrid" class="summary-grid">
+        <div class="loading-spinner">Loading summary…</div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <select id="filterType" onchange="tplApplyFilters()">
+            <option value="">All Types</option>
+            <option value="individual_tax_return">Individual Tax</option>
+            <option value="company_tax_return">Company Tax</option>
+            <option value="provisional_tax_plan">Provisional Tax</option>
+        </select>
+        <select id="filterStage" onchange="tplApplyFilters()">
+            <option value="">All Stages</option>
+            <option value="not_started">Not Started</option>
+            <option value="docs_requested">Docs Requested</option>
+            <option value="docs_received">Docs Received</option>
+            <option value="data_captured">Data Captured</option>
+            <option value="calculation_completed">Calculation Done</option>
+            <option value="review_pack_generated">Review Pack</option>
+            <option value="under_review">Under Review</option>
+            <option value="ready_to_submit">Ready To Submit</option>
+            <option value="submitted">Submitted</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+        </select>
+        <input type="number" id="filterYear" placeholder="Tax Year e.g. 2025" style="width:160px" onkeydown="if(event.key==='Enter')tplApplyFilters()">
+        <button type="button" class="btn-sm btn-primary-sm" onclick="tplApplyFilters()">Filter</button>
+        <button type="button" class="btn-sm btn-ghost-sm"   onclick="tplClearFilters()">Clear</button>
+    </div>
+
+    <!-- Board view -->
+    <div id="boardWrap">
+        <div class="board" id="board"></div>
+    </div>
+
+    <!-- List view -->
+    <div id="listWrap">
+        <div class="card">
+            <table class="pipeline-table">
+                <thead>
+                    <tr>
+                        <th>Name / Client</th>
+                        <th>Type</th>
+                        <th>Year</th>
+                        <th>Stage</th>
+                        <th>Owner</th>
+                    </tr>
+                </thead>
+                <tbody id="listBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+</main>
+
+<!-- Detail modal -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span class="modal-title" id="detailModalTitle">Pipeline Detail</span>
+            <button type="button" class="modal-close" onclick="tplCloseDetail()">&#x2715;</button>
+        </div>
+        <div class="modal-body" id="detailModalBody"></div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-secondary" onclick="tplCloseDetail()">Close</button>
+            <button type="button" class="btn-action btn-primary" id="detailChangeStageBtn" onclick="tplOpenStageChange()">Change Stage</button>
+        </div>
+    </div>
+</div>
+
+<!-- Stage change modal -->
+<div class="modal-overlay" id="stageModal">
+    <div class="modal-box" style="max-width:480px;">
+        <div class="modal-header">
+            <span class="modal-title">Change Pipeline Stage</span>
+            <button type="button" class="modal-close" onclick="tplCloseStage()">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+            <div id="stageValidationMsg" style="display:none"></div>
+            <div class="form-group">
+                <label class="form-label" for="stageSelect">New Stage</label>
+                <select class="form-select" id="stageSelect" onchange="tplOnStageSelectChange()"></select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="stageNotes">Notes <span id="stageNotesRequired" style="color:#fc8181;display:none">*required</span></label>
+                <textarea class="form-textarea" id="stageNotes" placeholder="Reason for stage change…" rows="3"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-secondary" onclick="tplCloseStage()">Cancel</button>
+            <button type="button" class="btn-action btn-primary"   id="stageSubmitBtn" onclick="tplSubmitStage()">Move Stage</button>
+        </div>
+    </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/tax-pipeline.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        LAYOUT.init('tax-pipeline');
+    });
+</script>
+</body>
+</html>

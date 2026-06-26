@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Submission Register — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Layout ── */
+        .page-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+        .page-title  { font-size:1.4rem; font-weight:700; color:#e2e8f0; margin:0; }
+        .page-sub    { font-size:0.82rem; color:#718096; margin:4px 0 0; }
+
+        /* ── Summary cards ── */
+        .summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; margin-bottom:22px; }
+        .sum-card { background:#1a202c; border:1px solid #2d3748; border-radius:8px; padding:12px 14px; cursor:pointer; transition:border-color .15s; }
+        .sum-card:hover { border-color:#4a5568; }
+        .sum-card.active { border-color:#667eea; background:#2d3748; }
+        .sum-card-count { font-size:1.5rem; font-weight:700; color:#e2e8f0; line-height:1; }
+        .sum-card-label { font-size:0.72rem; color:#a0aec0; margin-top:4px; text-transform:uppercase; letter-spacing:.04em; }
+        .c-alert { color:#fc8181; }
+        .c-warn  { color:#f6ad55; }
+        .c-ok    { color:#68d391; }
+        .c-info  { color:#63b3ed; }
+
+        /* ── Filter bar ── */
+        .filter-bar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+        .filter-bar select, .filter-bar input { background:#1a202c; border:1px solid #2d3748; color:#e2e8f0; border-radius:6px; padding:6px 10px; font-size:0.82rem; }
+        .filter-bar select:focus, .filter-bar input:focus { outline:none; border-color:#667eea; }
+        .btn-sm         { padding:6px 14px; border-radius:6px; font-size:0.82rem; font-weight:600; cursor:pointer; border:none; }
+        .btn-primary-sm { background:#667eea; color:#fff; }
+        .btn-primary-sm:hover { background:#5a67d8; }
+        .btn-ghost-sm   { background:transparent; color:#a0aec0; border:1px solid #2d3748; }
+        .btn-ghost-sm:hover { border-color:#4a5568; color:#e2e8f0; }
+
+        /* ── Status pills ── */
+        .status-pill { font-size:0.68rem; font-weight:700; padding:3px 9px; border-radius:12px; text-transform:uppercase; letter-spacing:.04em; display:inline-block; }
+        .st-draft                { background:#252525; color:#718096; }
+        .st-submitted            { background:#1e2d4a; color:#90cdf4; }
+        .st-acknowledged         { background:#1a3040; color:#63b3ed; }
+        .st-assessed             { background:#2d3820; color:#9ae6b4; }
+        .st-correction_required  { background:#3a2820; color:#fc8181; }
+        .st-objection_required   { background:#3a2d1a; color:#f6ad55; }
+        .st-completed            { background:#1a3a2a; color:#68d391; }
+        .st-cancelled            { background:#252525; color:#4a5568; }
+
+        /* ── Type badges ── */
+        .type-badge { font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:4px; text-transform:uppercase; }
+        .type-ind  { background:#2c3e7a; color:#90cdf4; }
+        .type-comp { background:#2d4a2d; color:#68d391; }
+        .type-prov { background:#4a3820; color:#f6ad55; }
+        .subtype-badge { font-size:0.65rem; background:#2d3748; color:#a0aec0; padding:2px 7px; border-radius:4px; text-transform:uppercase; font-weight:700; }
+
+        /* ── Table ── */
+        .sub-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+        .sub-table th { text-align:left; padding:8px 12px; font-size:0.72rem; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid #2d3748; }
+        .sub-table td { padding:9px 12px; border-bottom:1px solid #1e2535; color:#e2e8f0; vertical-align:middle; }
+        .sub-table tr:hover td { background:#1e2535; cursor:pointer; }
+
+        /* ── Modal overlay ── */
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; align-items:center; justify-content:center; padding:16px; }
+        .modal-overlay.open { display:flex; }
+        .modal-box { background:#1a202c; border:1px solid #2d3748; border-radius:12px; width:100%; max-width:700px; max-height:92vh; display:flex; flex-direction:column; }
+        .modal-box.wide { max-width:860px; }
+        .modal-header { display:flex; align-items:center; justify-content:space-between; padding:18px 22px 14px; border-bottom:1px solid #2d3748; flex-shrink:0; }
+        .modal-title  { font-size:1rem; font-weight:700; color:#e2e8f0; }
+        .modal-close  { background:none; border:none; color:#718096; font-size:1.3rem; cursor:pointer; }
+        .modal-close:hover { color:#e2e8f0; }
+        .modal-body   { padding:0; overflow-y:auto; flex:1; }
+        .modal-footer { padding:14px 22px; border-top:1px solid #2d3748; display:flex; gap:10px; justify-content:flex-end; flex-shrink:0; }
+
+        /* ── Tabs ── */
+        .tab-bar { display:flex; gap:0; border-bottom:1px solid #2d3748; padding:0 22px; flex-shrink:0; overflow-x:auto; }
+        .tab-btn { padding:11px 14px; font-size:0.8rem; font-weight:600; color:#718096; border:none; background:none; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+        .tab-btn.active { color:#667eea; border-bottom-color:#667eea; }
+        .tab-btn:hover:not(.active) { color:#a0aec0; }
+        .tab-content { padding:20px 22px; }
+
+        /* ── Forms ── */
+        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .form-grid.full { grid-template-columns:1fr; }
+        .form-group { display:flex; flex-direction:column; gap:5px; }
+        .form-label { font-size:0.78rem; font-weight:600; color:#a0aec0; }
+        .form-input, .form-select, .form-textarea { background:#0f1724; border:1px solid #2d3748; color:#e2e8f0; border-radius:6px; padding:8px 10px; font-size:0.82rem; font-family:inherit; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline:none; border-color:#667eea; }
+        .form-textarea { resize:vertical; min-height:70px; }
+        .section-label { font-size:0.72rem; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:.05em; margin:16px 0 10px; }
+
+        /* ── Detail fields ── */
+        .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
+        .detail-field { background:#0f1724; border-radius:6px; padding:9px 11px; }
+        .detail-label { font-size:0.68rem; color:#718096; margin-bottom:2px; }
+        .detail-value { font-size:0.82rem; color:#e2e8f0; font-weight:600; }
+        .detail-value.amount { font-family:monospace; }
+
+        /* ── Evidence items ── */
+        .evidence-item { background:#0f1724; border:1px solid #2d3748; border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+        .evidence-item-header { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+        .evidence-title { font-size:0.84rem; font-weight:600; color:#e2e8f0; flex:1; }
+        .evidence-meta  { font-size:0.74rem; color:#718096; }
+        .verified-badge { font-size:0.65rem; background:#1a3a2a; color:#68d391; padding:2px 7px; border-radius:4px; font-weight:700; }
+        .unverified-badge { font-size:0.65rem; background:#2d2020; color:#fc8181; padding:2px 7px; border-radius:4px; font-weight:700; }
+
+        /* ── History events ── */
+        .event-list { display:flex; flex-direction:column; gap:8px; }
+        .event-item { display:flex; gap:10px; }
+        .event-dot  { width:8px; height:8px; border-radius:50%; background:#667eea; margin-top:5px; flex-shrink:0; }
+        .event-content { flex:1; }
+        .event-type { font-size:0.8rem; color:#e2e8f0; font-weight:600; }
+        .event-meta { font-size:0.72rem; color:#718096; }
+        .event-note { font-size:0.75rem; color:#a0aec0; font-style:italic; margin-top:2px; }
+
+        /* ── Action buttons ── */
+        .btn-action   { padding:7px 16px; border-radius:7px; font-size:0.82rem; font-weight:700; cursor:pointer; border:none; }
+        .btn-primary  { background:#667eea; color:#fff; }
+        .btn-primary:hover { background:#5a67d8; }
+        .btn-warning  { background:#d97706; color:#fff; }
+        .btn-warning:hover { background:#b45309; }
+        .btn-success  { background:#38a169; color:#fff; }
+        .btn-success:hover { background:#276749; }
+        .btn-danger   { background:#e53e3e; color:#fff; }
+        .btn-danger:hover { background:#c53030; }
+        .btn-secondary{ background:transparent; border:1px solid #2d3748; color:#a0aec0; }
+        .btn-secondary:hover { border-color:#4a5568; color:#e2e8f0; }
+        .btn-action:disabled { opacity:.5; cursor:not-allowed; }
+
+        /* ── Follow-up indicator ── */
+        .followup-badge { font-size:0.65rem; background:#3a2d1a; color:#f6ad55; padding:2px 7px; border-radius:4px; font-weight:700; }
+
+        /* ── Alerts / messages ── */
+        .inline-msg { font-size:0.78rem; padding:10px 12px; border-radius:6px; margin-bottom:14px; }
+        .inline-msg.error   { background:#2d1515; color:#fc8181; border:1px solid #742a2a; }
+        .inline-msg.success { background:#1a3a2a; color:#68d391; border:1px solid #276749; }
+        .inline-msg.info    { background:#1e2d4a; color:#90cdf4; border:1px solid #2a4a7a; }
+
+        /* ── Empty / loading ── */
+        .empty-state { text-align:center; padding:48px 0; color:#718096; }
+        .empty-state-icon { font-size:2.5rem; margin-bottom:10px; }
+        .loading-state { text-align:center; padding:40px; color:#718096; font-size:0.85rem; }
+
+        /* ── Toast ── */
+        .toast { position:fixed; bottom:24px; right:24px; background:#2d3748; color:#e2e8f0; padding:12px 18px; border-radius:8px; font-size:0.83rem; z-index:999; opacity:0; transition:opacity .25s; pointer-events:none; max-width:360px; }
+        .toast.show { opacity:1; }
+
+        /* ── Pagination ── */
+        .pagination { display:flex; align-items:center; gap:10px; padding:14px 0 0; font-size:0.82rem; color:#718096; }
+        .page-btn { padding:5px 12px; border-radius:6px; border:1px solid #2d3748; background:transparent; color:#a0aec0; cursor:pointer; font-size:0.8rem; }
+        .page-btn:hover:not(:disabled) { border-color:#667eea; color:#e2e8f0; }
+        .page-btn:disabled { opacity:.4; cursor:not-allowed; }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+<div id="toast" class="toast"></div>
+
+<main class="main-content">
+
+    <!-- Page header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Tax Submission Register</h1>
+            <p class="page-sub">Manual submission records, evidence, acknowledgements, and assessments</p>
+        </div>
+        <button type="button" class="btn-sm btn-primary-sm" onclick="tslOpenCreate()">+ New Submission</button>
+    </div>
+
+    <!-- Summary cards -->
+    <div id="summaryGrid" class="summary-grid">
+        <div class="loading-state">Loading…</div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <select id="filterType" onchange="tslApplyFilters()">
+            <option value="">All Types</option>
+            <option value="individual_tax_return">Individual</option>
+            <option value="company_tax_return">Company</option>
+            <option value="provisional_tax_plan">Provisional</option>
+        </select>
+        <select id="filterSubType" onchange="tslApplyFilters()">
+            <option value="">All Sub-types</option>
+            <option value="itr12">ITR12</option>
+            <option value="itr14">ITR14</option>
+            <option value="irp6_p1">IRP6 P1</option>
+            <option value="irp6_p2">IRP6 P2</option>
+            <option value="irp6_topup">IRP6 Top-up</option>
+            <option value="emp501">EMP501</option>
+            <option value="custom">Custom</option>
+        </select>
+        <select id="filterStatus" onchange="tslApplyFilters()">
+            <option value="">All Statuses</option>
+            <option value="draft">Draft</option>
+            <option value="submitted">Submitted</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="assessed">Assessed</option>
+            <option value="correction_required">Correction Required</option>
+            <option value="objection_required">Objection Required</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+        </select>
+        <input type="number" id="filterYear" placeholder="Tax Year" style="width:120px" onkeydown="if(event.key==='Enter')tslApplyFilters()">
+        <button type="button" class="btn-sm btn-primary-sm" onclick="tslApplyFilters()">Filter</button>
+        <button type="button" class="btn-sm btn-ghost-sm"   onclick="tslClearFilters()">Clear</button>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <table class="sub-table">
+            <thead>
+                <tr>
+                    <th>Type / Sub-type</th>
+                    <th>Tax Year</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Reference</th>
+                    <th>Assessment</th>
+                    <th>Payable</th>
+                    <th>Follow-up</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+        <div id="paginationRow" class="pagination" style="padding:14px 16px;display:none;">
+            <button type="button" class="page-btn" id="prevPageBtn" onclick="tslPrevPage()">← Prev</button>
+            <span id="pageInfo">Page 1</span>
+            <button type="button" class="page-btn" id="nextPageBtn" onclick="tslNextPage()">Next →</button>
+        </div>
+    </div>
+
+</main>
+
+<!-- Create Submission Modal -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span class="modal-title">New Submission Record</span>
+            <button type="button" class="modal-close" onclick="tslCloseCreate()">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+            <div class="tab-content">
+                <div id="createMsg" style="display:none"></div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Source Type *</label>
+                        <select class="form-select" id="createSourceType">
+                            <option value="">— Select —</option>
+                            <option value="individual_tax_return">Individual Tax Return</option>
+                            <option value="company_tax_return">Company Tax Return</option>
+                            <option value="provisional_tax_plan">Provisional Tax Plan</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Source ID (Return/Plan ID) *</label>
+                        <input type="number" class="form-input" id="createSourceId" placeholder="e.g. 123">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Submission Type *</label>
+                        <select class="form-select" id="createSubType">
+                            <option value="">— Select —</option>
+                            <option value="itr12">ITR12 — Individual</option>
+                            <option value="itr14">ITR14 — Company</option>
+                            <option value="irp6_p1">IRP6 Period 1</option>
+                            <option value="irp6_p2">IRP6 Period 2</option>
+                            <option value="irp6_topup">IRP6 Top-up</option>
+                            <option value="emp501">EMP501</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tax Year</label>
+                        <input type="number" class="form-input" id="createTaxYear" placeholder="e.g. 2025">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-textarea" id="createNotes" rows="2" placeholder="Optional notes…"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-secondary" onclick="tslCloseCreate()">Cancel</button>
+            <button type="button" class="btn-action btn-primary"   id="createSubmitBtn" onclick="tslSubmitCreate()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box wide">
+        <div class="modal-header">
+            <span class="modal-title" id="detailTitle">Submission Detail</span>
+            <button type="button" class="modal-close" onclick="tslCloseDetail()">&#x2715;</button>
+        </div>
+        <!-- Tab bar -->
+        <div class="tab-bar" id="detailTabBar">
+            <button type="button" class="tab-btn active" onclick="tslOpenTab('overview')">Overview</button>
+            <button type="button" class="tab-btn"        onclick="tslOpenTab('submission')">Submission</button>
+            <button type="button" class="tab-btn"        onclick="tslOpenTab('assessment')">Assessment</button>
+            <button type="button" class="tab-btn"        onclick="tslOpenTab('evidence')">Evidence</button>
+            <button type="button" class="tab-btn"        onclick="tslOpenTab('followup')">Follow-up</button>
+            <button type="button" class="tab-btn"        onclick="tslOpenTab('events')">Events</button>
+        </div>
+        <div class="modal-body" id="detailBody">
+            <div class="loading-state">Loading…</div>
+        </div>
+        <div class="modal-footer" id="detailFooter">
+            <button type="button" class="btn-action btn-secondary" onclick="tslCloseDetail()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Action Modal (mark submitted / record ack / record assessment / add evidence / set follow-up) -->
+<div class="modal-overlay" id="actionModal">
+    <div class="modal-box" style="max-width:520px;">
+        <div class="modal-header">
+            <span class="modal-title" id="actionModalTitle">Action</span>
+            <button type="button" class="modal-close" onclick="tslCloseAction()">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+            <div class="tab-content">
+                <div id="actionMsg" style="display:none"></div>
+                <div id="actionFormBody"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-secondary" onclick="tslCloseAction()">Cancel</button>
+            <button type="button" class="btn-action btn-primary"   id="actionSubmitBtn" onclick="tslSubmitAction()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/tax-submissions.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        LAYOUT.init('tax-submissions');
+    });
+</script>
+</body>
+</html>

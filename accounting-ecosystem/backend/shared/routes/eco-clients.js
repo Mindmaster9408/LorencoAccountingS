@@ -9,6 +9,7 @@
  * ============================================================================
  */
 
+const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
@@ -699,18 +700,26 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Client name is required' });
     }
 
-    // ── Duplicate check (by id_number / registration number) ──────────────
+    // ── Per-practice duplicate check (by id_number / registration number) ──────────────
+    // Scoped to the managing practice (company_id) — the same client CAN legitimately
+    // exist under different practices, but never twice under the same practice.
     // Skipped when force=true (user has already been warned and confirmed).
     if (!force && id_number) {
-      const { data: existingByRegNum } = await supabase
+      const practiceId = parseInt(company_id) || req.companyId || null;
+      let dupQ = supabase
         .from('eco_clients')
         .select('id, name, id_number, is_active')
         .eq('id_number', id_number)
-        .limit(5);
+        .limit(3);
+      if (practiceId) dupQ = dupQ.eq('company_id', practiceId);
+
+      const { data: existingByRegNum } = await dupQ;
 
       if (existingByRegNum && existingByRegNum.length > 0) {
         return res.status(409).json({
-          error: 'A client with this registration/ID number already exists.',
+          error: practiceId
+            ? 'A client with this registration/ID number already exists in your practice.'
+            : 'A client with this registration/ID number already exists.',
           code:  'DUPLICATE_REG_NUMBER',
           duplicate: existingByRegNum,
           hint:  'If you want to create it anyway, resubmit with force: true in the request body.',
@@ -805,6 +814,9 @@ router.post('/', async (req, res) => {
       apps:        Array.isArray(apps) ? apps : [],
       notes:       notes       || null,
       is_active:   true,
+      // Random non-sequential client reference (CLT-XXXXXXXX). Unique index enforces global uniqueness.
+      // Column exists after migration 092; gracefully ignored by Supabase if absent.
+      client_code: 'CLT-' + crypto.randomBytes(4).toString('hex').toUpperCase(),
       // Track creation method (column exists after migration 010; gracefully ignored if absent)
       ...(import_source ? { import_source } : {}),
     };
