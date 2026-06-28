@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -3063,11 +3063,12 @@ Click OK to simulate uploading a file.`;
                 }
 
                 // Transactions are now staged — NOT yet in bank_transactions
-                let msg = `${data.staged} transaction(s) staged for review.`;\n                if (data.skipped > 0) msg += `\\n${data.skipped} row(s) skipped (already imported or invalid).`;
-                if (data.duplicatesSuspected > 0) msg += `\\n\\n⚠️ ${data.duplicatesSuspected} possible duplicate(s) flagged — review carefully.`;
-                if (data.transfersDetected > 0) msg += `\\n${data.transfersDetected} inter-account transfer(s) detected.`;
-                if (data.batchDuplicateWarning) msg += `\\n\\n⚠️ This file may have been imported before.`;
-                msg += '\\n\\nTransactions will not appear in your account until you review and confirm them in Bank Staging.';
+                let msg = `${data.staged} transaction(s) staged for review.`;
+                if (data.skipped > 0) msg += `\n${data.skipped} row(s) skipped (already imported or invalid).`;
+                if (data.duplicatesSuspected > 0) msg += `\n\n⚠️ ${data.duplicatesSuspected} possible duplicate(s) flagged — review carefully.`;
+                if (data.transfersDetected > 0) msg += `\n${data.transfersDetected} inter-account transfer(s) detected.`;
+                if (data.batchDuplicateWarning) msg += `\n\n⚠️ This file may have been imported before.`;
+                msg += '\n\nTransactions will not appear in your account until you review and confirm them in Bank Staging.';
 
                 closeImportModal();
                 showImportStagingAlert(msg);
