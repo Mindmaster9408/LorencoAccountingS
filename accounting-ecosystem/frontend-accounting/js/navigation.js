@@ -126,12 +126,12 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'accounts.html' || currentPage === 'journals.html' || currentPage === 'trial-balance.html' || currentPage === 'accounting-periods.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'accounts.html' || currentPage === 'journals.html' || currentPage === 'trial-balance.html' || currentPage === 'general-ledger.html' || currentPage === 'accounting-periods.html' ? 'active' : ''}">
         <a href="/accounting/accounts.html">Accounts</a>
         <div class="dropdown">
           <a href="/accounting/accounts.html">Chart of Accounts</a>
           <a href="/accounting/journals.html">Journal Entries</a>
-          <a href="#">Nominal Ledger</a>
+          <a href="/accounting/general-ledger.html">General Ledger</a>
           <a href="/accounting/trial-balance.html">Trial Balance</a>
           <a href="/accounting/accounting-periods.html">Period Management</a>
         </div>

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>General Ledger - Lorenco Accounting</title>
+    <script src="js/navigation.js"></script>
+    <script src="js/theme-guard.js"></script>
+    <script src="js/polyfills.js"></script>
+    <link rel="stylesheet" href="css/dark-theme.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+        }
+
+        /* ── Toolbar ──────────────────────────────────────────────────────── */
+        .gl-toolbar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding: 16px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .gl-toolbar .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.75);
+            font-size: 13px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+        .gl-toolbar .back-btn:hover {
+            background: rgba(255,255,255,0.10);
+            color: #fff;
+        }
+
+        .gl-toolbar .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .gl-toolbar label {
+            font-size: 12px;
+            color: rgba(255,255,255,0.55);
+            white-space: nowrap;
+        }
+
+        .gl-toolbar input[type="date"] {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.06);
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .gl-toolbar .btn-primary {
+            padding: 7px 16px;
+            border-radius: 6px;
+            border: none;
+            background: #f59e0b;
+            color: #000;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .gl-toolbar .btn-primary:hover { background: #d97706; }
+
+        .gl-toolbar .btn-secondary {
+            padding: 7px 16px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .gl-toolbar .btn-secondary:hover { background: rgba(255,255,255,0.10); }
+
+        /* ── Account header ──────────────────────────────────────────────── */
+        .gl-account-header {
+            padding: 20px 24px 12px;
+        }
+
+        .gl-account-header h2 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .gl-account-header .gl-meta {
+            font-size: 13px;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .gl-account-header .gl-meta span + span::before {
+            content: ' · ';
+        }
+
+        /* ── Error / loading ─────────────────────────────────────────────── */
+        .gl-error {
+            margin: 0 24px 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            background: rgba(220,38,38,0.15);
+            border: 1px solid rgba(220,38,38,0.3);
+            color: #fca5a5;
+            font-size: 13px;
+            display: none;
+        }
+
+        /* ── Table container ─────────────────────────────────────────────── */
+        .gl-table-wrap {
+            padding: 0 24px 40px;
+            overflow-x: auto;
+        }
+
+        table.gl-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .gl-table thead th {
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: rgba(255,255,255,0.45);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            white-space: nowrap;
+        }
+
+        .gl-table thead th.num { text-align: right; }
+
+        .gl-table tbody tr {
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            transition: background 0.1s;
+        }
+
+        .gl-table tbody tr:hover {
+            background: rgba(255,255,255,0.04);
+        }
+
+        .gl-table td {
+            padding: 9px 14px;
+            color: rgba(255,255,255,0.85);
+            vertical-align: top;
+        }
+
+        .gl-table td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .gl-table td.date-col {
+            white-space: nowrap;
+            color: rgba(255,255,255,0.55);
+            font-size: 12px;
+        }
+
+        .gl-table td.ref-col {
+            white-space: nowrap;
+            color: #f59e0b;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .gl-table td.ref-col:hover { text-decoration: underline; }
+
+        .gl-table td.desc-col {
+            max-width: 320px;
+        }
+
+        .gl-table td.debit-col  { color: #34d399; }
+        .gl-table td.credit-col { color: #f87171; }
+
+        .gl-table td.balance-col {
+            color: rgba(255,255,255,0.85);
+            font-weight: 500;
+        }
+
+        .gl-table td.balance-col.negative { color: #f87171; }
+
+        /* Opening / closing balance rows */
+        .row-opening, .row-closing {
+            font-weight: 600;
+        }
+        .row-opening td, .row-closing td {
+            background: rgba(245,158,11,0.08) !important;
+            color: rgba(255,255,255,0.9) !important;
+            border-top: 1px solid rgba(245,158,11,0.2);
+            border-bottom: 1px solid rgba(245,158,11,0.2);
+        }
+        .row-closing td {
+            border-top: 2px solid rgba(245,158,11,0.35);
+        }
+
+        /* Totals row */
+        .row-totals td {
+            background: rgba(255,255,255,0.04) !important;
+            font-weight: 600;
+            border-top: 1px solid rgba(255,255,255,0.12);
+        }
+
+        /* Source type badge */
+        .source-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+        .source-badge.bank     { background: rgba(59,130,246,0.2);  color: #93c5fd; }
+        .source-badge.invoice  { background: rgba(16,185,129,0.2);  color: #6ee7b7; }
+        .source-badge.payroll  { background: rgba(139,92,246,0.2);  color: #c4b5fd; }
+        .source-badge.manual   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+
+        /* Empty state */
+        .gl-empty {
+            text-align: center;
+            padding: 60px 24px;
+            color: rgba(255,255,255,0.35);
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="nav-placeholder"></div>
+
+<div class="page-content" style="margin-left:var(--nav-width,220px);padding-top:60px">
+
+    <!-- Toolbar -->
+    <div class="gl-toolbar">
+        <a id="backBtn" href="/accounting/trial-balance.html" class="back-btn">← Trial Balance</a>
+
+        <span id="glAccountLabel" style="font-size:14px;font-weight:600;color:#fff"></span>
+
+        <div class="filter-group">
+            <label>From</label>
+            <input type="date" id="glFromDate">
+            <label>To</label>
+            <input type="date" id="glToDate">
+            <button class="btn-primary" onclick="loadGL()">Refresh</button>
+            <button class="btn-secondary" onclick="exportCSV()">Export CSV</button>
+        </div>
+    </div>
+
+    <!-- Account heading -->
+    <div class="gl-account-header">
+        <h2 id="glHeading">General Ledger</h2>
+        <div class="gl-meta" id="glMeta"></div>
+    </div>
+
+    <div class="gl-error" id="glError"></div>
+
+    <!-- Table -->
+    <div class="gl-table-wrap">
+        <table class="gl-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th class="num">Debit (ZAR)</th>
+                    <th class="num">Credit (ZAR)</th>
+                    <th class="num">Balance (ZAR)</th>
+                </tr>
+            </thead>
+            <tbody id="glBody">
+                <tr><td colspan="6" style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">Loading…</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/';
+
+    function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+
+    function fmt(n) {
+        if (n === null || n === undefined || n === 0) return '-';
+        return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtSigned(n) {
+        if (!n || n === 0) return '-';
+        const prefix = n < 0 ? '(R ' : 'R ';
+        const suffix = n < 0 ? ')' : '';
+        return prefix + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + suffix;
+    }
+
+    function sourceBadge(sourceType) {
+        if (!sourceType || sourceType === 'manual') return '<span class="source-badge manual">Manual</span>';
+        if (sourceType === 'bank_allocation') return '<span class="source-badge bank">Bank</span>';
+        if (sourceType === 'customer_invoice' || sourceType === 'supplier_invoice') return '<span class="source-badge invoice">Invoice</span>';
+        if (sourceType === 'payroll') return '<span class="source-badge payroll">Payroll</span>';
+        return `<span class="source-badge">${sourceType}</span>`;
+    }
+
+    // ── Read URL params ───────────────────────────────────────────────────────
+    const params     = new URLSearchParams(window.location.search);
+    const accountId  = params.get('accountId');
+    const fromParam  = params.get('fromDate');
+    const toParam    = params.get('toDate');
+
+    if (!accountId) {
+        document.getElementById('glError').textContent = 'No account specified. Go back and click an amount in the Trial Balance.';
+        document.getElementById('glError').style.display = 'block';
+        document.getElementById('glBody').innerHTML = '';
+    }
+
+    // Pre-fill date inputs
+    (function() {
+        const now = new Date();
+        document.getElementById('glFromDate').value = fromParam || `${now.getFullYear() - 1}-01-01`;
+        document.getElementById('glToDate').value   = toParam   || now.toISOString().slice(0, 10);
+
+        // Back button preserves TB date range
+        if (fromParam && toParam) {
+            document.getElementById('backBtn').href =
+                `/accounting/trial-balance.html?fromDate=${fromParam}&toDate=${toParam}`;
+        }
+    })();
+
+    // ── Last GL data for CSV export ───────────────────────────────────────────
+    let lastData = null;
+
+    // ── Load GL ───────────────────────────────────────────────────────────────
+    async function loadGL() {
+        if (!accountId) return;
+
+        const fromDate = document.getElementById('glFromDate').value;
+        const toDate   = document.getElementById('glToDate').value;
+        const errEl    = document.getElementById('glError');
+        errEl.style.display = 'none';
+
+        const tbody = document.getElementById('glBody');
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">Loading…</td></tr>';
+
+        try {
+            let url = `/api/accounting/reports/general-ledger?accountId=${encodeURIComponent(accountId)}`;
+            if (fromDate) url += `&fromDate=${fromDate}`;
+            if (toDate)   url += `&toDate=${toDate}`;
+
+            const res  = await fetch(url, { headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+
+            lastData = data;
+            renderGL(data);
+
+        } catch (err) {
+            errEl.textContent = 'Failed to load general ledger: ' + err.message;
+            errEl.style.display = 'block';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">Error loading data.</td></tr>';
+        }
+    }
+
+    function renderGL(data) {
+        const { account, openingBalance, transactions, totalDebit, totalCredit, closingBalance, fromDate, toDate } = data;
+
+        // Update headings
+        document.title = `GL ${account.code} — ${account.name}`;
+        document.getElementById('glHeading').textContent = `${account.code} — ${account.name}`;
+        document.getElementById('glAccountLabel').textContent = `${account.code} · ${account.name}`;
+        document.getElementById('glMeta').innerHTML =
+            `<span>${account.type?.toUpperCase()}</span>` +
+            (fromDate ? `<span>${fromDate} to ${toDate}</span>` : '') +
+            `<span>${transactions.length} transaction${transactions.length !== 1 ? 's' : ''}</span>`;
+
+        if (!transactions.length && openingBalance === 0) {
+            document.getElementById('glBody').innerHTML =
+                '<tr><td colspan="6" class="gl-empty">No posted journal entries found for this account in the selected period.</td></tr>';
+            return;
+        }
+
+        let html = '';
+
+        // Opening balance row
+        const obClass = openingBalance < 0 ? ' negative' : '';
+        html += `<tr class="row-opening">
+            <td class="date-col">${fromDate || '—'}</td>
+            <td></td>
+            <td><strong>Opening Balance</strong></td>
+            <td class="num"></td>
+            <td class="num"></td>
+            <td class="num balance-col${obClass}"><strong>${fmtSigned(openingBalance)}</strong></td>
+        </tr>`;
+
+        // Transaction rows
+        for (const t of transactions) {
+            const desc = [t.line_description, t.journal_description].filter(Boolean).join(' — ') || '—';
+            const balClass = t.balance < 0 ? ' negative' : '';
+            html += `<tr>
+                <td class="date-col">${t.date || '—'}</td>
+                <td class="ref-col">${escHtml(t.reference || '—')}</td>
+                <td class="desc-col">${escHtml(desc)}${sourceBadge(t.source_type)}</td>
+                <td class="num debit-col">${t.debit  ? fmt(t.debit)  : '-'}</td>
+                <td class="num credit-col">${t.credit ? fmt(t.credit) : '-'}</td>
+                <td class="num balance-col${balClass}">${fmtSigned(t.balance)}</td>
+            </tr>`;
+        }
+
+        // Totals separator
+        html += `<tr class="row-totals">
+            <td colspan="2"></td>
+            <td><strong>Period Total</strong></td>
+            <td class="num debit-col"><strong>${fmt(totalDebit)}</strong></td>
+            <td class="num credit-col"><strong>${fmt(totalCredit)}</strong></td>
+            <td class="num"></td>
+        </tr>`;
+
+        // Closing balance
+        const cbClass = closingBalance < 0 ? ' negative' : '';
+        html += `<tr class="row-closing">
+            <td class="date-col">${toDate || '—'}</td>
+            <td></td>
+            <td><strong>Closing Balance</strong></td>
+            <td class="num"></td>
+            <td class="num"></td>
+            <td class="num balance-col${cbClass}"><strong>${fmtSigned(closingBalance)}</strong></td>
+        </tr>`;
+
+        document.getElementById('glBody').innerHTML = html;
+    }
+
+    function escHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function exportCSV() {
+        if (!lastData) { alert('Load the ledger first.'); return; }
+        const { account, openingBalance, transactions, totalDebit, totalCredit, closingBalance, fromDate, toDate } = lastData;
+        let csv = `General Ledger — ${account.code} ${account.name}\n`;
+        csv += `Period: ${fromDate || 'All'} to ${toDate || 'All'}\n\n`;
+        csv += 'Date,Reference,Description,Debit,Credit,Balance\n';
+        csv += `${fromDate || ''},,"Opening Balance",,,${openingBalance.toFixed(2)}\n`;
+        for (const t of transactions) {
+            const desc = [t.line_description, t.journal_description].filter(Boolean).join(' — ');
+            csv += `${t.date},"${(t.reference || '').replace(/"/g,'""')}","${desc.replace(/"/g,'""')}",${t.debit || ''},${t.credit || ''},${t.balance.toFixed(2)}\n`;
+        }
+        csv += `,,Period Total,${totalDebit.toFixed(2)},${totalCredit.toFixed(2)},\n`;
+        csv += `${toDate || ''},,"Closing Balance",,,${closingBalance.toFixed(2)}\n`;
+
+        const a = Object.assign(document.createElement('a'), {
+            href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+            download: `GL-${account.code}-${fromDate || 'all'}-to-${toDate || 'all'}.csv`
+        });
+        a.click();
+    }
+
+    // Auto-load on page ready
+    document.addEventListener('DOMContentLoaded', loadGL);
+</script>
+<script src="js/companyContextBadge.js"></script>
+</body>
+</html>

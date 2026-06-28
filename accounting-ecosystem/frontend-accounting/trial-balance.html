@@ -369,6 +369,18 @@
             font-family: 'Courier New', monospace;
         }
 
+        .amount-link {
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            border-bottom: 1px dashed rgba(245,158,11,0.5);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .amount-link:hover {
+            color: #f59e0b;
+            border-bottom-color: #f59e0b;
+        }
+
         /* Sub-account indentation — bank accounts with multiple real accounts */
         .account-child td:first-child,
         .account-child td:nth-child(2) {
@@ -732,6 +744,8 @@
         }
 
         function renderTrialBalance(data) {
+            const fromDate = document.getElementById('tbFromDate').value;
+            const toDate   = document.getElementById('tbToDate').value;
             const tbody = document.getElementById('trialBalanceBody');
             const groups = {
                 asset:     { label: 'ASSETS',      accounts: [] },
@@ -773,11 +787,18 @@
                         : (isParent ? `<strong>${acc.name}</strong>` : acc.name);
 
                     const rowClass = isChild ? ' class="account-child"' : (isParent ? ' class="account-parent"' : '');
+                    const glUrl = `/accounting/general-ledger.html?accountId=${acc.id}&fromDate=${fromDate}&toDate=${toDate}`;
+                    const drCell = dr
+                        ? `<a class="amount-link" href="${glUrl}">${fmtAmt(dr)}</a>`
+                        : '-';
+                    const crCell = cr
+                        ? `<a class="amount-link" href="${glUrl}">${fmtAmt(cr)}</a>`
+                        : '-';
                     html += `<tr${rowClass}>
                         <td>${codeCell}</td>
                         <td>${nameCell}</td>
-                        <td class="amount">${dr ? fmtAmt(dr) : '-'}</td>
-                        <td class="amount">${cr ? fmtAmt(cr) : '-'}</td>
+                        <td class="amount">${drCell}</td>
+                        <td class="amount">${crCell}</td>
                     </tr>`;
                 });
                 html += '<tr><td colspan="4" style="height:10px"></td></tr>';
