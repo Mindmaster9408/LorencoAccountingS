@@ -221,6 +221,27 @@ body {
 }
 .settings-content { background: rgba(255,255,255,0.02) !important; }
 
+/* ── Tills Settings ──────────────────────────────────────────────────────────── */
+/* createTillForm has inline background:#f8f9fa. When JS sets display:block via
+   element.style, browsers re-serialize the style attr with rgb() colours, which
+   bypasses the [style*="background:#f8f9fa"] catch-all below. ID + !important wins. */
+#createTillForm {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+/* Status badges rendered by renderTillsTable() via innerHTML */
+#tillsSection [style*="background:#e8f5e9"],
+#tillsSection [style*="background: #e8f5e9"] {
+    background: rgba(46,125,50,0.2) !important;
+    color: #6ee7b7 !important;
+}
+#tillsSection [style*="background:#fce4ec"],
+#tillsSection [style*="background: #fce4ec"] {
+    background: rgba(198,40,40,0.2) !important;
+    color: #fca5a5 !important;
+}
+
 /* ── Products Management ────────────────────────────────────────────────────── */
 .products-header {
     background: var(--surface) !important;
