@@ -1279,6 +1279,26 @@
             color: #999;
         }
         .empty-state .icon { font-size: 48px; margin-bottom: 10px; }
+
+        /* ── Receipt print area — hidden on screen, visible only when printing ── */
+        #printReceiptArea { display: none; }
+        @media print {
+            /* Hide the whole app — only the receipt shows */
+            body * { visibility: hidden; }
+            #printReceiptArea,
+            #printReceiptArea * { visibility: visible; }
+            #printReceiptArea {
+                display: block;
+                position: absolute;
+                top: 0; left: 0;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                color: #000;
+                background: #fff;
+            }
+            /* Remove dark-theme backgrounds when printing */
+            body { background: #fff !important; }
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 </head>
@@ -2560,6 +2580,19 @@
                                     <input type="checkbox" id="autoPrintReceipt">
                                     Auto-print receipt after each sale
                                 </label>
+                            </div>
+                            <div style="margin-top: 15px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 500;">Paper Width</label>
+                                <div style="display: flex; gap: 20px;">
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <input type="radio" name="paperWidth" id="paperWidth80" value="80">
+                                        80mm <span style="font-size: 12px; opacity: 0.6;">(most common)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <input type="radio" name="paperWidth" id="paperWidth58" value="58">
+                                        58mm
+                                    </label>
+                                </div>
                             </div>
                             <button class="btn btn-primary" onclick="saveReceiptSettings()" style="margin-top: 15px;">Save Settings</button>
                         </div>
@@ -5578,6 +5611,7 @@
 
         let lastSaleId = null;
         let autoPrintEnabled = false;
+        let activePrinterCount = 0;
 
         async function checkout() {
             if (forceUpdatePending) {
@@ -5812,22 +5846,77 @@
             if (input) input.focus();
         }
 
+        async function printReceiptViaBrowser(saleId) {
+            try {
+                const response = await fetch(`${API_URL}/receipts/preview/${saleId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!response.ok) throw new Error('Preview failed');
+                const result = await response.json();
+                const r = result.receipt;
+                const fmt = (v) => 'R ' + parseFloat(v || 0).toFixed(2);
+                const s = (t) => String(t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                const LINE  = `<div style="border-top:1px dashed #000;margin:5px 0;"></div>`;
+                const DLINE = `<div style="border-top:2px solid #000;margin:5px 0;"></div>`;
+                const ROW   = (l, v, bold) => `<div style="display:flex;justify-content:space-between;${bold?'font-weight:bold;font-size:13px;':''}"><span>${l}</span><span>${v}</span></div>`;
+                const saleDate = new Date(r.sale.created_at || Date.now());
+                const dateStr  = saleDate.toLocaleDateString('en-ZA') + ' ' + saleDate.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+                const itemsHtml = (r.items || []).map(item => `
+                    <div style="margin-bottom:4px;">
+                        <div>${s(item.products?.product_name || 'Item')}</div>
+                        <div style="display:flex;justify-content:space-between;padding-left:8px;font-size:11px;">
+                            <span>${item.quantity} x ${fmt(item.unit_price)}</span>
+                            <span>${fmt(item.total_price)}</span>
+                        </div>
+                    </div>`).join('');
+                const paymentsHtml = (r.payments || []).map(p =>
+                    ROW((p.payment_method || 'Cash').toUpperCase() + ':', fmt(p.amount))
+                ).join('');
+                const companyName = s(r.company?.trading_name || r.company?.company_name || 'Checkout Charlie');
+                const headerHtml = r.header ? `<div style="text-align:center;font-size:11px;margin-bottom:4px;">${s(r.header)}</div>` : '';
+                const footerHtml = r.footer ? `<div style="margin-top:6px;">${s(r.footer)}</div>` : '';
+                const vatLine = r.company?.vat_number ? `<div style="text-align:center;font-size:10px;">VAT Reg: ${s(r.company.vat_number)}</div>` : '';
+
+                const html = `
+                    <div style="text-align:center;margin-bottom:6px;">
+                        <div style="font-size:16px;font-weight:bold;">${companyName}</div>
+                        ${vatLine}
+                        ${headerHtml}
+                    </div>
+                    ${DLINE}
+                    ${ROW('Receipt #:', s(r.sale.id))}
+                    ${ROW('Date:', s(dateStr))}
+                    ${r.customer ? ROW('Customer:', s(r.customer.name)) : ''}
+                    ${LINE}
+                    <div style="display:flex;justify-content:space-between;font-weight:bold;"><span>Item</span><span>Amount</span></div>
+                    ${LINE}
+                    ${itemsHtml}
+                    ${LINE}
+                    ${ROW('Subtotal:', fmt(r.sale.subtotal))}
+                    ${ROW('VAT (15%):', fmt(r.sale.vat_amount))}
+                    ${ROW('TOTAL:', fmt(r.sale.total_amount), true)}
+                    ${LINE}
+                    ${paymentsHtml}
+                    ${DLINE}
+                    <div style="text-align:center;font-size:10px;margin-top:6px;">
+                        ${footerHtml}
+                    </div>`;
+                printBrowserReceipt(html);
+            } catch (e) {
+                showNotification('Could not print receipt', 'error');
+            }
+        }
+
         async function printReceipt(saleId) {
-            // If offline, get receipt preview and use browser print
+            // No network printers configured → use USB/local printer via browser print
+            if (activePrinterCount === 0) {
+                await printReceiptViaBrowser(saleId);
+                return;
+            }
+
+            // If offline, fall back to browser print
             if (!isOnline) {
-                showNotification('Offline - using browser print dialog', 'info');
-                try {
-                    // Try to get cached sale or generate basic receipt
-                    const response = await fetch(`${API_URL}/receipts/preview/${saleId}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (response.ok) {
-                        const result = await response.json();
-                        printBrowserReceipt(result.receiptHtml);
-                    }
-                } catch (e) {
-                    showNotification('Cannot print offline - sale not cached', 'error');
-                }
+                await printReceiptViaBrowser(saleId);
                 return;
             }
 
@@ -5875,15 +5964,28 @@
             }
         }
 
-        function printBrowserReceipt(html) {
-            const printWindow = window.open('', '_blank', 'width=400,height=600');
-            printWindow.document.write(html);
-            printWindow.document.close();
-            printWindow.focus();
-            setTimeout(() => {
-                printWindow.print();
-                printWindow.close();
-            }, 250);
+        function printBrowserReceipt(receiptBodyHtml) {
+            const paperWidth = localStorage.getItem('pos_paper_width') || '80';
+
+            // Inject / update the @page size for this print job
+            let pageStyle = document.getElementById('_printPageStyle');
+            if (!pageStyle) {
+                pageStyle = document.createElement('style');
+                pageStyle.id = '_printPageStyle';
+                document.head.appendChild(pageStyle);
+            }
+            pageStyle.textContent = `@media print { @page { size: ${paperWidth}mm auto; margin: 3mm; } }`;
+
+            // Wrap with receipt-width container so layout matches the paper
+            document.getElementById('printReceiptArea').innerHTML = `
+                <div style="width:${paperWidth}mm; font-family:'Courier New',monospace; font-size:12px; color:#000;">
+                    ${receiptBodyHtml}
+                </div>`;
+
+            window.print();
+
+            // Clear after print dialog closes
+            setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
         }
 
         async function printLastReceipt() {
@@ -5912,98 +6014,49 @@
         }
 
         function generateOfflineReceiptHtml(sale) {
-            const formatCurrency = (amt) => 'R ' + parseFloat(amt || 0).toFixed(2);
+            const fmt = (amt) => 'R ' + parseFloat(amt || 0).toFixed(2);
             const now = new Date();
+            const dateStr = now.toLocaleDateString('en-ZA') + ' ' + now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
 
-            let itemsHtml = '';
-            if (sale.items && sale.items.length > 0) {
-                sale.items.forEach(item => {
-                    itemsHtml += `
-                        <div>
-                            <div class="item-name">${item.productName || 'Item'}</div>
-                            <div class="item-detail">
-                                <span>${item.quantity} x ${formatCurrency(item.unitPrice)}</span>
-                                <span>${formatCurrency(item.totalPrice)}</span>
-                            </div>
-                        </div>`;
-                });
-            }
+            const s = (text) => String(text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+            const itemsHtml = (sale.items || []).map(item => `
+                <div style="margin-bottom:4px;">
+                    <div>${s(item.productName || 'Item')}</div>
+                    <div style="display:flex;justify-content:space-between;padding-left:8px;font-size:11px;">
+                        <span>${item.quantity} x ${fmt(item.unitPrice)}</span>
+                        <span>${fmt(item.totalPrice)}</span>
+                    </div>
+                </div>`).join('');
+
+            const LINE  = `<div style="border-top:1px dashed #000;margin:5px 0;"></div>`;
+            const DLINE = `<div style="border-top:2px solid #000;margin:5px 0;"></div>`;
+            const ROW   = (l, r, bold) => `<div style="display:flex;justify-content:space-between;${bold?'font-weight:bold;font-size:13px;':''}"><span>${l}</span><span>${r}</span></div>`;
 
             return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Receipt ${sale.tempSaleNumber}</title>
-    <style>
-        @page { margin: 0; size: 80mm auto; }
-        @media print {
-            body { margin: 0; }
-        }
-        body {
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            width: 80mm;
-            margin: 0 auto;
-            padding: 5mm;
-        }
-        .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .header { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-        .line { border-top: 1px dashed #000; margin: 5px 0; }
-        .double-line { border-top: 2px solid #000; margin: 5px 0; }
-        .row { display: flex; justify-content: space-between; }
-        .item-name { margin-bottom: 2px; }
-        .item-detail { padding-left: 10px; display: flex; justify-content: space-between; }
-        .total-row { font-size: 14px; font-weight: bold; }
-        .footer { margin-top: 10px; font-size: 10px; }
-        .offline-notice { background: #fff3e0; padding: 5px; margin: 5px 0; font-size: 10px; }
-    </style>
-</head>
-<body>
-    <div class="center">
-        <div class="header">CHECKOUT CHARLIE</div>
-        <div class="offline-notice">** OFFLINE RECEIPT **</div>
-    </div>
-
-    <div class="double-line"></div>
-
-    <div>
-        <div class="row"><span>Receipt:</span><span>${sale.tempSaleNumber}</span></div>
-        <div class="row"><span>Date:</span><span>${now.toLocaleDateString('en-ZA')} ${now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}</span></div>
-    </div>
-
-    <div class="line"></div>
-
-    <div class="bold">
-        <div class="row"><span>Item</span><span>Amount</span></div>
-    </div>
-
-    <div class="line"></div>
-
-    ${itemsHtml}
-
-    <div class="line"></div>
-
-    <div class="row"><span>Subtotal:</span><span>${formatCurrency(sale.subtotal)}</span></div>
-    <div class="row"><span>VAT (15%):</span><span>${formatCurrency(sale.vatAmount)}</span></div>
-
-    <div class="total-row row"><span>TOTAL:</span><span>${formatCurrency(sale.totalAmount)}</span></div>
-
-    <div class="line"></div>
-
-    <div class="row"><span>Payment:</span><span>${(sale.paymentMethod || 'Cash').toUpperCase()}</span></div>
-
-    <div class="double-line"></div>
-
-    <div class="center footer">
-        Thank you for your purchase!<br>
-        Please come again<br><br>
-        ** This receipt was generated offline **<br>
-        Will sync when connection restored
-    </div>
-</body>
-</html>`;
+                <div style="text-align:center;margin-bottom:6px;">
+                    <div style="font-size:16px;font-weight:bold;">CHECKOUT CHARLIE</div>
+                    <div style="font-size:10px;margin-top:3px;">** OFFLINE RECEIPT **</div>
+                </div>
+                ${DLINE}
+                ${ROW('Receipt:', s(sale.tempSaleNumber))}
+                ${ROW('Date:', s(dateStr))}
+                ${LINE}
+                <div style="display:flex;justify-content:space-between;font-weight:bold;"><span>Item</span><span>Amount</span></div>
+                ${LINE}
+                ${itemsHtml}
+                ${LINE}
+                ${ROW('Subtotal:', fmt(sale.subtotal))}
+                ${ROW('VAT (15%):', fmt(sale.vatAmount))}
+                ${ROW('TOTAL:', fmt(sale.totalAmount), true)}
+                ${LINE}
+                ${ROW('Payment:', (sale.paymentMethod || 'Cash').toUpperCase())}
+                ${DLINE}
+                <div style="text-align:center;font-size:10px;margin-top:6px;">
+                    Thank you for your purchase!<br>
+                    Please come again<br><br>
+                    ** Generated offline — will sync when reconnected **
+                </div>`;
         }
 
         function showTab(tab, evt) {
@@ -10186,6 +10239,7 @@
                 if (res.ok) {
                     const data = await res.json();
                     const printers = data.printers || [];
+                    activePrinterCount = printers.filter(p => p.is_active).length;
                     const tbody = document.getElementById('printersTableBody');
 
                     if (printers.length === 0) {
@@ -10229,6 +10283,14 @@
             } catch (e) {
                 console.log('Error loading receipt settings:', e);
             }
+            // Paper width is device-specific (UI preference) — stored in localStorage
+            const paperWidth = localStorage.getItem('pos_paper_width') || '80';
+            const w80 = document.getElementById('paperWidth80');
+            const w58 = document.getElementById('paperWidth58');
+            if (w80 && w58) {
+                w80.checked = paperWidth === '80';
+                w58.checked = paperWidth === '58';
+            }
         }
 
         async function saveReceiptSettings() {
@@ -10249,6 +10311,9 @@
                 if (res.ok) {
                     showNotification('Receipt settings saved!', 'success');
                     autoPrintEnabled = document.getElementById('autoPrintReceipt').checked;
+                    // Paper width is device-local (UI pref) — save to localStorage
+                    const pw = document.querySelector('input[name="paperWidth"]:checked');
+                    if (pw) localStorage.setItem('pos_paper_width', pw.value);
                 } else {
                     const err = await res.json();
                     showNotification(err.error || 'Failed to save settings', 'error');
@@ -11693,5 +11758,8 @@
 
     <!-- Update detection: shows a non-blocking banner when a new deployment is available -->
     <script src="js/update-check.js" defer></script>
+
+    <!-- Hidden receipt area: populated before window.print(), hidden at all other times -->
+    <div id="printReceiptArea"></div>
 </body>
 </html>
