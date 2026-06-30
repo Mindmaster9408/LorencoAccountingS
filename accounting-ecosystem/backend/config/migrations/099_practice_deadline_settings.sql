@@ -14,7 +14,7 @@
 
 CREATE TABLE IF NOT EXISTS practice_deadline_settings (
   id              SERIAL      PRIMARY KEY,
-  company_id      UUID        NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id      INTEGER     NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   obligation_type VARCHAR(60) NOT NULL,
   offset_days     INTEGER     NOT NULL DEFAULT 0 CHECK (offset_days >= 0 AND offset_days <= 30),
   notes           TEXT,
