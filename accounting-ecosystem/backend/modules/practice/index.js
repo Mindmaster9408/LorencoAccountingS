@@ -447,7 +447,7 @@ router.post('/team/sync-from-users', async (req, res) => {
   try {
     const { data: companyUsers, error: cuErr } = await supabase
       .from('user_company_access')
-      .select('users:user_id(id, first_name, last_name, email)')
+      .select('users:user_id(id, full_name, email)')
       .eq('company_id', req.companyId)
       .eq('is_active', true);
 
@@ -474,7 +474,7 @@ router.post('/team/sync-from-users', async (req, res) => {
     const rows = toImport.map(u => ({
       company_id:        req.companyId,
       user_id:           u.id,
-      display_name:      [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email,
+      display_name:      u.full_name || u.email,
       email:             u.email || null,
       role:              'staff',
       can_receive_tasks: true,
@@ -555,6 +555,75 @@ function sanitizeClientBody(body) {
   for (const k of allowed) { if (k in body) out[k] = body[k]; }
   return out;
 }
+
+// ─── Sync practice clients from eco_clients ───────────────────────────────────
+// Pulls all active eco_clients for this practice company and creates
+// practice_clients rows for any not already linked by eco_client_id.
+// Existing practice_clients are never touched — only new rows are added.
+router.post('/clients/sync-from-eco', async (req, res) => {
+  try {
+    const { data: ecoClients, error: ecErr } = await supabase
+      .from('eco_clients')
+      .select('id, name, email, phone, id_number, client_type, client_code')
+      .eq('company_id', req.companyId)
+      .eq('is_active', true);
+
+    if (ecErr) return res.status(500).json({ error: ecErr.message });
+    if (!ecoClients || !ecoClients.length) {
+      return res.json({ imported: 0, skipped: 0, message: 'No active eco clients found for this practice.' });
+    }
+
+    const { data: existingLinks } = await supabase
+      .from('practice_clients')
+      .select('eco_client_id')
+      .eq('company_id', req.companyId)
+      .not('eco_client_id', 'is', null);
+
+    const linkedIds = new Set((existingLinks || []).map(r => r.eco_client_id));
+    const toImport  = ecoClients.filter(ec => !linkedIds.has(ec.id));
+
+    if (!toImport.length) {
+      return res.json({ imported: 0, skipped: ecoClients.length, message: 'All eco clients are already in Practice.' });
+    }
+
+    // eco_clients.client_type is 'individual' or 'business'.
+    // Map 'business' → 'company' for practice_clients (most common SA entity type).
+    // Individual clients stay as 'individual'.
+    const rows = toImport.map(ec => ({
+      company_id:    req.companyId,
+      eco_client_id: ec.id,
+      name:          ec.name,
+      email:         ec.email  || null,
+      phone:         ec.phone  || null,
+      id_number:     ec.id_number || null,
+      client_type:   ec.client_type === 'individual' ? 'individual' : 'company',
+      is_active:     true,
+      created_by:    req.userId || null
+    }));
+
+    const { data: inserted, error: insErr } = await supabase
+      .from('practice_clients')
+      .insert(rows)
+      .select('id, name, eco_client_id');
+
+    if (insErr) return res.status(500).json({ error: insErr.message });
+
+    await auditFromReq(req, 'CREATE', 'practice_client', null, {
+      module: 'practice',
+      action: 'sync_from_eco',
+      imported_count: (inserted || []).length
+    });
+
+    return res.json({
+      imported: (inserted || []).length,
+      skipped:  linkedIds.size,
+      clients:  inserted || []
+    });
+  } catch (err) {
+    console.error('[practice] sync-from-eco error:', err.message);
+    return res.status(500).json({ error: 'Failed to sync clients from eco registry.' });
+  }
+});
 
 router.get('/clients', async (req, res) => {
   const {

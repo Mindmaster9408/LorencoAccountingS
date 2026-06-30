@@ -32,6 +32,7 @@
                 <option value="inactive">Inactive</option>
                 <option value="all">All</option>
             </select>
+            <button type="button" class="btn btn-ghost" onclick="syncFromEco()" id="syncEcoBtn">↓ Sync from Ecosystem</button>
             <button type="button" class="btn btn-primary" onclick="openClientModal()">+ Add Client</button>
         </div>
     </div>
@@ -141,11 +142,11 @@
 
                 </div>
 
-                <div class="form-actions" style="justify-content:space-between;align-items:center;">
+                <div class="form-actions form-actions-split">
                     <div id="cViewLink" class="hidden">
                         <a id="cViewLinkAnchor" href="#" class="btn btn-ghost btn-sm">Open Full Profile →</a>
                     </div>
-                    <div style="display:flex;gap:8px;">
+                    <div class="form-actions-right">
                         <button type="button" class="btn btn-ghost" onclick="closeModal('clientModal')">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="clientSaveBtn">Save Client</button>
                     </div>
@@ -497,12 +498,35 @@
         }
     }
 
+    async function syncFromEco() {
+        var btn = document.getElementById('syncEcoBtn');
+        btn.disabled = true;
+        btn.textContent = 'Syncing…';
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/clients/sync-from-eco', { method: 'POST', body: '{}' });
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Sync failed');
+            if (d.imported === 0) {
+                PracticeAPI.showToast(d.message || 'All ecosystem clients already in Practice.');
+            } else {
+                PracticeAPI.showToast(d.imported + ' client' + (d.imported === 1 ? '' : 's') + ' imported from ECO registry.');
+                await loadClients();
+            }
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '↓ Sync from Ecosystem';
+        }
+    }
+
     window.filterAndRender   = filterAndRender;
     window.openClientModal   = openClientModal;
     window.closeModal        = closeModal;
     window.saveClient        = saveClient;
     window.linkToExisting    = linkToExisting;
     window.forceCreateNew    = forceCreateNew;
+    window.syncFromEco       = syncFromEco;
 
     init();
 })();

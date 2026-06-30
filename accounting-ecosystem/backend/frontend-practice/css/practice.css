@@ -1712,3 +1712,12 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     color: #9ca3af;
     margin-bottom: 8px;
 }
+
+.form-actions-split {
+    justify-content: space-between;
+    align-items: center;
+}
+.form-actions-right {
+    display: flex;
+    gap: 8px;
+}
