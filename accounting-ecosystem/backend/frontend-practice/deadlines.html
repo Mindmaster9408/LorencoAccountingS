@@ -42,6 +42,7 @@
                 <option value="general">General</option>
                 <option value="other">Other</option>
             </select>
+            <button type="button" class="btn btn-ghost" onclick="openSettingsModal()" title="Configure practice deadlines">⚙ Settings</button>
             <button type="button" class="btn btn-primary" onclick="openModal()">+ Add Deadline</button>
         </div>
     </div>
@@ -74,7 +75,7 @@
                     </div>
                     <div class="form-field">
                         <label for="dlType">Type</label>
-                        <select id="dlType" aria-label="Deadline type">
+                        <select id="dlType" aria-label="Deadline type" onchange="autoComputeDeadline()">
                             <option value="general">General</option>
                             <option value="vat_return">VAT Return</option>
                             <option value="tax_return">Tax Return</option>
@@ -100,7 +101,12 @@
                         </select>
                     </div>
                     <div class="form-field">
-                        <label for="dlDueDate">Due Date *</label>
+                        <label for="dlPeriodEnd">Period End</label>
+                        <input type="date" id="dlPeriodEnd" onchange="autoComputeDeadline()" placeholder="Last day of filing period">
+                    </div>
+                    <div id="dlDeadlineHint" class="deadline-hint hidden"></div>
+                    <div class="form-field">
+                        <label for="dlDueDate">Due Date (Practice Deadline) *</label>
                         <input type="date" id="dlDueDate" required>
                     </div>
                     <div class="form-field">
@@ -120,13 +126,35 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- DEADLINE SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3>Practice Deadline Settings</h3>
+            <button type="button" class="modal-close" onclick="closeSettingsModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-desc">Set how many working days before the statutory (SARS) deadline your practice targets for completion. The practice deadline is what shows in your deadlines list.</p>
+            <div class="deadline-settings-table-wrap" id="settingsTableWrap">
+                <div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeSettingsModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveSettingsBtn" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="/practice/js/polyfills.js"></script>
 <script src="/practice/js/auth.js"></script>
 <script src="/practice/js/api.js"></script>
 <script src="/practice/js/layout.js"></script>
+<script src="/practice/js/deadline-utils.js"></script>
 <script>
 var esc = PracticeAPI.escHtml;
 var allDeadlines = [], allClients = [], filteredDeadlines = [];
+var deadlineSettings = {}; // obligation_type → offset_days
 var editingId = null;
 var PAGE_SIZE = 30;
 var currentPage = 1;
@@ -149,7 +177,7 @@ async function init() {
         if (!res.ok) { window.location.href = '/'; return; }
     } catch(e) { window.location.href = '/'; return; }
     LAYOUT.init('deadlines');
-    await loadClients();
+    await Promise.all([loadClients(), loadSettings()]);
     loadDeadlines();
 }
 
@@ -164,6 +192,18 @@ async function loadClients() {
         }).join('');
         document.getElementById('fClient').innerHTML  = '<option value="">All Clients</option>' + opts;
         document.getElementById('dlClient').innerHTML = '<option value="">General (no client)</option>' + opts;
+    } catch(e) {}
+}
+
+async function loadSettings() {
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/deadline-settings');
+        if (!res.ok) return;
+        var d = await res.json();
+        deadlineSettings = {};
+        (d.settings || []).forEach(function(s) {
+            deadlineSettings[s.obligation_type] = s;
+        });
     } catch(e) {}
 }
 
@@ -216,11 +256,26 @@ function renderDeadlines() {
             ? '<button type="button" class="btn btn-ghost btn-sm" onclick="quickStatus(' + dl.id + ',\'submitted\')">→ Submit</button>' : '';
         var doneBtn    = dl.status !== 'completed'
             ? '<button type="button" class="btn btn-success btn-sm" onclick="quickStatus(' + dl.id + ',\'completed\')">✓ Done</button>' : '';
+
+        // Compute statutory deadline from period_end where available
+        var statutoryHtml = '';
+        var periodEnd = DeadlineUtils.parseDate(dl.period_end);
+        if (periodEnd) {
+            var statutory = DeadlineUtils.computeStatutoryDeadline(dl.type, periodEnd);
+            if (statutory) {
+                var statStr = DeadlineUtils.toISODate(statutory);
+                var diffLabel = (dl.due_date && dl.due_date !== statStr)
+                    ? '<span class="statutory-date">Statutory: ' + DeadlineUtils.fmtDate(statutory) + '</span>'
+                    : '<span class="statutory-date">= Statutory</span>';
+                statutoryHtml = diffLabel;
+            }
+        }
+
         return '<tr' + (isOverdue ? ' class="overdue-row"' : '') + '>' +
             '<td><strong>' + esc(dl.title) + '</strong>' + overdueTag + '</td>' +
             '<td>' + esc(clientName) + '</td>' +
             '<td>' + (TYPE_LABEL[dl.type] || dl.type) + '</td>' +
-            '<td><strong>' + esc(dl.due_date) + '</strong></td>' +
+            '<td><div class="deadline-due-cell"><strong>' + esc(dl.due_date || '—') + '</strong>' + statutoryHtml + '</div></td>' +
             '<td><span class="badge ' + (STATUS_BADGE[dl.status] || 'badge-pending') + '">' + (STATUS_LABEL[dl.status] || dl.status) + '</span></td>' +
             '<td class="col-muted">' + esc(dl.notes || '–') + '</td>' +
             '<td><div class="td-actions">' + submitBtn + doneBtn +
@@ -231,7 +286,7 @@ function renderDeadlines() {
 
     var tableHtml =
         '<div class="table-wrap"><table><thead><tr>' +
-            '<th>Title</th><th>Client</th><th>Type</th><th>Due Date</th><th>Status</th><th>Notes</th><th>Actions</th>' +
+            '<th>Title</th><th>Client</th><th>Type</th><th>Practice Deadline</th><th>Status</th><th>Notes</th><th>Actions</th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table>' +
         renderPagination(totalPages) + '</div>';
 
@@ -276,35 +331,83 @@ async function quickStatus(id, status) {
     }
 }
 
+// ── Add/Edit modal ────────────────────────────────────────────────────────────
+
 function openModal(id) {
     editingId = id || null;
     var dl = id ? allDeadlines.find(function(x) { return x.id === id; }) : null;
     document.getElementById('dlModalTitle').textContent = id ? 'Edit Deadline' : 'Add Deadline';
-    document.getElementById('dlTitle').value    = dl ? dl.title    || '' : '';
-    document.getElementById('dlType').value     = dl ? dl.type     || 'general' : 'general';
-    document.getElementById('dlStatus').value   = dl ? dl.status   || 'pending' : 'pending';
-    document.getElementById('dlDueDate').value  = dl ? dl.due_date || '' : '';
-    document.getElementById('dlNotes').value    = dl ? dl.notes    || '' : '';
-    document.getElementById('dlClient').value   = dl ? dl.client_id || '' : '';
+    document.getElementById('dlTitle').value      = dl ? dl.title     || '' : '';
+    document.getElementById('dlType').value       = dl ? dl.type      || 'general' : 'general';
+    document.getElementById('dlStatus').value     = dl ? dl.status    || 'pending' : 'pending';
+    document.getElementById('dlDueDate').value    = dl ? dl.due_date  || '' : '';
+    document.getElementById('dlPeriodEnd').value  = dl ? dl.period_end || '' : '';
+    document.getElementById('dlNotes').value      = dl ? dl.notes     || '' : '';
+    document.getElementById('dlClient').value     = dl ? dl.client_id || '' : '';
+    var hint = document.getElementById('dlDeadlineHint');
+    hint.classList.add('hidden');
+    hint.innerHTML = '';
     var delBtn = document.getElementById('dlDeleteBtn');
     if (id) { delBtn.classList.remove('hidden'); } else { delBtn.classList.add('hidden'); }
     document.getElementById('deadlineModal').classList.add('show');
+    // If editing an existing deadline with a period_end, show the hint
+    if (dl && dl.period_end) autoComputeDeadline();
 }
 
 function closeModal() { document.getElementById('deadlineModal').classList.remove('show'); }
+
+// Auto-compute practice + statutory deadlines when type + period_end are set.
+// Pre-fills dlDueDate with the practice deadline (unless user already typed one).
+function autoComputeDeadline() {
+    var type      = document.getElementById('dlType').value;
+    var periodEnd = DeadlineUtils.parseDate(document.getElementById('dlPeriodEnd').value);
+    var hint      = document.getElementById('dlDeadlineHint');
+
+    if (!periodEnd || !DeadlineUtils.OBLIGATION_RULES[type]) {
+        hint.classList.add('hidden');
+        hint.innerHTML = '';
+        return;
+    }
+
+    var statutory = DeadlineUtils.computeStatutoryDeadline(type, periodEnd);
+    if (!statutory) { hint.classList.add('hidden'); return; }
+
+    var setting   = deadlineSettings[type] || {};
+    var offset    = setting.offset_days || 0;
+    var practice  = DeadlineUtils.computePracticeDeadline(statutory, offset);
+
+    var statStr  = DeadlineUtils.fmtDate(statutory);
+    var practStr = DeadlineUtils.fmtDate(practice);
+    var isoStr   = DeadlineUtils.toISODate(practice);
+
+    var offsetNote = offset > 0
+        ? ' (' + offset + ' working day' + (offset === 1 ? '' : 's') + ' before statutory)'
+        : ' (matches statutory)';
+
+    hint.innerHTML =
+        '<span class="hint-practice">Practice: <strong>' + practStr + '</strong>' + offsetNote + '</span>' +
+        '<span class="hint-statutory">Statutory (SARS): ' + statStr + '</span>';
+    hint.classList.remove('hidden');
+
+    // Pre-fill due date if it's empty (don't override what the user typed)
+    var dueDateEl = document.getElementById('dlDueDate');
+    if (!dueDateEl.value) { dueDateEl.value = isoStr; }
+}
 
 async function saveDeadline(e) {
     e.preventDefault();
     var btn = document.getElementById('dlSaveBtn');
     btn.disabled = true;
-    var clientVal = document.getElementById('dlClient').value;
+    var clientVal  = document.getElementById('dlClient').value;
+    var periodEnd  = document.getElementById('dlPeriodEnd').value || null;
     var body = {
-        title:     document.getElementById('dlTitle').value.trim(),
-        client_id: clientVal ? parseInt(clientVal) : null,
-        type:      document.getElementById('dlType').value,
-        status:    document.getElementById('dlStatus').value,
-        due_date:  document.getElementById('dlDueDate').value,
-        notes:     document.getElementById('dlNotes').value.trim() || null
+        title:      document.getElementById('dlTitle').value.trim(),
+        client_id:  clientVal ? parseInt(clientVal) : null,
+        type:       document.getElementById('dlType').value,
+        status:     document.getElementById('dlStatus').value,
+        due_date:   document.getElementById('dlDueDate').value,
+        period_end: periodEnd,
+        notes:      document.getElementById('dlNotes').value.trim() || null
     };
     try {
         var url = editingId ? '/api/practice/deadlines/' + editingId : '/api/practice/deadlines';
@@ -334,6 +437,101 @@ async function deleteCurrentDeadline() {
         loadDeadlines();
     } catch(e) {
         PracticeAPI.showToast('❌ ' + e.message, true);
+    }
+}
+
+// ── Settings modal ────────────────────────────────────────────────────────────
+
+function openSettingsModal() {
+    document.getElementById('settingsModal').classList.add('show');
+    renderSettingsTable();
+}
+
+function closeSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('show');
+}
+
+function renderSettingsTable() {
+    var wrap = document.getElementById('settingsTableWrap');
+    var types = DeadlineUtils.CONFIGURABLE_TYPES;
+    // Example period: last completed month
+    var now = new Date();
+    var exPeriodEnd = new Date(now.getFullYear(), now.getMonth(), 0); // last day of previous month
+
+    var rows = types.map(function(t) {
+        var rule    = DeadlineUtils.OBLIGATION_RULES[t.type];
+        var setting = deadlineSettings[t.type] || {};
+        var offset  = setting.offset_days != null ? setting.offset_days : 0;
+        var statutory = rule ? DeadlineUtils.computeStatutoryDeadline(t.type, exPeriodEnd) : null;
+        var practice  = statutory ? DeadlineUtils.computePracticeDeadline(statutory, offset) : null;
+        var example = statutory
+            ? '<span class="settings-example-stat">' + DeadlineUtils.fmtDate(statutory) + '</span>' +
+              (practice && DeadlineUtils.toISODate(practice) !== DeadlineUtils.toISODate(statutory)
+                ? ' → <strong>' + DeadlineUtils.fmtDate(practice) + '</strong>'
+                : ' <span class="muted">(no offset)</span>')
+            : '—';
+
+        return '<tr>' +
+            '<td><strong>' + esc(t.label) + '</strong><div class="settings-rule-text">' + esc(rule ? rule.rule : '') + '</div></td>' +
+            '<td class="settings-example-cell">' + example + '</td>' +
+            '<td class="settings-offset-cell">' +
+                '<input type="number" class="offset-input" min="0" max="30" value="' + offset + '" ' +
+                    'data-type="' + t.type + '" onchange="previewOffset(this)" ' +
+                    'aria-label="Offset days for ' + esc(t.label) + '"> working days before' +
+            '</td>' +
+        '</tr>';
+    }).join('');
+
+    wrap.innerHTML =
+        '<table class="settings-table"><thead><tr>' +
+            '<th>Obligation</th>' +
+            '<th>Example (last month)<div class="col-sub">Statutory → Practice</div></th>' +
+            '<th>Practice Offset</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function previewOffset(input) {
+    // Live-update the example column for the changed row
+    var type   = input.getAttribute('data-type');
+    var offset = Math.max(0, Math.min(30, parseInt(input.value) || 0));
+    input.value = offset;
+    var now = new Date();
+    var exPeriodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    var statutory = DeadlineUtils.computeStatutoryDeadline(type, exPeriodEnd);
+    var practice  = DeadlineUtils.computePracticeDeadline(statutory, offset);
+    var cell = input.closest('tr').querySelector('.settings-example-cell');
+    if (cell && statutory) {
+        cell.innerHTML = '<span class="settings-example-stat">' + DeadlineUtils.fmtDate(statutory) + '</span>' +
+            (practice && DeadlineUtils.toISODate(practice) !== DeadlineUtils.toISODate(statutory)
+                ? ' → <strong>' + DeadlineUtils.fmtDate(practice) + '</strong>'
+                : ' <span class="muted">(no offset)</span>');
+    }
+}
+
+async function saveSettings() {
+    var inputs = document.querySelectorAll('#settingsTableWrap .offset-input');
+    var settings = [];
+    inputs.forEach(function(inp) {
+        settings.push({
+            obligation_type: inp.getAttribute('data-type'),
+            offset_days:     Math.max(0, Math.min(30, parseInt(inp.value) || 0))
+        });
+    });
+    var btn = document.getElementById('saveSettingsBtn');
+    btn.disabled = true;
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/deadline-settings', {
+            method: 'PUT', body: JSON.stringify({ settings: settings })
+        });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Save failed');
+        await loadSettings();
+        closeSettingsModal();
+        PracticeAPI.showToast('Deadline settings saved!');
+    } catch(e) {
+        PracticeAPI.showToast('❌ ' + e.message, true);
+    } finally {
+        btn.disabled = false;
     }
 }
 

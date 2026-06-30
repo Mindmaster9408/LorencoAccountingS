@@ -2453,6 +2453,71 @@ router.delete('/deadlines/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// ═══ DEADLINE SETTINGS ═══════════════════════════════════════════════════════
+
+// Obligation types that support statutory deadline computation.
+// label and statutory_rule are returned to the frontend for display.
+const STATUTORY_OBLIGATION_DEFS = [
+  { type: 'vat_return',         label: 'VAT Return (Monthly)',         statutory_rule: 'Last working day of the month following the tax period' },
+  { type: 'paye',               label: 'PAYE / EMP201',                statutory_rule: '7th of the month following the payroll period (or last working day before)' },
+  { type: 'uif',                label: 'UIF',                          statutory_rule: '7th of the month following the payroll period (or last working day before)' },
+  { type: 'sdl',                label: 'SDL',                          statutory_rule: '7th of the month following the payroll period (or last working day before)' },
+  { type: 'provisional_tax_p1', label: 'Provisional Tax — 1st Period', statutory_rule: 'Last working day of the 6th month of the tax year' },
+  { type: 'provisional_tax_p2', label: 'Provisional Tax — 2nd Period', statutory_rule: 'Last working day of the last month of the tax year' },
+  { type: 'tax_return',         label: 'Income Tax Return (ITR12)',     statutory_rule: '31 January of the year following the assessment year (eFiling)' },
+];
+const STATUTORY_TYPES = STATUTORY_OBLIGATION_DEFS.map(d => d.type);
+
+router.get('/deadline-settings', async (req, res) => {
+  const cid = req.companyId;
+  const { data, error } = await supabase
+    .from('practice_deadline_settings')
+    .select('obligation_type, offset_days, notes')
+    .eq('company_id', cid);
+  if (error) return res.status(500).json({ error: error.message });
+
+  const saved = {};
+  (data || []).forEach(r => { saved[r.obligation_type] = r; });
+
+  const settings = STATUTORY_OBLIGATION_DEFS.map(def => ({
+    obligation_type: def.type,
+    label:           def.label,
+    statutory_rule:  def.statutory_rule,
+    offset_days:     saved[def.type] ? saved[def.type].offset_days : 0,
+    notes:           saved[def.type] ? saved[def.type].notes : null
+  }));
+
+  res.json({ settings });
+});
+
+router.put('/deadline-settings', async (req, res) => {
+  const cid = req.companyId;
+  const { settings } = req.body;
+  if (!Array.isArray(settings) || !settings.length)
+    return res.status(400).json({ error: 'settings must be a non-empty array' });
+
+  const rows = settings
+    .filter(s => STATUTORY_TYPES.includes(s.obligation_type) &&
+                 typeof s.offset_days === 'number' && s.offset_days >= 0 && s.offset_days <= 30)
+    .map(s => ({
+      company_id:      cid,
+      obligation_type: s.obligation_type,
+      offset_days:     Math.round(s.offset_days),
+      notes:           s.notes || null,
+      updated_at:      new Date().toISOString()
+    }));
+
+  if (!rows.length) return res.status(400).json({ error: 'No valid settings provided' });
+
+  const { error } = await supabase
+    .from('practice_deadline_settings')
+    .upsert(rows, { onConflict: 'company_id,obligation_type' });
+
+  if (error) return res.status(500).json({ error: error.message });
+  await auditFromReq(req, 'UPDATE', 'practice_deadline_settings', null, { module: 'practice', count: rows.length });
+  res.json({ saved: rows.length });
+});
+
 // ═══ COMPLIANCE CALENDAR ═════════════════════════════════════════════════════
 
 // Calendar view — returns deadlines in a date range, enriched for calendar rendering
