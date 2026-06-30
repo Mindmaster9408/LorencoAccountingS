@@ -43,6 +43,7 @@
                 <option value="other">Other</option>
             </select>
             <button type="button" class="btn btn-ghost" onclick="openSettingsModal()" title="Configure practice deadlines">⚙ Settings</button>
+            <button type="button" class="btn btn-ghost" onclick="openGenerateModal()" title="Auto-create deadlines from client compliance settings">⚡ Generate</button>
             <button type="button" class="btn btn-primary" onclick="openModal()">+ Add Deadline</button>
         </div>
     </div>
@@ -141,6 +142,45 @@
             <div class="form-actions">
                 <button type="button" class="btn btn-ghost" onclick="closeSettingsModal()">Cancel</button>
                 <button type="button" class="btn btn-primary" id="saveSettingsBtn" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- GENERATE DEADLINES MODAL -->
+<div class="modal-overlay" id="generateModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <h3>Generate Deadlines</h3>
+            <button type="button" class="modal-close" onclick="closeGenerateModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-desc">Auto-creates deadlines for every active client based on their VAT sequence and PAYE/UIF/SDL registration. Existing deadlines for the same client, type, and period are skipped — safe to run more than once.</p>
+            <div class="form-grid full">
+                <div class="form-field">
+                    <label for="genMonth">Filing Period</label>
+                    <div class="period-picker">
+                        <select id="genMonth" aria-label="Month">
+                            <option value="1">January</option><option value="2">February</option>
+                            <option value="3">March</option><option value="4">April</option>
+                            <option value="5">May</option><option value="6">June</option>
+                            <option value="7">July</option><option value="8">August</option>
+                            <option value="9">September</option><option value="10">October</option>
+                            <option value="11">November</option><option value="12">December</option>
+                        </select>
+                        <select id="genYear" aria-label="Year"></select>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label>Include</label>
+                    <label class="checkbox-row"><input type="checkbox" id="genVat" checked> VAT Returns</label>
+                    <label class="checkbox-row"><input type="checkbox" id="genPaye" checked> PAYE / UIF / SDL</label>
+                </div>
+            </div>
+            <div id="generateResult" class="generate-result hidden"></div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeGenerateModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="genBtn" onclick="runGenerate()">Generate</button>
             </div>
         </div>
     </div>
@@ -532,6 +572,72 @@ async function saveSettings() {
         PracticeAPI.showToast('❌ ' + e.message, true);
     } finally {
         btn.disabled = false;
+    }
+}
+
+// ── Generate Deadlines modal ───────────────────────────────────────────────────
+
+function openGenerateModal() {
+    var now = new Date();
+    var yearSel = document.getElementById('genYear');
+    yearSel.innerHTML = '';
+    for (var y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) {
+        yearSel.innerHTML += '<option value="' + y + '"' + (y === now.getFullYear() ? ' selected' : '') + '>' + y + '</option>';
+    }
+    document.getElementById('genMonth').value = now.getMonth() + 1;
+    document.getElementById('genVat').checked  = true;
+    document.getElementById('genPaye').checked = true;
+    var result = document.getElementById('generateResult');
+    result.classList.add('hidden');
+    result.innerHTML = '';
+    document.getElementById('generateModal').classList.add('show');
+}
+
+function closeGenerateModal() {
+    document.getElementById('generateModal').classList.remove('show');
+}
+
+async function runGenerate() {
+    var month  = document.getElementById('genMonth').value;
+    var year   = document.getElementById('genYear').value;
+    var period = year + '-' + String(month).padStart(2, '0');
+    var types  = [];
+    if (document.getElementById('genVat').checked)  types.push('vat');
+    if (document.getElementById('genPaye').checked) types.push('paye');
+
+    if (!types.length) {
+        PracticeAPI.showToast('Select at least one obligation type.', true);
+        return;
+    }
+
+    var btn = document.getElementById('genBtn');
+    btn.disabled = true;
+    var originalText = btn.textContent;
+    btn.textContent = 'Generating…';
+
+    try {
+        var res = await PracticeAPI.fetch('/api/practice/deadlines/generate', {
+            method: 'POST', body: JSON.stringify({ period: period, types: types })
+        });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Generate failed');
+
+        var result = document.getElementById('generateResult');
+        result.innerHTML = '<strong>' + d.created + '</strong> deadline' + (d.created === 1 ? '' : 's') + ' created for ' + period +
+            (d.skipped ? ' · ' + d.skipped + ' already existed (skipped)' : '');
+        result.classList.remove('hidden');
+
+        if (d.created > 0) {
+            PracticeAPI.showToast('Generated ' + d.created + ' deadline' + (d.created === 1 ? '' : 's') + '!');
+            await loadDeadlines();
+        } else {
+            PracticeAPI.showToast('No new deadlines to generate — all up to date.');
+        }
+    } catch (e) {
+        PracticeAPI.showToast('❌ ' + e.message, true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 

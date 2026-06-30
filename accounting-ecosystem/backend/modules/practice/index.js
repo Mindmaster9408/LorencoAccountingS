@@ -2453,6 +2453,68 @@ router.delete('/deadlines/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// ═══ SA WORKING-DAY HELPERS (server-side mirror of frontend deadline-utils.js) ═
+
+function _easterSunday(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100;
+  const d = Math.floor(b / 4), e = b % 4;
+  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  return new Date(y, Math.floor((h + l - 7 * m + 114) / 31) - 1, ((h + l - 7 * m + 114) % 31) + 1);
+}
+
+const _saHolCache = {};
+function _saHolidays(y) {
+  if (_saHolCache[y]) return _saHolCache[y];
+  const set = new Set();
+  const p = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const add = d => { set.add(fmt(d)); if (d.getDay() === 0) { const m = new Date(d); m.setDate(d.getDate() + 1); set.add(fmt(m)); } };
+  [[1,1],[3,21],[4,27],[5,1],[6,16],[8,9],[9,24],[12,16],[12,25],[12,26]].forEach(f => add(new Date(y, f[0] - 1, f[1])));
+  const easter = _easterSunday(y);
+  const goodFriday = new Date(easter); goodFriday.setDate(easter.getDate() - 2);
+  const familyDay  = new Date(easter); familyDay.setDate(easter.getDate() + 1);
+  add(goodFriday); add(familyDay);
+  _saHolCache[y] = set;
+  return set;
+}
+
+function _isWorkDay(d) {
+  const day = d.getDay();
+  if (day === 0 || day === 6) return false;
+  const p = n => String(n).padStart(2, '0');
+  return !_saHolidays(d.getFullYear()).has(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);
+}
+
+// month is 1-indexed; returns last working day of that month
+function _lastWorkDay(year, month) {
+  const d = new Date(year, month, 0);
+  while (!_isWorkDay(d)) d.setDate(d.getDate() - 1);
+  return d;
+}
+
+// month is 1-indexed; returns the working day on or before targetDay of that month
+function _workDayOnOrBefore(year, month, targetDay) {
+  const d = new Date(year, month - 1, targetDay);
+  while (!_isWorkDay(d)) d.setDate(d.getDate() - 1);
+  return d;
+}
+
+function _applyOffset(date, offsetDays) {
+  const d = new Date(date);
+  let remaining = Math.max(0, Math.round(offsetDays || 0));
+  while (remaining > 0) { d.setDate(d.getDate() - 1); if (_isWorkDay(d)) remaining--; }
+  return d;
+}
+
+function _isoDate(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 // ═══ DEADLINE SETTINGS ═══════════════════════════════════════════════════════
 
 // Obligation types that support statutory deadline computation.
@@ -2516,6 +2578,121 @@ router.put('/deadline-settings', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   await auditFromReq(req, 'UPDATE', 'practice_deadline_settings', null, { module: 'practice', count: rows.length });
   res.json({ saved: rows.length });
+});
+
+// Auto-generate deadlines for all active clients for a given period, based on
+// each client's compliance configuration (VAT sequence, PAYE/UIF/SDL registration).
+// Skips any client+type combination that already has a deadline for that period_end.
+router.post('/deadlines/generate', async (req, res) => {
+  const cid = req.companyId;
+  const { period, types } = req.body; // period = 'YYYY-MM'; types = ['vat','paye'] or omitted = all
+  if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+    return res.status(400).json({ error: 'period must be in YYYY-MM format' });
+  }
+
+  const [yearStr, monthStr] = period.split('-');
+  const year  = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10); // 1-indexed
+  const periodEndDate = new Date(year, month, 0); // last calendar day of selected month
+  const periodEndStr  = _isoDate(periodEndDate);
+
+  const { data: clients, error: cliErr } = await supabase
+    .from('practice_clients')
+    .select('id, name, vat_payment_sequence, vat_bi_monthly_parity, paye_registered, uif_registered, sdl_registered')
+    .eq('company_id', cid)
+    .eq('is_active', true);
+  if (cliErr) return res.status(500).json({ error: cliErr.message });
+
+  const { data: settingsData } = await supabase
+    .from('practice_deadline_settings')
+    .select('obligation_type, offset_days')
+    .eq('company_id', cid);
+  const offsets = {};
+  (settingsData || []).forEach(s => { offsets[s.obligation_type] = s.offset_days || 0; });
+
+  const { data: existing } = await supabase
+    .from('practice_deadlines')
+    .select('client_id, type')
+    .eq('company_id', cid)
+    .eq('period_end', periodEndStr)
+    .eq('is_active', true);
+  const existingKeys = new Set((existing || []).map(e => `${e.client_id}|${e.type}`));
+
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear  = month === 12 ? year + 1 : year;
+
+  const includeVat  = !types || types.includes('vat');
+  const includePaye = !types || types.includes('paye');
+
+  const toCreate = [];
+
+  for (const c of (clients || [])) {
+    if (includeVat && c.vat_payment_sequence) {
+      let fileThisMonth = false;
+      if (c.vat_payment_sequence === 'monthly') {
+        fileThisMonth = true;
+      } else if (c.vat_payment_sequence === 'bi_monthly') {
+        const parity = c.vat_bi_monthly_parity;
+        if (parity === 'odd')  fileThisMonth = (month % 2 === 1);
+        else if (parity === 'even') fileThisMonth = (month % 2 === 0);
+        else fileThisMonth = true; // parity not yet configured — generate anyway, flag via title
+      }
+      // quarterly/annual VAT sequences are too client-specific to auto-generate safely — skipped
+
+      if (fileThisMonth && !existingKeys.has(`${c.id}|vat_return`)) {
+        const statutory = _lastWorkDay(nextYear, nextMonth);
+        const due = _applyOffset(statutory, offsets['vat_return']);
+        toCreate.push({
+          company_id: cid, client_id: c.id,
+          title: `VAT Return — ${c.name} (${period})`,
+          type: 'vat_return', status: 'pending', priority: 'normal',
+          period_end: periodEndStr, due_date: _isoDate(due), is_active: true
+        });
+      }
+    }
+
+    if (includePaye) {
+      const statutory = _workDayOnOrBefore(nextYear, nextMonth, 7);
+
+      if (c.paye_registered && !existingKeys.has(`${c.id}|paye`)) {
+        toCreate.push({
+          company_id: cid, client_id: c.id,
+          title: `PAYE / EMP201 — ${c.name} (${period})`,
+          type: 'paye', status: 'pending', priority: 'normal',
+          period_end: periodEndStr, due_date: _isoDate(_applyOffset(statutory, offsets['paye'])), is_active: true
+        });
+      }
+      if (c.uif_registered && !existingKeys.has(`${c.id}|uif`)) {
+        toCreate.push({
+          company_id: cid, client_id: c.id,
+          title: `UIF — ${c.name} (${period})`,
+          type: 'uif', status: 'pending', priority: 'normal',
+          period_end: periodEndStr, due_date: _isoDate(_applyOffset(statutory, offsets['uif'])), is_active: true
+        });
+      }
+      if (c.sdl_registered && !existingKeys.has(`${c.id}|sdl`)) {
+        toCreate.push({
+          company_id: cid, client_id: c.id,
+          title: `SDL — ${c.name} (${period})`,
+          type: 'sdl', status: 'pending', priority: 'normal',
+          period_end: periodEndStr, due_date: _isoDate(_applyOffset(statutory, offsets['sdl'])), is_active: true
+        });
+      }
+    }
+  }
+
+  let created = 0;
+  if (toCreate.length) {
+    const { data: inserted, error: insErr } = await supabase
+      .from('practice_deadlines')
+      .insert(toCreate)
+      .select('id');
+    if (insErr) return res.status(500).json({ error: insErr.message });
+    created = inserted ? inserted.length : toCreate.length;
+  }
+
+  await auditFromReq(req, 'GENERATE', 'practice_deadlines', null, { module: 'practice', period, created, skipped: existingKeys.size });
+  res.json({ created, skipped: existingKeys.size, period });
 });
 
 // ═══ COMPLIANCE CALENDAR ═════════════════════════════════════════════════════

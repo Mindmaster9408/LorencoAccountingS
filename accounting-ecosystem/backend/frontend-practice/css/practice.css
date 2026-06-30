@@ -1794,3 +1794,34 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 }
 .muted { color: #6b7280; }
 .deadline-settings-table-wrap { overflow-x: auto; }
+
+/* ── Generate Deadlines modal ──────────────────────────────────────── */
+.period-picker {
+    display: flex;
+    gap: 8px;
+}
+.period-picker select {
+    flex: 1;
+}
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: #cbd5e1;
+    margin-top: 6px;
+    cursor: pointer;
+}
+.checkbox-row input[type="checkbox"] {
+    width: auto;
+}
+.generate-result {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: rgba(34,197,94,0.08);
+    border: 1px solid rgba(34,197,94,0.25);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #86efac;
+}
+.generate-result.hidden { display: none; }
