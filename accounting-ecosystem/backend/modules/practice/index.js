@@ -425,6 +425,10 @@ function sanitizeClientBody(body) {
     // Compliance flags
     'vat_registered', 'paye_registered', 'provisional_taxpayer',
     'uif_registered', 'sdl_registered', 'coida_registered', 'cipc_registered',
+    // VAT configuration
+    'vat_payment_sequence', 'vat_last_submission_month',
+    // COIDA / Workmens Compensation
+    'coida_registration_number', 'coida_due_month',
     // Physical address
     'address', 'address_line1', 'address_line2', 'address_city',
     'address_province', 'address_postal_code', 'address_country',

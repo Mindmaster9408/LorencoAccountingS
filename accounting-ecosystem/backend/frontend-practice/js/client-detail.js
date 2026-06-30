@@ -157,6 +157,11 @@
         document.getElementById('dCoidaReg').checked = !!c.coida_registered;
         document.getElementById('dCipcReg').checked  = !!c.cipc_registered;
 
+        setVal('dVatPaySeq',           c.vat_payment_sequence || '');
+        setVal('dVatSubmissionMonth',  c.vat_last_submission_month ? String(c.vat_last_submission_month) : '');
+        setVal('dCoidaRef',            c.coida_registration_number);
+        setVal('dCoidaDueMonth',       c.coida_due_month ? String(c.coida_due_month) : '');
+
         setVal('dOnboarding',   c.onboarding_status || 'active');
         setVal('dRisk',         c.risk_rating || 'normal');
         setVal('dStatus',       c.is_active !== false ? 'true' : 'false');
@@ -248,6 +253,11 @@
             sdl_registered:     document.getElementById('dSdlReg').checked,
             coida_registered:   document.getElementById('dCoidaReg').checked,
             cipc_registered:    document.getElementById('dCipcReg').checked,
+
+            vat_payment_sequence:      document.getElementById('dVatPaySeq').value || null,
+            vat_last_submission_month: (function() { var v = document.getElementById('dVatSubmissionMonth').value; return v ? parseInt(v) : null; })(),
+            coida_registration_number: document.getElementById('dCoidaRef').value.trim() || null,
+            coida_due_month:           (function() { var v = document.getElementById('dCoidaDueMonth').value; return v ? parseInt(v) : null; })(),
 
             onboarding_status:  document.getElementById('dOnboarding').value,
             risk_rating:        document.getElementById('dRisk').value,
