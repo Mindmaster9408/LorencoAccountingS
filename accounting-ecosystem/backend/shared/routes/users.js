@@ -294,7 +294,7 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
 router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
   try {
     const userId = req.params.id;
-    const { full_name, email, role, is_active, company_ids, apps_access, revoke_company_access } = req.body;
+    const { full_name, email, username, role, is_active, company_ids, apps_access, revoke_company_access } = req.body;
 
     // Revoke this user's access from the current company (without deactivating them globally)
     if (revoke_company_access) {
@@ -320,6 +320,19 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
     const updates = {};
     if (full_name !== undefined) updates.full_name = full_name;
     if (email !== undefined) updates.email = email;
+    if (username !== undefined && username.trim()) {
+      // Verify new username is not already taken by another user
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', username.trim())
+        .neq('id', userId)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        return res.status(409).json({ error: 'That username is already taken by another user' });
+      }
+      updates.username = username.trim();
+    }
     if (is_active !== undefined) updates.is_active = is_active;
     updates.updated_at = new Date().toISOString();
 

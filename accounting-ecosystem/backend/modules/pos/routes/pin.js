@@ -11,8 +11,7 @@
  * All routes require the caller to be authenticated (authenticateToken applied
  * at the POS module mount) and to have SETTINGS.EDIT permission (management).
  *
- * PIN-eligible roles (who can receive a PIN):
- *   cashier, senior_cashier, shift_supervisor, assistant_manager
+ * PIN-eligible roles: all roles — any user may need to work the till.
  *
  * Security rules enforced here:
  *   - PINs never returned in any response
@@ -31,8 +30,14 @@ const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
 
+// All roles can receive a PIN — any user may need to work the till.
+// Managers and owners use password login by default but may also set a PIN for quick access.
 const PIN_ELIGIBLE_ROLES = new Set([
     'cashier', 'senior_cashier', 'shift_supervisor', 'assistant_manager',
+    'store_manager', 'district_manager', 'district_trainer', 'regional_manager', 'regional_analyst',
+    'corporate_admin', 'corporate_finance', 'corporate_ops',
+    'business_owner', 'accountant', 'administrator', 'admin',
+    'practice_manager', 'payroll_admin', 'leave_admin', 'trainee', 'super_admin',
 ]);
 
 const WEAK_PINS = new Set([
@@ -75,7 +80,7 @@ router.get('/:userId/pin-status', requirePermission('SETTINGS.EDIT'), async (req
             username:      access.users?.username,
             fullName:      access.users?.full_name,
             role:          access.role,
-            pinEligible:   PIN_ELIGIBLE_ROLES.has(access.role),
+            pinEligible:   true, // all roles can have a PIN
             hasPinSet:     !!(pinRecord && pinRecord.is_active),
             pinUpdatedAt:  pinRecord?.updated_at || null,
         });
@@ -110,11 +115,7 @@ router.post('/:userId/pin', requirePermission('SETTINGS.EDIT'), async (req, res)
             .maybeSingle();
 
         if (!access) return res.status(404).json({ error: 'User not found in this company' });
-        if (!PIN_ELIGIBLE_ROLES.has(access.role)) {
-            return res.status(400).json({
-                error: `PIN login is not available for the ${access.role.replace(/_/g, ' ')} role. Only cashier and floor staff roles use PIN login.`,
-            });
-        }
+        // All roles are PIN-eligible — any user may need to work the till
 
         // Hash the PIN — 12 rounds, same policy as password hashing in auth.js
         const pinHash = await bcrypt.hash(String(pin), 12);

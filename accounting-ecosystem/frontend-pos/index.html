@@ -3308,6 +3308,84 @@
         </div>
     </div>
 
+    <!-- Edit User Modal -->
+    <div id="editUserModal" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header">
+                <h2>Edit User — <span id="editUserTitle"></span></h2>
+                <button class="close-btn" onclick="closeEditUserModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <input type="hidden" id="editUserId">
+                <div style="display:grid;gap:15px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                        <div>
+                            <label style="font-weight:600;display:block;margin-bottom:5px;">Full Name *</label>
+                            <input type="text" id="editUserFullName" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-weight:600;display:block;margin-bottom:5px;">Username</label>
+                            <input type="text" id="editUserUsername" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;" placeholder="Used for PIN login">
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                        <div>
+                            <label style="font-weight:600;display:block;margin-bottom:5px;">Email</label>
+                            <input type="email" id="editUserEmail" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-weight:600;display:block;margin-bottom:5px;">Role *</label>
+                            <select id="editUserRole" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;">
+                                <option value="">Select role…</option>
+                                <optgroup label="Store">
+                                    <option value="store_manager">Store Manager</option>
+                                    <option value="assistant_manager">Assistant Manager</option>
+                                    <option value="shift_supervisor">Shift Supervisor</option>
+                                    <option value="senior_cashier">Senior Cashier</option>
+                                    <option value="cashier">Cashier</option>
+                                    <option value="trainee">Trainee</option>
+                                </optgroup>
+                                <optgroup label="Corporate">
+                                    <option value="corporate_admin">Corporate Admin</option>
+                                    <option value="corporate_finance">Corporate Finance</option>
+                                    <option value="corporate_ops">Corporate Operations</option>
+                                </optgroup>
+                                <optgroup label="Regional / District">
+                                    <option value="regional_manager">Regional Manager</option>
+                                    <option value="district_manager">District Manager</option>
+                                </optgroup>
+                                <optgroup label="Special">
+                                    <option value="business_owner">Business Owner</option>
+                                    <option value="accountant">Accountant</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                        <div>
+                            <label style="font-weight:600;display:block;margin-bottom:5px;">Employee ID</label>
+                            <input type="text" id="editUserEmployeeId" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;" placeholder="e.g. EMP-001">
+                        </div>
+                        <div style="display:flex;align-items:flex-end;padding-bottom:4px;">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" id="editUserActive">
+                                <span style="font-weight:600;">Active</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Reset Password <span style="color:#999;font-weight:400;">(leave blank to keep current)</span></label>
+                        <input type="password" id="editUserPassword" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;" placeholder="New password (min 8 chars)" autocomplete="new-password">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:15px 20px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;">
+                <button class="btn btn-secondary" onclick="closeEditUserModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveEditUser()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
     <!-- PIN Management Modal — Settings → Users → PIN button -->
     <div id="pinModal" class="modal-overlay" style="display:none;">
         <div class="modal" style="max-width:400px;">
@@ -10171,6 +10249,8 @@
             loadCompanyUsers();
         }
 
+        let _loadedCompanyUsers = []; // cache for edit modal lookups
+
         async function loadCompanyUsers() {
             const companyId = document.getElementById('userCompanyFilter')?.value || currentCompanyId;
             const tbody = document.getElementById('usersTableBody');
@@ -10187,6 +10267,7 @@
                 if (res.ok) {
                     const data = await res.json();
                     const users = data.users || [];
+                    _loadedCompanyUsers = users; // cache for edit modal
                     if (users.length === 0) {
                         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">No users in this company. Add one to get started.</td></tr>';
                     } else {
@@ -10200,7 +10281,8 @@
                                 <td><span class="status-badge ${u.is_active ? 'active' : 'closed'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
                                 <td>${u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'Never'}</td>
                                 <td style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap;">
-                                    ${['cashier','senior_cashier','shift_supervisor','assistant_manager'].includes(u.role) ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;color:#1565c0;" onclick="showPinModal(${u.id},${companyId})">PIN</button>` : ''}
+                                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="showEditUserModal(${u.id})">Edit</button>
+                                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;color:#1565c0;" onclick="showPinModal(${u.id},${companyId})">PIN</button>
                                     <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;color:#c62828;" onclick="removeUserFromCompany(${companyId}, ${u.id}, '${u.full_name}')">Remove</button>
                                 </td>
                             </tr>
@@ -10298,6 +10380,84 @@
                 }
             } catch (e) {
                 showNotification('Failed to remove user', 'error');
+            }
+        }
+
+        function showEditUserModal(userId) {
+            const u = _loadedCompanyUsers.find(x => x.id === userId);
+            if (!u) { showNotification('User not found — refresh the list', 'error'); return; }
+
+            document.getElementById('editUserId').value       = u.id;
+            document.getElementById('editUserTitle').textContent = u.full_name;
+            document.getElementById('editUserFullName').value = u.full_name || '';
+            document.getElementById('editUserUsername').value = u.username || '';
+            document.getElementById('editUserEmail').value    = u.email || '';
+            document.getElementById('editUserRole').value     = u.role || '';
+            document.getElementById('editUserEmployeeId').value = u.employee_id || '';
+            document.getElementById('editUserActive').checked = u.is_active !== false;
+            document.getElementById('editUserPassword').value = '';
+
+            document.getElementById('editUserModal').style.display = 'flex';
+        }
+
+        function closeEditUserModal() {
+            document.getElementById('editUserModal').style.display = 'none';
+        }
+
+        async function saveEditUser() {
+            const userId   = document.getElementById('editUserId').value;
+            const fullName = document.getElementById('editUserFullName').value.trim();
+            const username = document.getElementById('editUserUsername').value.trim();
+            const email    = document.getElementById('editUserEmail').value.trim();
+            const role     = document.getElementById('editUserRole').value;
+            const isActive = document.getElementById('editUserActive').checked;
+            const password = document.getElementById('editUserPassword').value;
+
+            if (!fullName) { showNotification('Full name is required', 'error'); return; }
+            if (!role)     { showNotification('Please select a role', 'error'); return; }
+            if (password && password.length < 8) { showNotification('Password must be at least 8 characters', 'error'); return; }
+
+            try {
+                // Save profile + role + username in one call
+                const res = await fetch(`${API_URL}/users/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        full_name: fullName,
+                        email:     email || null,
+                        username:  username || undefined,
+                        role,
+                        is_active: isActive
+                    })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    showNotification(err.error || 'Failed to save changes', 'error');
+                    return;
+                }
+
+                // Optional password reset (manager resetting another user's password)
+                if (password) {
+                    const pwRes = await fetch(`${API_URL}/users/${userId}/password`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ new_password: password })
+                    });
+                    if (!pwRes.ok) {
+                        const pwErr = await pwRes.json();
+                        showNotification(pwErr.error || 'Details saved but password reset failed', 'error');
+                        closeEditUserModal();
+                        loadCompanyUsers();
+                        return;
+                    }
+                }
+
+                showNotification('User updated successfully', 'success');
+                closeEditUserModal();
+                loadCompanyUsers();
+            } catch (e) {
+                showNotification('Failed to save changes', 'error');
             }
         }
 
