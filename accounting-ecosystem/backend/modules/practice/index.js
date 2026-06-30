@@ -83,6 +83,42 @@ router.get('/status', (req, res) => {
 // /status is exempt (health check only — no data access).
 router.use(requireCompany);
 
+// Practice Management is gated at two levels:
+// 1. companies.modules_enabled must include 'practice'
+// 2. companies.account_holder_type must be 'accounting_practice'
+// Super admins bypass both checks (needed for testing and support).
+async function requirePracticeModule(req, res, next) {
+  if (req.user?.isSuperAdmin) return next();
+  if (!req.companyId) return next(); // requireCompany already handled
+  try {
+    const { data: co } = await supabase
+      .from('companies')
+      .select('modules_enabled, account_holder_type')
+      .eq('id', req.companyId)
+      .single();
+    if (!co) {
+      return res.status(403).json({ error: 'Company not found.', code: 'COMPANY_NOT_FOUND' });
+    }
+    if (!Array.isArray(co.modules_enabled) || !co.modules_enabled.includes('practice')) {
+      return res.status(403).json({
+        error: 'Practice Management is not enabled for your company.',
+        code: 'PRACTICE_MODULE_NOT_ENABLED'
+      });
+    }
+    if (co.account_holder_type !== 'accounting_practice') {
+      return res.status(403).json({
+        error: 'Practice Management is only available to accounting practices.',
+        code: 'NOT_ACCOUNTING_PRACTICE'
+      });
+    }
+    next();
+  } catch (err) {
+    console.error('[practice] requirePracticeModule error:', err.message);
+    return res.status(500).json({ error: 'Failed to verify practice module access.' });
+  }
+}
+router.use(requirePracticeModule);
+
 // ─── KV Store (UI preferences only — not business data) ──────────────────────
 router.get('/kv/:key', async (req, res) => {
   const kvKey = `practice_${req.companyId}_${req.params.key}`;
@@ -483,9 +519,28 @@ router.get('/clients', async (req, res) => {
       (c.name && c.name.toLowerCase().includes(s)) ||
       (c.email && c.email.toLowerCase().includes(s)) ||
       (c.vat_number && c.vat_number.toLowerCase().includes(s)) ||
-      (c.registration_number && c.registration_number.toLowerCase().includes(s))
+      (c.registration_number && c.registration_number.toLowerCase().includes(s)) ||
+      (c.client_code && c.client_code.toLowerCase().includes(s))
     );
   }
+
+  // Enrich with eco_client data (client_code, apps, is_active from central registry)
+  const ecoIds = results.map(c => c.eco_client_id).filter(Boolean);
+  if (ecoIds.length > 0) {
+    const { data: ecoClients } = await supabase
+      .from('eco_clients')
+      .select('id, client_code, apps, is_active')
+      .in('id', ecoIds);
+    if (ecoClients) {
+      const ecoMap = {};
+      ecoClients.forEach(ec => { ecoMap[ec.id] = ec; });
+      results = results.map(c => {
+        const ec = c.eco_client_id ? ecoMap[c.eco_client_id] : null;
+        return { ...c, client_code: ec?.client_code || null, eco_apps: ec?.apps || null };
+      });
+    }
+  }
+
   res.json({ clients: results, total: results.length });
 });
 
@@ -497,7 +552,23 @@ router.get('/clients/:id', async (req, res) => {
     .eq('company_id', req.companyId)
     .single();
   if (error || !data) return res.status(404).json({ error: 'Client not found' });
-  res.json({ client: data });
+
+  // Enrich with central eco_client data (client_code, apps)
+  let client = { ...data };
+  if (data.eco_client_id) {
+    const { data: ec } = await supabase
+      .from('eco_clients')
+      .select('id, client_code, apps, is_active, addons')
+      .eq('id', data.eco_client_id)
+      .single();
+    if (ec) {
+      client.client_code = ec.client_code;
+      client.eco_apps    = ec.apps;
+      client.eco_addons  = ec.addons;
+    }
+  }
+
+  res.json({ client });
 });
 
 router.post('/clients', async (req, res) => {
@@ -514,20 +585,72 @@ router.post('/clients', async (req, res) => {
   body.is_active = true;
   if (req.userId) body.created_by = req.userId;
 
+  // Duplicate ID check — eco_clients has a unique index on (company_id, id_number)
+  const idForLookup = body.id_number || body.registration_number || null;
+  if (idForLookup) {
+    const { data: existingEco } = await supabase
+      .from('eco_clients')
+      .select('id, client_code')
+      .eq('company_id', req.companyId)
+      .eq('id_number', idForLookup)
+      .limit(1);
+    if (existingEco && existingEco.length > 0) {
+      return res.status(409).json({
+        error: `A client with ID/registration number "${idForLookup}" already exists in the central client registry.`,
+        code: 'DUPLICATE_ID_NUMBER',
+        existing_eco_client_id: existingEco[0].id,
+        existing_client_code:   existingEco[0].client_code
+      });
+    }
+  }
+
   const { data, error } = await supabase.from('practice_clients').insert(body).select().single();
   if (error) return res.status(500).json({ error: error.message });
+
+  // Create eco_client record as central source of truth for identity.
+  // The eco_client stores name, email, phone, id_number — practice_clients stores all compliance detail.
+  let clientCode = null;
+  try {
+    const ecoPayload = {
+      company_id:  req.companyId,
+      name:        body.name,
+      email:       body.email || null,
+      phone:       body.phone || null,
+      id_number:   idForLookup,
+      client_type: body.client_type === 'individual' ? 'individual' : 'business',
+      apps:        ['practice'],
+      is_active:   true,
+      created_at:  new Date().toISOString(),
+      updated_at:  new Date().toISOString()
+    };
+    const { data: ec, error: ecErr } = await supabase
+      .from('eco_clients')
+      .insert(ecoPayload)
+      .select('id, client_code')
+      .single();
+    if (!ecErr && ec) {
+      await supabase.from('practice_clients').update({ eco_client_id: ec.id }).eq('id', data.id);
+      data.eco_client_id = ec.id;
+      clientCode = ec.client_code;
+    } else if (ecErr) {
+      console.error('[practice] eco_client creation for new client failed:', ecErr.message);
+    }
+  } catch (ecEx) {
+    console.error('[practice] eco_client creation exception:', ecEx.message);
+  }
+
   await auditFromReq(req, 'CREATE', 'practice_client', data.id, { module: 'practice' });
-  res.status(201).json({ client: data });
+  res.status(201).json({ client: { ...data, client_code: clientCode } });
 });
 
 router.put('/clients/:id', async (req, res) => {
-  const existing = await supabase
+  const { data: existing, error: fetchErr } = await supabase
     .from('practice_clients')
-    .select('id')
+    .select('id, eco_client_id')
     .eq('id', req.params.id)
     .eq('company_id', req.companyId)
     .single();
-  if (!existing.data) return res.status(404).json({ error: 'Client not found' });
+  if (fetchErr || !existing) return res.status(404).json({ error: 'Client not found' });
 
   const body = sanitizeClientBody(req.body);
   if (body.client_type && !CLIENT_TYPES.includes(body.client_type))
@@ -547,6 +670,28 @@ router.put('/clients/:id', async (req, res) => {
     .eq('company_id', req.companyId)
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+
+  // Sync identity fields back to the central eco_client record.
+  // Only push fields that are the eco_client's concern (name, email, phone, id_number).
+  if (existing.eco_client_id) {
+    try {
+      const ecoUpdate = {};
+      if (body.name      !== undefined) ecoUpdate.name      = body.name;
+      if (body.email     !== undefined) ecoUpdate.email     = body.email;
+      if (body.phone     !== undefined) ecoUpdate.phone     = body.phone;
+      if (body.id_number !== undefined) ecoUpdate.id_number = body.id_number;
+      if (Object.keys(ecoUpdate).length > 0) {
+        ecoUpdate.updated_at = new Date().toISOString();
+        await supabase
+          .from('eco_clients')
+          .update(ecoUpdate)
+          .eq('id', existing.eco_client_id);
+      }
+    } catch (ecoSyncErr) {
+      console.error('[practice] eco_client identity sync failed:', ecoSyncErr.message);
+    }
+  }
+
   await auditFromReq(req, 'UPDATE', 'practice_client', data.id, { module: 'practice' });
   res.json({ client: data });
 });

@@ -857,6 +857,17 @@
                 packageSupport:     false,
                 infiniteLegacyOnly: true,
             },
+            {
+                key:                    'practice',
+                name:                   'Lorenco Practice',
+                subtitle:               'Practice Management',
+                icon:                   '&#128203;',
+                seanAddonKey:           null,
+                seanAddonLabel:         null,
+                billingMetric:          null,
+                packageSupport:         false,
+                accountingPracticeOnly: true,
+            },
         ];
 
         // Packages available per app — extensible for future tiers
@@ -1166,8 +1177,14 @@
             const metaParts = [c.email, c.phone].filter(Boolean);
 
             const parentCo = companyMap[c.company_id];
+            // client_account_holder_type is enriched server-side from companies[client_company_id]
+            const clientHolderType = c.client_account_holder_type || null;
             const appListHtml = APP_REGISTRY
-                .filter(appDef => !appDef.infiniteLegacyOnly || isTILCompany(parentCo))
+                .filter(appDef => {
+                    if (appDef.infiniteLegacyOnly && !isTILCompany(parentCo)) return false;
+                    if (appDef.accountingPracticeOnly && clientHolderType !== 'accounting_practice') return false;
+                    return true;
+                })
                 .map(appDef => buildAppRow(c, appDef)).join('');
 
             return `

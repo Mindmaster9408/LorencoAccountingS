@@ -2243,6 +2243,12 @@
                     ? (currentUser?.hasCoachingAccess === true)
                     : (isSuperAdmin || !userAppsAccess || userAppsAccess.includes(app.key));
 
+                // Practice tile: only show for accounting_practice companies.
+                // Business owners must never see it — hide completely (return '').
+                if (app.key === 'practice' && !isSuperAdmin) {
+                    if (selectedCompany?.account_holder_type !== 'accounting_practice') return '';
+                }
+
                 // App is active if the company has it in modules_enabled AND user can access it.
                 // Coaching bypasses the modules_enabled check — it is active whenever the user
                 // has the DB-level has_coaching_access flag (already captured in userCanAccess).

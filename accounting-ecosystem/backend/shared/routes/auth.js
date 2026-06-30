@@ -1078,7 +1078,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
     if (resolvedCompanyId) {
       const { data: companyData } = await supabase
         .from('companies')
-        .select('id, company_name, trading_name, modules_enabled')
+        .select('id, company_name, trading_name, modules_enabled, account_holder_type')
         .eq('id', resolvedCompanyId)
         .single();
       company = companyData;
@@ -1106,6 +1106,23 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
             module: targetApp,
           });
         }
+      }
+    }
+
+    // Practice Module Gate: only accounting_practice companies with practice in modules_enabled.
+    // Super admins bypass — they need access for testing and support.
+    if (targetApp === 'practice' && !user.is_super_admin) {
+      if (!Array.isArray(company.modules_enabled) || !company.modules_enabled.includes('practice')) {
+        return res.status(403).json({
+          error: 'Practice Management is not enabled for your company. Please contact your administrator.',
+          code: 'PRACTICE_MODULE_NOT_ENABLED'
+        });
+      }
+      if (company.account_holder_type !== 'accounting_practice') {
+        return res.status(403).json({
+          error: 'Practice Management is only available to accounting practices.',
+          code: 'NOT_ACCOUNTING_PRACTICE'
+        });
       }
     }
 

@@ -152,6 +152,34 @@ async function syncToApps(ecoClient) {
     synced.push({ app: 'sean', note: 'Linked via ecosystem' });
   }
 
+  // Practice Management — activate companies.modules_enabled for the firm's own company.
+  // Only allowed for accounting_practice companies; silently skipped otherwise.
+  if (apps.includes('practice')) {
+    try {
+      const firmCompanyId = ecoClient.client_company_id || ecoClient.company_id;
+      const { data: coData } = await supabase
+        .from('companies')
+        .select('modules_enabled, account_holder_type')
+        .eq('id', firmCompanyId)
+        .single();
+      if (coData && coData.account_holder_type === 'accounting_practice') {
+        const mods = coData.modules_enabled || [];
+        if (!mods.includes('practice')) {
+          await supabase
+            .from('companies')
+            .update({ modules_enabled: [...mods, 'practice'] })
+            .eq('id', firmCompanyId);
+        }
+        synced.push({ app: 'practice', note: 'Practice module enabled in modules_enabled' });
+      } else {
+        synced.push({ app: 'practice', note: 'Skipped — company is not an accounting_practice' });
+      }
+    } catch (err) {
+      console.error('[eco-clients] Practice sync to companies.modules_enabled failed:', err.message);
+      errors.push({ app: 'practice', error: err.message });
+    }
+  }
+
   return { synced, errors };
 }
 
@@ -383,6 +411,24 @@ router.get('/', async (req, res) => {
         (c.email && c.email.toLowerCase().includes(s)) ||
         (c.id_number && c.id_number.includes(s))
       );
+    }
+
+    // Enrich each eco_client with the client company's account_holder_type so the
+    // PCC can conditionally show the Practice Management toggle only for accounting practices.
+    const clientCompanyIds = [...new Set(filtered.map(c => c.client_company_id).filter(Boolean))];
+    if (clientCompanyIds.length > 0) {
+      const { data: clientCos } = await supabase
+        .from('companies')
+        .select('id, account_holder_type')
+        .in('id', clientCompanyIds);
+      if (clientCos) {
+        const typeMap = {};
+        clientCos.forEach(co => { typeMap[co.id] = co.account_holder_type || null; });
+        filtered = filtered.map(c => ({
+          ...c,
+          client_account_holder_type: c.client_company_id ? (typeMap[c.client_company_id] || null) : null
+        }));
+      }
     }
 
     res.json({ clients: filtered, total: filtered.length });
@@ -881,6 +927,22 @@ router.put('/:id', async (req, res) => {
           });
         }
       }
+
+      // ── Practice restriction: Practice Management only for accounting_practice companies ──
+      const practiceBeingAdded = req.body.apps.includes('practice') && !oldApps.includes('practice');
+      if (practiceBeingAdded && old.client_company_id) {
+        const { data: firmCo } = await supabase
+          .from('companies')
+          .select('account_holder_type')
+          .eq('id', old.client_company_id)
+          .single();
+        if (!firmCo || firmCo.account_holder_type !== 'accounting_practice') {
+          return res.status(403).json({
+            error: 'Practice Management can only be activated for accounting practices. ' +
+                   'Set this company\'s type to "Accounting Practice" first.'
+          });
+        }
+      }
     }
 
     const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'addons',
@@ -949,7 +1011,33 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    // 4. Sync core contact fields → companies table (eco hub → accounting direction)
+    // 4. Sync Practice app toggle → companies.modules_enabled for the firm's company
+    if (changedFields.includes('apps') && updated.client_company_id) {
+      try {
+        const practiceAdded   = newApps.includes('practice') && !oldApps.includes('practice');
+        const practiceRemoved = !newApps.includes('practice') && oldApps.includes('practice');
+        if (practiceAdded || practiceRemoved) {
+          const { data: coData } = await supabase
+            .from('companies')
+            .select('modules_enabled, account_holder_type')
+            .eq('id', updated.client_company_id)
+            .single();
+          if (coData) {
+            let mods = coData.modules_enabled || [];
+            if (practiceAdded && !mods.includes('practice')) mods = [...mods, 'practice'];
+            if (practiceRemoved) mods = mods.filter(m => m !== 'practice');
+            await supabase
+              .from('companies')
+              .update({ modules_enabled: mods })
+              .eq('id', updated.client_company_id);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[eco-clients] Practice app sync to companies failed:', syncErr.message);
+      }
+    }
+
+    // 5. Sync core contact fields → companies table (eco hub → accounting direction)
     // eco_clients.name ↔ companies.company_name
     // eco_clients.email ↔ companies.email
     // eco_clients.phone ↔ companies.phone
