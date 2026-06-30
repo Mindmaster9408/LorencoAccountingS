@@ -1635,6 +1635,7 @@
                     <span id="userName"></span>
                 </div>
                 <span class="session-badge" id="sessionStatus">No Session</span>
+                <button id="pwaInstallBtn" class="manage-till-btn" onclick="installPWA()" style="display:none; background:rgba(59,130,246,0.2); border-color:#3b82f6;">⬇ Install App</button>
                 <button class="manage-till-btn" onclick="showSwitchStoreModal()">Switch Store</button>
                 <button class="manage-till-btn" onclick="manageSession()">Manage Till</button>
                 <button class="manage-till-btn" onclick="logout()" style="background: rgba(220,53,69,0.2); border-color: #dc3545;">Logout</button>
@@ -3987,6 +3988,33 @@
             updateOfflineBanner();
             showNotification('You are offline. Sales will be saved locally.', 'info');
         });
+
+        // ── PWA Install Prompt ────────────────────────────────────────────────
+        let _pwaInstallEvent = null;
+
+        window.addEventListener('beforeinstallprompt', e => {
+            e.preventDefault();
+            _pwaInstallEvent = e;
+            const btn = document.getElementById('pwaInstallBtn');
+            if (btn) btn.style.display = '';
+        });
+
+        window.addEventListener('appinstalled', () => {
+            _pwaInstallEvent = null;
+            const btn = document.getElementById('pwaInstallBtn');
+            if (btn) btn.style.display = 'none';
+            showNotification('Checkout Charlie installed successfully!', 'success');
+        });
+
+        async function installPWA() {
+            if (!_pwaInstallEvent) return;
+            _pwaInstallEvent.prompt();
+            const { outcome } = await _pwaInstallEvent.userChoice;
+            if (outcome === 'accepted') {
+                _pwaInstallEvent = null;
+                document.getElementById('pwaInstallBtn').style.display = 'none';
+            }
+        }
 
         // Register Service Worker
         if ('serviceWorker' in navigator) {
