@@ -1326,6 +1326,17 @@
         <div class="login-box" id="loginBox">
             <h1>🛒 Checkout Charlie</h1>
 
+            <!-- Device lock banner — visible when this device is locked to a company -->
+            <div id="deviceLockBanner" style="display:none; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); border-radius:8px; padding:10px 14px; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:20px;">🔒</span>
+                    <div>
+                        <div style="font-weight:700; font-size:13px; color:#60a5fa;">Device Assigned</div>
+                        <div style="font-size:12px; color:rgba(255,255,255,0.75);">This till is locked to: <strong id="deviceLockDisplayName" style="color:#fff;"></strong></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Login mode tabs -->
             <div style="display:flex;gap:0;margin-bottom:22px;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0;">
                 <button id="loginTabPassword" onclick="switchLoginTab('password')" style="flex:1;padding:10px;background:#667eea;color:#fff;border:none;cursor:pointer;font-weight:600;font-size:14px;">Password</button>
@@ -2352,6 +2363,7 @@
                     <div class="settings-menu-item" onclick="showSettings('suppliers', event)">Suppliers</div>
                     <div class="settings-menu-item" onclick="showSettings('sites', event)">Sites</div>
                     <div class="settings-menu-item manager-only" onclick="showSettings('tills', event)">Tills</div>
+                    <div class="settings-menu-item manager-only" id="deviceLockMenuItem" onclick="showSettings('device-lock', event)">🔒 Device Lock</div>
                 </div>
 
                 <div class="settings-content">
@@ -2761,6 +2773,35 @@
                                 <tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">Loading tills...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Device Lock Section -->
+                    <div id="deviceLockSection" style="display: none;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                            <div>
+                                <h3 style="margin:0;">🔒 Device Lock</h3>
+                                <p style="margin:6px 0 0; font-size:13px; opacity:0.7;">Lock this till to a specific company. Cashiers can only log in to the locked company.</p>
+                            </div>
+                        </div>
+
+                        <!-- Current lock status card -->
+                        <div id="deviceLockStatusCard" style="border-radius:8px; padding:20px; margin-bottom:20px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05);">
+                            <div style="font-size:13px; opacity:0.6;">Checking lock status…</div>
+                        </div>
+
+                        <!-- Lock to current company -->
+                        <div style="background:rgba(59,130,246,0.1); border-radius:8px; padding:20px; margin-bottom:16px; border:1px solid rgba(59,130,246,0.3);">
+                            <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:14px;">Lock to Current Company</h4>
+                            <p style="margin:0 0 14px 0; font-size:13px; opacity:0.8;">Lock this device to <strong id="deviceLockCurrentCompanyName" style="color:#fff;"></strong>. Cashiers will only be able to log in to this company on this device.</p>
+                            <button onclick="lockDeviceToCurrentCompany()" style="background:#667eea; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔒 Lock Device to This Company</button>
+                        </div>
+
+                        <!-- Clear lock -->
+                        <div style="background:rgba(245,158,11,0.1); border-radius:8px; padding:20px; border:1px solid rgba(245,158,11,0.3);">
+                            <h4 style="margin:0 0 10px 0; color:#f59e0b; font-size:14px;">Remove Lock</h4>
+                            <p style="margin:0 0 14px 0; font-size:13px; opacity:0.8;">Remove the device lock. Users will see the company selector when logging in.</p>
+                            <button onclick="clearDeviceLock()" style="background:transparent; color:#f59e0b; border:1px solid #f59e0b; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔓 Clear Device Lock</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -4124,6 +4165,7 @@
             await initIndexedDB();
             isOnline = navigator.onLine;
             await updateOfflineBanner();
+            applyDeviceLock(); // Show device lock banner on login screen if locked
 
             // ── SSO Pickup from Ecosystem Dashboard ──
             const ssoSource = localStorage.getItem('sso_source');
@@ -4239,6 +4281,22 @@
 
                     // Check if we need to select a company
                     if (result.requiresCompanySelection && result.companies && result.companies.length > 1) {
+                        // If device is locked, bypass the company selector and auto-select locked company
+                        const _lockedId = localStorage.getItem('pos_locked_company_id');
+                        if (_lockedId) {
+                            const _lockedCompany = result.companies.find(c => String(c.id) === _lockedId);
+                            if (_lockedCompany) {
+                                token = result.token;
+                                localStorage.setItem('token', token);
+                                currentUser = result.user;
+                                await selectCompanyById(parseInt(_lockedId, 10));
+                                return;
+                            } else {
+                                showNotification('Your account does not have access to this device\'s company', 'error');
+                                return;
+                            }
+                        }
+
                         // Store temporary token for company selection
                         token = result.token;
                         localStorage.setItem('token', token);
@@ -4251,7 +4309,12 @@
                         document.getElementById('loginScreen').style.display = 'none';
                         document.getElementById('companySelectorScreen').style.display = 'flex';
                     } else if (result.companies && result.companies.length === 1) {
-                        // Auto-select single company
+                        // Auto-select single company — check device lock first
+                        const _lockedIdSingle = localStorage.getItem('pos_locked_company_id');
+                        if (_lockedIdSingle && String(result.companies[0].id) !== _lockedIdSingle) {
+                            showNotification('Your account does not have access to this device\'s company', 'error');
+                            return;
+                        }
                         token = result.token;
                         localStorage.setItem('token', token);
                         currentUser = result.user;
@@ -4607,6 +4670,7 @@
             selectedCompanyId = null;
             document.getElementById('companySelectorScreen').style.display = 'none';
             document.getElementById('loginScreen').style.display = 'flex';
+            applyDeviceLock(); // Re-show device lock banner if applicable
         }
 
         function logout() {
@@ -4618,12 +4682,17 @@
             userPermissions = {};
             availableCompanies = [];
             selectedCompanyId = null;
+            currentCompanyId  = null;
+            currentCompanyName = null;
 
             // Reset role-based visibility
             document.querySelectorAll('.role-hidden').forEach(el => el.classList.remove('role-hidden'));
 
             document.getElementById('mainApp').style.display = 'none';
             document.getElementById('loginScreen').style.display = 'flex';
+
+            // Re-apply device lock UI (banner + PIN context) after logout
+            applyDeviceLock();
         }
 
         async function checkSession() {
@@ -6135,6 +6204,8 @@
             if (receiptPrintersSection) receiptPrintersSection.style.display = 'none';
             const generalSection = document.getElementById('generalSection');
             if (generalSection) generalSection.style.display = 'none';
+            const deviceLockSection = document.getElementById('deviceLockSection');
+            if (deviceLockSection) deviceLockSection.style.display = 'none';
 
             if (section === 'products') {
                 document.getElementById('productsSection').style.display = 'block';
@@ -6154,6 +6225,9 @@
             } else if (section === 'general') {
                 document.getElementById('generalSection').style.display = 'block';
                 loadGeneralSettings();
+            } else if (section === 'device-lock') {
+                document.getElementById('deviceLockSection').style.display = 'block';
+                loadDeviceSettings();
             } else {
                 alert(`${section} section - To be implemented`);
             }
@@ -10529,6 +10603,100 @@
             } catch (e) {
                 showNotification('Failed to save settings: ' + e.message, 'error');
             }
+        }
+
+        // ========== DEVICE LOCK ==========
+        // Device lock is stored in localStorage as a device UI preference (not business data).
+        // Permitted under CLAUDE.md Rule D2 — it is equivalent to a "device preference."
+
+        function applyDeviceLock() {
+            const lockedId   = localStorage.getItem('pos_locked_company_id');
+            const lockedName = localStorage.getItem('pos_locked_company_name');
+            if (!lockedId) return;
+
+            // Pre-set currentCompanyId so PIN login auto-targets the locked company
+            if (!currentCompanyId) currentCompanyId = parseInt(lockedId, 10);
+
+            // Show the lock banner on the login screen
+            const banner = document.getElementById('deviceLockBanner');
+            const nameEl = document.getElementById('deviceLockDisplayName');
+            if (banner && nameEl) {
+                nameEl.textContent = lockedName || ('Company #' + lockedId);
+                banner.style.display = 'block';
+            }
+
+            // Show the company name in the PIN login section
+            const pinDisplay = document.getElementById('pinCompanyDisplay');
+            const pinName    = document.getElementById('pinCompanyName');
+            if (pinDisplay && pinName) {
+                pinName.textContent = lockedName || ('Company #' + lockedId);
+                pinDisplay.style.display = 'block';
+            }
+
+            // Hide the manual company entry field — not needed when device is locked
+            const pinCompanyRow = document.getElementById('pinCompanyRow');
+            if (pinCompanyRow) pinCompanyRow.style.display = 'none';
+        }
+
+        function loadDeviceSettings() {
+            const lockedId   = localStorage.getItem('pos_locked_company_id');
+            const lockedName = localStorage.getItem('pos_locked_company_name');
+
+            // Show current company name in the "lock to this company" button section
+            const ccEl = document.getElementById('deviceLockCurrentCompanyName');
+            if (ccEl) ccEl.textContent = currentCompanyName || 'this company';
+
+            const card = document.getElementById('deviceLockStatusCard');
+            if (!card) return;
+
+            if (lockedId) {
+                card.style.background = 'rgba(59,130,246,0.08)';
+                card.style.borderColor = 'rgba(59,130,246,0.3)';
+                card.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:28px;">🔒</span>
+                        <div>
+                            <div style="font-weight:700; font-size:15px; color:#60a5fa;">Device is Locked</div>
+                            <div style="font-size:13px; margin-top:4px; opacity:0.8;">
+                                This till is assigned to: <strong style="color:#fff;">${lockedName || 'Company #' + lockedId}</strong>
+                            </div>
+                            <div style="font-size:11px; margin-top:4px; opacity:0.5;">Cashiers cannot switch companies on this device.</div>
+                        </div>
+                    </div>`;
+            } else {
+                card.style.background = 'rgba(255,255,255,0.04)';
+                card.style.borderColor = 'rgba(255,255,255,0.1)';
+                card.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:28px;">🔓</span>
+                        <div>
+                            <div style="font-weight:700; font-size:15px;">Device is Unlocked</div>
+                            <div style="font-size:13px; margin-top:4px; opacity:0.7;">Users see the company selector when logging in.</div>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        function lockDeviceToCurrentCompany() {
+            if (!currentCompanyId || !currentCompanyName) {
+                showNotification('No company context — cannot lock device', 'error');
+                return;
+            }
+            if (!confirm(`Lock this device to "${currentCompanyName}"?\n\nCashiers will only be able to log in to this company. To change the lock, a manager must log in and update it here.`)) return;
+            localStorage.setItem('pos_locked_company_id',   String(currentCompanyId));
+            localStorage.setItem('pos_locked_company_name', currentCompanyName);
+            showNotification(`Device locked to ${currentCompanyName}`, 'success');
+            loadDeviceSettings();
+        }
+
+        function clearDeviceLock() {
+            const lockedName = localStorage.getItem('pos_locked_company_name');
+            if (!lockedName) { showNotification('Device is not locked', 'info'); return; }
+            if (!confirm(`Remove the device lock (currently: "${lockedName}")?\n\nUsers will see the company selector on next login.`)) return;
+            localStorage.removeItem('pos_locked_company_id');
+            localStorage.removeItem('pos_locked_company_name');
+            showNotification('Device lock removed', 'success');
+            loadDeviceSettings();
         }
 
         // ========== TILLS MANAGEMENT ==========
