@@ -121,6 +121,16 @@
                         <textarea id="cNotes" rows="2" placeholder="Additional notes…"></textarea>
                     </div>
 
+                    <!-- Shown when backend detects a similar existing client -->
+                    <div id="duplicateWarning" class="form-full hidden duplicate-warning">
+                        <div class="duplicate-warning-title">⚠ Similar client already exists in the central registry</div>
+                        <div id="duplicateMatchList"></div>
+                        <div class="duplicate-warning-footer">
+                            <div class="duplicate-warning-footer-label">If this is a different client with a similar name:</div>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="forceCreateNew()">Create as New Client Anyway</button>
+                        </div>
+                    </div>
+
                     <div class="form-field hidden" id="cStatusField">
                         <label for="cActive">Status</label>
                         <select id="cActive" aria-label="Client status">
@@ -158,6 +168,8 @@
     var editingId = null;
     var PAGE_SIZE = 20;
     var currentPage = 1;
+
+    var pendingClientBody = null;
 
     var TYPE_LABEL = {
         company: 'Company', cc: 'CC', trust: 'Trust', partnership: 'Partnership',
@@ -371,6 +383,29 @@
 
     function closeModal(modalId) {
         document.getElementById(modalId).classList.remove('show');
+        hideDuplicateWarning();
+    }
+
+    function hideDuplicateWarning() {
+        pendingClientBody = null;
+        document.getElementById('duplicateWarning').classList.add('hidden');
+        document.getElementById('duplicateMatchList').innerHTML = '';
+    }
+
+    function showDuplicateWarning(matches, body) {
+        pendingClientBody = body;
+        var rows = matches.map(function(m) {
+            return '<div class="duplicate-match-row">' +
+                '<div>' +
+                    '<strong>' + esc(m.name) + '</strong>' +
+                    (m.client_code ? '<div class="duplicate-match-code">' + esc(m.client_code) + '</div>' : '') +
+                    (m.email ? '<div class="duplicate-match-email">' + esc(m.email) + '</div>' : '') +
+                '</div>' +
+                '<button type="button" class="btn btn-primary btn-sm" onclick="linkToExisting(' + m.eco_client_id + ')">Link to this client</button>' +
+            '</div>';
+        }).join('');
+        document.getElementById('duplicateMatchList').innerHTML = rows;
+        document.getElementById('duplicateWarning').classList.remove('hidden');
     }
 
     // ── Save ─────────────────────────────────────────────────────────────────────
@@ -403,7 +438,14 @@
                 body: JSON.stringify(body)
             });
             var d = await res.json();
-            if (!res.ok) throw new Error(d.error || 'Save failed');
+            if (!res.ok) {
+                if (!editingId && d.code === 'POSSIBLE_DUPLICATE_NAME' && d.possible_matches) {
+                    showDuplicateWarning(d.possible_matches, body);
+                    btn.disabled = false;
+                    return false;
+                }
+                throw new Error(d.error || 'Save failed');
+            }
             closeModal('clientModal');
             PracticeAPI.showToast(editingId ? 'Client updated!' : body.name + ' added!');
             await loadClients();
@@ -415,10 +457,52 @@
         return false;
     }
 
+    async function linkToExisting(ecoId) {
+        if (!pendingClientBody) return;
+        var btn = document.getElementById('clientSaveBtn');
+        btn.disabled = true;
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/clients', {
+                method: 'POST',
+                body: JSON.stringify(Object.assign({}, pendingClientBody, { link_eco_client_id: ecoId }))
+            });
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Link failed');
+            closeModal('clientModal');
+            PracticeAPI.showToast(pendingClientBody.name + ' linked!');
+            await loadClients();
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+            btn.disabled = false;
+        }
+    }
+
+    async function forceCreateNew() {
+        if (!pendingClientBody) return;
+        var btn = document.getElementById('clientSaveBtn');
+        btn.disabled = true;
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/clients', {
+                method: 'POST',
+                body: JSON.stringify(Object.assign({}, pendingClientBody, { force_create: true }))
+            });
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Create failed');
+            closeModal('clientModal');
+            PracticeAPI.showToast(pendingClientBody.name + ' added!');
+            await loadClients();
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+            btn.disabled = false;
+        }
+    }
+
     window.filterAndRender   = filterAndRender;
     window.openClientModal   = openClientModal;
     window.closeModal        = closeModal;
     window.saveClient        = saveClient;
+    window.linkToExisting    = linkToExisting;
+    window.forceCreateNew    = forceCreateNew;
 
     init();
 })();

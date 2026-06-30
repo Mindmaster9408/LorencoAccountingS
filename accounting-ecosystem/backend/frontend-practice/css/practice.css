@@ -1670,3 +1670,45 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     .docreq-table th:nth-child(4),
     .docreq-table td:nth-child(4) { display: none; }
 }
+
+/* ── Duplicate client warning (Add Client modal) ─────────── */
+.duplicate-warning {
+    padding: 12px;
+    background: #1c1917;
+    border: 1px solid var(--warning);
+    border-radius: 8px;
+    margin-top: 4px;
+}
+.duplicate-warning-title {
+    color: var(--warning);
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+.duplicate-match-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: #0f0a1a;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.duplicate-match-code {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-family: monospace;
+}
+.duplicate-match-email {
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.duplicate-warning-footer {
+    margin-top: 10px;
+    border-top: 1px solid #292524;
+    padding-top: 10px;
+}
+.duplicate-warning-footer-label {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    margin-bottom: 8px;
+}

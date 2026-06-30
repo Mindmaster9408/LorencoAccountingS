@@ -663,17 +663,39 @@ router.post('/clients', async (req, res) => {
   // CASE 2: No id_number and not a confirmed link — check for name-only matches.
   // Name-only is MEDIUM confidence: surface possible matches, require user decision.
   // If force_create is true the user has acknowledged the check and wants a new record.
+  //
+  // Uses normalized comparison (strips SA legal suffixes) so "Turkstra Bakkery" and
+  // "Turkstra Bakkery (Pty) Ltd" are caught as the same entity before a duplicate is created.
   if (!ecoClientId && !idForLookup && !forceCreate) {
-    const { data: nameMatches } = await supabase
+    function normalizePracticeName(n) {
+      return (n || '').toLowerCase()
+        .replace(/\(pty\)\s*ltd\.?/gi, '').replace(/\(pty\)/gi, '')
+        .replace(/\bpty\s+ltd\.?\b/gi, '').replace(/\bpty\b/gi, '')
+        .replace(/\bltd\.?\b/gi, '').replace(/\bcc\b/gi, '')
+        .replace(/\bproprietary\s+limited\b/gi, '')
+        .replace(/\binc\.?\b/gi, '').replace(/\btrust\b/gi, '')
+        .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    const incomingNorm = normalizePracticeName(body.name);
+
+    const { data: allEco } = await supabase
       .from('eco_clients')
       .select('id, name, client_code, email, phone, id_number')
       .eq('company_id', req.companyId)
-      .eq('is_active', true)
-      .ilike('name', body.name.trim());
+      .eq('is_active', true);
 
-    if (nameMatches && nameMatches.length > 0) {
+    const nameMatches = (allEco || []).filter(ec => {
+      const existNorm = normalizePracticeName(ec.name);
+      if (!existNorm || existNorm.length < 3) return false;
+      return existNorm === incomingNorm ||
+             incomingNorm.includes(existNorm) ||
+             existNorm.includes(incomingNorm);
+    });
+
+    if (nameMatches.length > 0) {
       return res.status(409).json({
-        error: `A client named "${body.name}" already exists in the central client registry. Please review before creating a new record.`,
+        error: `A client named "${body.name}" or a similar name already exists in the central client registry. Please review before creating a new record.`,
         code:            'POSSIBLE_DUPLICATE_NAME',
         possible_matches: nameMatches.map(m => ({
           eco_client_id: m.id,
