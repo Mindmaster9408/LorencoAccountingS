@@ -1295,6 +1295,15 @@
                 font-size: 12px;
                 color: #000;
                 background: #fff;
+                /* Force browser to print colors exactly — no "save ink" lightening */
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            /* Ensure all receipt text prints as pure black */
+            #printReceiptArea * {
+                color: #000 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
             /* Remove dark-theme backgrounds when printing */
             body { background: #fff !important; }
@@ -6149,7 +6158,7 @@
 
             // Wrap with receipt-width container so layout matches the paper
             document.getElementById('printReceiptArea').innerHTML = `
-                <div style="width:${paperWidth}mm; font-family:'Courier New',monospace; font-size:12px; color:#000;">
+                <div style="width:${paperWidth}mm; font-family:'Courier New',monospace; font-size:12px; color:#000; font-weight:500; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
                     ${receiptBodyHtml}
                 </div>`;
 
