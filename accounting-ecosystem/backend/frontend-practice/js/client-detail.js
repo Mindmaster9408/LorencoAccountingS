@@ -106,7 +106,9 @@
         document.getElementById('pageTitle').textContent = c.name || 'Client Profile';
         var typeLabel = { company:'Company', cc:'CC', trust:'Trust', partnership:'Partnership',
             sole_proprietor:'Sole Proprietor', individual:'Individual', other:'Other' };
-        document.getElementById('pageSubtitle').textContent = typeLabel[c.client_type] || '';
+        var subtitleParts = [typeLabel[c.client_type] || ''];
+        if (c.client_code) subtitleParts.push(c.client_code);
+        document.getElementById('pageSubtitle').textContent = subtitleParts.filter(Boolean).join(' · ');
 
         setVal('dName',         c.name);
         setVal('dClientType',   c.client_type || 'company');

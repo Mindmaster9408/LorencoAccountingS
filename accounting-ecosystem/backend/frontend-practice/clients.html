@@ -227,7 +227,8 @@
                 (c.name  || '').toLowerCase().includes(search) ||
                 (c.email || '').toLowerCase().includes(search) ||
                 (c.vat_number || '').toLowerCase().includes(search) ||
-                (c.registration_number || '').toLowerCase().includes(search)
+                (c.registration_number || '').toLowerCase().includes(search) ||
+                (c.client_code || '').toLowerCase().includes(search)
             )) return false;
             return true;
         });
@@ -277,10 +278,14 @@
                 ? '<span class="badge badge-active">Active</span>'
                 : '<span class="badge badge-inactive">Inactive</span>';
 
+            var codeTag = c.client_code
+                ? '<div style="margin-top:3px;font-size:0.7rem;color:#6b7280;font-family:monospace;">' + esc(c.client_code) + '</div>'
+                : '';
             return '<tr>' +
                 '<td>' +
                     '<strong>' + esc(c.name) + '</strong>' +
                     '<div style="margin-top:2px;"><span class="badge ' + typeBadge + '" style="font-size:0.7rem;">' + esc(typeLabel) + '</span></div>' +
+                    codeTag +
                 '</td>' +
                 '<td class="col-muted">' + contact + '</td>' +
                 '<td class="col-muted col-small">' + getTeamName(c.responsible_team_member_id) + '</td>' +
