@@ -2793,7 +2793,17 @@
                         <div style="background:rgba(59,130,246,0.1); border-radius:8px; padding:20px; margin-bottom:16px; border:1px solid rgba(59,130,246,0.3);">
                             <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:14px;">Lock to Current Company</h4>
                             <p style="margin:0 0 14px 0; font-size:13px; opacity:0.8;">Lock this device to <strong id="deviceLockCurrentCompanyName" style="color:#fff;"></strong>. Cashiers will only be able to log in to this company on this device.</p>
-                            <button onclick="lockDeviceToCurrentCompany()" style="background:#667eea; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔒 Lock Device to This Company</button>
+                            <button onclick="lockDeviceToCurrentCompany()" style="background:#667eea; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔒 Lock to This Company</button>
+                        </div>
+
+                        <!-- Lock to any other company (super admin — can choose from full list) -->
+                        <div id="deviceLockOtherCompanySection" style="display:none; background:rgba(139,92,246,0.1); border-radius:8px; padding:20px; margin-bottom:16px; border:1px solid rgba(139,92,246,0.3);">
+                            <h4 style="margin:0 0 10px 0; color:#a78bfa; font-size:14px;">Lock to a Different Company</h4>
+                            <p style="margin:0 0 12px 0; font-size:13px; opacity:0.8;">You are logged in as The Infinite Legacy. Choose any company to lock this device to — you do not need to be logged into that company.</p>
+                            <select id="deviceLockCompanySelect" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(139,92,246,0.4); background:rgba(0,0,0,0.3); color:#fff; font-size:13px; margin-bottom:12px; box-sizing:border-box;">
+                                <option value="">Loading companies…</option>
+                            </select>
+                            <button onclick="lockDeviceToSelectedCompany()" style="background:#8b5cf6; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔒 Lock to Selected Company</button>
                         </div>
 
                         <!-- Clear lock -->
@@ -4429,11 +4439,12 @@
             if (tab === 'pin') {
                 passSection.style.display = 'none';
                 pinSection.style.display  = 'block';
-                tabPass.style.background  = '#fff';
-                tabPass.style.color       = '#667eea';
+                // Active = accent purple, Inactive = semi-transparent on dark background
+                tabPass.style.background  = 'rgba(255,255,255,0.08)';
+                tabPass.style.color       = 'rgba(255,255,255,0.55)';
                 tabPin.style.background   = '#667eea';
                 tabPin.style.color        = '#fff';
-                // Show company context if already known (SSO or prior login)
+                // Show company context if already known (SSO, prior login, or device lock)
                 const compRow  = document.getElementById('pinCompanyRow');
                 const compDisp = document.getElementById('pinCompanyDisplay');
                 if (currentCompanyId && currentCompanyName) {
@@ -4444,17 +4455,30 @@
                     compRow.style.display  = 'block';
                     compDisp.style.display = 'none';
                 }
+                // Dismiss virtual keyboard so the PIN keypad is not hidden beneath it
+                if (document.activeElement && document.activeElement.blur) {
+                    document.activeElement.blur();
+                }
+                // Scroll login box so the PIN keypad is visible
+                setTimeout(() => {
+                    const lb = document.getElementById('loginBox');
+                    if (lb) lb.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
             } else {
                 passSection.style.display = 'block';
                 pinSection.style.display  = 'none';
                 tabPass.style.background  = '#667eea';
                 tabPass.style.color       = '#fff';
-                tabPin.style.background   = '#fff';
-                tabPin.style.color        = '#667eea';
+                tabPin.style.background   = 'rgba(255,255,255,0.08)';
+                tabPin.style.color        = 'rgba(255,255,255,0.55)';
             }
         }
 
         function pinKeyPress(digit) {
+            // Dismiss on-screen keyboard if a text input still has focus (mobile fix)
+            if (document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                document.activeElement.blur();
+            }
             if (_pinLoginEntry.length >= 4) return;
             _pinLoginEntry += digit;
             updatePinDots();
@@ -10798,7 +10822,7 @@
             if (pinCompanyRow) pinCompanyRow.style.display = 'none';
         }
 
-        function loadDeviceSettings() {
+        async function loadDeviceSettings() {
             const lockedId   = localStorage.getItem('pos_locked_company_id');
             const lockedName = localStorage.getItem('pos_locked_company_name');
 
@@ -10835,6 +10859,43 @@
                         </div>
                     </div>`;
             }
+
+            // Fetch all companies and show the "lock to different company" section
+            // (useful for Infinite Legacy super users who manage multiple company tills)
+            try {
+                const companiesRes = await fetch(`${API_URL}/companies`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (companiesRes.ok) {
+                    const data = await companiesRes.json();
+                    const companies = (data.companies || []).filter(c => c.id != currentCompanyId);
+                    if (companies.length > 0) {
+                        const sel = document.getElementById('deviceLockCompanySelect');
+                        if (sel) {
+                            sel.innerHTML = `<option value="">— choose a company —</option>` +
+                                companies.map(c =>
+                                    `<option value="${c.id}" data-name="${(c.trading_name || c.company_name || '').replace(/"/g, '&quot;')}">${c.trading_name || c.company_name}</option>`
+                                ).join('');
+                        }
+                        const sec = document.getElementById('deviceLockOtherCompanySection');
+                        if (sec) sec.style.display = 'block';
+                    }
+                }
+            } catch (e) {
+                // Not critical — section just stays hidden
+            }
+        }
+
+        function lockDeviceToSelectedCompany() {
+            const sel = document.getElementById('deviceLockCompanySelect');
+            if (!sel || !sel.value) { showNotification('Please choose a company from the list', 'error'); return; }
+            const companyId   = sel.value;
+            const companyName = sel.selectedOptions[0]?.dataset?.name || sel.selectedOptions[0]?.textContent || 'Company';
+            if (!confirm(`Lock this device to "${companyName}"?\n\nCashiers will only be able to log in to this company.`)) return;
+            localStorage.setItem('pos_locked_company_id',   String(companyId));
+            localStorage.setItem('pos_locked_company_name', companyName);
+            showNotification(`Device locked to ${companyName}`, 'success');
+            loadDeviceSettings();
         }
 
         function lockDeviceToCurrentCompany() {

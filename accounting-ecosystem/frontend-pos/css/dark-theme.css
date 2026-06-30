@@ -74,14 +74,11 @@ body {
 .login-box div[style*="border: 1px solid #e0e0e0"] {
     border-color: var(--border-strong) !important;
 }
-/* Inactive PIN tab (background:#fff) */
-#loginTabPin {
-    background: var(--surface) !important;
-    color: var(--accent-light) !important;
+/* Tab border colour on dark background */
+#loginTabPin, #loginTabPassword {
     border-left-color: var(--border-strong) !important;
 }
-/* Active tab override — keep accent colour */
-#loginTabPassword { background: var(--accent) !important; color: #fff !important; }
+/* Tab text is always readable — background controlled by JS switchLoginTab() */
 /* "Logging in to:" company banner */
 #pinCompanyDisplay {
     background: var(--accent-subtle) !important;
