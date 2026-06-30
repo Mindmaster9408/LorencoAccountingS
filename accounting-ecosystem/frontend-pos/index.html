@@ -4897,11 +4897,26 @@
             }
         }
 
+        // Strip characters that some barcode scanners prepend/append (e.g. '#', '*', spaces)
+        // before doing any barcode lookup. Applied to both scanner input and stored values.
+        function normalizeBarcode(raw) {
+            return String(raw || '').trim().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+        }
+
         function rebuildBarcodeMap() {
             barcodeMap = new Map();
             for (const p of products) {
-                if (p.product_code) barcodeMap.set(p.product_code, p);
-                if (p.barcode)      barcodeMap.set(p.barcode, p);
+                if (p.product_code) {
+                    barcodeMap.set(p.product_code, p);
+                    // Also index the stripped version in case stored code has a prefix
+                    const nc = normalizeBarcode(p.product_code);
+                    if (nc !== p.product_code) barcodeMap.set(nc, p);
+                }
+                if (p.barcode) {
+                    barcodeMap.set(p.barcode, p);
+                    const nb = normalizeBarcode(p.barcode);
+                    if (nb !== p.barcode) barcodeMap.set(nb, p);
+                }
             }
         }
 
@@ -5531,22 +5546,27 @@
                 let barcodeTimeout = null;
 
                 barcodeInput.addEventListener('input', function(e) {
-                    const value = e.target.value;
+                    const raw        = e.target.value;
+                    const normalized = normalizeBarcode(raw);
 
                     clearTimeout(barcodeTimeout);
 
-                    if (/^\d{8,}$/.test(value)) {
-                        barcodeTimeout = setTimeout(() => searchByBarcode(value), 300);
-                    } else if (value.length >= 2) {
-                        barcodeTimeout = setTimeout(() => searchByName(value), 300);
+                    if (/^\d{6,}$/.test(normalized)) {
+                        // Pure numeric barcode (EAN-8/13, UPC, etc.)
+                        // Pass raw so searchByBarcode can show the original if not found
+                        barcodeTimeout = setTimeout(() => searchByBarcode(raw), 300);
+                    } else if (raw.length >= 2) {
+                        barcodeTimeout = setTimeout(() => searchByName(raw), 300);
                     }
                 });
 
                 barcodeInput.addEventListener('keypress', function(e) {
                     if (e.key === 'Enter') {
-                        const value = e.target.value;
-                        if (/^\d{8,}$/.test(value)) {
-                            searchByBarcode(value);
+                        const raw        = e.target.value;
+                        const normalized = normalizeBarcode(raw);
+                        if (/^\d{6,}$/.test(normalized)) {
+                            clearTimeout(barcodeTimeout);
+                            searchByBarcode(raw);
                         }
                     }
                 });
@@ -5574,14 +5594,21 @@
             }
         });
 
-        function searchByBarcode(barcode) {
+        function searchByBarcode(rawBarcode) {
+            const barcode = normalizeBarcode(rawBarcode);
             const product = barcodeMap.get(barcode);
             if (product) {
+                // Check existing BEFORE addToCart mutates the quantity
+                const existing = cart.find(item => item.productId === product.id);
                 addToCart(product);
                 document.getElementById('barcodeInput').value = '';
-                showNotification(`Added: ${product.product_name}`, 'success');
+                if (existing) {
+                    showNotification(`Qty ${existing.quantity} × ${product.product_name}`, 'success');
+                } else {
+                    showNotification(`Added: ${product.product_name}`, 'success');
+                }
             } else {
-                showNotification('Product not found', 'error');
+                showNotification(`Product not found${barcode !== rawBarcode.trim() ? ` (scanned: ${rawBarcode.trim()})` : ''}`, 'error');
             }
         }
 
