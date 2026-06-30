@@ -93,7 +93,12 @@ const AUTH = (function() {
         },
 
         isAuthenticated: function() {
-            return !!safeLocalStorage.getItem('token') && !!this.getSession();
+            // Token alone is sufficient — the server validates it on every request.
+            // Ecosystem login stores token but not a session object; requiring both
+            // would falsely reject valid ecosystem-authenticated users.
+            return !!(safeLocalStorage.getItem('token') ||
+                       localStorage.getItem('token') ||
+                       localStorage.getItem('practice_token'));
         },
 
         getCurrentUser: function() {
