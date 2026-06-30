@@ -439,6 +439,75 @@ router.put('/team/:id/capacity', async (req, res) => {
   res.json({ member: data });
 });
 
+// ─── Sync team members from ecosystem users ───────────────────────────────────
+// Pulls all active user_company_access users for this company and creates
+// practice_team_members rows for any not already linked. Default role: staff.
+// Users already in the team (matched by user_id) are skipped — not overwritten.
+router.post('/team/sync-from-users', async (req, res) => {
+  try {
+    const { data: companyUsers, error: cuErr } = await supabase
+      .from('user_company_access')
+      .select('users:user_id(id, first_name, last_name, email)')
+      .eq('company_id', req.companyId)
+      .eq('is_active', true);
+
+    if (cuErr) return res.status(500).json({ error: cuErr.message });
+
+    const users = (companyUsers || []).map(r => r.users).filter(Boolean);
+    if (!users.length) {
+      return res.json({ imported: 0, skipped: 0, message: 'No ecosystem users found for this company.' });
+    }
+
+    const { data: existingTeam } = await supabase
+      .from('practice_team_members')
+      .select('user_id')
+      .eq('company_id', req.companyId)
+      .not('user_id', 'is', null);
+
+    const existingUserIds = new Set((existingTeam || []).map(m => m.user_id));
+    const toImport = users.filter(u => u.id && !existingUserIds.has(u.id));
+
+    if (!toImport.length) {
+      return res.json({ imported: 0, skipped: users.length, message: 'All ecosystem users are already in the Practice team.' });
+    }
+
+    const rows = toImport.map(u => ({
+      company_id:        req.companyId,
+      user_id:           u.id,
+      display_name:      [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email,
+      email:             u.email || null,
+      role:              'staff',
+      can_receive_tasks: true,
+      can_review_work:   false,
+      can_approve_work:  false,
+      is_active:         true,
+      created_by:        req.userId || null
+    }));
+
+    const { data: inserted, error: insErr } = await supabase
+      .from('practice_team_members')
+      .insert(rows)
+      .select('id, display_name, email');
+
+    if (insErr) return res.status(500).json({ error: insErr.message });
+
+    await auditFromReq(req, 'CREATE', 'practice_team_member', null, {
+      module: 'practice',
+      action: 'sync_from_users',
+      imported_count: (inserted || []).length
+    });
+
+    return res.json({
+      imported: (inserted || []).length,
+      skipped:  existingUserIds.size,
+      members:  inserted || []
+    });
+  } catch (err) {
+    console.error('[practice] sync-from-users error:', err.message);
+    return res.status(500).json({ error: 'Failed to sync team members from ecosystem users.' });
+  }
+});
+
 // ═══ PRACTICE CLIENTS ════════════════════════════════════════════════════════
 
 const CLIENT_TYPES = ['company','cc','trust','partnership','sole_proprietor','individual','other'];

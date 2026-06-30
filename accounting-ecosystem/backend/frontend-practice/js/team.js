@@ -304,6 +304,30 @@
         if (el) el.value = value || '';
     }
 
+    // ── Sync from ecosystem users ─────────────────────────────────────────────
+
+    async function syncFromUsers() {
+        var btn = document.getElementById('syncBtn');
+        btn.disabled = true;
+        btn.textContent = 'Syncing…';
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/team/sync-from-users', { method: 'POST', body: '{}' });
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Sync failed');
+            if (d.imported === 0) {
+                PracticeAPI.showToast(d.message || 'All users already in team — nothing to import.');
+            } else {
+                PracticeAPI.showToast(d.imported + ' user' + (d.imported === 1 ? '' : 's') + ' imported as Staff. Adjust roles as needed.');
+                await loadTeam();
+            }
+        } catch(err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '↓ Sync from Ecosystem Users';
+        }
+    }
+
     // ── Expose globals needed by inline HTML event handlers ───────────────────
 
     window.loadTeam         = loadTeam;
@@ -314,6 +338,7 @@
     window.deactivateFromModal = deactivateFromModal;
     window.reactivateFromModal = reactivateFromModal;
     window.goPage           = goPage;
+    window.syncFromUsers    = syncFromUsers;
 
     init();
 })();
