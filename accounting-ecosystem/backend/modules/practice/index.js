@@ -585,8 +585,15 @@ router.post('/clients', async (req, res) => {
   body.is_active = true;
   if (req.userId) body.created_by = req.userId;
 
-  // Duplicate ID check — eco_clients has a unique index on (company_id, id_number)
   const idForLookup = body.id_number || body.registration_number || null;
+
+  // ── Phase 1: resolve eco_client (link existing or create new) ─────────────
+  // eco_client must exist BEFORE practice_client is inserted.
+  // If eco_client cannot be created/found, we abort — no orphaned practice_client.
+  let ecoClientId = null;
+  let clientCode  = null;
+  let ecoCreated  = false;   // true only when this request created the eco_client
+
   if (idForLookup) {
     const { data: existingEco } = await supabase
       .from('eco_clients')
@@ -594,49 +601,81 @@ router.post('/clients', async (req, res) => {
       .eq('company_id', req.companyId)
       .eq('id_number', idForLookup)
       .limit(1);
+
     if (existingEco && existingEco.length > 0) {
-      return res.status(409).json({
-        error: `A client with ID/registration number "${idForLookup}" already exists in the central client registry.`,
-        code: 'DUPLICATE_ID_NUMBER',
-        existing_eco_client_id: existingEco[0].id,
-        existing_client_code:   existingEco[0].client_code
-      });
+      // Eco_client already exists — check if there is already a practice_client linked to it
+      const { data: existingPc } = await supabase
+        .from('practice_clients')
+        .select('id')
+        .eq('company_id', req.companyId)
+        .eq('eco_client_id', existingEco[0].id)
+        .limit(1);
+
+      if (existingPc && existingPc.length > 0) {
+        return res.status(409).json({
+          error: `A Practice client file already exists for ID/registration number "${idForLookup}".`,
+          code: 'DUPLICATE_PRACTICE_CLIENT',
+          existing_practice_client_id: existingPc[0].id,
+          existing_eco_client_id:      existingEco[0].id,
+          existing_client_code:        existingEco[0].client_code
+        });
+      }
+
+      // Link to existing eco_client — do NOT modify eco_clients.apps
+      ecoClientId = existingEco[0].id;
+      clientCode  = existingEco[0].client_code;
     }
   }
 
-  const { data, error } = await supabase.from('practice_clients').insert(body).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-
-  // Create eco_client record as central source of truth for identity.
-  // The eco_client stores name, email, phone, id_number — practice_clients stores all compliance detail.
-  let clientCode = null;
-  try {
-    const ecoPayload = {
-      company_id:  req.companyId,
-      name:        body.name,
-      email:       body.email || null,
-      phone:       body.phone || null,
-      id_number:   idForLookup,
-      client_type: body.client_type === 'individual' ? 'individual' : 'business',
-      apps:        ['practice'],
-      is_active:   true,
-      created_at:  new Date().toISOString(),
-      updated_at:  new Date().toISOString()
-    };
+  if (!ecoClientId) {
+    // Create eco_client FIRST — identity record only, no app activation.
+    // eco_clients.apps controls PCC billing; Practice visibility comes from practice_clients link.
     const { data: ec, error: ecErr } = await supabase
       .from('eco_clients')
-      .insert(ecoPayload)
+      .insert({
+        company_id:  req.companyId,
+        name:        body.name,
+        email:       body.email || null,
+        phone:       body.phone || null,
+        id_number:   idForLookup,
+        client_type: body.client_type === 'individual' ? 'individual' : 'business',
+        apps:        [],   // identity only — Practice visibility is NOT controlled by this field
+        is_active:   true,
+        created_at:  new Date().toISOString(),
+        updated_at:  new Date().toISOString()
+      })
       .select('id, client_code')
       .single();
-    if (!ecErr && ec) {
-      await supabase.from('practice_clients').update({ eco_client_id: ec.id }).eq('id', data.id);
-      data.eco_client_id = ec.id;
-      clientCode = ec.client_code;
-    } else if (ecErr) {
-      console.error('[practice] eco_client creation for new client failed:', ecErr.message);
+
+    if (ecErr || !ec) {
+      console.error('[practice] eco_client creation failed:', ecErr?.message);
+      return res.status(500).json({
+        error: 'Failed to create central client identity record. Practice client was NOT created.',
+        code: 'ECO_CLIENT_CREATION_FAILED',
+        detail: ecErr?.message
+      });
     }
-  } catch (ecEx) {
-    console.error('[practice] eco_client creation exception:', ecEx.message);
+
+    ecoClientId = ec.id;
+    clientCode  = ec.client_code;
+    ecoCreated  = true;
+  }
+
+  // ── Phase 2: insert practice_client with eco_client_id already set ─────────
+  body.eco_client_id = ecoClientId;
+
+  const { data, error } = await supabase
+    .from('practice_clients')
+    .insert(body)
+    .select()
+    .single();
+
+  if (error) {
+    // Rollback: delete the eco_client we just created so there is no orphan
+    if (ecoCreated) {
+      await supabase.from('eco_clients').delete().eq('id', ecoClientId);
+    }
+    return res.status(500).json({ error: error.message });
   }
 
   await auditFromReq(req, 'CREATE', 'practice_client', data.id, { module: 'practice' });
