@@ -585,7 +585,9 @@ router.post('/clients', async (req, res) => {
   body.is_active = true;
   if (req.userId) body.created_by = req.userId;
 
-  const idForLookup = body.id_number || body.registration_number || null;
+  const idForLookup   = body.id_number || body.registration_number || null;
+  const forceCreate   = !!req.body.force_create;    // user confirms they want a new record despite name match
+  const linkEcoId     = req.body.link_eco_client_id ? parseInt(req.body.link_eco_client_id) : null;
 
   // ── Phase 1: resolve eco_client (link existing or create new) ─────────────
   // eco_client must exist BEFORE practice_client is inserted.
@@ -594,7 +596,38 @@ router.post('/clients', async (req, res) => {
   let clientCode  = null;
   let ecoCreated  = false;   // true only when this request created the eco_client
 
-  if (idForLookup) {
+  // CASE 0: Frontend explicitly selected which existing eco_client to link (after ambiguous name match)
+  if (linkEcoId) {
+    const { data: linkedEco } = await supabase
+      .from('eco_clients')
+      .select('id, client_code')
+      .eq('id', linkEcoId)
+      .eq('company_id', req.companyId)
+      .single();
+    if (!linkedEco) {
+      return res.status(404).json({ error: 'Specified link_eco_client_id not found for this practice.', code: 'ECO_CLIENT_NOT_FOUND' });
+    }
+    // Check: is there already a practice_client for this eco_client?
+    const { data: existingPcForLink } = await supabase
+      .from('practice_clients')
+      .select('id')
+      .eq('company_id', req.companyId)
+      .eq('eco_client_id', linkEcoId)
+      .limit(1);
+    if (existingPcForLink && existingPcForLink.length > 0) {
+      return res.status(409).json({
+        error: 'A Practice client file already exists for the selected client identity.',
+        code: 'DUPLICATE_PRACTICE_CLIENT',
+        existing_practice_client_id: existingPcForLink[0].id,
+        existing_eco_client_id: linkEcoId,
+        existing_client_code: linkedEco.client_code
+      });
+    }
+    ecoClientId = linkedEco.id;
+    clientCode  = linkedEco.client_code;
+  }
+
+  if (!ecoClientId && idForLookup) {
     const { data: existingEco } = await supabase
       .from('eco_clients')
       .select('id, client_code')
@@ -624,6 +657,37 @@ router.post('/clients', async (req, res) => {
       // Link to existing eco_client — do NOT modify eco_clients.apps
       ecoClientId = existingEco[0].id;
       clientCode  = existingEco[0].client_code;
+    }
+  }
+
+  // CASE 2: No id_number and not a confirmed link — check for name-only matches.
+  // Name-only is MEDIUM confidence: surface possible matches, require user decision.
+  // If force_create is true the user has acknowledged the check and wants a new record.
+  if (!ecoClientId && !idForLookup && !forceCreate) {
+    const { data: nameMatches } = await supabase
+      .from('eco_clients')
+      .select('id, name, client_code, email, phone, id_number')
+      .eq('company_id', req.companyId)
+      .eq('is_active', true)
+      .ilike('name', body.name.trim());
+
+    if (nameMatches && nameMatches.length > 0) {
+      return res.status(409).json({
+        error: `A client named "${body.name}" already exists in the central client registry. Please review before creating a new record.`,
+        code:            'POSSIBLE_DUPLICATE_NAME',
+        possible_matches: nameMatches.map(m => ({
+          eco_client_id: m.id,
+          client_code:   m.client_code,
+          name:          m.name,
+          email:         m.email,
+          phone:         m.phone,
+          id_number:     m.id_number
+        })),
+        resolution: [
+          'If this IS the same client: resend with link_eco_client_id = <eco_client_id> to link without creating a duplicate.',
+          'If this is a DIFFERENT client with the same name: resend with force_create = true to create a new record.'
+        ]
+      });
     }
   }
 
