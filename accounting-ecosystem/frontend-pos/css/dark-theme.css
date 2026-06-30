@@ -68,6 +68,58 @@ body {
     color: var(--text) !important;
 }
 
+/* ── PIN Login ──────────────────────────────────────────────────────────────── */
+/* Tab strip border */
+.login-box div[style*="border:1px solid #e0e0e0"],
+.login-box div[style*="border: 1px solid #e0e0e0"] {
+    border-color: var(--border-strong) !important;
+}
+/* Inactive PIN tab (background:#fff) */
+#loginTabPin {
+    background: var(--surface) !important;
+    color: var(--accent-light) !important;
+    border-left-color: var(--border-strong) !important;
+}
+/* Active tab override — keep accent colour */
+#loginTabPassword { background: var(--accent) !important; color: #fff !important; }
+/* "Logging in to:" company banner */
+#pinCompanyDisplay {
+    background: var(--accent-subtle) !important;
+    color: var(--accent-light) !important;
+    border: 1px solid var(--border-strong) !important;
+}
+/* PIN dot track */
+#pinLoginSection div[style*="background:#f5f7fa"],
+#pinLoginSection div[style*="background: #f5f7fa"] {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+}
+/* Empty PIN dots */
+#pd0, #pd1, #pd2, #pd3 { background: rgba(255,255,255,0.2) !important; }
+/* Number keypad buttons */
+#pinLoginSection button[style*="background:#f5f7fa"],
+#pinLoginSection button[style*="background: #f5f7fa"] {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+#pinLoginSection button[style*="background:#f5f7fa"]:hover,
+#pinLoginSection button[style*="background: #f5f7fa"]:hover {
+    background: var(--surface-hover) !important;
+}
+/* C (clear) button */
+#pinLoginSection button[style*="background:#fff0f0"],
+#pinLoginSection button[style*="background: #fff0f0"] {
+    background: rgba(198,40,40,0.2) !important;
+    border-color: rgba(198,40,40,0.4) !important;
+    color: #fca5a5 !important;
+}
+/* Bottom "Don't have an account" divider */
+.login-box div[style*="border-top: 1px solid #eee"],
+.login-box div[style*="border-top:1px solid #eee"] {
+    border-top-color: var(--border) !important;
+}
+
 /* ── Company Selector ───────────────────────────────────────────────────────── */
 .company-selector-screen {
     background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
