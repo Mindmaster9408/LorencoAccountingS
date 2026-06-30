@@ -531,7 +531,7 @@ function sanitizeClientBody(body) {
     'vat_registered', 'paye_registered', 'provisional_taxpayer',
     'uif_registered', 'sdl_registered', 'coida_registered', 'cipc_registered',
     // VAT configuration
-    'vat_payment_sequence', 'vat_last_submission_month',
+    'vat_payment_sequence', 'vat_last_submission_month', 'vat_bi_monthly_parity',
     // COIDA / Workmens Compensation
     'coida_registration_number', 'coida_due_month',
     // Physical address

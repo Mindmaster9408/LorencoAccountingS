@@ -331,13 +331,21 @@
             <div class="form-grid">
                 <div class="form-field">
                     <label for="dVatPaySeq">VAT Payment Sequence</label>
-                    <select id="dVatPaySeq">
+                    <select id="dVatPaySeq" onchange="toggleVatBiMonthly()">
                         <option value="">Not Set</option>
                         <option value="monthly">Monthly</option>
                         <option value="bi_monthly">Bi-Monthly (Every 2 Months)</option>
                         <option value="quarterly">Quarterly (Every 4 Months)</option>
                         <option value="6_monthly">6-Monthly</option>
                         <option value="annual">Annual</option>
+                    </select>
+                </div>
+                <div class="form-field" id="vatBiMonthlyParityField" style="display:none;">
+                    <label for="dVatBiMonthlyParity">Filing Months (SARS Category)</label>
+                    <select id="dVatBiMonthlyParity">
+                        <option value="">Select cycle…</option>
+                        <option value="odd">Odd months — Jan, Mar, May, Jul, Sep, Nov (Cat A)</option>
+                        <option value="even">Even months — Feb, Apr, Jun, Aug, Oct, Dec (Cat B)</option>
                     </select>
                 </div>
                 <div class="form-field">

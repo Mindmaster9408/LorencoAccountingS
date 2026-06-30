@@ -161,6 +161,8 @@
 
         setVal('dVatPaySeq',           c.vat_payment_sequence || '');
         setVal('dVatSubmissionMonth',  c.vat_last_submission_month ? String(c.vat_last_submission_month) : '');
+        setVal('dVatBiMonthlyParity',  c.vat_bi_monthly_parity || '');
+        toggleVatBiMonthly();
         setVal('dCoidaRef',            c.coida_registration_number);
         setVal('dCoidaDueMonth',       c.coida_due_month ? String(c.coida_due_month) : '');
 
@@ -258,6 +260,7 @@
 
             vat_payment_sequence:      document.getElementById('dVatPaySeq').value || null,
             vat_last_submission_month: (function() { var v = document.getElementById('dVatSubmissionMonth').value; return v ? parseInt(v) : null; })(),
+            vat_bi_monthly_parity:     (function() { var seq = document.getElementById('dVatPaySeq').value; var v = document.getElementById('dVatBiMonthlyParity').value; return seq === 'bi_monthly' && v ? v : null; })(),
             coida_registration_number: document.getElementById('dCoidaRef').value.trim() || null,
             coida_due_month:           (function() { var v = document.getElementById('dCoidaDueMonth').value; return v ? parseInt(v) : null; })(),
 
@@ -466,6 +469,20 @@
         var el = document.getElementById(id);
         if (el) el.value = (value != null ? value : '');
     }
+
+    function toggleVatBiMonthly() {
+        var seq   = document.getElementById('dVatPaySeq');
+        var field = document.getElementById('vatBiMonthlyParityField');
+        if (!seq || !field) return;
+        if (seq.value === 'bi_monthly') {
+            field.style.display = '';
+        } else {
+            field.style.display = 'none';
+            var parity = document.getElementById('dVatBiMonthlyParity');
+            if (parity) parity.value = '';
+        }
+    }
+    window.toggleVatBiMonthly = toggleVatBiMonthly;
 
     // ── Compliance Suggestions ─────────────────────────────────────────────────
 
