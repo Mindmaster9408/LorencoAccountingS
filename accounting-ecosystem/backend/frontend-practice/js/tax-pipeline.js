@@ -66,6 +66,17 @@
 
     function _html(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+    function _money(v) {
+        if (v == null) return '—';
+        return 'R ' + Number(v).toLocaleString('en-ZA', { minimumFractionDigits:2, maximumFractionDigits:2 });
+    }
+
+    var PAY_STATUS_LABELS = {
+        outstanding: 'Outstanding', partially_paid: 'Partially Paid', paid_in_full: 'Paid in Full',
+        overpaid: 'Overpaid', refund_pending: 'Refund Pending', refund_received: 'Refund Received',
+        cancelled: 'Cancelled',
+    };
+
     // ── Load pipeline data ─────────────────────────────────────────────────────
 
     function tplLoad() {
@@ -345,6 +356,33 @@
                 + '&tax_year='    + encodeURIComponent(d.tax_year || '');
             html += '<div style="font-size:.8rem;color:#a0aec0;margin-bottom:10px;">This return is marked submitted. Create a formal submission register entry to record the reference number, method, and evidence.</div>';
             html += '<a href="' + regUrl + '" style="display:inline-block;padding:7px 16px;background:#667eea;color:#fff;border-radius:7px;font-size:.82rem;font-weight:700;text-decoration:none;">Open Submission Register</a>';
+            html += '</div>';
+        }
+
+        // ── Pipeline → Payment Summary (only when completed) ──
+        if (d.filing_stage === 'completed') {
+            html += '<div class="detail-section" style="border-top:1px solid #2d3748;padding-top:16px;margin-top:4px;">';
+            html += '<div class="detail-section-title">Payment Summary</div>';
+            var ps = d.payment_summary;
+            if (!ps) {
+                html += '<div style="font-size:.8rem;color:#a0aec0;">No submission register entry found yet for this return, so no payment case can exist. Open the Submission Register to record the submission first.</div>';
+            } else if (!ps.payments || !ps.payments.length) {
+                html += '<div style="font-size:.8rem;color:#a0aec0;margin-bottom:10px;">Submission registered, but no payment case has been created yet.</div>';
+                if (ps.amount_payable) html += '<div style="font-size:.8rem;color:#a0aec0;">Amount payable: ' + _money(ps.amount_payable) + '</div>';
+                if (ps.refund_amount)  html += '<div style="font-size:.8rem;color:#a0aec0;">Refund amount: ' + _money(ps.refund_amount) + '</div>';
+            } else {
+                ps.payments.forEach(function (p) {
+                    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #2d3748;font-size:.82rem;">';
+                    html += '<span class="pay-pill pay-' + _html(p.status) + '">' + _html(PAY_STATUS_LABELS[p.status] || p.status) + '</span>';
+                    html += '<span style="color:#cbd5e0;">' + (p.direction === 'payable' ? 'Payable' : 'Refundable') + '</span>';
+                    html += '<span style="color:#a0aec0;">Balance: ' + _money(p.balance_outstanding) + '</span>';
+                    if (p.due_date) html += '<span style="color:#a0aec0;">Due: ' + _formatDate(p.due_date) + '</span>';
+                    html += '</div>';
+                });
+            }
+            var payUrl = '/practice/tax-payments.html'
+                + (ps && ps.submission_id ? ('?submission_id=' + encodeURIComponent(ps.submission_id)) : '');
+            html += '<a href="' + payUrl + '" style="display:inline-block;margin-top:10px;padding:7px 16px;background:#667eea;color:#fff;border-radius:7px;font-size:.82rem;font-weight:700;text-decoration:none;">Open Payment Register</a>';
             html += '</div>';
         }
 

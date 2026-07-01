@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tax Disputes — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        /* ── Base ──────────────────────────────────────────────────────── */
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+        /* ── Summary cards ─────────────────────────────────────────────── */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: border-color .15s; }
+        .summary-card:hover { border-color: #667eea; }
+        .summary-card.active-filter { border-color: #667eea; background: #252840; }
+        .sc-count { font-size: 1.6rem; font-weight: 800; color: #e2e8f0; }
+        .sc-label { font-size: .72rem; color: #718096; margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+        .sc-open      { border-left: 3px solid #f6ad55; }
+        .sc-submitted { border-left: 3px solid #667eea; }
+        .sc-response  { border-left: 3px solid #9f7aea; }
+        .sc-overdue   { border-left: 3px solid #fc8181; }
+        .sc-completed { border-left: 3px solid #68d391; }
+        .sc-cancelled { border-left: 3px solid #4a5568; }
+
+        /* ── Type strip ────────────────────────────────────────────────── */
+        .type-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+        .ts-item { background: #1e2035; border-radius: 7px; padding: 6px 12px; font-size: .78rem; color: #a0aec0; cursor: pointer; border: 1px solid transparent; }
+        .ts-item:hover { border-color: #667eea; color: #e2e8f0; }
+        .ts-item.active-filter { border-color: #667eea; background: #252840; color: #e2e8f0; }
+        .ts-count { font-weight: 700; color: #e2e8f0; margin-left: 6px; }
+
+        /* ── Filters ───────────────────────────────────────────────────── */
+        .filter-bar { background: #1e2035; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+        .filter-bar input, .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: #667eea; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .btn-filter { background: #667eea; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-filter:hover { background: #5a67d8; }
+        .btn-filter-clear { background: #2d3748; color: #a0aec0; border: none; border-radius: 6px; padding: 8px 14px; font-size: .82rem; cursor: pointer; }
+        .btn-filter-clear:hover { background: #3a4555; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+        .btn-add:hover { background: #38a169; }
+
+        /* ── Table ─────────────────────────────────────────────────────── */
+        .table-wrap { background: #1e2035; border-radius: 12px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: 10px 14px; text-align: left; }
+        td { padding: 10px 14px; font-size: .82rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #252840; cursor: pointer; }
+        .empty-row td { text-align: center; color: #4a5568; padding: 32px; }
+        .td-title { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* ── Status pills ──────────────────────────────────────────────── */
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+        .st-open             { background: rgba(246,173,85,.15); color: #f6ad55; }
+        .st-pending_submission { background: rgba(102,126,234,.15); color: #667eea; }
+        .st-submitted        { background: rgba(102,126,234,.2);  color: #818cf8; }
+        .st-acknowledged     { background: rgba(159,122,234,.2);  color: #b794f4; }
+        .st-under_review     { background: rgba(246,173,85,.2);   color: #fbd38d; }
+        .st-response_received { background: rgba(159,122,234,.25); color: #d6bcfa; }
+        .st-accepted         { background: rgba(104,211,145,.2);  color: #68d391; }
+        .st-rejected         { background: rgba(252,129,74,.2);   color: #fc8181; }
+        .st-escalated        { background: rgba(252,129,74,.25);  color: #f6ad55; }
+        .st-appealing        { background: rgba(159,122,234,.3);  color: #e9d8fd; }
+        .st-completed        { background: rgba(104,211,145,.15); color: #68d391; }
+        .st-cancelled        { background: rgba(74,85,104,.3);    color: #718096; }
+
+        /* ── Case type badges ──────────────────────────────────────────── */
+        .ct-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: .7rem; font-weight: 700; }
+        .ct-correction   { background: rgba(102,126,234,.2); color: #667eea; }
+        .ct-objection    { background: rgba(246,173,85,.2);  color: #f6ad55; }
+        .ct-noo          { background: rgba(252,129,74,.2);  color: #fc8181; }
+        .ct-adr          { background: rgba(159,122,234,.2); color: #b794f4; }
+        .ct-appeal       { background: rgba(252,129,74,.25); color: #f6ad55; }
+        .ct-tax_court    { background: rgba(252,129,74,.35); color: #feb2b2; }
+        .ct-manual_review { background: rgba(74,85,104,.3);  color: #a0aec0; }
+
+        /* ── Priority badges ───────────────────────────────────────────── */
+        .pri-low    { color: #718096; }
+        .pri-medium { color: #a0aec0; }
+        .pri-high   { color: #f6ad55; font-weight: 700; }
+        .pri-urgent { color: #fc8181; font-weight: 700; }
+
+        /* ── Modals ────────────────────────────────────────────────────── */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+        .modal-sm  { max-width: 480px; }
+        .modal-md  { max-width: 620px; }
+        .modal-lg  { max-width: 860px; }
+        .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; color: #e2e8f0; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="date"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #667eea; }
+        textarea { resize: vertical; min-height: 70px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+
+        /* ── Buttons ───────────────────────────────────────────────────── */
+        .btn-action { padding: 8px 16px; border: none; border-radius: 7px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-primary   { background: #667eea; color: #fff; }
+        .btn-primary:hover { background: #5a67d8; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-secondary:hover { background: #3a4555; }
+        .btn-success   { background: #48bb78; color: #fff; }
+        .btn-success:hover { background: #38a169; }
+        .btn-warning   { background: #ed8936; color: #fff; }
+        .btn-warning:hover { background: #dd6b20; }
+        .btn-danger    { background: #e53e3e; color: #fff; }
+        .btn-danger:hover { background: #c53030; }
+        .btn-purple    { background: #805ad5; color: #fff; }
+        .btn-purple:hover { background: #6b46c1; }
+        .btn-sm        { padding: 5px 11px; font-size: .78rem; }
+
+        /* ── Detail modal tabs ──────────────────────────────────────────── */
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 7px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-content { padding: 4px 0; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+        .detail-row  { display: flex; flex-direction: column; padding: 8px 12px; border-bottom: 1px solid #12122a; }
+        .detail-label { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+        .detail-value { font-size: .85rem; color: #e2e8f0; }
+        .section-label { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 6px; }
+
+        /* ── Evidence items ─────────────────────────────────────────────── */
+        .evidence-item { background: #12122a; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+        .evidence-item-header { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+        .evidence-title { font-weight: 700; color: #e2e8f0; font-size: .85rem; }
+        .verified-badge   { background: rgba(104,211,145,.15); color: #68d391; padding: 2px 8px; border-radius: 10px; font-size: .7rem; font-weight: 700; }
+        .unverified-badge { background: rgba(246,173,85,.15);  color: #f6ad55; padding: 2px 8px; border-radius: 10px; font-size: .7rem; font-weight: 700; }
+        .subtype-badge    { background: #1e2035; color: #a0aec0; padding: 2px 8px; border-radius: 10px; font-size: .7rem; }
+        .evidence-meta { font-size: .78rem; color: #718096; margin-top: 3px; }
+
+        /* ── Event items ────────────────────────────────────────────────── */
+        .event-item { background: #12122a; border-radius: 8px; padding: 10px 14px; margin-bottom: 6px; }
+        .event-header { display: flex; gap: 8px; align-items: center; margin-bottom: 3px; }
+        .event-type { font-size: .78rem; font-weight: 700; color: #a0aec0; }
+        .event-time { font-size: .72rem; color: #4a5568; margin-left: auto; }
+        .event-status-change { display: flex; gap: 6px; align-items: center; font-size: .75rem; margin-bottom: 3px; }
+        .event-arrow { color: #4a5568; }
+        .event-notes { font-size: .78rem; color: #718096; font-style: italic; }
+
+        /* ── Inline messages ────────────────────────────────────────────── */
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 10px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .loading-state { text-align: center; color: #4a5568; padding: 20px; font-size: .85rem; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h1 style="font-size:1.3rem;font-weight:700;margin:0;">Tax Disputes &amp; Corrections</h1>
+            <button class="btn-add" onclick="tdOpenCreate()">+ New Dispute Case</button>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <!-- Case type strip -->
+        <div class="type-strip" id="typeStrip"></div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <span class="filter-label">Case Type</span>
+                <select id="filterCaseType" onchange="tdLoad()">
+                    <option value="">All Types</option>
+                    <option value="correction">Correction</option>
+                    <option value="objection">Objection</option>
+                    <option value="noo">NOO</option>
+                    <option value="adr">ADR</option>
+                    <option value="appeal">Appeal</option>
+                    <option value="tax_court">Tax Court</option>
+                    <option value="manual_review">Manual Review</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Status</span>
+                <select id="filterStatus" onchange="tdLoad()">
+                    <option value="">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="pending_submission">Pending Submission</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="acknowledged">Acknowledged</option>
+                    <option value="under_review">Under Review</option>
+                    <option value="response_received">Response Received</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="escalated">Escalated</option>
+                    <option value="appealing">Appealing</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Priority</span>
+                <select id="filterPriority" onchange="tdLoad()">
+                    <option value="">All Priorities</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Tax Type</span>
+                <select id="filterTaxType" onchange="tdLoad()">
+                    <option value="">All Tax Types</option>
+                    <option value="itr12">ITR12</option>
+                    <option value="itr14">ITR14</option>
+                    <option value="irp6">IRP6</option>
+                    <option value="emp201">EMP201</option>
+                    <option value="emp501">EMP501</option>
+                    <option value="vat201">VAT201</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Client ID</span>
+                <input type="text" id="filterClientId" placeholder="Client ID" style="width:90px" onchange="tdLoad()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Submission ID</span>
+                <input type="text" id="filterSubmissionId" placeholder="Sub ID" style="width:80px" onchange="tdLoad()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Date From</span>
+                <input type="date" id="filterDateFrom" onchange="tdLoad()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Date To</span>
+                <input type="date" id="filterDateTo" onchange="tdLoad()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Search</span>
+                <input type="text" id="filterSearch" placeholder="Title / ref / case #" style="width:160px" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">&nbsp;</span>
+                <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:#a0aec0;padding:7px 0;cursor:pointer;">
+                    <input type="checkbox" id="filterActiveOnly" onchange="tdLoad()" /> Active only
+                </label>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">&nbsp;</span>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn-filter" onclick="tdLoad()">Search</button>
+                    <button class="btn-filter-clear" onclick="tdClearFilters()">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cases table -->
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Title</th>
+                        <th>Client</th>
+                        <th>Tax Type</th>
+                        <th>Tax Year</th>
+                        <th>Priority</th>
+                        <th>Deadline</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr class="empty-row"><td colspan="9">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="pagination" style="text-align:center;margin-top:14px;font-size:.82rem;color:#718096;"></div>
+    </div>
+
+    <!-- ── Create Case Modal ──────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createModal">
+        <div class="modal-box modal-md">
+            <div class="modal-title">New Dispute / Correction Case</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Case Type *</label>
+                    <select id="createCaseType">
+                        <option value="">Select type…</option>
+                        <option value="correction">Correction</option>
+                        <option value="objection">Objection</option>
+                        <option value="noo">NOO (Notice of Objection)</option>
+                        <option value="adr">ADR</option>
+                        <option value="appeal">Appeal</option>
+                        <option value="tax_court">Tax Court</option>
+                        <option value="manual_review">Manual Review</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Source Type *</label>
+                    <select id="createSourceType">
+                        <option value="manual">Manual (no source)</option>
+                        <option value="tax_submission">Tax Submission</option>
+                        <option value="sars_statement_line">SARS Statement Line</option>
+                        <option value="assessment">Assessment</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Client ID *</label>
+                    <input type="text" id="createClientId" placeholder="Practice client ID" />
+                </div>
+                <div class="form-group">
+                    <label>Source ID (optional)</label>
+                    <input type="text" id="createSourceId" placeholder="Submission / line / case ID" />
+                </div>
+                <div class="form-group full">
+                    <label>Title *</label>
+                    <input type="text" id="createTitle" placeholder="e.g. Correction — ITR14 2024 Company XYZ" />
+                </div>
+                <div class="form-group">
+                    <label>Tax Type</label>
+                    <select id="createTaxType">
+                        <option value="">— Select —</option>
+                        <option value="itr12">ITR12</option>
+                        <option value="itr14">ITR14</option>
+                        <option value="irp6">IRP6</option>
+                        <option value="emp201">EMP201</option>
+                        <option value="emp501">EMP501</option>
+                        <option value="vat201">VAT201</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tax Year</label>
+                    <input type="text" id="createTaxYear" placeholder="e.g. 2024" />
+                </div>
+                <div class="form-group">
+                    <label>Assessment Reference</label>
+                    <input type="text" id="createAssessmentRef" placeholder="SARS assessment ref" />
+                </div>
+                <div class="form-group">
+                    <label>Linked Submission ID</label>
+                    <input type="text" id="createSubmissionId" placeholder="Tax submission ID" />
+                </div>
+                <div class="form-group">
+                    <label>Date Opened</label>
+                    <input type="date" id="createDateOpened" />
+                </div>
+                <div class="form-group">
+                    <label>Submission Deadline</label>
+                    <input type="date" id="createSubDeadline" />
+                </div>
+                <div class="form-group">
+                    <label>Response Deadline</label>
+                    <input type="date" id="createRespDeadline" />
+                </div>
+                <div class="form-group">
+                    <label>Priority</label>
+                    <select id="createPriority">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+                <div class="form-group full">
+                    <label>Notes</label>
+                    <textarea id="createNotes" placeholder="Internal notes"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="tdCloseCreate()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="tdSubmitCreate()">Create Case</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Detail Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg">
+            <div id="detailTabBar" class="tab-bar"></div>
+            <div id="detailBody" style="min-height:200px;"></div>
+            <div class="modal-footer" id="detailFooter"></div>
+        </div>
+    </div>
+
+    <!-- ── Action Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="actionModal">
+        <div class="modal-box modal-sm">
+            <div class="modal-title" id="actionTitle"></div>
+            <div id="actionMsg" style="font-size:.85rem;color:#a0aec0;margin-bottom:14px;"></div>
+            <div id="actionFormBody"></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="tdCloseAction()">Cancel</button>
+                <button class="btn-action btn-primary" id="actionSubmitBtn" onclick="tdSubmitAction()">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/tax-disputes.js"></script>
+    <script>LAYOUT.init('tax-disputes');</script>
+</body>
+</html>

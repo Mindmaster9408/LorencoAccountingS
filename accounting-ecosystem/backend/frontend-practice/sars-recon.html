@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SARS Recon — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Page-local tokens ── */
+        body { background:#1a1a2e; color:#e2e8f0; font-family:system-ui,sans-serif; margin:0; }
+        #app-topbar { background:#12122a; border-bottom:1px solid #2d3748; }
+        #app-nav    { background:#12122a; border-bottom:1px solid #2d3748; padding:0 20px; display:flex; gap:4px; overflow-x:auto; }
+
+        .page-wrap { max-width:1400px; margin:0 auto; padding:24px 20px; }
+        .page-header { margin-bottom:20px; }
+        .page-title  { font-size:1.5rem; font-weight:700; color:#fff; margin:0 0 4px; }
+        .page-subtitle { color:#718096; font-size:.85rem; }
+
+        /* ── Summary cards ── */
+        .summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
+        .summary-card { background:#1e2035; border:1px solid #2d3748; border-radius:10px; padding:14px 16px; cursor:pointer; transition:border-color .15s; }
+        .summary-card:hover { border-color:#667eea; }
+        .summary-card .sc-label { font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:#718096; margin-bottom:4px; }
+        .summary-card .sc-value { font-size:1.6rem; font-weight:700; color:#fff; }
+        .summary-card .sc-sub   { font-size:.72rem; color:#718096; margin-top:2px; }
+        .sc-warn  { border-color:#c05621 !important; }
+        .sc-alert { border-color:#e53e3e !important; }
+        .sc-good  { border-color:#38a169 !important; }
+
+        /* ── Variance strip ── */
+        .variance-strip { background:#1e2035; border:1px solid #2d3748; border-radius:10px; padding:14px 20px; margin-bottom:20px; display:flex; gap:32px; flex-wrap:wrap; align-items:center; }
+        .vs-item { }
+        .vs-label { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:#718096; }
+        .vs-value { font-size:1.1rem; font-weight:700; color:#fff; margin-top:2px; }
+        .vs-value.negative { color:#fc8181; }
+        .vs-value.positive { color:#68d391; }
+
+        /* ── Filter bar ── */
+        .filter-bar { background:#1e2035; border:1px solid #2d3748; border-radius:10px; padding:14px 16px; margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .filter-bar select, .filter-bar input { background:#12122a; border:1px solid #4a5568; border-radius:6px; color:#e2e8f0; padding:7px 10px; font-size:.82rem; }
+        .filter-bar select { min-width:130px; }
+        .filter-bar input  { min-width:150px; }
+
+        /* ── Table ── */
+        .table-wrap { background:#1e2035; border:1px solid #2d3748; border-radius:10px; overflow:hidden; margin-bottom:24px; }
+        table { width:100%; border-collapse:collapse; }
+        thead th { background:#12122a; padding:10px 12px; text-align:left; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:#718096; white-space:nowrap; }
+        tbody tr { border-top:1px solid #2d3748; cursor:pointer; transition:background .1s; }
+        tbody tr:hover { background:#252545; }
+        tbody td { padding:10px 12px; font-size:.82rem; color:#cbd5e0; white-space:nowrap; }
+        .td-desc { max-width:200px; overflow:hidden; text-overflow:ellipsis; color:#e2e8f0; }
+        .empty-row td { text-align:center; color:#4a5568; padding:32px; cursor:default; }
+        .empty-row:hover { background:transparent !important; }
+
+        /* ── Status pills ── */
+        .status-pill { display:inline-block; font-size:.68rem; font-weight:700; padding:3px 9px; border-radius:12px; text-transform:uppercase; letter-spacing:.04em; }
+        .st-unmatched        { background:#3a2820; color:#fc8181; }
+        .st-matched          { background:#1a3a2a; color:#68d391; }
+        .st-partially_matched{ background:#3a2d1a; color:#f6ad55; }
+        .st-disputed         { background:#3a1a1a; color:#fc8181; }
+        .st-ignored          { background:#252525; color:#4a5568; }
+        .st-cancelled        { background:#252525; color:#4a5568; }
+
+        /* ── Type badges ── */
+        .type-badge { display:inline-block; font-size:.68rem; font-weight:700; padding:3px 8px; border-radius:8px; text-transform:uppercase; }
+        .tt-assessment{ background:#1e2d4a; color:#90cdf4; }
+        .tt-payment   { background:#1a3a2a; color:#68d391; }
+        .tt-refund    { background:#2a2a40; color:#a78bfa; }
+        .tt-interest  { background:#3a2820; color:#fc8181; }
+        .tt-penalty   { background:#3a1a1a; color:#fc8181; }
+        .tt-adjustment{ background:#2d2d1a; color:#ecc94b; }
+        .tt-balance   { background:#1e2035; color:#718096; }
+        .tt-other     { background:#1e2035; color:#718096; }
+
+        /* ── Tax type badge ── */
+        .tax-badge { display:inline-block; font-size:.68rem; padding:2px 7px; border-radius:6px; background:#2d2d4a; color:#a78bfa; font-weight:700; }
+
+        /* ── Action buttons ── */
+        .btn-action { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border:none; border-radius:8px; font-size:.82rem; font-weight:700; cursor:pointer; transition:opacity .15s; }
+        .btn-action:hover { opacity:.85; }
+        .btn-primary  { background:#667eea; color:#fff; }
+        .btn-success  { background:#38a169; color:#fff; }
+        .btn-warning  { background:#c05621; color:#fff; }
+        .btn-danger   { background:#c53030; color:#fff; }
+        .btn-neutral  { background:#2d3748; color:#e2e8f0; }
+        .btn-sm { padding:5px 11px; font-size:.78rem; }
+
+        /* ── Section panels ── */
+        .section-panel { background:#1e2035; border:1px solid #2d3748; border-radius:10px; padding:20px; margin-bottom:20px; }
+        .section-title { font-size:.82rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#718096; margin:0 0 14px; }
+
+        /* ── Unmatched events panel ── */
+        .event-card { border:1px solid #2d3748; border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; align-items:center; gap:12px; cursor:default; }
+        .event-card .ec-type { font-size:.72rem; font-weight:700; text-transform:uppercase; color:#a78bfa; }
+        .event-card .ec-amount { font-weight:700; color:#68d391; min-width:100px; }
+        .event-card .ec-date   { color:#718096; font-size:.8rem; }
+        .event-card .ec-ref    { color:#718096; font-size:.78rem; flex:1; overflow:hidden; text-overflow:ellipsis; }
+        .event-card .ec-actions { margin-left:auto; flex-shrink:0; }
+
+        /* ── Modals ── */
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:1000; align-items:center; justify-content:center; padding:16px; }
+        .modal-overlay.active { display:flex; }
+        .modal { background:#1e2035; border:1px solid #2d3748; border-radius:12px; width:100%; max-height:90vh; overflow:hidden; display:flex; flex-direction:column; }
+        .modal-sm { max-width:520px; }
+        .modal-md { max-width:700px; }
+        .modal-lg { max-width:960px; }
+        .modal-header { padding:20px 24px 16px; border-bottom:1px solid #2d3748; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+        .modal-title  { font-size:1rem; font-weight:700; color:#fff; margin:0; }
+        .modal-close  { background:none; border:none; color:#718096; font-size:1.4rem; cursor:pointer; line-height:1; padding:0; }
+        .modal-body   { padding:24px; overflow-y:auto; flex:1; }
+        .modal-footer { padding:16px 24px; border-top:1px solid #2d3748; display:flex; justify-content:flex-end; gap:10px; flex-shrink:0; }
+
+        /* ── Form ── */
+        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .form-full { grid-column:1/-1; }
+        .form-field { display:flex; flex-direction:column; gap:6px; }
+        .form-field label { font-size:.78rem; font-weight:600; color:#a0aec0; }
+        .form-field input, .form-field select, .form-field textarea {
+            background:#12122a; border:1px solid #4a5568; border-radius:7px;
+            color:#e2e8f0; padding:8px 10px; font-size:.85rem; width:100%; box-sizing:border-box;
+        }
+        .form-field textarea { resize:vertical; min-height:80px; font-family:inherit; }
+        .form-field select option { background:#1e2035; }
+
+        /* ── Detail grid ── */
+        .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+        .detail-row { }
+        .detail-label { font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:#718096; margin-bottom:3px; }
+        .detail-value { font-size:.87rem; color:#e2e8f0; }
+        .detail-full { grid-column:1/-1; }
+
+        /* ── Tab bar ── */
+        .tab-bar { display:flex; gap:4px; border-bottom:1px solid #2d3748; margin-bottom:20px; }
+        .tab-btn { background:none; border:none; padding:8px 16px; font-size:.82rem; font-weight:600; color:#718096; cursor:pointer; border-bottom:2px solid transparent; transition:color .15s,border-color .15s; }
+        .tab-btn.active { color:#fff; border-bottom-color:#667eea; }
+
+        /* ── Evidence / event items ── */
+        .evidence-item { background:#12122a; border:1px solid #2d3748; border-radius:8px; padding:10px 14px; margin-bottom:8px; }
+        .evidence-item-header { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+        .evidence-title { font-weight:600; font-size:.85rem; color:#e2e8f0; flex:1; }
+        .evidence-meta  { font-size:.78rem; color:#718096; }
+
+        /* ── Inline messages ── */
+        .inline-msg { padding:10px 14px; border-radius:8px; font-size:.82rem; margin-bottom:12px; }
+        .inline-msg.info  { background:#1e2d4a; color:#90cdf4; border:1px solid #2c5282; }
+        .inline-msg.warn  { background:#3a2d1a; color:#f6ad55; border:1px solid #744210; }
+        .inline-msg.error { background:#3a1a1a; color:#fc8181; border:1px solid #742a2a; }
+
+        /* ── Toast ── */
+        #toast { position:fixed; bottom:24px; right:24px; background:#2d3748; color:#e2e8f0; padding:10px 18px; border-radius:8px; font-size:.85rem; font-weight:600; opacity:0; transition:opacity .25s; pointer-events:none; z-index:9999; }
+        #toast.show { opacity:1; }
+
+        /* ── Loading ── */
+        .loading-state { color:#718096; font-size:.85rem; padding:24px; text-align:center; }
+    </style>
+</head>
+<body>
+<div id="app-topbar"></div>
+<div id="app-nav"></div>
+
+<div class="page-wrap">
+    <div class="page-header">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div>
+                <h1 class="page-title">SARS Statement Reconciliation</h1>
+                <p class="page-subtitle">Manual statement-line capture and reconciliation against the Tax Payment Register — not SARS integration, not bank feed, not automatic import.</p>
+            </div>
+            <button type="button" class="btn-action btn-primary" onclick="srOpenCreate()">+ Add Statement Line</button>
+        </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="summary-grid" id="summaryGrid">
+        <div class="loading-state">Loading…</div>
+    </div>
+
+    <!-- Variance strip -->
+    <div class="variance-strip" id="varianceStrip" style="display:none;">
+        <div class="vs-item"><div class="vs-label">SARS Debits</div><div class="vs-value" id="vsTotalDebits">—</div></div>
+        <div class="vs-item"><div class="vs-label">SARS Credits</div><div class="vs-value" id="vsTotalCredits">—</div></div>
+        <div class="vs-item"><div class="vs-label">Variance (Credits − Debits)</div><div class="vs-value" id="vsVariance">—</div></div>
+        <div class="vs-item"><div class="vs-label">Unmatched Statement Lines</div><div class="vs-value" id="vsUnmatchedLines">—</div></div>
+        <div class="vs-item"><div class="vs-label">Unmatched Practice Events</div><div class="vs-value" id="vsUnmatchedEvents">—</div></div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <select id="filterTaxType">
+            <option value="">All Tax Types</option>
+            <option value="itr12">ITR12</option>
+            <option value="itr14">ITR14</option>
+            <option value="irp6">IRP6</option>
+            <option value="emp201">EMP201</option>
+            <option value="emp501">EMP501</option>
+            <option value="vat201">VAT201</option>
+            <option value="other">Other</option>
+        </select>
+        <select id="filterTransactionType">
+            <option value="">All Transaction Types</option>
+            <option value="assessment">Assessment</option>
+            <option value="payment">Payment</option>
+            <option value="refund">Refund</option>
+            <option value="interest">Interest</option>
+            <option value="penalty">Penalty</option>
+            <option value="adjustment">Adjustment</option>
+            <option value="balance">Balance</option>
+            <option value="other">Other</option>
+        </select>
+        <select id="filterStatus">
+            <option value="">All Statuses</option>
+            <option value="unmatched">Unmatched</option>
+            <option value="matched">Matched</option>
+            <option value="partially_matched">Partially Matched</option>
+            <option value="disputed">Disputed</option>
+            <option value="ignored">Ignored</option>
+            <option value="cancelled">Cancelled</option>
+        </select>
+        <input type="date" id="filterDateFrom" placeholder="Date from" title="Statement date from">
+        <input type="date" id="filterDateTo" placeholder="Date to" title="Statement date to">
+        <input type="text" id="filterSearch" placeholder="Search ref / description…">
+        <input type="number" id="filterClientId" placeholder="Client ID" style="width:100px;">
+        <input type="number" id="filterSubmissionId" placeholder="Submission ID" style="width:110px;">
+        <button type="button" class="btn-action btn-neutral btn-sm" onclick="srApplyFilters()">Filter</button>
+        <button type="button" class="btn-action btn-neutral btn-sm" onclick="srClearFilters()">Clear</button>
+    </div>
+
+    <!-- Statement lines table -->
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Client ID</th>
+                    <th>Tax Type</th>
+                    <th>Transaction</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th>Debit</th>
+                    <th>Credit</th>
+                    <th>Balance</th>
+                    <th>Status</th>
+                    <th>Matched Event</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr class="empty-row"><td colspan="11">Loading statement lines…</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Unmatched practice events panel -->
+    <div class="section-panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+            <h3 class="section-title" style="margin:0;">Unmatched Practice Payment Events</h3>
+            <button type="button" class="btn-action btn-neutral btn-sm" onclick="srLoadUnmatched()">Refresh</button>
+        </div>
+        <div id="unmatchedPanel"><div class="loading-state">Loading…</div></div>
+    </div>
+</div>
+
+<!-- ── Create modal ── -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <h2 class="modal-title">Add Statement Line</h2>
+            <button class="modal-close" onclick="srCloseCreate()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="createMsg"></div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label>Client ID *</label>
+                    <input type="number" id="createClientId" placeholder="Practice client ID">
+                </div>
+                <div class="form-field">
+                    <label>Statement Date *</label>
+                    <input type="date" id="createDate">
+                </div>
+                <div class="form-field">
+                    <label>Tax Type *</label>
+                    <select id="createTaxType">
+                        <option value="">— Select —</option>
+                        <option value="itr12">ITR12</option>
+                        <option value="itr14">ITR14</option>
+                        <option value="irp6">IRP6</option>
+                        <option value="emp201">EMP201</option>
+                        <option value="emp501">EMP501</option>
+                        <option value="vat201">VAT201</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Transaction Type *</label>
+                    <select id="createTransType">
+                        <option value="">— Select —</option>
+                        <option value="assessment">Assessment</option>
+                        <option value="payment">Payment</option>
+                        <option value="refund">Refund</option>
+                        <option value="interest">Interest</option>
+                        <option value="penalty">Penalty</option>
+                        <option value="adjustment">Adjustment</option>
+                        <option value="balance">Balance</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Tax Year</label>
+                    <input type="number" id="createTaxYear" placeholder="e.g. 2025">
+                </div>
+                <div class="form-field">
+                    <label>Period Label</label>
+                    <input type="text" id="createPeriodLabel" placeholder="e.g. 2025/03">
+                </div>
+                <div class="form-field">
+                    <label>Reference Number</label>
+                    <input type="text" id="createRef" placeholder="SARS reference">
+                </div>
+                <div class="form-field form-full">
+                    <label>Description</label>
+                    <input type="text" id="createDesc" placeholder="Line description from SARS statement">
+                </div>
+                <div class="form-field">
+                    <label>Debit Amount (R)</label>
+                    <input type="number" id="createDebit" min="0" step="0.01" placeholder="0.00">
+                </div>
+                <div class="form-field">
+                    <label>Credit Amount (R)</label>
+                    <input type="number" id="createCredit" min="0" step="0.01" placeholder="0.00">
+                </div>
+                <div class="form-field">
+                    <label>Running Balance (R)</label>
+                    <input type="number" id="createBalance" step="0.01" placeholder="Balance from statement (optional)">
+                </div>
+                <div class="form-field">
+                    <label>Submission ID</label>
+                    <input type="number" id="createSubmissionId" placeholder="Optional link">
+                </div>
+                <div class="form-field">
+                    <label>Payment Case ID</label>
+                    <input type="number" id="createPaymentId" placeholder="Optional link">
+                </div>
+                <div class="form-field form-full">
+                    <label>Notes</label>
+                    <textarea id="createNotes" placeholder="Optional notes"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-neutral" onclick="srCloseCreate()">Cancel</button>
+            <button type="button" class="btn-action btn-primary" onclick="srSubmitCreate()">Add Line</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Detail modal ── -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h2 class="modal-title" id="detailTitle">Statement Line</h2>
+            <button class="modal-close" onclick="srCloseDetail()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="detailTabBar"></div>
+            <div id="detailBody"></div>
+        </div>
+        <div class="modal-footer" id="detailFooter"></div>
+    </div>
+</div>
+
+<!-- ── Match event modal ── -->
+<div class="modal-overlay" id="matchModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2 class="modal-title">Match to Payment Event</h2>
+            <button class="modal-close" onclick="srCloseMatch()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="matchMsg"></div>
+            <div class="form-grid">
+                <div class="form-field form-full">
+                    <label>Payment Event ID *</label>
+                    <input type="number" id="matchEventId" placeholder="ID from the payment ledger events">
+                </div>
+                <div class="form-field form-full">
+                    <label>Notes</label>
+                    <textarea id="matchNotes" placeholder="Required if there is a direction mismatch between the statement line and payment event"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-neutral" onclick="srCloseMatch()">Cancel</button>
+            <button type="button" class="btn-action btn-primary" onclick="srSubmitMatch()">Match</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Action modal (dispute / ignore / unmatch) ── -->
+<div class="modal-overlay" id="actionModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2 class="modal-title" id="actionTitle">Action</h2>
+            <button class="modal-close" onclick="srCloseAction()">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="actionMsg"></div>
+            <div id="actionFormBody"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-neutral" onclick="srCloseAction()">Cancel</button>
+            <button type="button" class="btn-action btn-primary" id="actionSubmitBtn" onclick="srSubmitAction()">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/sars-recon.js"></script>
+<script>
+    LAYOUT.init('sars-recon');
+</script>
+</body>
+</html>

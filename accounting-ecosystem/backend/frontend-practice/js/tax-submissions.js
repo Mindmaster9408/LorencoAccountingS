@@ -1,7 +1,8 @@
 (function () {
     'use strict';
 
-    var BASE = '/api/practice/tax-submissions';
+    var BASE      = '/api/practice/tax-submissions';
+    var PAY_BASE  = '/api/practice/tax-payments';
 
     var STATUS_LABELS = {
         draft:               'Draft',
@@ -324,6 +325,7 @@
             { key:'submission', label:'Submission'  },
             { key:'assessment', label:'Assessment'  },
             { key:'evidence',   label:'Evidence (' + (d.evidence_count || 0) + ')' },
+            { key:'payments',   label:'Payments'   },
             { key:'followup',   label:'Follow-up'  },
             { key:'events',     label:'Events'     },
         ];
@@ -349,6 +351,25 @@
             html += '<button type="button" class="btn-action btn-success"  onclick="tslOpenAction(\'add-evidence\')">Add Evidence</button>';
             html += '<button type="button" class="btn-action btn-secondary" onclick="tslOpenAction(\'set-follow-up\')">Follow-up</button>';
         }
+        // Codebox 44 — Dispute integration buttons
+        if (!['cancelled'].includes(s)) {
+            if (['assessed','correction_required'].includes(s)) {
+                html += '<button type="button" class="btn-action btn-warning" onclick="tslMarkCorrectionRequired()" title="Mark this submission as requiring a correction">Mark Correction</button>';
+            }
+            if (['assessed','correction_required','objection_required'].includes(s)) {
+                html += '<button type="button" class="btn-action btn-danger" onclick="tslMarkObjectionRequired()" title="Mark this submission as requiring a formal objection">Mark Objection</button>';
+            }
+            if (!['completed'].includes(s)) {
+                html += '<button type="button" class="btn-action btn-success" onclick="tslMarkCompleted()" title="Mark this submission as completed and resolved">Mark Completed</button>';
+            }
+        }
+        html += '<a href="/practice/tax-disputes.html?submission_id=' + encodeURIComponent(d.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#2d3748;color:#e2e8f0;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;gap:6px;" ' +
+            'title="View all dispute/correction cases for this submission">Open Disputes ↗</a>';
+        // Codebox 45 — Completion Pack link
+        html += '<a href="/practice/tax-completion.html?submission_id=' + encodeURIComponent(d.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#1a4d2e;color:#68d391;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;gap:6px;" ' +
+            'title="Open or create the completion pack for this submission">Completion Pack ↗</a>';
         document.getElementById('detailFooter').innerHTML = html;
     }
 
@@ -375,6 +396,7 @@
             case 'submission': _renderSubmissionTab(_currentSub, body); break;
             case 'assessment': _renderAssessmentTab(_currentSub, body); break;
             case 'evidence':   _loadEvidenceTab(body);               break;
+            case 'payments':   _loadPaymentsTab(body);                break;
             case 'followup':   _renderFollowUpTab(_currentSub, body); break;
             case 'events':     _loadEventsTab(body);                  break;
         }
@@ -477,6 +499,74 @@
         }
         html += '</div>';
         body.innerHTML = html;
+    }
+
+    // ── Payments tab ───────────────────────────────────────────────────────────
+    // Manual payment register — no SARS integration, no bank reconciliation.
+
+    var PAY_STATUS_LABELS = {
+        outstanding: 'Outstanding', partially_paid: 'Partially Paid', paid_in_full: 'Paid in Full',
+        overpaid: 'Overpaid', refund_pending: 'Refund Pending', refund_received: 'Refund Received',
+        cancelled: 'Cancelled',
+    };
+
+    function _loadPaymentsTab(body) {
+        body.innerHTML = '<div class="loading-state">Loading payment cases…</div>';
+        PracticeAPI.fetch(PAY_BASE + '?submission_id=' + _currentId)
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderPaymentsTab(d.payments || [], body); })
+            .catch(function () { body.innerHTML = '<div class="tab-content" style="color:#fc8181">Failed to load payment cases</div>'; });
+    }
+
+    function _renderPaymentsTab(items, body) {
+        var d = _currentSub;
+        var html = '<div class="tab-content">';
+
+        if (!items.length) {
+            html += '<div class="inline-msg info">No payment cases yet for this submission.</div>';
+            if (d.amount_payable && Number(d.amount_payable) > 0) {
+                html += '<button type="button" class="btn-action btn-warning" style="margin-bottom:10px" onclick="tslCreatePaymentCase(\'payable\',' + Number(d.amount_payable) + ')">Create Payable Case (' + _money(d.amount_payable) + ')</button> ';
+            }
+            if (d.refund_amount && Number(d.refund_amount) > 0) {
+                html += '<button type="button" class="btn-action btn-success" style="margin-bottom:10px" onclick="tslCreatePaymentCase(\'refundable\',' + Number(d.refund_amount) + ')">Create Refundable Case (' + _money(d.refund_amount) + ')</button>';
+            }
+            if (!d.amount_payable && !d.refund_amount) {
+                html += '<div style="color:#718096;font-size:.8rem">Record an assessment with an amount payable or refund amount to start a payment case, or open the full register to create one manually.</div>';
+            }
+        } else {
+            items.forEach(function (p) {
+                html += '<div class="evidence-item">';
+                html += '<div class="evidence-item-header">';
+                html += '<span class="evidence-title">' + (p.direction === 'payable' ? 'Payable' : 'Refundable') + '</span>';
+                html += '<span class="subtype-badge">' + _html(PAY_STATUS_LABELS[p.status] || p.status) + '</span>';
+                html += '</div>';
+                html += '<div class="evidence-meta">Original: ' + _money(p.original_amount) + ' · Settled: ' + _money(p.amount_settled) + ' · Balance: ' + _money(p.balance_outstanding) + '</div>';
+                if (p.due_date) html += '<div class="evidence-meta">Due: ' + _fmtDate(p.due_date) + '</div>';
+                html += '</div>';
+            });
+        }
+        html += '<a href="/practice/tax-payments.html?submission_id=' + _currentId + '" style="display:inline-block;margin-top:6px;padding:7px 16px;background:#667eea;color:#fff;border-radius:7px;font-size:.82rem;font-weight:700;text-decoration:none;">Open Payment Register</a>';
+        html += ' <a href="/practice/sars-recon.html?submission_id=' + _currentId + '" style="display:inline-block;margin-top:6px;padding:7px 16px;background:#2d3748;color:#e2e8f0;border-radius:7px;font-size:.82rem;font-weight:700;text-decoration:none;">SARS Recon ↗</a>';
+        html += '</div>';
+        body.innerHTML = html;
+    }
+
+    function tslCreatePaymentCase(direction, amount) {
+        if (_submitting) return;
+        _submitting = true;
+        PracticeAPI.fetch(PAY_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ submission_id: _currentId, direction: direction, original_amount: amount }),
+        })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (r) {
+            _submitting = false;
+            if (!r.ok) return _showToast(r.data.error || 'Failed to create payment case');
+            _showToast('Payment case created');
+            _loadPaymentsTab(document.getElementById('detailBody'));
+        })
+        .catch(function () { _submitting = false; _showToast('Request failed'); });
     }
 
     function _renderFollowUpTab(d, body) {
@@ -737,6 +827,48 @@
         .catch(function () { _submitting = false; _showToast('Request failed'); });
     }
 
+    // ── Codebox 44 — Dispute integration (mark-correction / objection / completed) ──
+
+    function _tslSimpleAction(endpoint, confirmMsg, successMsg) {
+        if (_submitting) return;
+        if (!window.confirm(confirmMsg)) return;
+        _submitting = true;
+        PracticeAPI.fetch(BASE + '/' + _currentId + '/' + endpoint, {
+            method:  'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({}),
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (r) {
+            _submitting = false;
+            if (!r.ok) return _showToast(r.data.error || 'Action failed');
+            _showToast(successMsg);
+            // Refresh detail
+            PracticeAPI.fetch(BASE + '/' + _currentId)
+                .then(function (res) { return res.json(); })
+                .then(function (d) {
+                    _currentSub = d;
+                    _renderTabBar(_currentSub);
+                    _activateTab(_currentTab);
+                    _renderFooter(_currentSub);
+                });
+            tslLoad();
+        })
+        .catch(function () { _submitting = false; _showToast('Request failed'); });
+    }
+
+    function tslMarkCorrectionRequired() {
+        _tslSimpleAction('mark-correction-required', 'Mark this submission as Correction Required?', 'Marked as Correction Required');
+    }
+
+    function tslMarkObjectionRequired() {
+        _tslSimpleAction('mark-objection-required', 'Mark this submission as Objection Required?', 'Marked as Objection Required');
+    }
+
+    function tslMarkCompleted() {
+        _tslSimpleAction('mark-completed', 'Mark this submission as Completed?', 'Submission marked as Completed');
+    }
+
     // ── Exports ────────────────────────────────────────────────────────────────
 
     window.tslLoad             = tslLoad;
@@ -756,7 +888,11 @@
     window.tslSubmitAction     = tslSubmitAction;
     window.tslVerifyEvidence   = tslVerifyEvidence;
     window.tslDeleteEvidence   = tslDeleteEvidence;
-    window.tslCancelSubmission = tslCancelSubmission;
+    window.tslCancelSubmission        = tslCancelSubmission;
+    window.tslCreatePaymentCase       = tslCreatePaymentCase;
+    window.tslMarkCorrectionRequired  = tslMarkCorrectionRequired;
+    window.tslMarkObjectionRequired   = tslMarkObjectionRequired;
+    window.tslMarkCompleted           = tslMarkCompleted;
 
     // ── Boot ───────────────────────────────────────────────────────────────────
 

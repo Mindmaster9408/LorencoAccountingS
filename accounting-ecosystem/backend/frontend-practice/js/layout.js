@@ -34,6 +34,10 @@
         { key: 'tax-reports',        label: 'Tax Reports',        href: '/practice/tax-reports.html' },
         { key: 'tax-pipeline',       label: 'Tax Pipeline',       href: '/practice/tax-pipeline.html' },
         { key: 'tax-submissions',    label: 'Tax Submissions',    href: '/practice/tax-submissions.html' },
+        { key: 'tax-payments',       label: 'Tax Payments',       href: '/practice/tax-payments.html' },
+        { key: 'sars-recon',         label: 'SARS Recon',         href: '/practice/sars-recon.html' },
+        { key: 'tax-disputes',        label: 'Tax Disputes',        href: '/practice/tax-disputes.html' },
+        { key: 'tax-completion',     label: 'Tax Completion',     href: '/practice/tax-completion.html' },
         { key: 'tax-configs',        label: 'Tax Config',         href: '/practice/tax-configs.html' }
     ];
 
@@ -82,5 +86,10 @@
         }
     }
 
-    window.LAYOUT = { init: init };
+    // onReady exists so page scripts can defer their own data-load boot logic
+    // until after init() has run, without assuming any particular load order.
+    // init() above is fully synchronous, so this just invokes the callback now.
+    function onReady(cb) { cb(); }
+
+    window.LAYOUT = { init: init, onReady: onReady };
 })();

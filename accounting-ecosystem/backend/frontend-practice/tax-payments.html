@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Payments — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/practice.css">
+    <style>
+        /* ── Layout ── */
+        .page-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+        .page-title  { font-size:1.4rem; font-weight:700; color:#e2e8f0; margin:0; }
+        .page-sub    { font-size:0.82rem; color:#718096; margin:4px 0 0; }
+
+        /* ── Summary cards ── */
+        .summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; margin-bottom:22px; }
+        .sum-card { background:#1a202c; border:1px solid #2d3748; border-radius:8px; padding:12px 14px; cursor:pointer; transition:border-color .15s; }
+        .sum-card:hover { border-color:#4a5568; }
+        .sum-card.active { border-color:#667eea; background:#2d3748; }
+        .sum-card-count { font-size:1.5rem; font-weight:700; color:#e2e8f0; line-height:1; }
+        .sum-card-label { font-size:0.72rem; color:#a0aec0; margin-top:4px; text-transform:uppercase; letter-spacing:.04em; }
+        .c-alert { color:#fc8181; }
+        .c-warn  { color:#f6ad55; }
+        .c-ok    { color:#68d391; }
+        .c-info  { color:#63b3ed; }
+
+        /* ── Filter bar ── */
+        .filter-bar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+        .filter-bar select, .filter-bar input { background:#1a202c; border:1px solid #2d3748; color:#e2e8f0; border-radius:6px; padding:6px 10px; font-size:0.82rem; }
+        .filter-bar select:focus, .filter-bar input:focus { outline:none; border-color:#667eea; }
+        .btn-sm         { padding:6px 14px; border-radius:6px; font-size:0.82rem; font-weight:600; cursor:pointer; border:none; }
+        .btn-primary-sm { background:#667eea; color:#fff; }
+        .btn-primary-sm:hover { background:#5a67d8; }
+        .btn-ghost-sm   { background:transparent; color:#a0aec0; border:1px solid #2d3748; }
+        .btn-ghost-sm:hover { border-color:#4a5568; color:#e2e8f0; }
+
+        /* ── Status pills ── */
+        .status-pill { font-size:0.68rem; font-weight:700; padding:3px 9px; border-radius:12px; text-transform:uppercase; letter-spacing:.04em; display:inline-block; }
+        .st-outstanding      { background:#3a2820; color:#fc8181; }
+        .st-partially_paid   { background:#3a2d1a; color:#f6ad55; }
+        .st-paid_in_full     { background:#1a3a2a; color:#68d391; }
+        .st-overpaid         { background:#2a2a40; color:#a78bfa; }
+        .st-refund_pending   { background:#1e2d4a; color:#90cdf4; }
+        .st-refund_received  { background:#1a3a2a; color:#68d391; }
+        .st-cancelled        { background:#252525; color:#4a5568; }
+
+        /* ── Direction badges ── */
+        .type-badge { font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:4px; text-transform:uppercase; }
+        .type-payable    { background:#3a2820; color:#fc8181; }
+        .type-refundable { background:#1e2d4a; color:#90cdf4; }
+
+        /* ── Table ── */
+        .sub-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+        .sub-table th { text-align:left; padding:8px 12px; font-size:0.72rem; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid #2d3748; }
+        .sub-table td { padding:9px 12px; border-bottom:1px solid #1e2535; color:#e2e8f0; vertical-align:middle; }
+        .sub-table tr:hover td { background:#1e2535; cursor:pointer; }
+
+        /* ── Modal overlay ── */
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; align-items:center; justify-content:center; padding:16px; }
+        .modal-overlay.open { display:flex; }
+        .modal-box { background:#1a202c; border:1px solid #2d3748; border-radius:12px; width:100%; max-width:700px; max-height:92vh; display:flex; flex-direction:column; }
+        .modal-box.wide { max-width:860px; }
+        .modal-header { display:flex; align-items:center; justify-content:space-between; padding:18px 22px 14px; border-bottom:1px solid #2d3748; flex-shrink:0; }
+        .modal-title  { font-size:1rem; font-weight:700; color:#e2e8f0; }
+        .modal-close  { background:none; border:none; color:#718096; font-size:1.3rem; cursor:pointer; }
+        .modal-close:hover { color:#e2e8f0; }
+        .modal-body   { padding:0; overflow-y:auto; flex:1; }
+        .modal-footer { padding:14px 22px; border-top:1px solid #2d3748; display:flex; gap:10px; justify-content:flex-end; flex-shrink:0; }
+
+        /* ── Tabs ── */
+        .tab-bar { display:flex; gap:0; border-bottom:1px solid #2d3748; padding:0 22px; flex-shrink:0; overflow-x:auto; }
+        .tab-btn { padding:11px 14px; font-size:0.8rem; font-weight:600; color:#718096; border:none; background:none; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+        .tab-btn.active { color:#667eea; border-bottom-color:#667eea; }
+        .tab-btn:hover:not(.active) { color:#a0aec0; }
+        .tab-content { padding:20px 22px; }
+
+        /* ── Forms ── */
+        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+        .form-grid.full { grid-template-columns:1fr; }
+        .form-group { display:flex; flex-direction:column; gap:5px; }
+        .form-label { font-size:0.78rem; font-weight:600; color:#a0aec0; }
+        .form-input, .form-select, .form-textarea { background:#0f1724; border:1px solid #2d3748; color:#e2e8f0; border-radius:6px; padding:8px 10px; font-size:0.82rem; font-family:inherit; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline:none; border-color:#667eea; }
+        .form-textarea { resize:vertical; min-height:70px; }
+        .section-label { font-size:0.72rem; font-weight:700; color:#718096; text-transform:uppercase; letter-spacing:.05em; margin:16px 0 10px; }
+
+        /* ── Detail fields ── */
+        .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
+        .detail-field { background:#0f1724; border-radius:6px; padding:9px 11px; }
+        .detail-label { font-size:0.68rem; color:#718096; margin-bottom:2px; }
+        .detail-value { font-size:0.82rem; color:#e2e8f0; font-weight:600; }
+        .detail-value.amount { font-family:monospace; }
+
+        /* ── Event items ── */
+        .evidence-item { background:#0f1724; border:1px solid #2d3748; border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+        .evidence-item-header { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+        .evidence-title { font-size:0.84rem; font-weight:600; color:#e2e8f0; flex:1; }
+        .evidence-meta  { font-size:0.74rem; color:#718096; }
+
+        /* ── Action buttons ── */
+        .btn-action   { padding:7px 16px; border-radius:7px; font-size:0.82rem; font-weight:700; cursor:pointer; border:none; }
+        .btn-primary  { background:#667eea; color:#fff; }
+        .btn-primary:hover { background:#5a67d8; }
+        .btn-warning  { background:#d97706; color:#fff; }
+        .btn-warning:hover { background:#b45309; }
+        .btn-success  { background:#38a169; color:#fff; }
+        .btn-success:hover { background:#276749; }
+        .btn-danger   { background:#e53e3e; color:#fff; }
+        .btn-danger:hover { background:#c53030; }
+        .btn-secondary{ background:transparent; border:1px solid #2d3748; color:#a0aec0; }
+        .btn-secondary:hover { border-color:#4a5568; color:#e2e8f0; }
+        .btn-action:disabled { opacity:.5; cursor:not-allowed; }
+
+        /* ── Alerts / messages ── */
+        .inline-msg { font-size:0.78rem; padding:10px 12px; border-radius:6px; margin-bottom:14px; }
+        .inline-msg.error   { background:#2d1515; color:#fc8181; border:1px solid #742a2a; }
+        .inline-msg.success { background:#1a3a2a; color:#68d391; border:1px solid #276749; }
+        .inline-msg.info    { background:#1e2d4a; color:#90cdf4; border:1px solid #2a4a7a; }
+
+        /* ── Empty / loading ── */
+        .empty-state { text-align:center; padding:48px 0; color:#718096; }
+        .empty-state-icon { font-size:2.5rem; margin-bottom:10px; }
+        .loading-state { text-align:center; padding:40px; color:#718096; font-size:0.85rem; }
+
+        /* ── Toast ── */
+        .toast { position:fixed; bottom:24px; right:24px; background:#2d3748; color:#e2e8f0; padding:12px 18px; border-radius:8px; font-size:0.83rem; z-index:999; opacity:0; transition:opacity .25s; pointer-events:none; max-width:360px; }
+        .toast.show { opacity:1; }
+    </style>
+</head>
+<body>
+<div id="nav-placeholder"></div>
+<div id="toast" class="toast"></div>
+
+<main class="main-content">
+
+    <!-- Page header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Tax Payments</h1>
+            <p class="page-sub">Manual payment register linked to the Tax Submission Register — not SARS integration, not bank reconciliation</p>
+        </div>
+        <button type="button" class="btn-sm btn-primary-sm" onclick="tprOpenCreate()">+ New Payment Case</button>
+    </div>
+
+    <!-- Summary cards -->
+    <div id="summaryGrid" class="summary-grid">
+        <div class="loading-state">Loading…</div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <select id="filterDirection" onchange="tprApplyFilters()">
+            <option value="">All Directions</option>
+            <option value="payable">Payable</option>
+            <option value="refundable">Refundable</option>
+        </select>
+        <select id="filterStatus" onchange="tprApplyFilters()">
+            <option value="">All Statuses</option>
+            <option value="outstanding">Outstanding</option>
+            <option value="partially_paid">Partially Paid</option>
+            <option value="paid_in_full">Paid in Full</option>
+            <option value="overpaid">Overpaid</option>
+            <option value="refund_pending">Refund Pending</option>
+            <option value="refund_received">Refund Received</option>
+            <option value="cancelled">Cancelled</option>
+        </select>
+        <input type="number" id="filterYear" placeholder="Tax Year" style="width:120px" onkeydown="if(event.key==='Enter')tprApplyFilters()">
+        <input type="number" id="filterSubmissionId" placeholder="Submission ID" style="width:140px" onkeydown="if(event.key==='Enter')tprApplyFilters()">
+        <button type="button" class="btn-sm btn-primary-sm" onclick="tprApplyFilters()">Filter</button>
+        <button type="button" class="btn-sm btn-ghost-sm"   onclick="tprClearFilters()">Clear</button>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <table class="sub-table">
+            <thead>
+                <tr>
+                    <th>Direction</th>
+                    <th>Tax Year</th>
+                    <th>Status</th>
+                    <th>Original</th>
+                    <th>Interest</th>
+                    <th>Penalty</th>
+                    <th>Settled</th>
+                    <th>Balance</th>
+                    <th>Due Date</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+</main>
+
+<!-- Create Payment Case Modal -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span class="modal-title">New Payment Case</span>
+            <button type="button" class="modal-close" onclick="tprCloseCreate()">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+            <div class="tab-content">
+                <div id="createMsg" style="display:none"></div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Submission ID *</label>
+                        <input type="number" class="form-input" id="createSubmissionId" placeholder="e.g. 123">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Direction *</label>
+                        <select class="form-select" id="createDirection">
+                            <option value="">— Select —</option>
+                            <option value="payable">Payable (client owes SARS)</option>
+                            <option value="refundable">Refundable (SARS owes client)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Original Amount *</label>
+                        <input type="number" step="0.01" class="form-input" id="createAmount" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Due Date</label>
+                        <input type="date" class="form-input" id="createDueDate">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-textarea" id="createNotes" rows="2" placeholder="Optional notes…"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-secondary" onclick="tprCloseCreate()">Cancel</button>
+            <button type="button" class="btn-action btn-primary"   id="createSubmitBtn" onclick="tprSubmitCreate()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box wide">
+        <div class="modal-header">
+            <span class="modal-title" id="detailTitle">Payment Case Detail</span>
+            <button type="button" class="modal-close" onclick="tprCloseDetail()">&#x2715;</button>
+        </div>
+        <!-- Tab bar -->
+        <div class="tab-bar" id="detailTabBar">
+            <button type="button" class="tab-btn active" onclick="tprOpenTab('overview')">Overview</button>
+            <button type="button" class="tab-btn"        onclick="tprOpenTab('events')">Events</button>
+        </div>
+        <div class="modal-body" id="detailBody">
+            <div class="loading-state">Loading…</div>
+        </div>
+        <div class="modal-footer" id="detailFooter">
+            <button type="button" class="btn-action btn-secondary" onclick="tprCloseDetail()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Action Modal (record payment / record refund / add interest / add penalty / edit) -->
+<div class="modal-overlay" id="actionModal">
+    <div class="modal-box" style="max-width:520px;">
+        <div class="modal-header">
+            <span class="modal-title" id="actionModalTitle">Action</span>
+            <button type="button" class="modal-close" onclick="tprCloseAction()">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+            <div class="tab-content">
+                <div id="actionMsg" style="display:none"></div>
+                <div id="actionFormBody"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-action btn-secondary" onclick="tprCloseAction()">Cancel</button>
+            <button type="button" class="btn-action btn-primary"   id="actionSubmitBtn" onclick="tprSubmitAction()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="/practice/js/polyfills.js"></script>
+<script src="/practice/js/auth.js"></script>
+<script src="/practice/js/api.js"></script>
+<script src="/practice/js/layout.js"></script>
+<script src="/practice/js/tax-payments.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        LAYOUT.init('tax-payments');
+    });
+</script>
+</body>
+</html>

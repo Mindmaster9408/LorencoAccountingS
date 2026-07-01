@@ -3145,6 +3145,30 @@ router.use('/tax-pipeline', taxPipelineRouter);
 const taxSubmissionsRouter = require('./tax-submissions');
 router.use('/tax-submissions', taxSubmissionsRouter);
 
+// Tax Payment Tracking (Codebox 42)
+// Manual payment register linked to Tax Submissions. No SARS integration,
+// no bank reconciliation, no auto-import — everything is manually captured.
+const taxPaymentsRouter = require('./tax-payments');
+router.use('/tax-payments', taxPaymentsRouter);
+
+// SARS Statement Reconciliation (Codebox 43)
+// Manual statement-line register and reconciliation against the payment ledger.
+// No SARS API. No bank feed. No automatic import.
+const sarsReconRouter = require('./sars-statement-recon');
+router.use('/sars-recon', sarsReconRouter);
+
+// Tax Dispute / Correction / Objection Tracker (Codebox 44)
+// Manual internal tracking for corrections, objections, NOO, ADR, Tax Court escalation.
+// No SARS API. No eFiling integration. All data manually entered by practice staff.
+const taxDisputesRouter = require('./tax-disputes');
+router.use('/tax-disputes', taxDisputesRouter);
+
+// Tax Compliance Finalization + Completion Evidence Pack (Codebox 45)
+// Internal quality-control and partner sign-off gate before a tax matter is complete.
+// Enforces checklist completion, payment status, SARS recon parity, and open dispute checks.
+const taxCompletionRouter = require('./tax-completion');
+router.use('/tax-completion', taxCompletionRouter);
+
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
 router.use('/dashboard', dashboardRouter);

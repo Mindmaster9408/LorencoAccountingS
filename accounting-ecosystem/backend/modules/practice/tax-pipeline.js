@@ -361,6 +361,38 @@ router.get('/', async (req, res) => {
 
 // ── GET /:sourceType/:sourceId ────────────────────────────────────────────────
 
+// Completed filings may have a linked submission register entry, which in turn
+// may have a manual payment case. This is a read-only convenience lookup so the
+// pipeline detail view can surface payment status without a second round trip.
+async function _fetchPaymentSummary(sourceType, sourceId, cid) {
+    const { data: submission } = await supabase
+        .from('practice_tax_submissions')
+        .select('id, submission_status, amount_payable, refund_amount')
+        .eq('company_id', cid)
+        .eq('source_type', sourceType)
+        .eq('source_id', sourceId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!submission) return null;
+
+    const { data: payments } = await supabase
+        .from('practice_tax_payments')
+        .select('id, direction, status, balance_outstanding, due_date')
+        .eq('company_id', cid)
+        .eq('submission_id', submission.id)
+        .order('created_at', { ascending: false });
+
+    return {
+        submission_id:        submission.id,
+        submission_status:    submission.submission_status,
+        amount_payable:       submission.amount_payable,
+        refund_amount:        submission.refund_amount,
+        payments:             payments || [],
+    };
+}
+
 router.get('/:sourceType/:sourceId', async (req, res) => {
     const cid        = req.companyId;
     const { sourceType, sourceId } = req.params;
@@ -379,6 +411,9 @@ router.get('/:sourceType/:sourceId', async (req, res) => {
 
         const history        = await _fetchHistory(sourceType, sid, cid);
         const allowedStages  = _allowedNextStages(record.filing_stage);
+        const paymentSummary = record.filing_stage === 'completed'
+            ? await _fetchPaymentSummary(sourceType, sid, cid)
+            : null;
 
         await auditFromReq(req, 'VIEW', 'tax_pipeline', sid, { source_type: sourceType });
         res.json({
@@ -394,6 +429,7 @@ router.get('/:sourceType/:sourceId', async (req, res) => {
             reviewer_team_member_id:    record.reviewer_team_member_id,
             allowed_next_stages: allowedStages.map(s => ({ stage: s, label: STAGE_LABELS[s] })),
             history,
+            payment_summary: paymentSummary,
         });
     } catch (err) {
         console.error('[tax-pipeline] detail error:', err);

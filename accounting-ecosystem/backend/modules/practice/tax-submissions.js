@@ -724,6 +724,95 @@ router.delete('/:id/evidence/:evidenceId', async (req, res) => {
     }
 });
 
+// ── PUT /:id/mark-correction-required (Codebox 44) ───────────────────────────
+
+router.put('/:id/mark-correction-required', async (req, res) => {
+    const cid = req.companyId;
+    const id  = Number(req.params.id);
+    if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    try {
+        const sub = await _verifySubmission(id, cid);
+        if (!sub) return res.status(404).json({ error: 'Submission not found or access denied' });
+        if (['cancelled', 'completed'].includes(sub.submission_status))
+            return res.status(422).json({ error: `Cannot mark correction required from status: ${sub.submission_status}` });
+
+        const { error: updateErr } = await supabase
+            .from('practice_tax_submissions')
+            .update({ submission_status: 'correction_required', updated_by: req.userId || null })
+            .eq('id', id)
+            .eq('company_id', cid);
+        if (updateErr) throw updateErr;
+
+        await _writeEvent(cid, id, 'correction_required', sub.submission_status, 'correction_required', req.userId, req.body.notes || null, {});
+        await auditFromReq(req, 'tax_submission_correction_required', 'tax_submission', id, { old_status: sub.submission_status });
+        res.json({ ok: true, id, submission_status: 'correction_required' });
+    } catch (err) {
+        console.error('[tax-submissions] mark-correction-required error:', err);
+        res.status(500).json({ error: 'Failed to mark correction required' });
+    }
+});
+
+// ── PUT /:id/mark-objection-required (Codebox 44) ─────────────────────────────
+
+router.put('/:id/mark-objection-required', async (req, res) => {
+    const cid = req.companyId;
+    const id  = Number(req.params.id);
+    if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    try {
+        const sub = await _verifySubmission(id, cid);
+        if (!sub) return res.status(404).json({ error: 'Submission not found or access denied' });
+        if (['cancelled', 'completed'].includes(sub.submission_status))
+            return res.status(422).json({ error: `Cannot mark objection required from status: ${sub.submission_status}` });
+
+        const { error: updateErr } = await supabase
+            .from('practice_tax_submissions')
+            .update({ submission_status: 'objection_required', updated_by: req.userId || null })
+            .eq('id', id)
+            .eq('company_id', cid);
+        if (updateErr) throw updateErr;
+
+        await _writeEvent(cid, id, 'objection_required', sub.submission_status, 'objection_required', req.userId, req.body.notes || null, {});
+        await auditFromReq(req, 'tax_submission_objection_required', 'tax_submission', id, { old_status: sub.submission_status });
+        res.json({ ok: true, id, submission_status: 'objection_required' });
+    } catch (err) {
+        console.error('[tax-submissions] mark-objection-required error:', err);
+        res.status(500).json({ error: 'Failed to mark objection required' });
+    }
+});
+
+// ── PUT /:id/mark-completed (Codebox 44) ──────────────────────────────────────
+
+router.put('/:id/mark-completed', async (req, res) => {
+    const cid = req.companyId;
+    const id  = Number(req.params.id);
+    if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    try {
+        const sub = await _verifySubmission(id, cid);
+        if (!sub) return res.status(404).json({ error: 'Submission not found or access denied' });
+        if (sub.submission_status === 'cancelled')
+            return res.status(422).json({ error: 'Cannot complete a cancelled submission' });
+        if (sub.submission_status === 'completed')
+            return res.status(422).json({ error: 'Submission is already completed' });
+
+        const { error: updateErr } = await supabase
+            .from('practice_tax_submissions')
+            .update({ submission_status: 'completed', updated_by: req.userId || null })
+            .eq('id', id)
+            .eq('company_id', cid);
+        if (updateErr) throw updateErr;
+
+        await _writeEvent(cid, id, 'submission_completed', sub.submission_status, 'completed', req.userId, req.body.notes || null, {});
+        await auditFromReq(req, 'tax_submission_completed', 'tax_submission', id, { old_status: sub.submission_status });
+        res.json({ ok: true, id, submission_status: 'completed' });
+    } catch (err) {
+        console.error('[tax-submissions] mark-completed error:', err);
+        res.status(500).json({ error: 'Failed to mark submission as completed' });
+    }
+});
+
 // ── GET /:id/events ───────────────────────────────────────────────────────────
 
 router.get('/:id/events', async (req, res) => {

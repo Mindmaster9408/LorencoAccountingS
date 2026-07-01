@@ -1,0 +1,146 @@
+---
+description: Lorenco Ecosystem master development and audit rules
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Lorenco Ecosystem Rules
+
+You are working inside the Lorenco Ecosystem.
+
+## Non-negotiable rules
+
+1. Audit before coding.
+2. Do not modify files until the requested audit, plan, and impact analysis are complete.
+3. Never use localStorage or sessionStorage for business data.
+4. All business data must be backend/database-backed.
+5. Multi-tenant isolation is mandatory.
+6. Every business query must be scoped by company_id or approved tenant context.
+7. Never bypass company isolation because a user is admin.
+8. Never assume a module is isolated; trace the route, API, and database path.
+9. Protect working logic before refactoring.
+10. Do not break Payroll, Accounting, POS, Inventory, Practice, SEAN, Coaching, or Eco Dashboard while working on another module.
+
+## Storage rules
+
+- localStorage is forbidden for business data.
+- sessionStorage is forbidden for business data.
+- IndexedDB may only be used for approved offline queue data, with server-backed sync and idempotency.
+- Auth tokens may be short-lived browser-held tokens only when already part of the current auth design.
+- Do not introduce browser source-of-truth storage.
+- KV bridges are not a replacement for proper relational database tables.
+- Prefer Supabase/PostgreSQL tables with constraints, indexes, audit fields, and company_id.
+
+## Audit requirements
+
+Before making changes, produce:
+
+1. Scope of files reviewed.
+2. Current execution path.
+3. Data flow.
+4. Database tables touched.
+5. Risks.
+6. Regression risk.
+7. Proposed fix plan.
+8. Tests required.
+
+Do not write code until the user explicitly approves implementation.
+
+## Security rules
+
+- Supabase service-role use means application code must enforce tenant isolation.
+- Every API route must validate auth.
+- Every business route must validate company access.
+- Never trust company_id from the frontend without verifying the user has access.
+- Do not expose service-role keys, secrets, tokens, or private credentials to frontend code.
+- CORS, SSO, JWT, module access, and company switching must be treated as security-sensitive.
+
+## Payroll / Paytime protection
+
+Payroll is stability-sensitive.
+
+Before touching payroll:
+
+- Trace Execute Payroll end-to-end.
+- Do not alter PAYE projection logic unless the task is specifically about PAYE.
+- Do not alter UIF basis unless the task is specifically about UIF.
+- Do not alter finalized payslip snapshots.
+- Respect payroll locks and finalized data.
+- Extra items, taxable flags, UIF flags, voluntary tax, medical credits, pension/RA, nett-to-gross, and pro-rata logic are high-risk areas.
+- Any payroll change requires regression notes.
+
+## Accounting protection
+
+Accounting is the financial source-of-truth.
+
+Before touching accounting:
+
+- Trace bank import, staging, duplicate detection, bank recon, journals, VAT, PAYE recon, GL, TB, P&L, BS, and period logic when relevant.
+- Never create unbalanced journals.
+- Never bypass period locks.
+- Never weaken audit trails.
+- Never change posting logic without explaining debit/credit effect.
+- Bank reconciliation and opening balance logic are high-risk.
+
+## POS / Checkout Charlie protection
+
+POS speed is critical.
+
+- Do not introduce slow cashier flows.
+- Offline queues must be idempotent.
+- Sales, voids, returns, stock movements, cash-up, tills, and audit events must remain consistent.
+- Desktop versions must remain aligned with online releases.
+- Never use browser storage as the source of truth.
+
+## Inventory / Storehouse protection
+
+- Stock movements must be traceable.
+- Costing and valuation must remain consistent.
+- Stock counts, reservations, procurement, manufacturing, and negative-stock settings are high-risk.
+- Do not change stock quantities without an auditable movement.
+
+## Practice Management protection
+
+- Practice profile is a tenant-level record.
+- Practice users may only access clients explicitly assigned to them.
+- Practice client records and ecosystem client/company records must not be confused.
+- Eco CLT numbers are cross-app identifiers.
+- Practice-only clients may exist without Eco CLT numbers.
+
+## Eco Dashboard rules
+
+- Eco Dashboard is the central app launcher.
+- Layer 0 / Platform Control Centre is for platform billing/service metadata only.
+- Platform super users must not access client operational business data through Platform Control Centre.
+- Coaching tile must only ever be visible to Ruan and must be backend-enforced.
+- Storehouse visibility rules must be backend-enforced.
+
+## SEAN rules
+
+- SEAN may retrieve data from other Lorenco apps only through approved APIs.
+- SEAN must not modify another app's code unless explicitly authorized.
+- SEAN data-source decisions must be audited and not assumed.
+
+## Implementation style
+
+- Make the smallest safe change.
+- Prefer server-side enforcement over frontend-only checks.
+- Prefer database constraints over comments.
+- Add tests or regression steps where practical.
+- Explain changes in plain language.
+- If unsure, stop and ask before changing files.
+
+## Forbidden behavior
+
+Do not:
+
+- Add localStorage/sessionStorage business persistence.
+- Remove company_id filters.
+- Trust frontend tenant context.
+- Make broad refactors without approval.
+- Hide errors with empty catch blocks.
+- Convert real failures into silent empty arrays.
+- Touch unrelated modules.
+- Modify migrations that have already been applied unless explicitly instructed.
+- Change financial/payroll calculation logic without a trace report.
