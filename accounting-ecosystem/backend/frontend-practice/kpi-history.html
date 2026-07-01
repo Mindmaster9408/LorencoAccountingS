@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KPI History — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+
+        /* ── Summary cards ─────────────────────────────────────────────── */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; text-align: center; }
+        .sc-count { font-size: 1.6rem; font-weight: 800; color: #e2e8f0; }
+        .sc-label { font-size: .72rem; color: #718096; margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+        .sc-trend-up   { color: #68d391; }
+        .sc-trend-down { color: #fc8181; }
+        .sc-trend-flat { color: #a0aec0; }
+
+        /* ── Filters ───────────────────────────────────────────────────── */
+        .filter-bar { background: #1e2035; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+        .filter-bar input, .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .btn-filter { background: #667eea; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-filter-clear { background: #2d3748; color: #a0aec0; border: none; border-radius: 6px; padding: 8px 14px; font-size: .82rem; cursor: pointer; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+        .btn-add:hover { background: #38a169; }
+
+        /* ── Table ─────────────────────────────────────────────────────── */
+        .table-wrap { background: #1e2035; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: 10px 14px; text-align: left; }
+        td { padding: 10px 14px; font-size: .82rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr.clickable:hover td { background: #252840; cursor: pointer; }
+        .empty-row td { text-align: center; color: #4a5568; padding: 32px; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+        .st-active   { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-archived { background: rgba(74,85,104,.3);   color: #718096; }
+        .type-chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: .7rem; background: #12122a; color: #a0aec0; }
+
+        .checkbox-cell { text-align: center; }
+
+        /* ── Section headings ──────────────────────────────────────────── */
+        .section-title { font-size: .95rem; font-weight: 700; margin: 20px 0 12px; display: flex; justify-content: space-between; align-items: center; }
+
+        /* ── Modals ────────────────────────────────────────────────────── */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+        .modal-sm { max-width: 480px; }
+        .modal-md { max-width: 660px; }
+        .modal-lg { max-width: 960px; }
+        .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; color: #e2e8f0; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="date"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #667eea; }
+        textarea { resize: vertical; min-height: 60px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+
+        .btn-action { padding: 8px 16px; border: none; border-radius: 7px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action:disabled { opacity: .55; cursor: not-allowed; }
+        .btn-primary   { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success   { background: #48bb78; color: #fff; }
+        .btn-danger    { background: #e53e3e; color: #fff; }
+        .btn-sm        { padding: 5px 11px; font-size: .78rem; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 7px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-content { padding: 4px 0; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+        .detail-row  { display: flex; flex-direction: column; padding: 8px 12px; border-bottom: 1px solid #12122a; }
+        .detail-label { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+        .detail-value { font-size: .85rem; color: #e2e8f0; }
+        .section-label { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 6px; }
+
+        .event-item { background: #12122a; border-radius: 8px; padding: 10px 14px; margin-bottom: 6px; }
+        .event-header { display: flex; gap: 8px; align-items: center; margin-bottom: 3px; }
+        .event-type { font-size: .78rem; font-weight: 700; color: #a0aec0; }
+        .event-time { font-size: .72rem; color: #4a5568; margin-left: auto; }
+        .event-notes { font-size: .78rem; color: #718096; font-style: italic; }
+
+        .compare-select-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+
+        .loading-state { text-align: center; color: #4a5568; padding: 20px; font-size: .85rem; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h1 style="font-size:1.3rem;font-weight:700;margin:0;">KPI History &amp; Trend Analytics</h1>
+            <button class="btn-add" onclick="kpiOpenCapture()">+ Capture Snapshot</button>
+        </div>
+        <div class="inline-msg info">
+            Deterministic KPI history only. Not AI. Not forecasting. Not predictive analytics.
+        </div>
+
+        <!-- Summary cards -->
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <span class="filter-label">Snapshot Type</span>
+                <select id="filterSnapshotType" onchange="kpiLoadList()">
+                    <option value="">All Types</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="annual">Annual</option>
+                    <option value="manual">Manual</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Status</span>
+                <select id="filterStatus" onchange="kpiLoadList()">
+                    <option value="active">Active</option>
+                    <option value="archived">Archived</option>
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Period From</span>
+                <input type="date" id="filterPeriodFrom" onchange="kpiLoadList()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Period To</span>
+                <input type="date" id="filterPeriodTo" onchange="kpiLoadList()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">&nbsp;</span>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn-filter" onclick="kpiLoadList()">Search</button>
+                    <button class="btn-filter-clear" onclick="kpiClearFilters()">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Snapshot list -->
+        <div class="section-title"><span>Snapshots</span></div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="checkbox-cell">Compare</th>
+                        <th>#</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Name</th>
+                        <th>Period</th>
+                        <th>Score</th>
+                        <th>Generated</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr class="empty-row"><td colspan="8">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="pagination" style="text-align:center;margin-bottom:20px;font-size:.82rem;color:#718096;"></div>
+
+        <div style="margin-bottom:20px;display:flex;gap:10px;">
+            <button class="btn-action btn-primary" onclick="kpiCompareSelected()">Compare Selected (2)</button>
+            <!-- Codebox 52 — Partner Review Pack integration -->
+            <button class="btn-action btn-secondary" onclick="kpiCreatePartnerPackFromSelected()" title="Use the 2 selected snapshots as the start/end of a new partner review pack">Create Partner Pack from Selected Snapshots</button>
+        </div>
+
+        <!-- Trend viewer -->
+        <div class="section-title"><span>Trend Viewer</span></div>
+        <div class="filter-bar">
+            <div class="filter-group">
+                <span class="filter-label">Metric</span>
+                <select id="trendMetric">
+                    <option value="overall_score">Overall Score</option>
+                    <option value="quality_score">Quality Score</option>
+                    <option value="compliance_score">Compliance Score</option>
+                    <option value="risk_score">Risk Score</option>
+                    <option value="capacity_score">Capacity Score</option>
+                    <option value="tax_score">Tax Score</option>
+                    <option value="open_risks">Open Risks</option>
+                    <option value="critical_risks">Critical Risks</option>
+                    <option value="open_findings">Open Findings</option>
+                    <option value="overdue_documents">Overdue Documents</option>
+                    <option value="tax_review_queue">Tax Review Queue</option>
+                    <option value="overdue_reminders">Overdue Reminders</option>
+                    <option value="capacity_overloaded_count">Capacity Overloaded Count</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Snapshot Type</span>
+                <select id="trendSnapshotType">
+                    <option value="">Any</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="annual">Annual</option>
+                    <option value="manual">Manual</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Period From</span>
+                <input type="date" id="trendPeriodFrom" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Period To</span>
+                <input type="date" id="trendPeriodTo" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">&nbsp;</span>
+                <button class="btn-filter" onclick="kpiLoadTrend()">Show Trend</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Period</th><th>Value</th><th>Delta</th><th>Direction</th></tr>
+                </thead>
+                <tbody id="trendBody">
+                    <tr class="empty-row"><td colspan="4">Select a metric and click "Show Trend".</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Capture Snapshot Modal ─────────────────────────────────────────── -->
+    <div class="modal-overlay" id="captureModal">
+        <div class="modal-box modal-md">
+            <div class="modal-title">Capture KPI Snapshot</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Snapshot Type *</label>
+                    <select id="capType">
+                        <option value="manual">Manual</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="annual">Annual</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Period Key</label>
+                    <input type="text" id="capPeriodKey" placeholder="e.g. 2026-07 or 2026-Q3 (optional)" />
+                </div>
+                <div class="form-group">
+                    <label>Period Start</label>
+                    <input type="date" id="capPeriodStart" />
+                </div>
+                <div class="form-group">
+                    <label>Period End</label>
+                    <input type="date" id="capPeriodEnd" />
+                </div>
+                <div class="form-group full">
+                    <label>Snapshot Name</label>
+                    <input type="text" id="capName" placeholder="Optional — auto-generated if blank" />
+                </div>
+                <div class="form-group full">
+                    <label>Notes</label>
+                    <textarea id="capNotes" placeholder="Optional notes"></textarea>
+                </div>
+            </div>
+            <div id="captureWarning"></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="kpiCloseCapture()">Cancel</button>
+                <button class="btn-action btn-primary" id="captureSubmitBtn" onclick="kpiSubmitCapture()">Capture Snapshot</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Snapshot Detail Modal ──────────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg">
+            <div id="detailTabBar" class="tab-bar"></div>
+            <div id="detailBody" style="min-height:200px;"></div>
+            <div class="modal-footer" id="detailFooter"></div>
+        </div>
+    </div>
+
+    <!-- ── Compare Modal ──────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="compareModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">Compare Snapshots</div>
+            <div id="compareBody" style="min-height:200px;"><div class="loading-state">Loading…</div></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="kpiCloseCompare()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/kpi-history.js"></script>
+    <script>LAYOUT.init('kpi-history');</script>
+</body>
+</html>

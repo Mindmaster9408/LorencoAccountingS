@@ -3193,6 +3193,23 @@ router.use('/qms', qualityManagementRouter);
 const riskRegisterRouter = require('./risk-register');
 router.use('/risk-register', riskRegisterRouter);
 
+// Management Dashboard — Executive Command Centre (Codebox 50)
+// Read-only aggregator for partners. NOT an operational page.
+const managementDashboardRouter = require('./management-dashboard');
+router.use('/management-dashboard', managementDashboardRouter);
+
+// Practice KPI Engine + Historical Trend Analytics (Codebox 51)
+// Deterministic KPI history — snapshots of the Management Dashboard over time.
+// NOT AI. NOT forecasting. NOT predictive analytics.
+const kpiHistoryRouter = require('./kpi-history');
+router.use('/kpi-history', kpiHistoryRouter);
+
+// Practice Partner Monthly Review Pack (Codebox 52)
+// Deterministic management reporting and partner sign-off, built from the
+// Management Dashboard and KPI History. NOT AI. NOT forecasting.
+const partnerReviewPacksRouter = require('./partner-review-packs');
+router.use('/partner-review-packs', partnerReviewPacksRouter);
+
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
 router.use('/dashboard', dashboardRouter);

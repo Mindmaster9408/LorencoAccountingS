@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Management Dashboard — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1500px; margin: 0 auto; }
+
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+
+        /* ── Score hero ────────────────────────────────────────────────── */
+        .score-hero { display: grid; grid-template-columns: 220px 1fr; gap: 20px; background: #1e2035; border-radius: 14px; padding: 22px; margin-bottom: 20px; }
+        .score-ring-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .score-ring { width: 160px; height: 160px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
+        .score-ring-inner { width: 130px; height: 130px; border-radius: 50%; background: #1e2035; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .score-value { font-size: 2.2rem; font-weight: 800; }
+        .score-label { font-size: .68rem; color: #718096; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+        .subscore-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-content: center; }
+        .subscore-card { background: #12122a; border-radius: 10px; padding: 12px 14px; }
+        .subscore-name { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+        .subscore-value { font-size: 1.3rem; font-weight: 800; }
+        .subscore-weight { font-size: .68rem; color: #4a5568; margin-top: 2px; }
+        .subscore-bar-track { height: 4px; background: #2d3748; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .subscore-bar-fill { height: 100%; border-radius: 2px; }
+
+        /* ── KPI grid ──────────────────────────────────────────────────── */
+        .section-title { font-size: .95rem; font-weight: 700; margin: 24px 0 12px; color: #e2e8f0; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+        .kpi-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; cursor: pointer; border-left: 3px solid #2d3748; transition: transform .1s; }
+        .kpi-card:hover { transform: translateY(-2px); }
+        .kpi-value { font-size: 1.5rem; font-weight: 800; }
+        .kpi-label { font-size: .72rem; color: #718096; margin-top: 3px; }
+        .kpi-good     { border-left-color: #68d391; }
+        .kpi-warn     { border-left-color: #f6ad55; }
+        .kpi-bad      { border-left-color: #fc8181; }
+        .kpi-neutral  { border-left-color: #667eea; }
+
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+        @media (max-width: 1000px) { .two-col { grid-template-columns: 1fr; } .score-hero { grid-template-columns: 1fr; } }
+
+        /* ── Alerts / feed / queue lists ──────────────────────────────── */
+        .panel { background: #1e2035; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+        .panel-title { font-size: .85rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .panel-count { background: #12122a; color: #a0aec0; border-radius: 10px; padding: 2px 9px; font-size: .72rem; }
+        .list-item { background: #12122a; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; font-size: .82rem; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .list-item-label { color: #e2e8f0; }
+        .list-item-meta { color: #718096; font-size: .72rem; white-space: nowrap; }
+        .sev-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: .68rem; font-weight: 700; margin-right: 6px; }
+        .sev-critical { background: rgba(229,62,62,.25); color: #feb2b2; }
+        .sev-high     { background: rgba(252,129,74,.2);  color: #fc8181; }
+        .sev-overdue  { background: rgba(246,173,85,.2);  color: #f6ad55; }
+        .sev-blocked  { background: rgba(160,174,192,.2); color: #a0aec0; }
+        .sev-needs_partner     { background: rgba(102,126,234,.2); color: #818cf8; }
+        .sev-requires_approval { background: rgba(104,211,145,.2); color: #68d391; }
+        .empty-note { color: #4a5568; font-size: .82rem; padding: 12px; text-align: center; }
+        .loading-state { text-align: center; color: #4a5568; padding: 20px; font-size: .85rem; }
+
+        /* ── Quick actions ─────────────────────────────────────────────── */
+        .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+        .qa-btn { display: block; background: #12122a; color: #e2e8f0; border-radius: 8px; padding: 12px 10px; text-align: center; text-decoration: none; font-size: .8rem; font-weight: 700; border: 1px solid #2d3748; }
+        .qa-btn:hover { border-color: #667eea; background: #1a1c33; }
+
+        .feed-source { display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: .65rem; font-weight: 700; background: #2d3748; color: #a0aec0; margin-right: 6px; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h1 style="font-size:1.3rem;font-weight:700;margin:0;">Management Dashboard</h1>
+            <div style="display:flex;gap:10px;">
+                <!-- Codebox 51 — KPI History integration -->
+                <a href="/practice/kpi-history.html?capture=1" style="display:inline-flex;align-items:center;background:#48bb78;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:.82rem;font-weight:700;text-decoration:none;" title="Capture a KPI history snapshot of the current dashboard state">📸 Capture KPI Snapshot</a>
+                <!-- Codebox 52 — Partner Review Pack integration -->
+                <a href="/practice/partner-review-packs.html?generate=1" style="display:inline-flex;align-items:center;background:#805ad5;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:.82rem;font-weight:700;text-decoration:none;" title="Generate a monthly partner review pack">📄 Generate Monthly Review Pack</a>
+                <button onclick="mdRefreshAll()" style="background:#2d3748;color:#e2e8f0;border:none;border-radius:8px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">↻ Refresh</button>
+            </div>
+        </div>
+        <div class="inline-msg info">
+            The executive command centre — where partners manage the practice. Read-only. Not an operational page.
+        </div>
+
+        <!-- Practice Score hero -->
+        <div class="score-hero">
+            <div class="score-ring-wrap">
+                <div class="score-ring" id="scoreRing">
+                    <div class="score-ring-inner">
+                        <div class="score-value" id="scoreValue">—</div>
+                        <div class="score-label">Practice Score</div>
+                    </div>
+                </div>
+            </div>
+            <div class="subscore-grid" id="subscoreGrid"></div>
+        </div>
+
+        <!-- KPI sections -->
+        <div class="section-title">Practice &amp; Capacity</div>
+        <div class="kpi-grid" id="kpiPractice"></div>
+
+        <div class="section-title">Tax</div>
+        <div class="kpi-grid" id="kpiTax"></div>
+
+        <div class="section-title">Quality (QMS)</div>
+        <div class="kpi-grid" id="kpiQms"></div>
+
+        <div class="section-title">Risk</div>
+        <div class="kpi-grid" id="kpiRisk"></div>
+
+        <div class="section-title">Client Health</div>
+        <div class="kpi-grid" id="kpiClientHealth"></div>
+
+        <div class="section-title">Knowledge &amp; SOP</div>
+        <div class="kpi-grid" id="kpiKnowledgeSop"></div>
+
+        <div class="section-title">Billing, Reminders &amp; Compliance</div>
+        <div class="kpi-grid" id="kpiOps"></div>
+
+        <!-- Two column: Alerts + Partner Queue -->
+        <div class="two-col" style="margin-top:24px;">
+            <div class="panel">
+                <div class="panel-title"><span>⚠ Alerts</span><span class="panel-count" id="alertsCount">0</span></div>
+                <div id="alertsList"><div class="loading-state">Loading…</div></div>
+            </div>
+            <div class="panel">
+                <div class="panel-title"><span>🕓 Partner Queue</span><span class="panel-count" id="queueCount">0</span></div>
+                <div id="queueList"><div class="loading-state">Loading…</div></div>
+            </div>
+        </div>
+
+        <!-- Executive feed -->
+        <div class="panel">
+            <div class="panel-title"><span>📰 Executive Feed</span><span class="panel-count" id="feedCount">0</span></div>
+            <div id="feedList"><div class="loading-state">Loading…</div></div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="panel">
+            <div class="panel-title">Quick Actions</div>
+            <div class="quick-actions">
+                <a class="qa-btn" href="/practice/quality-management.html">QMS</a>
+                <a class="qa-btn" href="/practice/risk-register.html">Risk</a>
+                <a class="qa-btn" href="/practice/tax-dashboard.html">Tax Dashboard</a>
+                <a class="qa-btn" href="/practice/capacity.html">Capacity</a>
+                <a class="qa-btn" href="/practice/client-health.html">Client Health</a>
+                <a class="qa-btn" href="/practice/compliance.html">Compliance</a>
+                <a class="qa-btn" href="/practice/billing.html">Billing</a>
+                <a class="qa-btn" href="/practice/knowledge-base.html">Knowledge</a>
+                <a class="qa-btn" href="/practice/practice-sop.html">SOP</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/management-dashboard.js"></script>
+    <script>LAYOUT.init('management-dashboard');</script>
+</body>
+</html>

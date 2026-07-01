@@ -6,6 +6,9 @@
 (function () {
     var PAGES = [
         { key: 'dashboard',   label: 'Dashboard',   href: '/practice' },
+        { key: 'management-dashboard', label: 'Management Dashboard', href: '/practice/management-dashboard.html' },
+        { key: 'kpi-history', label: 'KPI History', href: '/practice/kpi-history.html' },
+        { key: 'partner-review-packs', label: 'Partner Review Packs', href: '/practice/partner-review-packs.html' },
         { key: 'profile',     label: 'Profile',     href: '/practice/profile.html' },
         { key: 'team',        label: 'Team',        href: '/practice/team.html' },
         { key: 'clients',    label: 'Clients',    href: '/practice/clients.html' },

@@ -1,0 +1,251 @@
+/* Codebox 50 — Management Dashboard (Executive Command Centre)
+ * Read-only aggregator for partners. NOT an operational page. NOT AI.
+ * Prefix: md
+ */
+(function () {
+    'use strict';
+
+    var BASE = '/api/practice/management-dashboard';
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function _html(s) {
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function _fmt(s) { return s ? new Date(s).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }) : '—'; }
+
+    function _scoreColor(v) {
+        if (v >= 80) return '#68d391';
+        if (v >= 60) return '#f6ad55';
+        return '#fc8181';
+    }
+
+    function _kpiClass(value, warnAt, badAt) {
+        if (value >= badAt) return 'kpi-bad';
+        if (value >= warnAt) return 'kpi-warn';
+        return 'kpi-good';
+    }
+
+    // ── Boot ─────────────────────────────────────────────────────────────────
+
+    function mdRefreshAll() {
+        _loadScore();
+        _loadSummary();
+        _loadAlerts();
+        _loadPartnerQueue();
+        _loadFeed();
+    }
+
+    // ── Practice Score ───────────────────────────────────────────────────────
+
+    function _loadScore() {
+        window.PracticeAPI.fetch(BASE + '/practice-score')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderScore(d); })
+            .catch(function () {});
+    }
+
+    function _renderScore(d) {
+        var overall = d.overall_score != null ? d.overall_score : 0;
+        var color = _scoreColor(overall);
+        document.getElementById('scoreValue').textContent = overall;
+        document.getElementById('scoreValue').style.color = color;
+        document.getElementById('scoreRing').style.background =
+            'conic-gradient(' + color + ' ' + (overall * 3.6) + 'deg, #12122a 0deg)';
+
+        var weights = d.weights || {};
+        var scores = d.scores || {};
+        var order = ['quality', 'compliance', 'risk', 'capacity', 'tax'];
+        var labels = { quality: 'Quality', compliance: 'Compliance', risk: 'Risk', capacity: 'Capacity', tax: 'Tax' };
+
+        document.getElementById('subscoreGrid').innerHTML = order.map(function (key) {
+            var val = scores[key] != null ? scores[key] : 0;
+            var weight = weights[key] != null ? Math.round(weights[key] * 100) : 0;
+            var c = _scoreColor(val);
+            return '<div class="subscore-card">' +
+                '<div class="subscore-name">' + labels[key] + '</div>' +
+                '<div class="subscore-value" style="color:' + c + ';">' + val + '</div>' +
+                '<div class="subscore-weight">Weight: ' + weight + '%</div>' +
+                '<div class="subscore-bar-track"><div class="subscore-bar-fill" style="width:' + val + '%;background:' + c + ';"></div></div>' +
+            '</div>';
+        }).join('');
+    }
+
+    // ── Summary KPIs ──────────────────────────────────────────────────────────
+
+    function _loadSummary() {
+        window.PracticeAPI.fetch(BASE + '/summary')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderSummary(d); })
+            .catch(function () {});
+    }
+
+    function _kpi(cls, value, label, href) {
+        var onclick = href ? ' onclick="window.location.href=\'' + href + '\'"' : '';
+        return '<div class="kpi-card ' + cls + '"' + onclick + '>' +
+            '<div class="kpi-value">' + _html(value) + '</div>' +
+            '<div class="kpi-label">' + _html(label) + '</div>' +
+        '</div>';
+    }
+
+    function _renderSummary(d) {
+        var p = d.practice || {}, c = d.capacity || {}, t = d.tax || {}, q = d.qms || {}, rk = d.risk || {},
+            ch = d.client_health || {}, kb = d.knowledge || {}, sop = d.sop || {}, b = d.billing || {},
+            rem = d.reminders || {}, doc = d.document_requests || {}, comm = d.communications || {}, comp = d.compliance || {};
+
+        document.getElementById('kpiPractice').innerHTML =
+            _kpi('kpi-neutral', p.active_clients || 0, 'Active Clients', '/practice/clients.html') +
+            _kpi('kpi-neutral', p.active_staff || 0, 'Active Staff', '/practice/team.html') +
+            _kpi(_kpiClass(p.open_tasks || 0, 20, 50), p.open_tasks || 0, 'Open Tasks', '/practice/tasks.html') +
+            _kpi(_kpiClass(p.overdue_tasks || 0, 1, 5), p.overdue_tasks || 0, 'Overdue Tasks', '/practice/tasks.html') +
+            _kpi(_kpiClass(c.over_capacity_staff || 0, 1, 3), c.over_capacity_staff || 0, 'Over-Capacity Staff', '/practice/capacity.html') +
+            _kpi('kpi-neutral', (c.avg_utilization_pct != null ? c.avg_utilization_pct + '%' : '—'), 'Avg Utilization', '/practice/capacity.html');
+
+        document.getElementById('kpiTax').innerHTML =
+            _kpi('kpi-neutral', t.open_returns || 0, 'Open Returns', '/practice/tax-dashboard.html') +
+            _kpi('kpi-neutral', t.ready_review || 0, 'Ready for Review', '/practice/tax-pipeline.html') +
+            _kpi('kpi-good', t.ready_submit || 0, 'Ready to Submit', '/practice/tax-pipeline.html') +
+            _kpi('kpi-neutral', t.pipeline || 0, 'In Pipeline', '/practice/tax-pipeline.html') +
+            _kpi(_kpiClass(t.payments_outstanding || 0, 1, 5), t.payments_outstanding || 0, 'Payments Outstanding', '/practice/tax-payments.html') +
+            _kpi(_kpiClass(t.sars_recon_unmatched || 0, 1, 10), t.sars_recon_unmatched || 0, 'SARS Unmatched Lines', '/practice/sars-recon.html') +
+            _kpi(_kpiClass(t.open_disputes || 0, 1, 5), t.open_disputes || 0, 'Open Disputes', '/practice/tax-disputes.html') +
+            _kpi('kpi-neutral', t.completion_packs_active || 0, 'Completion Packs Active', '/practice/tax-completion.html');
+
+        document.getElementById('kpiQms').innerHTML =
+            _kpi('kpi-neutral', q.active_reviews || 0, 'Active Reviews', '/practice/quality-management.html') +
+            _kpi(_kpiClass(q.failed_reviews || 0, 1, 3), q.failed_reviews || 0, 'Failed Reviews', '/practice/quality-management.html') +
+            _kpi(_kpiClass(q.needs_correction || 0, 1, 3), q.needs_correction || 0, 'Needs Correction', '/practice/quality-management.html') +
+            _kpi(_kpiClass(q.open_findings || 0, 3, 10), q.open_findings || 0, 'Open Findings', '/practice/quality-management.html') +
+            _kpi(_kpiClass(q.critical_findings || 0, 1, 3), q.critical_findings || 0, 'Critical Findings', '/practice/quality-management.html') +
+            _kpi(_kpiClass(q.high_findings || 0, 1, 5), q.high_findings || 0, 'High Findings', '/practice/quality-management.html');
+
+        document.getElementById('kpiRisk').innerHTML =
+            _kpi('kpi-neutral', rk.open_risks || 0, 'Open Risks', '/practice/risk-register.html') +
+            _kpi(_kpiClass(rk.high_risks || 0, 1, 5), rk.high_risks || 0, 'High Risks', '/practice/risk-register.html') +
+            _kpi(_kpiClass(rk.critical_risks || 0, 1, 3), rk.critical_risks || 0, 'Critical Risks', '/practice/risk-register.html');
+
+        document.getElementById('kpiClientHealth').innerHTML =
+            _kpi('kpi-good', ch.healthy || 0, 'Healthy', '/practice/client-health.html') +
+            _kpi('kpi-warn', ch.watch || 0, 'Watch', '/practice/client-health.html') +
+            _kpi(_kpiClass(ch.critical || 0, 1, 3), ch.critical || 0, 'Critical', '/practice/client-health.html') +
+            _kpi('kpi-neutral', ch.unknown || 0, 'Unassessed', '/practice/client-health.html');
+
+        document.getElementById('kpiKnowledgeSop').innerHTML =
+            _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/practice/knowledge-base.html') +
+            _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/practice/knowledge-base.html') +
+            _kpi('kpi-good', kb.approved || 0, 'Knowledge: Approved', '/practice/knowledge-base.html') +
+            _kpi('kpi-neutral', sop.draft || 0, 'SOP: Draft', '/practice/practice-sop.html') +
+            _kpi('kpi-neutral', sop.under_review || 0, 'SOP: Under Review', '/practice/practice-sop.html') +
+            _kpi('kpi-good', sop.approved || 0, 'SOP: Approved', '/practice/practice-sop.html');
+
+        document.getElementById('kpiOps').innerHTML =
+            _kpi('kpi-neutral', b.draft_packs || 0, 'Billing: Draft Packs', '/practice/billing.html') +
+            _kpi('kpi-neutral', b.locked_packs || 0, 'Billing: Locked Packs', '/practice/billing.html') +
+            _kpi('kpi-neutral', (b.realisation_pct != null ? b.realisation_pct + '%' : '—'), 'Realisation Rate', '/practice/billing.html') +
+            _kpi(_kpiClass(rem.overdue || 0, 1, 5), rem.overdue || 0, 'Reminders Overdue', '/practice/reminders.html') +
+            _kpi('kpi-neutral', rem.upcoming || 0, 'Reminders Upcoming (7d)', '/practice/reminders.html') +
+            _kpi(_kpiClass(doc.overdue || 0, 1, 5), doc.overdue || 0, 'Documents Overdue', '/practice/document-requests.html') +
+            _kpi('kpi-neutral', doc.outstanding || 0, 'Documents Outstanding', '/practice/document-requests.html') +
+            _kpi(_kpiClass(comm.unread_followups || 0, 1, 5), comm.unread_followups || 0, 'Comms Awaiting Reply', '/practice/communications.html') +
+            _kpi('kpi-neutral', comp.open || 0, 'Compliance Open', '/practice/compliance.html') +
+            _kpi(_kpiClass(comp.blocked || 0, 1, 3), comp.blocked || 0, 'Compliance Blocked', '/practice/compliance-packs.html');
+    }
+
+    // ── Alerts ────────────────────────────────────────────────────────────────
+
+    var SEV_LABELS = {
+        critical: 'Critical', high: 'High', overdue: 'Overdue', blocked: 'Blocked',
+        needs_partner: 'Needs Partner', requires_approval: 'Requires Approval',
+    };
+
+    function _loadAlerts() {
+        window.PracticeAPI.fetch(BASE + '/alerts')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderAlerts(d.alerts || []); })
+            .catch(function () { document.getElementById('alertsList').innerHTML = '<div class="empty-note">Failed to load alerts</div>'; });
+    }
+
+    function _renderAlerts(items) {
+        document.getElementById('alertsCount').textContent = items.length;
+        if (!items.length) {
+            document.getElementById('alertsList').innerHTML = '<div class="empty-note">No active alerts.</div>';
+            return;
+        }
+        document.getElementById('alertsList').innerHTML = items.slice(0, 40).map(function (a) {
+            return '<div class="list-item">' +
+                '<span class="list-item-label"><span class="sev-pill sev-' + _html(a.severity) + '">' + _html(SEV_LABELS[a.severity] || a.severity) + '</span>' + _html(a.label) + '</span>' +
+                (a.due ? '<span class="list-item-meta">Due ' + _html(a.due) + '</span>' : '') +
+            '</div>';
+        }).join('');
+    }
+
+    // ── Partner Queue ─────────────────────────────────────────────────────────
+
+    function _loadPartnerQueue() {
+        window.PracticeAPI.fetch(BASE + '/partner-review')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderPartnerQueue(d); })
+            .catch(function () { document.getElementById('queueList').innerHTML = '<div class="empty-note">Failed to load partner queue</div>'; });
+    }
+
+    function _renderPartnerQueue(d) {
+        document.getElementById('queueCount').textContent = d.total || 0;
+        var groups = [
+            { items: d.knowledge_approvals || [], label: 'Knowledge approval', field: 'title' },
+            { items: d.sop_approvals       || [], label: 'SOP approval',       field: 'title' },
+            { items: d.tax_completion      || [], label: 'Tax completion review', field: 'id' },
+            { items: d.qms_reviews         || [], label: 'QMS review',         field: 'review_title' },
+            { items: d.risk_acceptance     || [], label: 'Risk acceptance',    field: 'title' },
+            { items: d.billing_approval    || [], label: 'Billing approval',   field: 'id' },
+        ];
+        var html = '';
+        groups.forEach(function (g) {
+            g.items.forEach(function (it) {
+                var label = it[g.field] != null ? it[g.field] : ('#' + it.id);
+                html += '<div class="list-item">' +
+                    '<span class="list-item-label"><span class="feed-source">' + _html(g.label) + '</span>' + _html(label) + '</span>' +
+                    '<span class="list-item-meta">' + (it.updated_at ? _fmt(it.updated_at) : '') + '</span>' +
+                '</div>';
+            });
+        });
+        document.getElementById('queueList').innerHTML = html || '<div class="empty-note">Nothing waiting for partner review.</div>';
+    }
+
+    // ── Executive Feed ────────────────────────────────────────────────────────
+
+    function _loadFeed() {
+        window.PracticeAPI.fetch(BASE + '/executive-feed?limit=40')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderFeed(d.feed || []); })
+            .catch(function () { document.getElementById('feedList').innerHTML = '<div class="empty-note">Failed to load feed</div>'; });
+    }
+
+    function _renderFeed(items) {
+        document.getElementById('feedCount').textContent = items.length;
+        if (!items.length) {
+            document.getElementById('feedList').innerHTML = '<div class="empty-note">No recent activity.</div>';
+            return;
+        }
+        document.getElementById('feedList').innerHTML = items.map(function (e) {
+            return '<div class="list-item">' +
+                '<span class="list-item-label"><span class="feed-source">' + _html(e.source) + '</span>' + _html(e.description) + '</span>' +
+                '<span class="list-item-meta">' + _fmt(e.at) + '</span>' +
+            '</div>';
+        }).join('');
+    }
+
+    // ── Exports ───────────────────────────────────────────────────────────────
+
+    window.mdRefreshAll = mdRefreshAll;
+
+    // ── Boot ─────────────────────────────────────────────────────────────────
+
+    LAYOUT.onReady(function () {
+        mdRefreshAll();
+    });
+
+}());
