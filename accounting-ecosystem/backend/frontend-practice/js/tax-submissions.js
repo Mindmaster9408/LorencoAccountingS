@@ -370,6 +370,10 @@
         html += '<a href="/practice/tax-completion.html?submission_id=' + encodeURIComponent(d.id) + '" ' +
             'style="display:inline-flex;align-items:center;padding:7px 14px;background:#1a4d2e;color:#68d391;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;gap:6px;" ' +
             'title="Open or create the completion pack for this submission">Completion Pack ↗</a>';
+        // Codebox 46 — Knowledge Base integration
+        html += '<a href="/practice/knowledge-base.html?linked_type=tax_submission&linked_id=' + encodeURIComponent(d.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#2d1e4d;color:#b794f4;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;gap:6px;" ' +
+            'title="View knowledge articles linked to this submission">Knowledge ↗</a>';
         document.getElementById('detailFooter').innerHTML = html;
     }
 

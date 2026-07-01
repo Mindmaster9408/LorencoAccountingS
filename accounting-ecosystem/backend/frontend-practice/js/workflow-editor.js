@@ -36,6 +36,12 @@ async function loadTemplate(id) {
     document.getElementById('pageTitle').textContent = d.template.name || 'Edit Template';
     document.getElementById('saveBtn').textContent = 'Save Template';
     document.getElementById('stepsSection').style.display = '';
+    // Codebox 47 — Attached SOPs link, now that the template has an ID
+    var sopLink = document.getElementById('sopLibraryLink');
+    if (sopLink) {
+      sopLink.href = '/practice/practice-sop.html?linked_type=workflow_template&linked_id=' + encodeURIComponent(id);
+      sopLink.style.display = '';
+    }
     await loadSteps(id);
   } catch (e) {
     PracticeAPI.showToast('Failed to load template: ' + e.message, true);
@@ -164,6 +170,7 @@ function renderStepsList(steps) {
       '<div class="step-card-actions">' +
         '<button class="btn-ghost-sm" onclick="moveUp(' + s.id + ')" title="Move up" aria-label="Move up">↑</button>' +
         '<button class="btn-ghost-sm" onclick="moveDown(' + s.id + ')" title="Move down" aria-label="Move down">↓</button>' +
+        '<a class="btn-ghost-sm" href="/practice/practice-sop.html?linked_type=workflow_step&linked_id=' + s.id + '" title="View SOPs attached to this step" aria-label="View instructions">📋 Instructions</a>' +
         '<button class="btn-ghost-sm" onclick="openEditStep(' + s.id + ')" aria-label="Edit step">Edit</button>' +
         '<button class="btn-danger-sm" onclick="confirmDeleteStep(' + s.id + ')" aria-label="Delete step">Delete</button>' +
       '</div>' +

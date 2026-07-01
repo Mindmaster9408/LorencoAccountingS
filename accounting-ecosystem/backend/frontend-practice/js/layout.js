@@ -38,6 +38,10 @@
         { key: 'sars-recon',         label: 'SARS Recon',         href: '/practice/sars-recon.html' },
         { key: 'tax-disputes',        label: 'Tax Disputes',        href: '/practice/tax-disputes.html' },
         { key: 'tax-completion',     label: 'Tax Completion',     href: '/practice/tax-completion.html' },
+        { key: 'knowledge-base',     label: 'Knowledge Base',     href: '/practice/knowledge-base.html' },
+        { key: 'practice-sop',       label: 'Practice SOPs',      href: '/practice/practice-sop.html' },
+        { key: 'quality',            label: 'Quality',            href: '/practice/quality-management.html' },
+        { key: 'risk-register',      label: 'Risk Register',      href: '/practice/risk-register.html' },
         { key: 'tax-configs',        label: 'Tax Config',         href: '/practice/tax-configs.html' }
     ];
 

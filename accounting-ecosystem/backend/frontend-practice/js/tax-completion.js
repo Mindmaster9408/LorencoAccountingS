@@ -640,6 +640,22 @@
                 'style="display:inline-flex;align-items:center;padding:7px 14px;background:#2d3748;color:#e2e8f0;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;" ' +
                 'title="View dispute cases for this submission">Open Disputes ↗</a>';
         }
+        // Codebox 46 — Knowledge Base integration
+        html += ' <a href="/practice/knowledge-base.html?linked_type=tax_completion_pack&linked_id=' + encodeURIComponent(d.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#2d1e4d;color:#b794f4;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;" ' +
+            'title="View knowledge articles linked to this completion pack">Knowledge ↗</a>';
+        // Codebox 47 — SOP Library integration
+        html += ' <a href="/practice/practice-sop.html?linked_type=completion_pack&linked_id=' + encodeURIComponent(d.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#1e2d4d;color:#90cdf4;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;" ' +
+            'title="View standard procedure for this completion pack">Procedure ↗</a>';
+        // Codebox 48 — QMS integration
+        html += ' <a href="/practice/quality-management.html?linked_type=completion_pack&linked_id=' + encodeURIComponent(d.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#1e2d4d;color:#90cdf4;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;" ' +
+            'title="View quality reviews for this completion pack">QMS Review ↗</a>';
+        // Codebox 49 — Risk Register integration
+        html += ' <a href="/practice/risk-register.html?source_type=completion_pack&source_id=' + encodeURIComponent(d.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#4d1e2d;color:#f6ad55;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;" ' +
+            'title="View or create a risk register entry for this completion pack">Risk ↗</a>';
 
         _setHTML('detailFooter', html);
     }

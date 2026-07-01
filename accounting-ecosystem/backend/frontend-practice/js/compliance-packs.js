@@ -369,6 +369,20 @@
         var readyLabels = { incomplete: 'Incomplete', partial: 'Partial', ready: 'Ready', blocked: 'Blocked', unknown: 'Unknown' };
         document.getElementById('cpDReadinessLabel').textContent = 'Readiness: ' + (readyLabels[rs] || rs);
         document.getElementById('cpDScoreLabel').textContent     = score != null ? score + '%' : '—';
+
+        // Codebox 47 — Procedure link (additive, DOM-only — no HTML file change needed)
+        var subEl = document.getElementById('cpDSub');
+        if (subEl) {
+            var existingLink = document.getElementById('cpProcedureLinkWrap');
+            if (existingLink) existingLink.remove();
+            var wrap = document.createElement('div');
+            wrap.id = 'cpProcedureLinkWrap';
+            wrap.style.marginTop = '8px';
+            wrap.innerHTML = '<a href="/practice/practice-sop.html?linked_type=compliance_pack&linked_id=' + encodeURIComponent(pack.id) + '" ' +
+                'style="display:inline-flex;align-items:center;padding:6px 12px;background:#2d1e4d;color:#b794f4;border-radius:8px;font-size:.8rem;font-weight:700;text-decoration:none;" ' +
+                'title="View standard procedure for this compliance pack">Procedure ↗</a>';
+            subEl.insertAdjacentElement('afterend', wrap);
+        }
     }
 
     function renderDetailItems(items) {

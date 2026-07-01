@@ -551,6 +551,14 @@
                 'style="display:inline-flex;align-items:center;padding:7px 14px;background:#2d3748;color:#e2e8f0;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;gap:6px;" ' +
                 'title="All disputes for this submission">All Sub Disputes ↗</a>';
         }
+        // Codebox 46 — Knowledge Base integration
+        html += '<a href="/practice/knowledge-base.html?linked_type=tax_dispute&linked_id=' + encodeURIComponent(c.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#2d1e4d;color:#b794f4;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;gap:6px;" ' +
+            'title="View knowledge articles linked to this dispute case">Knowledge ↗</a>';
+        // Codebox 49 — Risk Register integration
+        html += '<a href="/practice/risk-register.html?source_type=tax_dispute&source_id=' + encodeURIComponent(c.id) + '" ' +
+            'style="display:inline-flex;align-items:center;padding:7px 14px;background:#4d1e2d;color:#f6ad55;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;gap:6px;" ' +
+            'title="View or create a risk register entry for this dispute">Risk ↗</a>';
 
         document.getElementById('detailFooter').innerHTML = html;
     }

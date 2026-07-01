@@ -3169,6 +3169,30 @@ router.use('/tax-disputes', taxDisputesRouter);
 const taxCompletionRouter = require('./tax-completion');
 router.use('/tax-completion', taxCompletionRouter);
 
+// Practice Knowledge Base + Technical Opinion Library (Codebox 46)
+// Human-controlled knowledge library: SARS interpretations, internal policies,
+// technical opinions, SOPs, working paper notes. NOT AI-generated. NOT Sean AI.
+const knowledgeBaseRouter = require('./knowledge-base');
+router.use('/knowledge', knowledgeBaseRouter);
+
+// Practice SOP Templates + Workflow Instruction Library (Codebox 47)
+// The practice's operational instruction manual — HOW work must be performed.
+// NOT AI. NOT document management. NOT workflow execution.
+const practiceSopRouter = require('./practice-sop');
+router.use('/sop', practiceSopRouter);
+
+// Practice Quality Management System — QMS (Codebox 48)
+// Quality reviews, non-conformance findings, and CAPA tracking.
+// NOT AI. NOT a disciplinary workflow. NOT Sean AI.
+const qualityManagementRouter = require('./quality-management');
+router.use('/qms', qualityManagementRouter);
+
+// Practice Risk Register + Internal Control Matrix (Codebox 49)
+// Internal practice governance — risks, controls, periodic reviews.
+// NOT enterprise risk software.
+const riskRegisterRouter = require('./risk-register');
+router.use('/risk-register', riskRegisterRouter);
+
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
 router.use('/dashboard', dashboardRouter);

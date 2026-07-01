@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Practice SOPs — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        /* ── Base ──────────────────────────────────────────────────────── */
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+        /* ── Summary cards ─────────────────────────────────────────────── */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: border-color .15s; }
+        .summary-card:hover { border-color: #667eea; }
+        .sc-count { font-size: 1.6rem; font-weight: 800; color: #e2e8f0; }
+        .sc-label { font-size: .72rem; color: #718096; margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+        .sc-draft     { border-left: 3px solid #f6ad55; }
+        .sc-review    { border-left: 3px solid #667eea; }
+        .sc-approved  { border-left: 3px solid #68d391; }
+        .sc-archived  { border-left: 3px solid #4a5568; }
+
+        /* ── Filters ───────────────────────────────────────────────────── */
+        .filter-bar { background: #1e2035; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+        .filter-bar input, .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: #667eea; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .btn-filter { background: #667eea; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-filter:hover { background: #5a67d8; }
+        .btn-filter-clear { background: #2d3748; color: #a0aec0; border: none; border-radius: 6px; padding: 8px 14px; font-size: .82rem; cursor: pointer; }
+        .btn-filter-clear:hover { background: #3a4555; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+        .btn-add:hover { background: #38a169; }
+
+        /* ── Table ─────────────────────────────────────────────────────── */
+        .table-wrap { background: #1e2035; border-radius: 12px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: 10px 14px; text-align: left; }
+        td { padding: 10px 14px; font-size: .82rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #252840; cursor: pointer; }
+        .empty-row td { text-align: center; color: #4a5568; padding: 32px; }
+        .td-title { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* ── Status pills ──────────────────────────────────────────────── */
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+        .st-draft        { background: rgba(246,173,85,.15); color: #f6ad55; }
+        .st-under_review { background: rgba(102,126,234,.2);  color: #818cf8; }
+        .st-approved     { background: rgba(104,211,145,.2);  color: #68d391; }
+        .st-archived     { background: rgba(74,85,104,.3);    color: #718096; }
+
+        /* ── Difficulty badges ─────────────────────────────────────────── */
+        .diff-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: .7rem; font-weight: 700; }
+        .diff-beginner     { background: rgba(104,211,145,.2); color: #68d391; }
+        .diff-intermediate { background: rgba(246,173,85,.2);  color: #f6ad55; }
+        .diff-advanced     { background: rgba(252,129,74,.2);  color: #fc8181; }
+        .cat-chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: .7rem; background: #12122a; color: #a0aec0; }
+
+        /* ── Modals ────────────────────────────────────────────────────── */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+        .modal-sm  { max-width: 480px; }
+        .modal-md  { max-width: 640px; }
+        .modal-lg  { max-width: 900px; }
+        .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; color: #e2e8f0; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], input[type="date"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #667eea; }
+        textarea { resize: vertical; min-height: 70px; }
+        textarea#createInstructionBody, textarea#editInstructionBody { min-height: 220px; font-family: 'SF Mono', Consolas, monospace; font-size: .82rem; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+
+        /* ── Buttons ───────────────────────────────────────────────────── */
+        .btn-action { padding: 8px 16px; border: none; border-radius: 7px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action:disabled { opacity: .55; cursor: not-allowed; }
+        .btn-primary   { background: #667eea; color: #fff; }
+        .btn-primary:hover { background: #5a67d8; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-secondary:hover { background: #3a4555; }
+        .btn-success   { background: #48bb78; color: #fff; }
+        .btn-success:hover { background: #38a169; }
+        .btn-danger    { background: #e53e3e; color: #fff; }
+        .btn-danger:hover { background: #c53030; }
+        .btn-sm        { padding: 5px 11px; font-size: .78rem; }
+
+        /* ── Detail modal tabs ──────────────────────────────────────────── */
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 7px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-content { padding: 4px 0; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+        .detail-row  { display: flex; flex-direction: column; padding: 8px 12px; border-bottom: 1px solid #12122a; }
+        .detail-label { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+        .detail-value { font-size: .85rem; color: #e2e8f0; }
+        .section-label { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 6px; }
+        .content-view { background: #12122a; border-radius: 8px; padding: 16px; font-size: .85rem; line-height: 1.6; white-space: pre-wrap; color: #cbd5e0; }
+
+        /* ── Links / events items ──────────────────────────────────────── */
+        .link-item, .event-item { background: #12122a; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+        .link-item-header, .event-header { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+        .link-title, .event-type { font-weight: 700; color: #e2e8f0; font-size: .85rem; }
+        .link-meta, .event-notes { font-size: .78rem; color: #718096; margin-top: 3px; }
+        .event-time { font-size: .72rem; color: #4a5568; margin-left: auto; }
+        .event-status-change { display: flex; gap: 6px; align-items: center; font-size: .75rem; margin-bottom: 3px; }
+        .event-arrow { color: #4a5568; }
+
+        /* ── Inline messages ────────────────────────────────────────────── */
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 10px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .loading-state { text-align: center; color: #4a5568; padding: 20px; font-size: .85rem; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h1 style="font-size:1.3rem;font-weight:700;margin:0;">Practice SOPs — Workflow Instruction Library</h1>
+            <button class="btn-add" onclick="sopOpenCreate()">+ New SOP</button>
+        </div>
+
+        <div class="inline-msg info">
+            The practice's operational instruction manual — HOW work must be performed. Not AI. Not document management. Not workflow execution.
+        </div>
+
+        <!-- Summary cards -->
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <span class="filter-label">Category</span>
+                <input type="text" id="filterCategory" placeholder="e.g. vat" style="width:130px" onchange="sopLoad()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Status</span>
+                <select id="filterStatus" onchange="sopLoad()">
+                    <option value="">All Statuses</option>
+                    <option value="draft">Draft</option>
+                    <option value="under_review">Under Review</option>
+                    <option value="approved">Approved</option>
+                    <option value="archived">Archived</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Difficulty</span>
+                <select id="filterDifficulty" onchange="sopLoad()">
+                    <option value="">All Levels</option>
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Search</span>
+                <input type="text" id="filterSearch" placeholder="Title / summary / instructions" style="width:220px" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">&nbsp;</span>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn-filter" onclick="sopLoad()">Search</button>
+                    <button class="btn-filter-clear" onclick="sopClearFilters()">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SOP table -->
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Status</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Difficulty</th>
+                        <th>Est. Minutes</th>
+                        <th>Version</th>
+                        <th>Updated</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr class="empty-row"><td colspan="8">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="pagination" style="text-align:center;margin-top:14px;font-size:.82rem;color:#718096;"></div>
+    </div>
+
+    <!-- ── Create SOP Modal ───────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">New SOP</div>
+            <div class="form-row">
+                <div class="form-group full">
+                    <label>Title *</label>
+                    <input type="text" id="createTitle" placeholder="e.g. Monthly VAT201 Preparation Procedure" />
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <input type="text" id="createCategory" placeholder="e.g. vat, payroll, cipc" />
+                </div>
+                <div class="form-group">
+                    <label>Difficulty</label>
+                    <select id="createDifficulty">
+                        <option value="">— Select —</option>
+                        <option value="beginner">Beginner</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Estimated Minutes</label>
+                    <input type="number" id="createEstimatedMinutes" min="0" step="1" placeholder="e.g. 45" />
+                </div>
+                <div class="form-group">
+                    <label>Requires Review</label>
+                    <select id="createRequiresReview">
+                        <option value="true" selected>Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+                <div class="form-group full">
+                    <label>Summary</label>
+                    <textarea id="createSummary" placeholder="One or two sentence summary" style="min-height:50px;"></textarea>
+                </div>
+                <div class="form-group full">
+                    <label>Instructions *</label>
+                    <textarea id="createInstructionBody" placeholder="Step-by-step instructions — written by practice staff"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Effective From</label>
+                    <input type="date" id="createEffectiveFrom" />
+                </div>
+                <div class="form-group">
+                    <label>Effective To</label>
+                    <input type="date" id="createEffectiveTo" />
+                </div>
+                <div class="form-group full">
+                    <label>Internal Notes</label>
+                    <textarea id="createInternalNotes" placeholder="Notes not shown in the instruction body"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="sopCloseCreate()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="sopSubmitCreate()">Create SOP (Draft)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Detail Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg">
+            <div id="detailTabBar" class="tab-bar"></div>
+            <div id="detailBody" style="min-height:200px;"></div>
+            <div class="modal-footer" id="detailFooter"></div>
+        </div>
+    </div>
+
+    <!-- ── Edit Modal ─────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">Edit SOP</div>
+            <div id="editWarning"></div>
+            <div class="form-row">
+                <div class="form-group full">
+                    <label>Title *</label>
+                    <input type="text" id="editTitle" />
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <input type="text" id="editCategory" />
+                </div>
+                <div class="form-group">
+                    <label>Difficulty</label>
+                    <select id="editDifficulty">
+                        <option value="">— Select —</option>
+                        <option value="beginner">Beginner</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Estimated Minutes</label>
+                    <input type="number" id="editEstimatedMinutes" min="0" step="1" />
+                </div>
+                <div class="form-group">
+                    <label>Requires Review</label>
+                    <select id="editRequiresReview">
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+                <div class="form-group full">
+                    <label>Summary</label>
+                    <textarea id="editSummary" style="min-height:50px;"></textarea>
+                </div>
+                <div class="form-group full">
+                    <label>Instructions *</label>
+                    <textarea id="editInstructionBody"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Effective From</label>
+                    <input type="date" id="editEffectiveFrom" />
+                </div>
+                <div class="form-group">
+                    <label>Effective To</label>
+                    <input type="date" id="editEffectiveTo" />
+                </div>
+                <div class="form-group full">
+                    <label>Internal Notes</label>
+                    <textarea id="editInternalNotes"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="sopCloseEdit()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="sopSubmitEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Link SOP Modal ─────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="linkModal">
+        <div class="modal-box modal-sm">
+            <div class="modal-title">Attach SOP to a Record</div>
+            <div class="form-group">
+                <label>Linked Record Type *</label>
+                <select id="linkType">
+                    <option value="workflow_template">Workflow Template</option>
+                    <option value="workflow_step">Workflow Step</option>
+                    <option value="task">Task</option>
+                    <option value="review_task">Review Task</option>
+                    <option value="compliance_pack">Compliance Pack</option>
+                    <option value="completion_pack">Completion Pack</option>
+                    <option value="knowledge_article">Knowledge Article</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Record ID *</label>
+                <input type="text" id="linkRecordId" placeholder="e.g. 42" />
+            </div>
+            <div class="form-group">
+                <label>Sort Order</label>
+                <input type="number" id="linkSortOrder" value="0" step="1" />
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="linkNotes" placeholder="Why this SOP applies to this record"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="sopCloseLink()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="sopSubmitLink()">Attach SOP</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/practice-sop.js"></script>
+    <script>LAYOUT.init('practice-sop');</script>
+</body>
+</html>

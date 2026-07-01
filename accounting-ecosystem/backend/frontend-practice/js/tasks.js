@@ -237,6 +237,8 @@ function renderTasks(tasks, total) {
       '<div class="task-card-header">' +
         '<div class="task-badges">' + statusBadge + priBadge + overdueBadge + qaBadge + reviewBadge + '</div>' +
         '<div style="display:flex;gap:6px;align-items:center;">' +
+          '<a class="btn-ghost-sm" href="/practice/practice-sop.html?linked_type=task&linked_id=' + t.id + '" title="View standard procedure for this task" aria-label="Standard procedure">📋 Procedure</a>' +
+          '<a class="btn-ghost-sm" href="/practice/quality-management.html?linked_type=task&linked_id=' + t.id + '" title="View quality reviews for this task" aria-label="QMS review">QMS Review ↗</a>' +
           '<button class="btn-ghost-sm" onclick="openTaskModal(' + t.id + ')" aria-label="Edit task">Edit</button>' +
         '</div>' +
       '</div>' +
