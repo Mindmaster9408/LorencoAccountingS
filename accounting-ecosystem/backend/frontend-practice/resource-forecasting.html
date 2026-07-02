@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resource Forecast — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1500px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .denied { text-align: center; padding: 60px 20px; color: #a0aec0; }
+
+        .filter-bar { display: flex; gap: 10px; align-items: flex-end; background: #1e2035; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .filter-bar input, .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .btn-filter { background: #667eea; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; text-align: center; }
+        .summary-card.danger .sc-count { color: #fc8181; }
+        .summary-card.warn .sc-count { color: #f6ad55; }
+        .sc-count { font-size: 1.6rem; font-weight: 800; }
+        .sc-label { font-size: .72rem; color: #718096; margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .95rem; font-weight: 700; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+        .panel-sub { font-size: .74rem; color: #718096; margin-top: -8px; margin-bottom: 14px; }
+
+        .week-board { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+        .week-col { min-width: 130px; background: #12122a; border-radius: 10px; padding: 12px; text-align: center; flex-shrink: 0; }
+        .week-col-dates { font-size: .68rem; color: #718096; margin-bottom: 8px; }
+        .week-bar-wrap { height: 110px; display: flex; align-items: flex-end; justify-content: center; gap: 4px; margin-bottom: 8px; }
+        .week-bar { width: 22px; border-radius: 4px 4px 0 0; }
+        .week-bar-cap { background: #4a5568; }
+        .week-bar-alloc { }
+        .week-pct { font-size: .82rem; font-weight: 800; }
+        .week-status { font-size: .68rem; margin-top: 2px; text-transform: uppercase; letter-spacing: .03em; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; }
+        tr:last-child td { border-bottom: none; }
+        tr.clickable:hover td { background: #252840; cursor: pointer; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .st-under_capacity { background: rgba(102,126,234,.2); color: #a3bffa; }
+        .st-normal          { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-high             { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .st-over_capacity    { background: rgba(237,137,54,.25); color: #fbb360; }
+        .st-critical          { background: rgba(229,62,62,.25); color: #feb2b2; }
+        .st-unknown            { background: rgba(74,85,104,.3); color: #718096; }
+        .conf-actual_estimate { color: #68d391; }
+        .conf-default_placeholder { color: #f6ad55; }
+        .conf-unknown { color: #718096; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-width: 460px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        label { font-size: .78rem; color: #a0aec0; }
+        textarea { resize: vertical; min-height: 60px; background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+        .btn-action { padding: 8px 16px; border: none; border-radius: 7px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content" id="pageContent">
+        <div class="header-row">
+            <h1>Resource Forecast</h1>
+            <button class="btn-add" onclick="rfOpenSnapshotModal()">💾 Save Snapshot</button>
+        </div>
+        <div class="inline-msg info">Do we have enough capacity? Deterministic forward-looking projection — not AI, no automatic scheduling. Placeholder hours are used wherever no real estimate exists (see confidence labels).</div>
+
+        <div class="filter-bar">
+            <div class="filter-group">
+                <span class="filter-label">Start Date (Monday)</span>
+                <input type="text" id="rfStartDate" placeholder="YYYY-MM-DD (blank = this week)" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Forecast Weeks</span>
+                <select id="rfWeeks">
+                    <option value="4">4 weeks</option>
+                    <option value="6" selected>6 weeks</option>
+                    <option value="8">8 weeks</option>
+                    <option value="12">12 weeks</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Team Member</span>
+                <select id="rfTeamMember"><option value="">— Whole Team —</option></select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">&nbsp;</span>
+                <button class="btn-filter" onclick="rfLoadAll()">Run Forecast</button>
+            </div>
+        </div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="panel">
+            <div class="panel-title">📊 Weekly Forecast Board</div>
+            <div class="panel-sub">Grey bar = capacity · colored bar = allocated hours. Height capped for readability past 150% utilization.</div>
+            <div class="week-board" id="weekBoard"><div class="empty-state">Loading…</div></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">👥 Team Forecast <span id="teamCount" style="font-size:.72rem;color:#a0aec0;font-weight:400;"></span></div>
+            <table>
+                <thead><tr><th>Member</th><th>Weekly Capacity</th><th>Total Capacity</th><th>Total Allocated</th><th>Gap</th><th>Overloaded Weeks</th><th>Status</th><th></th></tr></thead>
+                <tbody id="teamBody"><tr><td colspan="8" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">🏢 Client Pressure</div>
+            <table>
+                <thead><tr><th>Client</th><th>Est. Hours</th><th>Deadlines</th><th>Tax Items</th><th>Documents</th><th>Risks</th><th>Pressure</th></tr></thead>
+                <tbody id="clientBody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">📅 Deadline Pressure</div>
+            <table>
+                <thead><tr><th>Deadline</th><th>Client</th><th>Due</th><th>Owner</th><th>Est. Hours</th><th>Risk</th><th>Week</th></tr></thead>
+                <tbody id="deadlineBody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">🗂 Saved Snapshots <span id="snapshotCount" style="font-size:.72rem;color:#a0aec0;font-weight:400;"></span></div>
+            <table>
+                <thead><tr><th>Name</th><th>Period</th><th>Weeks</th><th>Capacity Gap</th><th>Saved</th><th></th></tr></thead>
+                <tbody id="snapshotBody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="denied" id="deniedState" style="display:none;">
+        <h2>Resource Forecasting is only available to managers, partners, and owners.</h2>
+        <p>Ask a partner to update your Practice team role if you believe this is incorrect.</p>
+    </div>
+
+    <!-- ── Save Snapshot Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="snapshotModal">
+        <div class="modal-box">
+            <div class="modal-title">Save Forecast Snapshot</div>
+            <div class="form-group">
+                <label>Snapshot Name *</label>
+                <input type="text" id="sfName" placeholder="e.g. Q3 Capacity Review — July 2026" style="width:100%;box-sizing:border-box;background:#12122a;border:1px solid #2d3748;border-radius:7px;color:#e2e8f0;padding:8px 11px;font-size:.85rem;" />
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="sfNotes" placeholder="Optional context for this snapshot"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="rfCloseSnapshotModal()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="rfSubmitSnapshot()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Snapshot Detail Modal ─────────────────────────────────────────── -->
+    <div class="modal-overlay" id="snapshotDetailModal">
+        <div class="modal-box" style="max-width:600px;max-height:80vh;overflow-y:auto;">
+            <div class="modal-title" id="snapshotDetailTitle">Snapshot</div>
+            <div id="snapshotDetailBody"></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="rfCloseSnapshotDetail()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/resource-forecasting.js"></script>
+    <script>LAYOUT.init('resource-forecasting');</script>
+</body>
+</html>

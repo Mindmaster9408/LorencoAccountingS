@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Delegation — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.err { background: rgba(229,62,62,.12); color: #fc8181; border: 1px solid rgba(229,62,62,.25); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.25); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; text-align: center; cursor: pointer; }
+        .summary-card.active { outline: 2px solid #667eea; }
+        .sc-count { font-size: 1.5rem; font-weight: 800; }
+        .sc-label { font-size: .7rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 7px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+
+        .filter-bar { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+
+        .delegation-list { display: flex; flex-direction: column; gap: 8px; }
+        .delegation-row { background: #1e2035; border-radius: 10px; padding: 12px 16px; cursor: pointer; border-left: 3px solid transparent; }
+        .delegation-row:hover { background: #232544; }
+        .dr-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .dr-title { font-weight: 700; font-size: .86rem; }
+        .dr-flow { font-size: .78rem; color: #a0aec0; margin-top: 4px; }
+        .dr-flow b { color: #cbd5e0; }
+        .dr-meta { font-size: .72rem; color: #718096; margin-top: 4px; }
+        .empty-state { text-align: center; color: #4a5568; padding: 32px; background: #1e2035; border-radius: 12px; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .st-draft     { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .st-delegated { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .st-accepted  { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-declined  { background: rgba(229,62,62,.25); color: #feb2b2; }
+        .st-cancelled { background: rgba(74,85,104,.3); color: #718096; }
+        .st-completed { background: rgba(102,126,234,.2); color: #a3bffa; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-height: 88vh; overflow-y: auto; }
+        .modal-sm { max-width: 460px; }
+        .modal-md { max-width: 620px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 60px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .btn-action { padding: 8px 16px; border: none; border-radius: 7px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action:disabled { opacity: .55; cursor: not-allowed; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .btn-warning { background: #ed8936; color: #fff; }
+
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 14px; }
+        .detail-row { display: flex; flex-direction: column; padding: 8px 12px; border-bottom: 1px solid #12122a; }
+        .detail-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+        .detail-value { font-size: .84rem; }
+
+        .event-item { background: #12122a; border-radius: 8px; padding: 10px 14px; margin-bottom: 6px; }
+        .event-header { display: flex; gap: 8px; align-items: center; margin-bottom: 3px; }
+        .event-type { font-size: .78rem; font-weight: 700; color: #a0aec0; }
+        .event-time { font-size: .72rem; color: #4a5568; margin-left: auto; }
+        .event-notes { font-size: .78rem; color: #718096; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Delegation</h1>
+            <button class="btn-add" onclick="dlOpenCreate()">+ Delegate Work</button>
+        </div>
+        <div class="inline-msg info">Safe, auditable, reversible work reassignment. Not AI. Not automatic reassignment — every move is a deliberate manager or self-service action.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <div class="filter-bar">
+            <div class="filter-group">
+                <span class="filter-label">Source Type</span>
+                <select id="filterModule" onchange="dlLoadList()">
+                    <option value="">All</option>
+                    <option value="tasks">Tasks</option>
+                    <option value="deadlines">Deadlines</option>
+                    <option value="risk-register">Risk Reviews</option>
+                    <option value="qms-review">QMS Reviews</option>
+                    <option value="qms-finding">QMS Findings</option>
+                    <option value="tax-individual">Tax (Individual)</option>
+                    <option value="tax-company">Tax (Company)</option>
+                    <option value="compliance-packs">Compliance</option>
+                    <option value="document-requests">Document Requests</option>
+                    <option value="reminders">Reminders</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="delegation-list" id="delegationList"><div class="empty-state">Loading…</div></div>
+    </div>
+
+    <!-- ── Create Delegation Modal ───────────────────────────────────────── -->
+    <div class="modal-overlay" id="createModal">
+        <div class="modal-box modal-md">
+            <div class="modal-title">Delegate Work</div>
+            <div id="createErrorBox"></div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Source Type *</label>
+                    <select id="cfModule" onchange="dlModuleChanged()">
+                        <option value="tasks">Tasks</option>
+                        <option value="deadlines">Deadlines</option>
+                        <option value="risk-register">Risk Reviews</option>
+                        <option value="qms-review">QMS Reviews</option>
+                        <option value="qms-finding">QMS Findings</option>
+                        <option value="tax-individual">Tax (Individual)</option>
+                        <option value="tax-company">Tax (Company)</option>
+                        <option value="compliance-packs">Compliance</option>
+                        <option value="document-requests">Document Requests</option>
+                        <option value="reminders">Reminders</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Source ID *</label>
+                    <input type="number" id="cfSourceId" placeholder="e.g. 42" onchange="dlCheckAdvisory()" />
+                </div>
+                <div class="form-group full" id="cfRoleGroup">
+                    <label>Ownership Role</label>
+                    <select id="cfRole"></select>
+                </div>
+                <div class="form-group full">
+                    <label>New Owner *</label>
+                    <select id="cfNewOwner" onchange="dlCheckAdvisory()"><option value="">Loading team…</option></select>
+                </div>
+                <div class="form-group full" id="createAdvisoryBox"></div>
+                <div class="form-group full">
+                    <label>Reason *</label>
+                    <input type="text" id="cfReason" placeholder="e.g. Anton is on leave next week" />
+                </div>
+                <div class="form-group full">
+                    <label>Notes</label>
+                    <textarea id="cfNotes" placeholder="Optional additional context"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Effective Date</label>
+                    <input type="text" id="cfEffectiveDate" placeholder="YYYY-MM-DD (optional)" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="dlCloseCreate()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="dlSubmitCreate()">Delegate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Detail Modal ──────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-md">
+            <div id="detailTabBar" class="tab-bar"></div>
+            <div id="detailBody" style="min-height:160px;"></div>
+            <div class="modal-footer" id="detailFooter"></div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/delegation.js"></script>
+    <script>LAYOUT.init('delegation');</script>
+</body>
+</html>

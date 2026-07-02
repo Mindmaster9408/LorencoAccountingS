@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Work — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+        .greeting { font-size: 1.4rem; font-weight: 800; margin-bottom: 2px; }
+        .greeting-sub { font-size: .85rem; color: #718096; margin-bottom: 20px; }
+
+        .focus-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 22px; }
+        .focus-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; text-align: center; cursor: pointer; border: 1px solid transparent; }
+        .focus-card.active { border-color: #667eea; }
+        .focus-card.fc-overdue .fc-count { color: #fc8181; }
+        .focus-card.fc-waiting .fc-count { color: #f6ad55; }
+        .fc-count { font-size: 1.5rem; font-weight: 800; }
+        .fc-label { font-size: .7rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .layout-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+        @media (max-width: 980px) { .layout-grid { grid-template-columns: 1fr; } }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: pointer; }
+        .panel-title { font-size: .95rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .panel-count { background: rgba(255,255,255,.06); border-radius: 10px; padding: 1px 9px; font-size: .72rem; color: #a0aec0; }
+        .panel-toggle { font-size: .75rem; color: #718096; }
+        .panel-body.collapsed { display: none; }
+
+        .toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+        .toolbar input[type="text"] { flex: 1; min-width: 160px; background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 8px 12px; font-size: .82rem; }
+        .chip { background: #12122a; border: 1px solid #2d3748; color: #a0aec0; padding: 6px 13px; border-radius: 16px; font-size: .78rem; cursor: pointer; white-space: nowrap; }
+        .chip.active { background: #667eea; border-color: #667eea; color: #fff; }
+
+        .work-item { display: flex; align-items: flex-start; gap: 12px; padding: 11px 12px; border-radius: 9px; cursor: pointer; border-left: 3px solid transparent; margin-bottom: 6px; }
+        .work-item:hover { background: #252840; }
+        .work-item.pr-critical { border-left-color: #e53e3e; }
+        .work-item.pr-high { border-left-color: #ed8936; }
+        .work-item.pr-medium { border-left-color: #667eea; }
+        .work-item.pr-low { border-left-color: #4a5568; }
+        .wi-body { flex: 1; min-width: 0; }
+        .wi-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .wi-title { font-weight: 700; font-size: .85rem; }
+        .wi-reason { font-size: .74rem; color: #a0aec0; margin-top: 3px; }
+        .wi-meta { font-size: .7rem; color: #718096; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .wi-open { align-self: center; background: #2d3748; color: #e2e8f0; border: none; border-radius: 6px; padding: 6px 12px; font-size: .74rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .pr-pill-critical { background: rgba(229,62,62,.25); color: #feb2b2; }
+        .pr-pill-high     { background: rgba(237,137,54,.2); color: #f6ad55; }
+        .pr-pill-medium   { background: rgba(102,126,234,.2); color: #a3bffa; }
+        .pr-pill-low      { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .sev-critical { background: rgba(229,62,62,.25); color: #feb2b2; }
+        .sev-high     { background: rgba(252,129,74,.2); color: #fc8181; }
+        .sev-normal, .sev-medium { background: rgba(246,173,85,.2); color: #f6ad55; }
+
+        .empty-state { text-align: center; color: #4a5568; padding: 28px; font-size: .82rem; }
+        .notif-row { padding: 9px 10px; border-radius: 8px; margin-bottom: 5px; cursor: pointer; }
+        .notif-row:hover { background: #252840; }
+        .notif-title { font-size: .8rem; font-weight: 700; }
+        .notif-msg { font-size: .74rem; color: #a0aec0; margin-top: 2px; }
+
+        .completed-row { display: flex; justify-content: space-between; padding: 8px 10px; font-size: .78rem; border-bottom: 1px solid #12122a; }
+        .completed-row:last-child { border-bottom: none; }
+        .completed-title { color: #a0aec0; }
+        .completed-time { color: #4a5568; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="greeting" id="greeting">My Work</div>
+        <div class="greeting-sub" id="greetingSub">Loading your queue…</div>
+
+        <div class="focus-strip" id="focusStrip"></div>
+
+        <div class="layout-grid">
+            <div class="main-col">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">🔥 Highest Priority</div>
+                    </div>
+                    <div class="panel-body" id="highestPriorityBody"><div class="empty-state">Loading…</div></div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">📋 My Queue <span class="panel-count" id="myQueueCount"></span></div>
+                    </div>
+                    <div class="toolbar">
+                        <input type="text" id="wqSearch" placeholder="Search my work…" onkeyup="if(event.key==='Enter')wqApplyFilters()" />
+                        <div class="chip active" data-view="my_work" onclick="wqSetView('my_work')">All</div>
+                        <div class="chip" data-view="today" onclick="wqSetView('today')">Today</div>
+                        <div class="chip" data-view="overdue" onclick="wqSetView('overdue')">Overdue</div>
+                        <div class="chip" data-view="upcoming" onclick="wqSetView('upcoming')">Upcoming</div>
+                    </div>
+                    <div class="panel-body" id="myQueueBody"><div class="empty-state">Loading…</div></div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header" onclick="wqToggleSection('completed')">
+                        <div class="panel-title">✅ Recently Completed <span class="panel-count" id="completedCount"></span></div>
+                        <div class="panel-toggle" id="completedToggle">▾</div>
+                    </div>
+                    <div class="panel-body" id="completedBody"><div class="empty-state">Loading…</div></div>
+                </div>
+            </div>
+
+            <div class="side-col">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">🔔 Notifications <span class="panel-count" id="notifCount"></span></div>
+                    </div>
+                    <div class="panel-body" id="notifBody"><div class="empty-state">Loading…</div></div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">⏳ Waiting On Me <span class="panel-count" id="waitingMeCount"></span></div>
+                    </div>
+                    <div class="panel-body" id="waitingMeBody"><div class="empty-state">Loading…</div></div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header" onclick="wqToggleSection('waiting_others')">
+                        <div class="panel-title">👥 Waiting On Others <span class="panel-count" id="waitingOthersCount"></span></div>
+                        <div class="panel-toggle" id="waitingOthersToggle">▾</div>
+                    </div>
+                    <div class="panel-body" id="waitingOthersBody"><div class="empty-state">Loading…</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/work-queue.js"></script>
+    <script>LAYOUT.init('work-queue');</script>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Planning Board — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1500px; margin: 0 auto; }
+
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 10px; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .denied { text-align: center; padding: 60px 20px; color: #a0aec0; }
+
+        .week-selector { display: flex; align-items: center; gap: 10px; background: #1e2035; border-radius: 10px; padding: 8px 14px; }
+        .week-btn { background: #2d3748; color: #e2e8f0; border: none; border-radius: 6px; padding: 6px 12px; font-size: .82rem; cursor: pointer; }
+        .week-label { font-size: .85rem; font-weight: 700; min-width: 170px; text-align: center; }
+        .week-today { background: #667eea; color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: .78rem; cursor: pointer; font-weight: 700; }
+
+        .toolbar { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; align-items: center; }
+        .toolbar input[type="text"] { flex: 1; min-width: 200px; background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 8px 12px; font-size: .82rem; }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 20px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .summary-card.warn .sc-count { color: #f6ad55; }
+        .summary-card.danger .sc-count { color: #fc8181; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .95rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .panel-count { background: rgba(255,255,255,.06); border-radius: 10px; padding: 1px 9px; font-size: .72rem; color: #a0aec0; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 7px 15px; border-radius: 7px; font-size: .8rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+
+        .work-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 9px; cursor: pointer; border-left: 3px solid transparent; margin-bottom: 6px; }
+        .work-item:hover { background: #252840; }
+        .work-item.pr-critical { border-left-color: #e53e3e; }
+        .work-item.pr-high { border-left-color: #ed8936; }
+        .work-item.pr-medium { border-left-color: #667eea; }
+        .work-item.pr-low { border-left-color: #4a5568; }
+        .wi-body { flex: 1; min-width: 0; }
+        .wi-title { font-weight: 700; font-size: .84rem; }
+        .wi-reason { font-size: .73rem; color: #a0aec0; margin-top: 2px; }
+        .wi-meta { font-size: .7rem; color: #718096; margin-top: 4px; }
+
+        .empty-state { text-align: center; color: #4a5568; padding: 26px; font-size: .82rem; }
+
+        .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+        .member-card { background: #12122a; border-radius: 10px; padding: 14px; border-left: 3px solid #4a5568; }
+        .member-card.cap-overloaded { border-left-color: #e53e3e; }
+        .member-card.cap-high { border-left-color: #ed8936; }
+        .member-card.cap-normal { border-left-color: #48bb78; }
+        .member-card.cap-underutilized { border-left-color: #667eea; }
+        .mc-name { font-weight: 700; font-size: .88rem; }
+        .mc-role { font-size: .7rem; color: #718096; text-transform: capitalize; margin-bottom: 8px; }
+        .mc-util-bar { height: 6px; border-radius: 3px; background: #2d3748; overflow: hidden; margin: 6px 0; }
+        .mc-util-fill { height: 100%; border-radius: 3px; }
+        .mc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: .72rem; color: #a0aec0; margin: 8px 0; }
+        .mc-stats b { color: #e2e8f0; }
+        .mc-links { display: flex; gap: 6px; margin-top: 8px; }
+        .mc-link { flex: 1; text-align: center; background: #2d3748; color: #e2e8f0; border-radius: 6px; padding: 6px 8px; font-size: .72rem; text-decoration: none; font-weight: 700; }
+        .mc-link:hover { background: #374151; }
+
+        .deadline-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 5px; background: #12122a; }
+        .deadline-row:hover { background: #1a1c30; }
+        .deadline-row.overdue { border-left: 3px solid #e53e3e; }
+        .dl-title { font-size: .82rem; font-weight: 700; }
+        .dl-meta { font-size: .72rem; color: #718096; margin-top: 2px; }
+        .dl-date { font-size: .78rem; font-weight: 700; color: #f6ad55; }
+        .dl-date.overdue { color: #fc8181; }
+
+        .note-card { background: #12122a; border-radius: 9px; padding: 12px; margin-bottom: 8px; }
+        .note-title-row { display: flex; justify-content: space-between; align-items: center; }
+        .note-title { font-weight: 700; font-size: .84rem; }
+        .note-body { font-size: .78rem; color: #a0aec0; margin-top: 4px; white-space: pre-wrap; }
+        .note-meta { font-size: .7rem; color: #4a5568; margin-top: 6px; }
+        .note-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; }
+        .st-open { background: rgba(102,126,234,.2); color: #a3bffa; }
+        .st-in_progress { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .st-done { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-archived { background: rgba(74,85,104,.3); color: #718096; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-width: 520px; max-height: 88vh; overflow-y: auto; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 70px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+        .btn-action { padding: 8px 16px; border: none; border-radius: 7px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content" id="pageContent">
+        <div class="header-row">
+            <h1>Planning Board</h1>
+            <div class="week-selector">
+                <button class="week-btn" onclick="pbShiftWeek(-1)">← Prev</button>
+                <span class="week-label" id="weekLabel">Loading…</span>
+                <button class="week-btn" onclick="pbShiftWeek(1)">Next →</button>
+                <button class="week-today" onclick="pbGoToday()">This Week</button>
+            </div>
+        </div>
+        <div class="inline-msg info">Your practice's planning wall — team workload, capacity, deadlines, and notes for the week. Not AI. Not automatic reassignment.
+            <!-- Codebox 57 — Resource Forecast integration -->
+            <a href="/practice/resource-forecasting.html" style="margin-left:10px;color:#a3bffa;font-weight:700;text-decoration:underline;">📈 Open Resource Forecast →</a>
+        </div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="toolbar">
+            <input type="text" id="pbSearch" placeholder="Search work items, deadlines, clients…" onkeyup="if(event.key==='Enter')pbApplySearch()" />
+        </div>
+
+        <div class="panel">
+            <div class="tab-bar" id="weekTabBar"></div>
+            <div id="weekTabBody"><div class="empty-state">Loading…</div></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">👥 Team Board <span class="panel-count" id="teamCount"></span></div>
+            <div class="team-grid" id="teamGrid"><div class="empty-state">Loading…</div></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">📅 Deadline Timeline <span class="panel-count" id="deadlineCount"></span></div>
+            <div id="deadlineBody"><div class="empty-state">Loading…</div></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">📝 Planning Notes <span class="panel-count" id="notesCount"></span>
+                <button class="btn-add" onclick="pbOpenNoteModal()">+ Add Note</button>
+            </div>
+            <div id="notesBody"><div class="empty-state">Loading…</div></div>
+        </div>
+    </div>
+
+    <div class="denied" id="deniedState" style="display:none;">
+        <h2>Planning Board is only available to managers, partners, and owners.</h2>
+        <p>Ask a partner to update your Practice team role if you believe this is incorrect.</p>
+    </div>
+
+    <!-- ── Note Modal ────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="noteModal">
+        <div class="modal-box">
+            <div class="modal-title" id="noteModalTitle">Add Planning Note</div>
+            <div class="form-group">
+                <label>Title *</label>
+                <input type="text" id="nfTitle" placeholder="e.g. Anton out Wed-Thu" />
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea id="nfNotes" placeholder="Optional detail"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Team Member (optional)</label>
+                <select id="nfTeamMember"><option value="">— Team-wide —</option></select>
+            </div>
+            <div class="form-group">
+                <label>Client ID (optional)</label>
+                <input type="number" id="nfClientId" placeholder="Optional numeric client id" />
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="nfStatus">
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="pbCloseNoteModal()">Cancel</button>
+                <button class="btn-action btn-primary" id="noteSubmitBtn" onclick="pbSubmitNote()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/planning-board.js"></script>
+    <script>LAYOUT.init('planning-board');</script>
+</body>
+</html>

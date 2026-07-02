@@ -9,6 +9,11 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
+// Codebox 53 — thresholds that decide "high"/"critical"/"overloaded"/"overdue"
+// come from the central Alert Rules Engine instead of being hardcoded here.
+// getRules() always resolves (DB row, or a safe fallback matching the
+// original hardcoded values) — never throws, never returns undefined.
+const { getRules } = require('./alert-rules');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -24,6 +29,17 @@ const supabase = createClient(
 function _today() { return new Date().toISOString().slice(0, 10); }
 function _daysFromNow(n) { return new Date(Date.now() + n * 86400000).toISOString().slice(0, 10); }
 function _clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+// A disabled min-threshold rule should suppress that band entirely (nothing
+// can be ">= Infinity"). Day-count rules (grace/window) ignore `enabled` —
+// disabling a day count has no unambiguous meaning, so they always use
+// threshold_value (falling back to the seeded default if unset).
+function _effectiveMin(rule) {
+    return rule && rule.enabled !== false && rule.threshold_value != null ? Number(rule.threshold_value) : Infinity;
+}
+function _effectiveDays(rule, fallback) {
+    return rule && rule.threshold_value != null ? Number(rule.threshold_value) : fallback;
+}
 
 // Count-only query helper — head:true avoids fetching rows, just the count.
 async function _count(table, build) {
@@ -43,8 +59,20 @@ async function _count(table, build) {
 // count-only (head:true) — no row bodies are fetched, keeping this cheap
 // even with ~25 parallel queries per request.
 async function computeSummary(cid) {
+    // Codebox 53 — central rules replace what used to be hardcoded here.
+    const rules = await getRules(cid, [
+        'risk_high_min', 'risk_critical_min', 'capacity_overloaded_ratio',
+        'reminder_overdue_grace_days', 'reminder_upcoming_window_days', 'document_overdue_grace_days',
+    ]);
+    const riskHighMin = _effectiveMin(rules.risk_high_min);
+    const riskCriticalMin = _effectiveMin(rules.risk_critical_min);
+    const capacityOverloadedRatio = rules.capacity_overloaded_ratio.enabled !== false ? Number(rules.capacity_overloaded_ratio.threshold_value) : Infinity;
+    const reminderOverdueCutoff = _daysFromNow(-_effectiveDays(rules.reminder_overdue_grace_days, 0));
+    const reminderUpcomingWindow = _effectiveDays(rules.reminder_upcoming_window_days, 7);
+    const documentOverdueCutoff = _daysFromNow(-_effectiveDays(rules.document_overdue_grace_days, 0));
+
     const today = _today();
-    const weekOut = _daysFromNow(7);
+    const weekOut = _daysFromNow(reminderUpcomingWindow);
 
     const [
             // ── Practice ──
@@ -139,11 +167,11 @@ async function computeSummary(cid) {
             _count('practice_billing_packs', q => q.eq('company_id', cid).eq('status', 'locked')),
             supabase.from('practice_billing_packs').select('recoverable_value, billable_value, status').eq('company_id', cid).not('status', 'in', '("cancelled")'),
 
-            _count('practice_reminders', q => q.eq('company_id', cid).in('status', ['open', 'snoozed']).lt('due_date', today)),
+            _count('practice_reminders', q => q.eq('company_id', cid).in('status', ['open', 'snoozed']).lt('due_date', reminderOverdueCutoff)),
             _count('practice_reminders', q => q.eq('company_id', cid).in('status', ['open', 'snoozed']).gte('due_date', today).lte('due_date', weekOut)),
 
             _count('practice_document_requests', q => q.eq('company_id', cid).in('request_status', ['requested', 'reminder_sent', 'partially_received'])),
-            _count('practice_document_requests', q => q.eq('company_id', cid).in('request_status', ['requested', 'reminder_sent', 'partially_received']).lt('required_by_date', today)),
+            _count('practice_document_requests', q => q.eq('company_id', cid).in('request_status', ['requested', 'reminder_sent', 'partially_received']).lt('required_by_date', documentOverdueCutoff)),
 
             _count('practice_client_communications', q => q.eq('company_id', cid).eq('response_required', true).in('response_status', ['waiting', 'overdue']).is('cancelled_at', null)),
 
@@ -160,15 +188,15 @@ async function computeSummary(cid) {
             }
         });
         const members = Object.values(capacityByMember).filter(m => m.weekly > 0);
-        const overCapacityCount = members.filter(m => (m.assigned / m.weekly) > 1).length;
+        const overCapacityCount = members.filter(m => (m.assigned / m.weekly) > capacityOverloadedRatio).length;
         const avgUtilizationPct = members.length
             ? Math.round((members.reduce((s, m) => s + (m.assigned / m.weekly), 0) / members.length) * 100)
             : 0;
 
-        // ── Risk band math (derived from raw rows) ──
+        // ── Risk band math (derived from raw rows) — thresholds from getRules() above ──
         const risks = riskRows.data || [];
-        const highRiskCount = risks.filter(r => r.inherent_risk >= 15 && r.inherent_risk <= 19).length;
-        const criticalRiskCount = risks.filter(r => r.inherent_risk >= 20).length;
+        const highRiskCount = risks.filter(r => r.inherent_risk >= riskHighMin && r.inherent_risk < riskCriticalMin).length;
+        const criticalRiskCount = risks.filter(r => r.inherent_risk >= riskCriticalMin).length;
 
         // ── Billing realisation math (derived from raw rows) ──
         const packs = billingRows.data || [];
@@ -306,6 +334,18 @@ router.get('/executive-feed', async (req, res) => {
 // Only critical / high / overdue / blocked / needs-partner / requires-approval.
 
 async function computeAlerts(cid) {
+    // Codebox 53 — central rules replace what used to be hardcoded here.
+    const rules = await getRules(cid, [
+        'risk_high_min', 'risk_critical_min', 'risk_partner_acceptance_min',
+        'reminder_overdue_grace_days', 'document_overdue_grace_days', 'compliance_deadline_overdue_grace_days',
+    ]);
+    const riskHighMin = _effectiveMin(rules.risk_high_min);
+    const riskCriticalMin = _effectiveMin(rules.risk_critical_min);
+    const riskPartnerAcceptanceMin = _effectiveMin(rules.risk_partner_acceptance_min);
+    const reminderOverdueCutoff = _daysFromNow(-_effectiveDays(rules.reminder_overdue_grace_days, 0));
+    const documentOverdueCutoff = _daysFromNow(-_effectiveDays(rules.document_overdue_grace_days, 0));
+    const deadlineOverdueCutoff = _daysFromNow(-_effectiveDays(rules.compliance_deadline_overdue_grace_days, 0));
+
     const today = _today();
 
     const [
@@ -316,17 +356,17 @@ async function computeAlerts(cid) {
             kbUnderReview, sopUnderReview, riskAwaitingAcceptance,
             billingAwaitingApproval,
         ] = await Promise.all([
-            supabase.from('practice_risks').select('id, title, inherent_risk').eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', 20),
+            supabase.from('practice_risks').select('id, title, inherent_risk').eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', riskCriticalMin),
             supabase.from('practice_quality_findings').select('id, finding_title, review_id').eq('company_id', cid).in('status', ['open', 'in_progress']).eq('severity', 'critical'),
             supabase.from('practice_quality_reviews').select('id, review_title').eq('company_id', cid).eq('status', 'failed'),
 
-            supabase.from('practice_risks').select('id, title, inherent_risk').eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', 15).lt('inherent_risk', 20),
+            supabase.from('practice_risks').select('id, title, inherent_risk').eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', riskHighMin).lt('inherent_risk', riskCriticalMin),
             supabase.from('practice_quality_findings').select('id, finding_title, review_id').eq('company_id', cid).in('status', ['open', 'in_progress']).eq('severity', 'high'),
 
             supabase.from('practice_tasks').select('id, title').eq('company_id', cid).in('status', ['open', 'in_progress']).lt('due_date', today).limit(20),
-            supabase.from('practice_reminders').select('id, reminder_type, due_date').eq('company_id', cid).in('status', ['open', 'snoozed']).lt('due_date', today).limit(20),
-            supabase.from('practice_document_requests').select('id, document_category, required_by_date').eq('company_id', cid).in('request_status', ['requested', 'reminder_sent', 'partially_received']).lt('required_by_date', today).limit(20),
-            supabase.from('practice_deadlines').select('id, title, due_date').eq('company_id', cid).in('status', ['open', 'pending', 'in_progress', 'waiting_client', 'waiting_review']).lt('due_date', today).limit(20),
+            supabase.from('practice_reminders').select('id, reminder_type, due_date').eq('company_id', cid).in('status', ['open', 'snoozed']).lt('due_date', reminderOverdueCutoff).limit(20),
+            supabase.from('practice_document_requests').select('id, document_category, required_by_date').eq('company_id', cid).in('request_status', ['requested', 'reminder_sent', 'partially_received']).lt('required_by_date', documentOverdueCutoff).limit(20),
+            supabase.from('practice_deadlines').select('id, title, due_date').eq('company_id', cid).in('status', ['open', 'pending', 'in_progress', 'waiting_client', 'waiting_review']).lt('due_date', deadlineOverdueCutoff).limit(20),
 
             supabase.from('practice_compliance_packs').select('id, pack_type').eq('company_id', cid).eq('readiness_status', 'blocked'),
             supabase.from('practice_individual_tax_returns').select('id').eq('company_id', cid).eq('readiness_status', 'blocked'),
@@ -334,7 +374,7 @@ async function computeAlerts(cid) {
 
             supabase.from('practice_knowledge_articles').select('id, title').eq('company_id', cid).eq('status', 'under_review'),
             supabase.from('practice_sop_templates').select('id, title').eq('company_id', cid).eq('status', 'under_review'),
-            supabase.from('practice_risks').select('id, title, inherent_risk').eq('company_id', cid).eq('status', 'open').gte('inherent_risk', 15),
+            supabase.from('practice_risks').select('id, title, inherent_risk').eq('company_id', cid).eq('status', 'open').gte('inherent_risk', riskPartnerAcceptanceMin),
 
             supabase.from('practice_billing_packs').select('id, period_start, period_end').eq('company_id', cid).eq('status', 'reviewed'),
         ]);
@@ -381,12 +421,16 @@ router.get('/alerts', async (req, res) => {
 // Everything currently waiting on a partner decision.
 
 async function computePartnerReview(cid) {
+    // Codebox 53 — central rule for "which risks need partner acceptance".
+    const rules = await getRules(cid, ['risk_partner_acceptance_min']);
+    const riskPartnerAcceptanceMin = _effectiveMin(rules.risk_partner_acceptance_min);
+
     const [kb, sop, completion, qmsInReview, riskAccept, billingApproval] = await Promise.all([
         supabase.from('practice_knowledge_articles').select('id, title, category, updated_at').eq('company_id', cid).eq('status', 'under_review').order('updated_at', { ascending: true }),
         supabase.from('practice_sop_templates').select('id, title, category, updated_at').eq('company_id', cid).eq('status', 'under_review').order('updated_at', { ascending: true }),
         supabase.from('practice_tax_completion_packs').select('id, client_id, source_type, updated_at').eq('company_id', cid).eq('pack_status', 'review_pending').order('updated_at', { ascending: true }),
         supabase.from('practice_quality_reviews').select('id, review_title, review_type, updated_at').eq('company_id', cid).eq('status', 'in_review').order('updated_at', { ascending: true }),
-        supabase.from('practice_risks').select('id, title, category, inherent_risk, updated_at').eq('company_id', cid).eq('status', 'open').gte('inherent_risk', 15).order('inherent_risk', { ascending: false }),
+        supabase.from('practice_risks').select('id, title, category, inherent_risk, updated_at').eq('company_id', cid).eq('status', 'open').gte('inherent_risk', riskPartnerAcceptanceMin).order('inherent_risk', { ascending: false }),
         supabase.from('practice_billing_packs').select('id, period_start, period_end, updated_at').eq('company_id', cid).eq('status', 'reviewed').order('updated_at', { ascending: true }),
     ]);
 
@@ -420,6 +464,15 @@ router.get('/partner-review', async (req, res) => {
 const SCORE_WEIGHTS = { quality: 0.30, compliance: 0.25, risk: 0.20, capacity: 0.10, tax: 0.15 };
 
 async function computePracticeScore(cid) {
+    // Codebox 53 — central rules replace what used to be hardcoded here.
+    const rules = await getRules(cid, [
+        'risk_high_min', 'risk_critical_min', 'capacity_overloaded_ratio', 'compliance_deadline_overdue_grace_days',
+    ]);
+    const riskHighMin = _effectiveMin(rules.risk_high_min);
+    const riskCriticalMin = _effectiveMin(rules.risk_critical_min);
+    const capacityOverloadedRatio = rules.capacity_overloaded_ratio.enabled !== false ? Number(rules.capacity_overloaded_ratio.threshold_value) : Infinity;
+    const deadlineOverdueCutoff = _daysFromNow(-_effectiveDays(rules.compliance_deadline_overdue_grace_days, 0));
+
     const today = _today();
 
     const [
@@ -434,12 +487,12 @@ async function computePracticeScore(cid) {
             _count('practice_quality_findings', q => q.eq('company_id', cid).in('status', ['open', 'in_progress']).eq('severity', 'high')),
             _count('practice_quality_findings', q => q.eq('company_id', cid).in('status', ['open', 'in_progress']).eq('severity', 'medium')),
             _count('practice_quality_findings', q => q.eq('company_id', cid).in('status', ['open', 'in_progress']).eq('severity', 'low')),
-            _count('practice_deadlines', q => q.eq('company_id', cid).in('status', ['open', 'pending', 'in_progress', 'waiting_client', 'waiting_review']).lt('due_date', today)),
+            _count('practice_deadlines', q => q.eq('company_id', cid).in('status', ['open', 'pending', 'in_progress', 'waiting_client', 'waiting_review']).lt('due_date', deadlineOverdueCutoff)),
             _count('practice_compliance_packs', q => q.eq('company_id', cid).eq('readiness_status', 'blocked')),
             _count('practice_deadlines', q => q.eq('company_id', cid).eq('status', 'missed')),
-            _count('practice_risks', q => q.eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', 20)),
-            _count('practice_risks', q => q.eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', 15).lt('inherent_risk', 20)),
-            _count('practice_risks', q => q.eq('company_id', cid).not('status', 'in', '("closed","cancelled")').lt('inherent_risk', 15)),
+            _count('practice_risks', q => q.eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', riskCriticalMin)),
+            _count('practice_risks', q => q.eq('company_id', cid).not('status', 'in', '("closed","cancelled")').gte('inherent_risk', riskHighMin).lt('inherent_risk', riskCriticalMin)),
+            _count('practice_risks', q => q.eq('company_id', cid).not('status', 'in', '("closed","cancelled")').lt('inherent_risk', riskHighMin)),
             supabase.from('practice_team_members').select('id, weekly_capacity_hours').eq('company_id', cid).eq('is_active', true).eq('capacity_is_active', true),
             supabase.from('practice_tasks').select('assigned_to, estimated_hours').eq('company_id', cid).in('status', ['open', 'in_progress']),
             _count('practice_tax_payments', q => q.eq('company_id', cid).eq('direction', 'payable').in('status', ['outstanding', 'partially_paid'])),
@@ -469,7 +522,7 @@ async function computePracticeScore(cid) {
             }
         });
         const members = Object.values(capacityByMember).filter(m => m.weekly > 0);
-        const overCapacityCount = members.filter(m => (m.assigned / m.weekly) > 1).length;
+        const overCapacityCount = members.filter(m => (m.assigned / m.weekly) > capacityOverloadedRatio).length;
         const avgUtilizationPct = members.length
             ? (members.reduce((s, m) => s + (m.assigned / m.weekly), 0) / members.length) * 100
             : 0;

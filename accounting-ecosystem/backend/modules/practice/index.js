@@ -3193,6 +3193,49 @@ router.use('/qms', qualityManagementRouter);
 const riskRegisterRouter = require('./risk-register');
 router.use('/risk-register', riskRegisterRouter);
 
+// Practice Alert Rules Engine + Manual Alert Configuration (Codebox 53)
+// Central, database-driven thresholds consumed by management-dashboard.js
+// via getRule()/getRules(). NOT AI. NOT automatic threshold tuning.
+const alertRulesRouter = require('./alert-rules');
+router.use('/alert-rules', alertRulesRouter);
+
+// Practice Notification Centre + Internal Notification Routing (Codebox 54)
+// Assigned, actionable internal inbox. NOT email/SMS/push/Teams/Sean AI.
+const notificationsRouter = require('./notifications');
+router.use('/notifications', notificationsRouter);
+
+// Practice Work Queue + Personal Work Hub (Codebox 55)
+// "What must I work on next?" — live-aggregated, deterministic, per team
+// member. NOT AI. NOT auto-assignment. Aggregates, never replaces, source modules.
+const workQueueRouter = require('./work-queue');
+router.use('/work-queue', workQueueRouter);
+
+// Practice Planning Board + Weekly Planning Centre (Codebox 56)
+// Manager workload/planning view — reuses capacity.js + work-queue.js
+// in-process. NOT AI. NOT automatic task movement. NOT automatic balancing.
+const planningBoardRouter = require('./planning-board');
+router.use('/planning-board', planningBoardRouter);
+
+// Practice Resource Forecasting + Future Capacity Planning (Codebox 57)
+// Deterministic forward-looking capacity projection — reuses capacity.js +
+// planning-board.js in-process. NOT AI. NOT automatic scheduling.
+const resourceForecastingRouter = require('./resource-forecasting');
+router.use('/resource-forecasting', resourceForecastingRouter);
+
+// Practice Delegation + Work Reassignment Controls (Codebox 58)
+// Auditable, reversible ownership transfer via changeOwnership() — reuses
+// notifications.js + work-queue.js + planning-board.js in-process.
+// NOT AI. NOT automatic reassignment.
+const delegationRouter = require('./delegation');
+router.use('/delegation', delegationRouter);
+
+// Practice Skills Matrix + Competency Framework (Codebox 59)
+// Manager-controlled skill/competency/certification tracking. Advisory
+// only — getCompetency() is exported for Delegation/Planning
+// Board/Resource Forecast to reuse. NOT AI. NOT auto-delegation.
+const skillsMatrixRouter = require('./skills-matrix');
+router.use('/skills-matrix', skillsMatrixRouter);
+
 // Management Dashboard — Executive Command Centre (Codebox 50)
 // Read-only aggregator for partners. NOT an operational page.
 const managementDashboardRouter = require('./management-dashboard');

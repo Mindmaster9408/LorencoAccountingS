@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skills Matrix — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.25); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .toolbar { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .toolbar select, .toolbar input[type="text"] { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-head { background: #2d3748; color: #e2e8f0; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr.clickable:hover td { background: #252840; cursor: pointer; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .lv-0 { background: rgba(74,85,104,.3); color: #718096; }
+        .lv-1 { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .lv-2 { background: rgba(102,126,234,.25); color: #93a9f5; }
+        .lv-3 { background: rgba(104,211,145,.2); color: #68d391; }
+        .lv-4 { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .lv-5 { background: rgba(229,62,62,.22); color: #feb2b2; }
+        .badge-pref { background: rgba(104,211,145,.18); color: #68d391; }
+        .badge-restr { background: rgba(229,62,62,.2); color: #fc8181; }
+        .st-active { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-expired { background: rgba(229,62,62,.22); color: #feb2b2; }
+        .st-pending { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .st-revoked { background: rgba(74,85,104,.3); color: #718096; }
+
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-width: 480px; max-height: 88vh; overflow-y: auto; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; }
+        .checkbox-row input { width: auto; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Skills Matrix</h1>
+            <button class="btn-head" onclick="skSeedDefaults()" id="seedBtn">🌱 Seed Default Categories &amp; Skills</button>
+        </div>
+        <div class="inline-msg info">"What can this person confidently do?" — advisory only. Never assigns work, never blocks delegation. Manager always overrides.</div>
+        <div class="inline-msg warn" id="notSeededMsg" style="display:none;">No skill categories exist yet. Click "Seed Default Categories &amp; Skills" to load the standard set (safe — never overwrites custom additions).</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Team Competency -->
+        <div class="tab-panel" id="panel-competency">
+            <div class="toolbar">
+                <div class="filter-group">
+                    <span class="filter-label">Team Member</span>
+                    <select id="tcMember" onchange="skLoadCompetency()"><option value="">Select…</option></select>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-title">Skill Levels</div>
+                <table>
+                    <thead><tr><th>Skill</th><th>Category</th><th>Current</th><th>Target</th><th>Flags</th><th>Last Reviewed</th><th></th></tr></thead>
+                    <tbody id="competencyBody"><tr><td colspan="7" class="empty-state">Select a team member.</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Skills Catalog -->
+        <div class="tab-panel" id="panel-catalog">
+            <div class="panel">
+                <div class="panel-title">Categories <button class="btn-add" style="float:right;" onclick="skOpenCategory()">+ Add Category</button></div>
+                <table>
+                    <thead><tr><th>Category</th><th>Key</th><th></th></tr></thead>
+                    <tbody id="categoryBody"><tr><td colspan="3" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+            <div class="panel">
+                <div class="panel-title">Skills <button class="btn-add" style="float:right;" onclick="skOpenSkill()">+ Add Skill</button></div>
+                <div class="toolbar">
+                    <div class="filter-group">
+                        <span class="filter-label">Category</span>
+                        <select id="skillCategoryFilter" onchange="skLoadSkills()"><option value="">All</option></select>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr><th>Skill</th><th>Category</th><th></th></tr></thead>
+                    <tbody id="skillBody"><tr><td colspan="3" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Certifications -->
+        <div class="tab-panel" id="panel-certifications">
+            <div class="panel">
+                <div class="panel-title">Certification Types <button class="btn-add" style="float:right;" onclick="skOpenCertType()">+ Add Certification Type</button></div>
+                <table>
+                    <thead><tr><th>Certification</th><th>Issuer</th><th></th></tr></thead>
+                    <tbody id="certTypeBody"><tr><td colspan="3" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+            <div class="panel">
+                <div class="panel-title">Team Certifications <button class="btn-add" style="float:right;" onclick="skOpenTeamCert()">+ Add Team Certification</button></div>
+                <table>
+                    <thead><tr><th>Team Member</th><th>Certification</th><th>Status</th><th>Issued</th><th>Expiry</th><th></th></tr></thead>
+                    <tbody id="teamCertBody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Training Needs -->
+        <div class="tab-panel" id="panel-training">
+            <div class="panel">
+                <div class="panel-title">Training Needs — target level above current level</div>
+                <table>
+                    <thead><tr><th>Team Member</th><th>Skill</th><th>Current</th><th>Target</th><th>Gap</th><th>Last Reviewed</th></tr></thead>
+                    <tbody id="trainingBody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="tab-panel" id="panel-history">
+            <div class="panel">
+                <div class="panel-title">History</div>
+                <div id="historyBody"><div class="empty-state">Loading…</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Category Modal ────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="categoryModal">
+        <div class="modal-box">
+            <div class="modal-title" id="categoryModalTitle">Add Category</div>
+            <div class="form-group"><label>Category Key *</label><input type="text" id="catKey" placeholder="e.g. advisory" /></div>
+            <div class="form-group"><label>Display Name *</label><input type="text" id="catName" /></div>
+            <div class="form-group"><label>Description</label><textarea id="catDesc"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="skCloseCategory()">Cancel</button>
+                <button class="btn-action btn-danger" id="catArchiveBtn" style="display:none;" onclick="skArchiveCategory()">Archive</button>
+                <button class="btn-action btn-primary" onclick="skSubmitCategory()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Skill Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="skillModal">
+        <div class="modal-box">
+            <div class="modal-title" id="skillModalTitle">Add Skill</div>
+            <div class="form-group"><label>Skill Key *</label><input type="text" id="skKey" placeholder="e.g. review_vat_return" /></div>
+            <div class="form-group"><label>Display Name *</label><input type="text" id="skName" /></div>
+            <div class="form-group"><label>Category</label><select id="skCategory"></select></div>
+            <div class="form-group"><label>Description</label><textarea id="skDesc"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="skCloseSkill()">Cancel</button>
+                <button class="btn-action btn-danger" id="skArchiveBtn" style="display:none;" onclick="skArchiveSkill()">Archive</button>
+                <button class="btn-action btn-primary" onclick="skSubmitSkill()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Team Skill (Competency) Modal ────────────────────────────────── -->
+    <div class="modal-overlay" id="teamSkillModal">
+        <div class="modal-box">
+            <div class="modal-title">Update Competency</div>
+            <div class="form-group full" style="margin-bottom:14px;"><b id="tsSkillName"></b></div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Current Level *</label>
+                    <select id="tsCurrentLevel">
+                        <option value="0">0 — No Exposure</option><option value="1">1 — Basic</option><option value="2">2 — Working Knowledge</option>
+                        <option value="3">3 — Independent</option><option value="4">4 — Advanced</option><option value="5">5 — Expert</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Target Level</label>
+                    <select id="tsTargetLevel">
+                        <option value="">—</option>
+                        <option value="0">0 — No Exposure</option><option value="1">1 — Basic</option><option value="2">2 — Working Knowledge</option>
+                        <option value="3">3 — Independent</option><option value="4">4 — Advanced</option><option value="5">5 — Expert</option>
+                    </select>
+                </div>
+                <div class="form-group"><div class="checkbox-row"><input type="checkbox" id="tsPreferred" /><label for="tsPreferred" style="margin:0;">Preferred work</label></div></div>
+                <div class="form-group"><div class="checkbox-row"><input type="checkbox" id="tsRestricted" /><label for="tsRestricted" style="margin:0;">Restricted — should not do this work</label></div></div>
+                <div class="form-group full"><label>Last Reviewed</label><input type="text" id="tsLastReviewed" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Review Notes</label><textarea id="tsNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="skCloseTeamSkill()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="skSubmitTeamSkill()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Certification Type Modal ─────────────────────────────────────── -->
+    <div class="modal-overlay" id="certTypeModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Certification Type</div>
+            <div class="form-group"><label>Name *</label><input type="text" id="ctName" placeholder="e.g. SAICA CA(SA)" /></div>
+            <div class="form-group"><label>Issuer</label><input type="text" id="ctIssuer" /></div>
+            <div class="form-group"><label>Description</label><textarea id="ctDesc"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="skCloseCertType()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="skSubmitCertType()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Team Certification Modal ─────────────────────────────────────── -->
+    <div class="modal-overlay" id="teamCertModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Team Certification</div>
+            <div class="form-group"><label>Team Member *</label><select id="tcfMember"></select></div>
+            <div class="form-group"><label>Certification *</label><select id="tcfCert"></select></div>
+            <div class="form-row">
+                <div class="form-group"><label>Issue Date</label><input type="text" id="tcfIssue" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Expiry Date</label><input type="text" id="tcfExpiry" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full">
+                    <label>Status</label>
+                    <select id="tcfStatus"><option value="active">Active</option><option value="pending">Pending</option><option value="expired">Expired</option><option value="revoked">Revoked</option></select>
+                </div>
+                <div class="form-group full"><label>Certificate Number</label><input type="text" id="tcfNumber" /></div>
+                <div class="form-group full"><label>Notes</label><textarea id="tcfNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="skCloseTeamCert()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="skSubmitTeamCert()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/skills-matrix.js"></script>
+    <script>LAYOUT.init('skills-matrix');</script>
+</body>
+</html>

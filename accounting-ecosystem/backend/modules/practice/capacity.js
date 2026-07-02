@@ -431,3 +431,9 @@ router.get('/risks', async (req, res) => {
 });
 
 module.exports = router;
+
+// Codebox 56 (Planning Board) reuses this directly — attached to the exported
+// router function object so `require('./capacity').buildTeamCapacity(cid)`
+// works in-process without a second HTTP round-trip and without duplicating
+// the utilization/status calculation.
+module.exports.buildTeamCapacity = buildTeamCapacity;

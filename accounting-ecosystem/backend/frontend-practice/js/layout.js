@@ -5,10 +5,17 @@
    ============================================================ */
 (function () {
     var PAGES = [
-        { key: 'dashboard',   label: 'Dashboard',   href: '/practice' },
+        { key: 'dashboard',   label: 'Dashboard',   href: '/practice/index.html' },
         { key: 'management-dashboard', label: 'Management Dashboard', href: '/practice/management-dashboard.html' },
+        { key: 'planning-board', label: 'Planning Board', href: '/practice/planning-board.html' },
+        { key: 'resource-forecasting', label: 'Resource Forecast', href: '/practice/resource-forecasting.html' },
+        { key: 'work-queue', label: 'My Work', href: '/practice/work-queue.html' },
+        { key: 'delegation', label: 'Delegation', href: '/practice/delegation.html' },
+        { key: 'skills-matrix', label: 'Skills Matrix', href: '/practice/skills-matrix.html' },
         { key: 'kpi-history', label: 'KPI History', href: '/practice/kpi-history.html' },
         { key: 'partner-review-packs', label: 'Partner Review Packs', href: '/practice/partner-review-packs.html' },
+        { key: 'alert-rules', label: 'Alert Rules', href: '/practice/alert-rules.html' },
+        { key: 'notifications', label: 'Notifications', href: '/practice/notifications.html' },
         { key: 'profile',     label: 'Profile',     href: '/practice/profile.html' },
         { key: 'team',        label: 'Team',        href: '/practice/team.html' },
         { key: 'clients',    label: 'Clients',    href: '/practice/clients.html' },
@@ -65,6 +72,38 @@
         }
     }
 
+    // Codebox 54 — Notification bell. Inline-styled (not dependent on
+    // /practice/css/layout.css resolving) since layout.js is shared by every
+    // Practice page and must render correctly regardless of that stylesheet.
+    // "No live websocket. Refresh on load." per spec — one summary fetch per
+    // page load, no polling.
+    function _renderBell(activePage) {
+        var active = activePage === 'notifications';
+        return '<a href="/practice/notifications.html" title="Notifications" style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:9px;background:' +
+            (active ? 'rgba(167,139,250,0.2)' : 'rgba(167,139,250,0.1)') +
+            ';border:1px solid rgba(167,139,250,0.25);color:#a78bfa;text-decoration:none;font-size:16px;">' +
+            '🔔<span id="notifBellBadge" style="display:none;position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#e53e3e;color:#fff;font-size:.65rem;font-weight:700;line-height:16px;text-align:center;">0</span>' +
+            '</a>';
+    }
+
+    function _loadBellCount() {
+        if (!window.PracticeAPI || !window.PracticeAPI.fetch) return;
+        window.PracticeAPI.fetch('/api/practice/notifications/summary')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var badge = document.getElementById('notifBellBadge');
+                if (!badge) return;
+                var count = d.unread_count || 0;
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : String(count);
+                    badge.style.display = 'block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            })
+            .catch(function () { /* non-fatal — bell just shows no badge */ });
+    }
+
     function init(activePage) {
         var companyName = getCompanyName();
 
@@ -80,6 +119,7 @@
                 '</div>' +
                 '<div class="topbar-right">' +
                     '<span class="company-badge">' + escHtml(companyName) + '</span>' +
+                    _renderBell(activePage) +
                     '<a href="/dashboard" class="btn-back">← ECO Hub</a>' +
                 '</div>';
         }
@@ -91,6 +131,8 @@
                 return '<a href="' + p.href + '" class="' + cls + '">' + p.label + '</a>';
             }).join('');
         }
+
+        _loadBellCount();
     }
 
     // onReady exists so page scripts can defer their own data-load boot logic

@@ -175,6 +175,26 @@
 <script src="/practice/js/polyfills.js"></script>
 <script src="/practice/js/auth.js"></script>
 <script src="/practice/js/api.js"></script>
+<script>
+(function () {
+    // Codebox 55 — role-based landing routing. Only applies to the bare
+    // /practice entry URL (e.g. right after selecting the app from the
+    // ecosystem hub). The "Dashboard" nav tab links to /practice/index.html
+    // explicitly, which never matches this check, so this Command Centre
+    // page always stays reachable via nav — it just isn't the default entry
+    // point for staff/partners any more.
+    if (window.location.pathname !== '/practice') return;
+    if (!window.PracticeAPI || !window.PracticeAPI.fetch) return;
+    window.PracticeAPI.fetch('/api/practice/work-queue/preferences')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var role = d.team_member && d.team_member.role;
+            var isManager = role === 'owner' || role === 'partner' || role === 'admin' || role === 'manager';
+            window.location.replace(isManager ? '/practice/management-dashboard.html' : '/practice/work-queue.html');
+        })
+        .catch(function () { /* on any failure, stay on the Command Centre */ });
+}());
+</script>
 <script src="/practice/js/layout.js"></script>
 <script src="/practice/js/dashboard.js"></script>
 </body>

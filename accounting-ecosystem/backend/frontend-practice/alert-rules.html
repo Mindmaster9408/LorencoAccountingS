@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alert Rules — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.25); }
+        .inline-msg.err  { background: rgba(229,62,62,.12); color: #fc8181; border: 1px solid rgba(229,62,62,.25); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 14px 16px; text-align: center; }
+        .sc-count { font-size: 1.6rem; font-weight: 800; color: #e2e8f0; }
+        .sc-label { font-size: .72rem; color: #718096; margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .group-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+        .group-chip { background: #1e2035; border: 1px solid #2d3748; border-radius: 20px; padding: 7px 14px; font-size: .78rem; color: #a0aec0; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        .group-chip.active { background: #667eea; border-color: #667eea; color: #fff; }
+        .group-chip .gc-count { font-size: .7rem; opacity: .75; }
+
+        .filter-bar { background: #1e2035; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+        .filter-bar input, .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .btn-filter { background: #667eea; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-filter-clear { background: #2d3748; color: #a0aec0; border: none; border-radius: 6px; padding: 8px 14px; font-size: .82rem; cursor: pointer; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+        .btn-add:hover { background: #38a169; }
+        .btn-head { background: #2d3748; color: #e2e8f0; border: none; border-radius: 8px; padding: 9px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+
+        .table-wrap { background: #1e2035; border-radius: 12px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; padding: 10px 14px; text-align: left; }
+        td { padding: 10px 14px; font-size: .82rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #252840; cursor: pointer; }
+        .empty-row td { text-align: center; color: #4a5568; padding: 32px; }
+        code.rk { background: #12122a; padding: 2px 6px; border-radius: 4px; font-size: .75rem; color: #a3bffa; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+        .sev-info     { background: rgba(160,174,192,.2); color: #a0aec0; }
+        .sev-low      { background: rgba(104,211,145,.2); color: #68d391; }
+        .sev-medium   { background: rgba(246,173,85,.2);  color: #f6ad55; }
+        .sev-high     { background: rgba(252,129,74,.2);  color: #fc8181; }
+        .sev-critical { background: rgba(229,62,62,.25);  color: #feb2b2; }
+        .badge-off { background: rgba(74,85,104,.3); color: #718096; }
+        .badge-sys { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .badge-wired { background: rgba(72,187,120,.18); color: #68d391; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 90%; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+        .modal-sm { max-width: 480px; }
+        .modal-md { max-width: 680px; }
+        .modal-lg { max-width: 900px; }
+        .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; color: #e2e8f0; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #667eea; }
+        textarea { resize: vertical; min-height: 60px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; }
+        .checkbox-row input { width: auto; }
+
+        .btn-action { padding: 8px 16px; border: none; border-radius: 7px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action:disabled { opacity: .55; cursor: not-allowed; }
+        .btn-primary   { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success   { background: #48bb78; color: #fff; }
+        .btn-danger    { background: #e53e3e; color: #fff; }
+        .btn-warning   { background: #ed8936; color: #fff; }
+        .btn-sm        { padding: 5px 11px; font-size: .78rem; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 7px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-content { padding: 4px 0; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+        .detail-row  { display: flex; flex-direction: column; padding: 8px 12px; border-bottom: 1px solid #12122a; }
+        .detail-label { font-size: .72rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+        .detail-value { font-size: .85rem; color: #e2e8f0; }
+
+        .event-item { background: #12122a; border-radius: 8px; padding: 10px 14px; margin-bottom: 6px; }
+        .event-header { display: flex; gap: 8px; align-items: center; margin-bottom: 3px; }
+        .event-type { font-size: .78rem; font-weight: 700; color: #a0aec0; }
+        .event-time { font-size: .72rem; color: #4a5568; margin-left: auto; }
+        .event-notes { font-size: .78rem; color: #718096; font-style: italic; }
+
+        .validation-box { background: rgba(229,62,62,.1); border: 1px solid rgba(229,62,62,.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
+        .validation-box ul { margin: 4px 0 0; padding-left: 18px; }
+        .validation-box li { font-size: .8rem; color: #fc8181; }
+
+        .loading-state { text-align: center; color: #4a5568; padding: 20px; font-size: .85rem; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <h1 style="font-size:1.3rem;font-weight:700;margin:0;">Alert Rules</h1>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn-head" onclick="arSeedDefaults()" id="seedBtn">🌱 Seed Defaults</button>
+                <button class="btn-head" onclick="arExport()">⬇ Export</button>
+                <button class="btn-head" onclick="arOpenImport()">⬆ Import</button>
+                <button class="btn-head" onclick="arOpenHistory()">🕘 History</button>
+                <button class="btn-add" onclick="arOpenCreate()">+ Add Custom Rule</button>
+            </div>
+        </div>
+        <div class="inline-msg info">
+            Configure when alerts are raised across the practice — without changing code. NOT AI. NOT automatic threshold tuning.
+        </div>
+        <div id="notSeededMsg" class="inline-msg warn" style="display:none;">
+            No rules have been seeded for this company yet. Click <strong>Seed Defaults</strong> to create the standard rule set (safe — matches current behaviour exactly, never overwrites existing rules).
+        </div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="group-bar" id="groupBar"></div>
+
+        <div class="filter-bar">
+            <div class="filter-group">
+                <span class="filter-label">Search</span>
+                <input type="text" id="filterSearch" placeholder="rule key, name, description…" onkeyup="if(event.key==='Enter')arLoadList()" />
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Enabled</span>
+                <select id="filterEnabled" onchange="arLoadList()">
+                    <option value="">All</option>
+                    <option value="true">Enabled only</option>
+                    <option value="false">Disabled only</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">&nbsp;</span>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn-filter" onclick="arLoadList()">Search</button>
+                    <button class="btn-filter-clear" onclick="arClearFilters()">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Rule</th><th>Category</th><th>Condition</th><th>Severity</th><th>Status</th><th>Version</th><th></th></tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr class="empty-row"><td colspan="7">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Create/Edit Rule Modal ─────────────────────────────────────────── -->
+    <div class="modal-overlay" id="ruleModal">
+        <div class="modal-box modal-md">
+            <div class="modal-title" id="ruleModalTitle">Add Custom Rule</div>
+            <div id="ruleValidationBox"></div>
+            <div class="form-row">
+                <div class="form-group full" id="ruleKeyGroup">
+                    <label>Rule Key *</label>
+                    <input type="text" id="rfRuleKey" placeholder="e.g. my_custom_alert (lowercase snake_case)" />
+                </div>
+                <div class="form-group">
+                    <label>Category *</label>
+                    <select id="rfCategory"></select>
+                </div>
+                <div class="form-group">
+                    <label>Severity *</label>
+                    <select id="rfSeverity">
+                        <option value="info">Info</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                    </select>
+                </div>
+                <div class="form-group full">
+                    <label>Display Name *</label>
+                    <input type="text" id="rfDisplayName" placeholder="Shown to partners on this page" />
+                </div>
+                <div class="form-group full">
+                    <label>Description</label>
+                    <textarea id="rfDescription" placeholder="What does this rule control?"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Comparison Operator *</label>
+                    <select id="rfOperator" onchange="arOperatorChanged()">
+                        <option value=">">&gt;</option>
+                        <option value=">=">&gt;=</option>
+                        <option value="<">&lt;</option>
+                        <option value="<=">&lt;=</option>
+                        <option value="=">=</option>
+                        <option value="!=">!=</option>
+                        <option value="between">between</option>
+                        <option value="contains">contains</option>
+                    </select>
+                </div>
+                <div class="form-group" id="rfThresholdValueGroup">
+                    <label id="rfThresholdValueLabel">Threshold Value</label>
+                    <input type="number" step="any" id="rfThresholdValue" />
+                </div>
+                <div class="form-group" id="rfWarningValueGroup" style="display:none;">
+                    <label>Warning Value (upper bound for "between")</label>
+                    <input type="number" step="any" id="rfWarningValue" />
+                </div>
+                <div class="form-group" id="rfThresholdTextGroup" style="display:none;">
+                    <label>Threshold Text (status/value to match)</label>
+                    <input type="text" id="rfThresholdText" placeholder="e.g. blocked, critical, under_review" />
+                </div>
+                <div class="form-group">
+                    <label>Sort Order</label>
+                    <input type="number" id="rfSortOrder" value="0" />
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <div class="checkbox-row"><input type="checkbox" id="rfEnabled" checked /> <label for="rfEnabled" style="margin:0;">Enabled</label></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="arCloseRuleModal()">Cancel</button>
+                <button class="btn-action btn-secondary" onclick="arValidateRuleForm()">Validate</button>
+                <button class="btn-action btn-primary" id="ruleSubmitBtn" onclick="arSubmitRuleForm()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Rule Detail Modal ──────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg">
+            <div id="detailTabBar" class="tab-bar"></div>
+            <div id="detailBody" style="min-height:180px;"></div>
+            <div class="modal-footer" id="detailFooter"></div>
+        </div>
+    </div>
+
+    <!-- ── Import Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="importModal">
+        <div class="modal-box modal-md">
+            <div class="modal-title">Import Rules</div>
+            <div class="inline-msg info">Paste a previously exported rules JSON. Existing rule_keys are updated in place (never deleted); unknown rule_keys are validated and created as custom rules.</div>
+            <div id="importValidationBox"></div>
+            <div class="form-group full">
+                <label>Rules JSON</label>
+                <textarea id="importJson" style="min-height:220px;font-family:monospace;font-size:.78rem;" placeholder='{"rules": [...]}'></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="arCloseImport()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="arSubmitImport()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Global History Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="historyModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">Rule Change History</div>
+            <div id="historyBody" style="max-height:60vh;overflow-y:auto;"></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="arCloseHistory()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/alert-rules.js"></script>
+    <script>LAYOUT.init('alert-rules');</script>
+</body>
+</html>
