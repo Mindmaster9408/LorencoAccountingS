@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Learning Centre — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.25); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .toolbar { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .toolbar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+
+        .plan-list { display: flex; flex-direction: column; gap: 8px; }
+        .plan-row { background: #12122a; border-radius: 10px; padding: 12px 16px; cursor: pointer; border-left: 3px solid transparent; }
+        .plan-row:hover { background: #1a1c30; }
+        .plan-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .plan-title { font-weight: 700; font-size: .86rem; }
+        .plan-meta { font-size: .74rem; color: #718096; margin-top: 4px; }
+        .progress-bar-wrap { height: 6px; border-radius: 3px; background: #2d3748; overflow: hidden; margin-top: 8px; width: 200px; max-width: 100%; }
+        .progress-bar-fill { height: 100%; background: #667eea; border-radius: 3px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .st-draft, .st-not_started, .st-planned { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .st-active, .st-in_progress { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .st-on_hold { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .st-completed { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-cancelled { background: rgba(229,62,62,.2); color: #fc8181; }
+        .st-recorded { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .st-verified { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-expired { background: rgba(229,62,62,.22); color: #feb2b2; }
+        .pri-low { color: #718096; } .pri-medium { color: #a3bffa; } .pri-high { color: #f6ad55; } .pri-critical { color: #fc8181; }
+
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .btn-success { background: #48bb78; color: #fff; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 900px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+
+        .suggestion-chip { display: inline-flex; align-items: center; gap: 6px; background: #12122a; border: 1px solid #2d3748; border-radius: 16px; padding: 5px 12px; font-size: .76rem; margin: 3px 4px 3px 0; cursor: pointer; }
+        .suggestion-chip:hover { border-color: #667eea; }
+
+        .detail-section-title { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #718096; margin: 16px 0 8px; }
+        .goal-card { background: #12122a; border-radius: 9px; padding: 12px 14px; margin-bottom: 8px; }
+        .activity-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: .78rem; border-top: 1px solid #1e2035; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Learning Centre</h1>
+            <button class="btn-add" onclick="lcOpenCreatePlan()">+ New Development Plan</button>
+        </div>
+        <div class="inline-msg info">"How is this person developing?" — complements the Skills Matrix. Not AI coaching. Not an LMS. Manager-driven.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Plans -->
+        <div class="tab-panel" id="panel-plans">
+            <div class="toolbar">
+                <div class="filter-group">
+                    <span class="filter-label">Status</span>
+                    <select id="planStatusFilter" onchange="lcLoadPlans()">
+                        <option value="">All</option>
+                        <option value="draft">Draft</option><option value="active">Active</option><option value="on_hold">On Hold</option>
+                        <option value="completed">Completed</option><option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+            </div>
+            <div class="plan-list" id="planList"><div class="empty-state">Loading…</div></div>
+        </div>
+
+        <!-- CPD -->
+        <div class="tab-panel" id="panel-cpd">
+            <div class="panel">
+                <div class="panel-title">CPD Records <button class="btn-add" onclick="lcOpenCpd()">+ Record CPD</button></div>
+                <table>
+                    <thead><tr><th>Team Member</th><th>Course</th><th>Provider</th><th>Hours</th><th>Category</th><th>Status</th><th>Issued</th><th>Expiry</th><th></th></tr></thead>
+                    <tbody id="cpdBody"><tr><td colspan="9" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="tab-panel" id="panel-history">
+            <div class="panel">
+                <div class="panel-title">History</div>
+                <div id="historyBody"><div class="empty-state">Loading…</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Plan Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createPlanModal">
+        <div class="modal-box">
+            <div class="modal-title">New Development Plan</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Team Member *</label><select id="pfMember" onchange="lcLoadSuggestions()"></select></div>
+                <div class="form-group full"><label>Plan Name *</label><input type="text" id="pfName" placeholder="e.g. Path to Senior Reviewer" /></div>
+                <div class="form-group full"><label>Description</label><textarea id="pfDescription"></textarea></div>
+                <div class="form-group"><label>Start Date</label><input type="text" id="pfStart" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Target Completion</label><input type="text" id="pfTarget" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Mentor</label><select id="pfMentor"><option value="">— None —</option></select></div>
+                <div class="form-group"><label>Status</label><select id="pfStatus"><option value="draft">Draft</option><option value="active">Active</option></select></div>
+                <div class="form-group full">
+                    <label>Suggested Goals (from Skills Matrix — click to view, informational only)</label>
+                    <div id="pfSuggestions" style="font-size:.78rem;color:#718096;">Select a team member to see suggestions.</div>
+                </div>
+                <div class="form-group full"><label>Notes</label><textarea id="pfNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="lcCloseCreatePlan()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="lcSubmitCreatePlan()">Create Plan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Plan Detail Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="planDetailModal">
+        <div class="modal-box modal-lg">
+            <div id="planDetailBody"></div>
+            <div class="modal-footer" id="planDetailFooter"></div>
+        </div>
+    </div>
+
+    <!-- ── Goal Modal ────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="goalModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Goal</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Goal Title *</label><input type="text" id="gfTitle" /></div>
+                <div class="form-group full"><label>Description</label><textarea id="gfDescription"></textarea></div>
+                <div class="form-group full"><label>Linked Skill (optional)</label><select id="gfSkill"><option value="">— None —</option></select></div>
+                <div class="form-group"><label>Priority</label><select id="gfPriority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
+                <div class="form-group"><label>Target Date</label><input type="text" id="gfTargetDate" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Current Level (0-5)</label><input type="number" id="gfCurrentLevel" min="0" max="5" /></div>
+                <div class="form-group"><label>Target Level (0-5)</label><input type="number" id="gfTargetLevel" min="0" max="5" /></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="lcCloseGoal()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="lcSubmitGoal()">Save Goal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Activity Modal ────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="activityModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Activity</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Title *</label><input type="text" id="afTitle" /></div>
+                <div class="form-group">
+                    <label>Activity Type *</label>
+                    <select id="afType">
+                        <option value="internal_training">Internal Training</option><option value="external_course">External Course</option>
+                        <option value="workshop">Workshop</option><option value="reading">Reading</option><option value="case_study">Case Study</option>
+                        <option value="mentoring_session">Mentoring Session</option><option value="shadowing">Shadowing</option>
+                        <option value="client_meeting_observation">Client Meeting Observation</option><option value="research">Research</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Status</label><select id="afStatus"><option value="planned">Planned</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select></div>
+                <div class="form-group"><label>Planned Hours</label><input type="number" id="afPlannedHours" step="0.25" /></div>
+                <div class="form-group"><label>Completed Hours</label><input type="number" id="afCompletedHours" step="0.25" /></div>
+                <div class="form-group full"><label>Evidence / Notes</label><textarea id="afEvidence"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="lcCloseActivity()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="lcSubmitActivity()">Save Activity</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── CPD Modal ─────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="cpdModal">
+        <div class="modal-box">
+            <div class="modal-title">Record CPD</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Team Member *</label><select id="cfMember"></select></div>
+                <div class="form-group full"><label>Course *</label><input type="text" id="cfCourse" /></div>
+                <div class="form-group"><label>Provider</label><input type="text" id="cfProvider" /></div>
+                <div class="form-group"><label>Hours</label><input type="number" id="cfHours" step="0.25" /></div>
+                <div class="form-group"><label>Category</label><input type="text" id="cfCategory" placeholder="e.g. Tax, Ethics, Technical" /></div>
+                <div class="form-group"><label>Status</label><select id="cfStatus"><option value="recorded">Recorded</option><option value="verified">Verified</option><option value="expired">Expired</option></select></div>
+                <div class="form-group"><label>Issue Date</label><input type="text" id="cfIssue" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Expiry Date</label><input type="text" id="cfExpiry" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Certificate Number</label><input type="text" id="cfCertNumber" /></div>
+                <div class="form-group full"><label>Evidence</label><input type="text" id="cfEvidence" placeholder="Reference or URL" /></div>
+                <div class="form-group full"><label>Notes</label><textarea id="cfNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="lcCloseCpd()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="lcSubmitCpd()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/learning-centre.js"></script>
+    <script>LAYOUT.init('learning-centre');</script>
+</body>
+</html>

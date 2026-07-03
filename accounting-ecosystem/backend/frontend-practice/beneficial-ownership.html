@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beneficial Ownership — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .client-picker { background: #1e2035; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .client-picker select { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 9px 12px; font-size: .88rem; min-width: 280px; }
+        .client-picker label { font-size: .82rem; color: #a0aec0; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        .readiness-banner { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; padding: 14px 18px; border-radius: 12px; background: #1e2035; }
+        .readiness-banner .rb-status { font-size: 1.1rem; font-weight: 800; }
+        .rd-ready { color: #68d391; } .rd-partial { color: #f6ad55; } .rd-incomplete { color: #fc8181; } .rd-blocked { color: #e53e3e; } .rd-unknown { color: #718096; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .os-draft, .cs-draft, .rs-required { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .os-active, .cs-active { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .os-incomplete, .cs-incomplete, .rs-requested { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .os-verified, .cs-verified, .rs-verified, .rs-received { background: rgba(104,211,145,.2); color: #68d391; }
+        .os-not_reportable { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .os-archived, .cs-archived { background: rgba(229,62,62,.2); color: #fc8181; }
+        .rs-blocked { background: rgba(229,62,62,.22); color: #fc8181; }
+        .rs-waived, .rs-not_applicable { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .conf-high { color: #68d391; } .conf-medium { color: #f6ad55; } .conf-low, .conf-unknown { color: #fc8181; }
+
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .btn-success { background: #48bb78; color: #fff; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 900px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        textarea.json-field { font-family: 'Consolas', monospace; min-height: 90px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .checkbox-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #a0aec0; margin-bottom: 8px; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Beneficial Ownership</h1>
+        </div>
+        <div class="inline-msg info">"Who ultimately owns or controls this client?" and "Are we ready to file/confirm BO information?" NOT CIPC filing. NOT legal advice. Structured recordkeeping only.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="client-picker">
+            <label for="clientPicker">Client</label>
+            <select id="clientPicker" onchange="boOnClientChange()"><option value="">Select a client…</option></select>
+        </div>
+
+        <div id="clientArea" style="display:none;">
+            <div class="readiness-banner" id="readinessBanner"></div>
+
+            <div class="tab-bar" id="tabBar"></div>
+
+            <!-- Beneficial Owners -->
+            <div class="tab-panel" id="panel-owners">
+                <div class="panel">
+                    <div class="panel-title">Beneficial Owners <button class="btn-add" onclick="boOpenOwner()">+ Add Owner</button></div>
+                    <table>
+                        <thead><tr><th>Name</th><th>Type</th><th>Control</th><th>Effective %</th><th>Reportable</th><th>Status</th><th>Verification</th></tr></thead>
+                        <tbody id="ownersBody"><tr><td colspan="7" class="empty-state">Select a client.</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Direct Shareholders (from Shareholder Register — read-only here)</div>
+                    <table>
+                        <thead><tr><th>Name</th><th>Type</th><th>%</th></tr></thead>
+                        <tbody id="shareholdersBody"><tr><td colspan="3" class="empty-state">None.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Ownership Chains -->
+            <div class="tab-panel" id="panel-chains">
+                <div class="panel">
+                    <div class="panel-title">Ownership Chains <button class="btn-add" onclick="boOpenChain()">+ Add Chain</button></div>
+                    <table>
+                        <thead><tr><th>Chain</th><th>Root Holder</th><th>Effective %</th><th>Method</th><th>Confidence</th><th>Status</th></tr></thead>
+                        <tbody id="chainsBody"><tr><td colspan="6" class="empty-state">Select a client.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Readiness -->
+            <div class="tab-panel" id="panel-readiness">
+                <div class="panel">
+                    <div class="panel-title">BO Readiness Checklist
+                        <span>
+                            <button class="btn-action btn-secondary" onclick="boGenerateReadiness()">Generate Items</button>
+                            <button class="btn-action btn-primary" onclick="boRecalculateReadiness()">Recalculate</button>
+                        </span>
+                    </div>
+                    <table>
+                        <thead><tr><th>Item</th><th>Type</th><th>Required</th><th>Status</th><th>Due</th><th></th></tr></thead>
+                        <tbody id="readinessBody"><tr><td colspan="6" class="empty-state">Select a client.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Events -->
+            <div class="tab-panel" id="panel-events">
+                <div class="panel">
+                    <div class="panel-title">Events</div>
+                    <div id="eventsBody"><div class="empty-state">Select a client.</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Owner Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="ownerModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">Beneficial Owner</div>
+            <div class="form-row">
+                <div class="form-group"><label>Owner Type *</label>
+                    <select id="ofType" onchange="boSyncNaturalPerson()">
+                        <option value="natural_person">Natural Person</option><option value="company">Company</option><option value="trust">Trust</option>
+                        <option value="partnership">Partnership</option><option value="nominee">Nominee</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group full"><label>Owner Name *</label><input type="text" id="ofName" /></div>
+                <div class="form-group"><label>ID Number</label><input type="text" id="ofIdNumber" /></div>
+                <div class="form-group"><label>Registration Number</label><input type="text" id="ofRegNumber" /></div>
+                <div class="form-group"><label>Trust Number</label><input type="text" id="ofTrustNumber" /></div>
+                <div class="form-group"><label>Tax Number</label><input type="text" id="ofTaxNumber" /></div>
+                <div class="form-group"><label>Nationality</label><input type="text" id="ofNationality" /></div>
+                <div class="form-group"><label>Country of Residence</label><input type="text" id="ofCountry" /></div>
+                <div class="form-group"><label>Control Type *</label>
+                    <select id="ofControlType">
+                        <option value="shareholding">Shareholding</option><option value="voting_rights">Voting Rights</option><option value="board_control">Board Control</option>
+                        <option value="trustee_control">Trustee Control</option><option value="beneficiary_control">Beneficiary Control</option>
+                        <option value="nominee_control">Nominee Control</option><option value="agreement_control">Agreement Control</option><option value="other_control">Other Control</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Direct Percentage</label><input type="number" id="ofDirectPct" min="0" max="100" step="0.01" /></div>
+                <div class="form-group full"><label>Effective Percentage (manual override — leave blank to auto-calculate from Direct Percentage)</label><input type="number" id="ofEffectivePct" min="0" max="100" step="0.01" /></div>
+                <div class="form-group full">
+                    <div class="checkbox-row"><input type="checkbox" id="ofIsNaturalPerson" /> <label for="ofIsNaturalPerson">Is a natural person</label></div>
+                    <div class="checkbox-row"><input type="checkbox" id="ofForceReportable" /> <label for="ofForceReportable">Mark reportable regardless of percentage (control-type basis)</label></div>
+                </div>
+                <div class="form-group full"><label>Source Note</label><input type="text" id="ofSourceNote" placeholder="e.g. client-provided org chart, trust deed clause 4" /></div>
+                <div class="form-group full"><label>Notes</label><textarea id="ofNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="boCloseOwner()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="boSubmitOwner()">Save Owner</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Owner Detail Modal ────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="ownerDetailModal">
+        <div class="modal-box modal-lg"><div id="ownerDetailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="boCloseOwnerDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Chain Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="chainModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">Ownership Chain</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Chain Name *</label><input type="text" id="cfName" /></div>
+                <div class="form-group"><label>Root Holder Type *</label>
+                    <select id="cfRootType"><option value="shareholder">Shareholder</option><option value="company">Company</option><option value="trust">Trust</option>
+                        <option value="natural_person">Natural Person</option><option value="nominee">Nominee</option><option value="other">Other</option></select>
+                </div>
+                <div class="form-group full"><label>Root Holder Name *</label><input type="text" id="cfRootName" /></div>
+                <div class="form-group"><label>Root Holder Reference ID (shareholder ID, optional)</label><input type="number" id="cfRootRefId" /></div>
+                <div class="form-group"><label>Ultimate Owner ID (beneficial owner ID, optional)</label><input type="number" id="cfUltimateOwnerId" /></div>
+                <div class="form-group full">
+                    <label>Chain Path (JSON array — each step needs a "percentage", e.g. [{"holder_name":"ABC Trust","holder_type":"trust","percentage":60}])</label>
+                    <textarea id="cfChainPath" class="json-field" placeholder="[]"></textarea>
+                </div>
+                <div class="form-group"><label>Direct Percentage</label><input type="number" id="cfDirectPct" min="0" max="100" step="0.01" /></div>
+                <div class="form-group"><label>Effective Percentage (manual override)</label><input type="number" id="cfEffectivePct" min="0" max="100" step="0.01" /></div>
+                <div class="form-group full"><label>Notes</label><textarea id="cfNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="boCloseChain()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="boSubmitChain()">Save Chain</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Chain Detail Modal ────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="chainDetailModal">
+        <div class="modal-box modal-lg"><div id="chainDetailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="boCloseChainDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/beneficial-ownership.js"></script>
+    <script>LAYOUT.init('beneficial-ownership');</script>
+</body>
+</html>

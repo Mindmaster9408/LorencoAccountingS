@@ -176,9 +176,50 @@
         var delegateBtn = delegateModule
             ? '<button class="mc-link" style="flex:none;padding:4px 10px;margin-left:8px;align-self:center;background:#805ad5;" onclick="event.stopPropagation();window.location.href=\'/practice/delegation.html?delegate=1&source_module=' + delegateModule + '&source_id=' + item.source_id + '&role=' + encodeURIComponent(item.role) + '\'">Delegate</button>'
             : '';
+        // Codebox 61 — soft "at-risk client" hint, sourced from Client Success.
+        // Informational only — never affects priority scoring or ordering.
+        var atRiskBadge = item.at_risk_client
+            ? ' <span class="pill" style="background:rgba(229,62,62,.2);color:#fc8181;" title="This client\'s relationship status is at risk or critical — see Client Success">⚠ At-Risk Client</span>'
+            : '';
+        // Codebox 62 — soft "annual return due/overdue" hint, sourced from
+        // Secretarial. Informational only — never affects priority ordering.
+        var returnBadge = item.annual_return_due
+            ? ' <span class="pill" style="background:rgba(246,173,85,.2);color:#f6ad55;" title="This client has an annual return due or overdue — see Secretarial">📋 Annual Return Due</span>'
+            : '';
+        // Codebox 63 — soft "pending statutory change" hint (a case awaiting
+        // review or implementation), sourced from Secretarial Changes.
+        // Informational only — never affects priority ordering.
+        var changeBadge = item.pending_statutory_change
+            ? ' <span class="pill" style="background:rgba(159,122,234,.2);color:#b794f4;" title="This client has a statutory change case awaiting review or implementation — see Secretarial Changes">🗂 Pending Statutory Change</span>'
+            : '';
+        // Codebox 65 — soft "BO readiness concern" hint (a blocked, required
+        // Beneficial Ownership readiness item), sourced from Beneficial
+        // Ownership. Informational only — never affects priority ordering.
+        var boBadge = item.bo_readiness_concern
+            ? ' <span class="pill" style="background:rgba(229,62,62,.22);color:#fc8181;" title="This client has a blocked Beneficial Ownership readiness item — see Beneficial Ownership">🛑 BO Readiness Blocked</span>'
+            : '';
+        // Codebox 67 — soft statutory workload hints, sourced from the
+        // Statutory Calendar. Informational only — never affects priority ordering.
+        var statutoryBadge = item.statutory_workload_blocked
+            ? ' <span class="pill" style="background:rgba(229,62,62,.2);color:#fc8181;" title="This client has statutory work blocked by an unresolved dependency — see Statutory Calendar">📅 Statutory Blocked</span>'
+            : (item.statutory_workload_upcoming
+                ? ' <span class="pill" style="background:rgba(102,126,234,.18);color:#a3bffa;" title="This client has statutory work due within 30 days — see Statutory Calendar">📅 Statutory Due Soon</span>'
+                : '');
+        // Codebox 66 — soft "evidence blocked" hint (a blocked, required
+        // evidence item on this client's checklist), sourced from Secretarial
+        // Evidence. Informational only — never affects priority ordering.
+        var evidenceBadge = item.evidence_blocked
+            ? ' <span class="pill" style="background:rgba(229,62,62,.22);color:#fc8181;" title="This client has a blocked, required evidence item — see Secretarial Evidence">📎 Evidence Blocked</span>'
+            : '';
+        // Codebox 68 — soft "lifecycle transition pending" hint (a transition
+        // awaiting manager review or implementation), sourced from Entity
+        // Lifecycle. Informational only — never affects priority ordering.
+        var lifecycleBadge = item.lifecycle_transition_pending
+            ? ' <span class="pill" style="background:rgba(246,173,85,.2);color:#f6ad55;" title="This client has a lifecycle transition awaiting review or implementation — see Entity Lifecycle">🔄 Lifecycle Pending</span>'
+            : '';
         return '<div class="work-item pr-' + _html(label) + '" style="display:flex;align-items:center;" onclick="pbOpenDeepLink(\'' + _html(item.deep_link) + '\')">' +
             '<div class="wi-body">' +
-            '<div class="wi-title">' + _html(item.title) + ' <span class="pill st-' + _html(label === 'critical' ? 'archived' : 'open') + '">' + _html(label) + '</span></div>' +
+            '<div class="wi-title">' + _html(item.title) + ' <span class="pill st-' + _html(label === 'critical' ? 'archived' : 'open') + '">' + _html(label) + '</span>' + atRiskBadge + returnBadge + changeBadge + boBadge + statutoryBadge + evidenceBadge + lifecycleBadge + '</div>' +
             '<div class="wi-reason">' + _html(item.reason) + '</div>' +
             '<div class="wi-meta">' + meta.join(' · ') + '</div>' +
             '</div>' + delegateBtn + '</div>';

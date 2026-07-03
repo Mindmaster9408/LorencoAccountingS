@@ -14,6 +14,12 @@ const { authenticateToken, requireCompany } = require('../../middleware/auth');
 // getRules() always resolves (DB row, or a safe fallback matching the
 // original hardcoded values) — never throws, never returns undefined.
 const { getRules } = require('./alert-rules');
+// Codebox 67 — reuse the exact scheduler buildStatutoryCalendar() rather than
+// re-approximating "blocked"/"overdue" with a second, cheaper heuristic here.
+const { buildStatutoryCalendar } = require('./secretarial-calendar');
+// Codebox 66 — reuse getEvidenceSummary() rather than re-deriving checklist
+// readiness a second time.
+const { getEvidenceSummary } = require('./secretarial-evidence');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -204,6 +210,56 @@ async function computeSummary(cid) {
         const totalBillable = packs.reduce((s, p) => s + (Number(p.billable_value) || 0), 0);
         const realisationPct = totalRecoverable > 0 ? Math.round((totalBillable / totalRecoverable) * 1000) / 10 : null;
 
+        // ── Client Success relationship health (Codebox 61) — a separate
+        // concept from client_health above (which is OPERATIONAL: overdue
+        // deadlines/tasks/WIP). This counts RELATIONSHIP status from
+        // practice_client_success. Kept out of the main Promise.all above
+        // only for readability, matching the same precedent used for
+        // client-health snapshot recency in computeExecutiveFeed().
+        const relationshipRows = await supabase.from('practice_client_success').select('relationship_status').eq('company_id', cid);
+        const relationshipCounts = { healthy: 0, watch: 0, at_risk: 0, critical: 0, unknown: 0 };
+        (relationshipRows.data || []).forEach(r => { const k = r.relationship_status || 'unknown'; if (k in relationshipCounts) relationshipCounts[k]++; });
+
+        // Codebox 65 — Beneficial Ownership summary. Low-risk, count-only
+        // queries (same pattern as relationshipRows above) — no readiness
+        // score computed here, just plain counts by owner status and a
+        // blocked-required-item count (matching the Planning Board badge's
+        // deliberately lightweight scope).
+        const [boOwnerRows, boBlockedRows] = await Promise.all([
+            supabase.from('practice_beneficial_owners').select('status, is_reportable').eq('company_id', cid),
+            supabase.from('practice_bo_readiness_items').select('client_id').eq('company_id', cid).eq('status', 'blocked').eq('required', true),
+        ]);
+        const boOwnerCounts = { draft: 0, active: 0, incomplete: 0, verified: 0, not_reportable: 0, archived: 0 };
+        (boOwnerRows.data || []).forEach(o => { if (o.status in boOwnerCounts) boOwnerCounts[o.status]++; });
+        const boReportableCount = (boOwnerRows.data || []).filter(o => o.is_reportable).length;
+        const boBlockedClientCount = new Set((boBlockedRows.data || []).map(r => r.client_id)).size;
+
+        // Codebox 67 — Statutory Compliance summary. Reuses buildStatutoryCalendar()
+        // directly (see require at top of file) rather than re-implementing the
+        // upcoming/overdue/blocked categorization a second time.
+        let statutoryCounts = { upcoming: 0, overdue: 0, blocked: 0, due_today: 0 };
+        try {
+            const statutoryCalendar = await buildStatutoryCalendar(cid, null);
+            statutoryCounts = statutoryCalendar.counts;
+        } catch (e) { console.error('[management-dashboard] statutory calendar', e.message); }
+
+        // Codebox 66 — Evidence readiness summary, reused directly.
+        let evidenceSummary = { checklists_total: 0, checklists_by_readiness: { ready: 0, partial: 0, incomplete: 0, blocked: 0, unknown: 0 } };
+        try {
+            evidenceSummary = await getEvidenceSummary(cid);
+        } catch (e) { console.error('[management-dashboard] evidence summary', e.message); }
+
+        // Codebox 68 — Entity Lifecycle summary. Low-risk, count-only queries
+        // (same pattern as beneficial_ownership above) — no per-client call
+        // into entity-lifecycle.js's getEntityLifecycleProfile() (which
+        // composes 4 other modules) for every entity on every dashboard load.
+        const [lifecycleProfileRows, lifecyclePendingRows] = await Promise.all([
+            supabase.from('practice_entity_lifecycle_profiles').select('risk_status, compliance_status').eq('company_id', cid),
+            supabase.from('practice_entity_lifecycle_transitions').select('client_id').eq('company_id', cid).in('transition_status', ['ready_for_review', 'approved']),
+        ]);
+        const lifecycleHighRiskCount = (lifecycleProfileRows.data || []).filter(p => ['high', 'critical'].includes(p.risk_status)).length;
+        const lifecycleNonCompliantCount = (lifecycleProfileRows.data || []).filter(p => p.compliance_status === 'non_compliant').length;
+
         return {
             practice: {
                 active_clients: activeClients,
@@ -244,6 +300,26 @@ async function computeSummary(cid) {
                 watch:   clientsWatch,
                 critical: clientsAtRisk + clientsCritical,
                 unknown: clientsUnknown,
+            },
+            // Codebox 61 — RELATIONSHIP health (manager assessment + communication
+            // cadence), distinct from client_health above (operational risk).
+            client_relationship: relationshipCounts,
+            beneficial_ownership: {
+                owners_by_status: boOwnerCounts,
+                reportable_owners: boReportableCount,
+                clients_with_blocked_items: boBlockedClientCount,
+            },
+            statutory_compliance: statutoryCounts,
+            evidence_readiness: {
+                total: evidenceSummary.checklists_total,
+                by_readiness: evidenceSummary.checklists_by_readiness,
+                blocked: evidenceSummary.checklists_by_readiness.blocked || 0,
+            },
+            entity_lifecycle: {
+                entities_tracked: (lifecycleProfileRows.data || []).length,
+                high_risk: lifecycleHighRiskCount,
+                non_compliant: lifecycleNonCompliantCount,
+                transitions_pending_review: (lifecyclePendingRows.data || []).length,
             },
             knowledge: {
                 draft: kbDraft, under_review: kbUnderReview, approved: kbApproved,

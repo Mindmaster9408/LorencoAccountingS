@@ -971,3 +971,11 @@ router.put('/actions/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+// ─── Exports for reuse by other modules (Codebox 41 convention) ───────────────
+// Codebox 61 (client-success.js) composes operational health with relationship
+// data instead of recomputing overdue-deadline/task/WIP logic — see
+// calculateClientHealth() in client-success.js.
+module.exports.scoreClientFromData = scoreClientFromData;
+module.exports.fetchHealthData     = fetchHealthData;
+module.exports.statusFromScore     = statusFromScore;

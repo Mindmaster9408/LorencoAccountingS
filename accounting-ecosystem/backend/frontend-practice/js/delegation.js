@@ -303,12 +303,16 @@
 
     // Codebox 59 — Skills Matrix advisory. Warning only, never blocks the
     // create/accept flow — this is purely informational rendering.
+    var DEV_BADGE_LABELS = { in_development: '📘 In Development', mentored: '🤝 Mentored' };
+
     function _renderAdvisory(advisory) {
         if (!advisory) return '';
         var prev = advisory.previous_owner, next = advisory.new_owner;
         var rows = '';
         if (prev) rows += '<div style="font-size:.78rem;color:#a0aec0;">Previous owner competency: <b>' + prev.level + (prev.specific_skill_matched ? ' (specific skill)' : ' (overall average)') + '</b></div>';
         if (next) rows += '<div style="font-size:.78rem;color:#a0aec0;">New owner competency: <b>' + next.level + (next.specific_skill_matched ? ' (specific skill)' : ' (overall average)') + '</b></div>';
+        // Codebox 60 — Learning Centre badge, informational only.
+        if (advisory.new_owner_development_badge) rows += '<div style="margin-top:4px;"><span class="pill" style="background:rgba(163,191,250,.15);color:#a3bffa;">' + _html(DEV_BADGE_LABELS[advisory.new_owner_development_badge] || advisory.new_owner_development_badge) + '</span></div>';
         return '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #12122a;">' +
             '<div style="font-size:.72rem;color:#718096;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Skills Matrix Advisory</div>' +
             rows + (advisory.warning ? '<div class="inline-msg warn" style="margin-top:8px;margin-bottom:0;">' + _html(advisory.warning) + '</div>' : '') +

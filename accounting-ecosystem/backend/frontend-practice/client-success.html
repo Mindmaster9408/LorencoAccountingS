@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Client Success — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .toolbar { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 3px; }
+        .filter-label { font-size: .7rem; color: #718096; text-transform: uppercase; letter-spacing: .04em; }
+        .toolbar select { background: #12122a; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 7px 10px; font-size: .82rem; }
+        .checkbox-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #a0aec0; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.client-row { cursor: pointer; }
+        tr.client-row:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .rs-healthy { background: rgba(104,211,145,.2); color: #68d391; }
+        .rs-watch { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .rs-at_risk { background: rgba(237,137,54,.22); color: #fbb040; }
+        .rs-critical { background: rgba(229,62,62,.22); color: #fc8181; }
+        .rs-unknown { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .cd-on_track, .cd-healthy { color: #68d391; } .cd-due_soon, .cd-watch { color: #f6ad55; } .cd-overdue, .cd-at_risk { color: #fc8181; } .cd-unknown { color: #718096; }
+        .st-identified, .st-planned { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .st-discussed, .st-in_progress { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .st-proposal { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .st-won, .st-completed { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-lost, .st-cancelled { background: rgba(229,62,62,.2); color: #fc8181; }
+        .st-deferred { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .override-flag { font-size: .68rem; color: #f6ad55; margin-left: 6px; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .btn-warn { background: #dd6b20; color: #fff; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 960px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+
+        .detail-section-title { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #718096; margin: 18px 0 8px; display: flex; justify-content: space-between; align-items: center; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .health-breakdown { background: #12122a; border-radius: 10px; padding: 12px 14px; font-size: .78rem; color: #a0aec0; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Client Success</h1>
+        </div>
+        <div class="inline-msg info">"Which client needs me today?" — relationship health, communication cadence, and follow-up in one place. Not a CRM. Not a sales pipeline. Not client master data.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Clients -->
+        <div class="tab-panel" id="panel-clients">
+            <div class="toolbar">
+                <div class="filter-group">
+                    <span class="filter-label">Relationship Status</span>
+                    <select id="csStatusFilter" onchange="csLoadClients()">
+                        <option value="">All</option>
+                        <option value="healthy">Healthy</option><option value="watch">Watch</option>
+                        <option value="at_risk">At Risk</option><option value="critical">Critical</option><option value="unknown">Unknown</option>
+                    </select>
+                </div>
+                <div class="checkbox-row"><input type="checkbox" id="csAssignedToMe" onchange="csLoadClients()" /> <label for="csAssignedToMe">Assigned to me</label></div>
+            </div>
+            <table>
+                <thead><tr><th>Client</th><th>Status</th><th>Score</th><th>Trend</th><th>Owner</th><th>Cadence</th><th>Last Contact</th><th>Next Review</th></tr></thead>
+                <tbody id="clientsBody"><tr><td colspan="8" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- Opportunities -->
+        <div class="tab-panel" id="panel-opportunities">
+            <div class="toolbar">
+                <div class="filter-group">
+                    <span class="filter-label">Status</span>
+                    <select id="oppStatusFilter" onchange="csLoadOpportunities()">
+                        <option value="">All</option>
+                        <option value="identified">Identified</option><option value="discussed">Discussed</option><option value="proposal">Proposal</option>
+                        <option value="won">Won</option><option value="lost">Lost</option><option value="deferred">Deferred</option>
+                    </select>
+                </div>
+            </div>
+            <table>
+                <thead><tr><th>Client</th><th>Opportunity</th><th>Type</th><th>Status</th><th>Est. Value</th><th>Expected</th></tr></thead>
+                <tbody id="oppBody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- History -->
+        <div class="tab-panel" id="panel-history">
+            <div class="panel">
+                <div class="panel-title">History</div>
+                <div id="historyBody"><div class="empty-state">Loading…</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Client Detail Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="clientDetailModal">
+        <div class="modal-box modal-lg">
+            <div id="clientDetailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="csCloseClientDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Override Modal ────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="overrideModal">
+        <div class="modal-box">
+            <div class="modal-title">Manager Override</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Relationship Status *</label>
+                    <select id="ovStatus"><option value="healthy">Healthy</option><option value="watch">Watch</option><option value="at_risk">At Risk</option><option value="critical">Critical</option></select>
+                </div>
+                <div class="form-group full"><label>Score (0-100, optional)</label><input type="number" id="ovScore" min="0" max="100" /></div>
+                <div class="form-group full"><label>Reason *</label><textarea id="ovReason"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="csCloseOverride()">Cancel</button>
+                <button class="btn-action btn-warn" onclick="csClearOverride()">Clear Override</button>
+                <button class="btn-action btn-primary" onclick="csSubmitOverride()">Set Override</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Relationship Edit Modal ───────────────────────────────────────── -->
+    <div class="modal-overlay" id="relEditModal">
+        <div class="modal-box">
+            <div class="modal-title">Edit Relationship Info</div>
+            <div class="form-row">
+                <div class="form-group"><label>Trend</label><select id="reTrend"><option value="unknown">Unknown</option><option value="improving">Improving</option><option value="stable">Stable</option><option value="declining">Declining</option></select></div>
+                <div class="form-group"><label>Relationship Owner (Team Member ID)</label><input type="number" id="reOwner" /></div>
+                <div class="form-group"><label>Last Meaningful Contact</label><input type="text" id="reLastContact" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Next Planned Contact</label><input type="text" id="reNextContact" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Last Review Date</label><input type="text" id="reLastReview" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Next Review Date</label><input type="text" id="reNextReview" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Notes</label><textarea id="reNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="csCloseRelEdit()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="csSubmitRelEdit()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Activity Modal ────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="activityModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Success Activity</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Title *</label><input type="text" id="afTitle" /></div>
+                <div class="form-group">
+                    <label>Activity Type *</label>
+                    <select id="afType">
+                        <option value="quarterly_review">Quarterly Review</option><option value="annual_planning">Annual Planning</option>
+                        <option value="tax_planning">Tax Planning</option><option value="business_review">Business Review</option>
+                        <option value="health_check">Health Check</option><option value="follow_up">Follow Up</option>
+                        <option value="training">Training</option><option value="onboarding">Onboarding</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Scheduled Date</label><input type="text" id="afScheduled" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Description</label><textarea id="afDescription"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="csCloseActivity()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="csSubmitActivity()">Save Activity</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Meeting Modal ─────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="meetingModal">
+        <div class="modal-box">
+            <div class="modal-title">Log Meeting</div>
+            <div class="form-row">
+                <div class="form-group"><label>Meeting Date *</label><input type="text" id="mfDate" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Next Meeting Date</label><input type="text" id="mfNextDate" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Purpose</label><input type="text" id="mfPurpose" /></div>
+                <div class="form-group full"><label>Attendees (comma-separated)</label><input type="text" id="mfAttendees" /></div>
+                <div class="form-group full"><label>Summary</label><textarea id="mfSummary"></textarea></div>
+                <div class="form-group full"><label>Decisions</label><textarea id="mfDecisions"></textarea></div>
+                <div class="form-group full"><label>Follow-ups</label><textarea id="mfFollowUps"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="csCloseMeeting()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="csSubmitMeeting()">Save Meeting</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Opportunity Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="opportunityModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Opportunity</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Title *</label><input type="text" id="ofTitle" /></div>
+                <div class="form-group">
+                    <label>Type *</label>
+                    <select id="ofType">
+                        <option value="accounting">Accounting</option><option value="payroll">Payroll</option><option value="pos">POS</option>
+                        <option value="inventory">Inventory</option><option value="sean_ai">Sean AI</option><option value="secretarial">Secretarial</option>
+                        <option value="advisory">Advisory</option><option value="training">Training</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Estimated Value</label><input type="number" id="ofValue" step="0.01" /></div>
+                <div class="form-group"><label>Expected Date</label><input type="text" id="ofExpected" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Description</label><textarea id="ofDescription"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="csCloseOpportunity()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="csSubmitOpportunity()">Save Opportunity</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Contact Modal ─────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="contactModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Key Contact</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Contact Name *</label><input type="text" id="cfName" /></div>
+                <div class="form-group"><label>Role</label><input type="text" id="cfRole" /></div>
+                <div class="form-group"><label>Email</label><input type="text" id="cfEmail" /></div>
+                <div class="form-group"><label>Phone</label><input type="text" id="cfPhone" /></div>
+                <div class="form-group"><label>Mobile</label><input type="text" id="cfMobile" /></div>
+                <div class="form-group"><label>Birthday</label><input type="text" id="cfBirthday" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full">
+                    <div class="checkbox-row"><input type="checkbox" id="cfPrimary" /> <label for="cfPrimary">Preferred contact</label></div>
+                    <div class="checkbox-row"><input type="checkbox" id="cfDecisionMaker" /> <label for="cfDecisionMaker">Decision maker</label></div>
+                    <div class="checkbox-row"><input type="checkbox" id="cfFinancial" /> <label for="cfFinancial">Financial contact</label></div>
+                    <div class="checkbox-row"><input type="checkbox" id="cfOperational" /> <label for="cfOperational">Operational contact</label></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="csCloseContact()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="csSubmitContact()">Save Contact</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/client-success.js"></script>
+    <script>LAYOUT.init('client-success');</script>
+</body>
+</html>

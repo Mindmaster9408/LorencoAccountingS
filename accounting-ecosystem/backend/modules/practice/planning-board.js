@@ -93,9 +93,95 @@ async function _buildTeamItemPool(cid) {
         .select('id, display_name, role').eq('company_id', cid).eq('is_active', true);
     if (error) { console.error('[planning-board] team members', error.message); return { members: [], items: [] }; }
 
+    // Codebox 61 — at-risk client flag. One lightweight direct query (not a
+    // call into client-success.js's calculateClientHealth() per item) —
+    // same reasoning as the Skills Matrix competency badge below: a plain
+    // status lookup, no scoring logic to duplicate or reuse via a function call.
+    const { data: atRiskRows } = await supabase.from('practice_client_success')
+        .select('client_id, relationship_status').eq('company_id', cid).in('relationship_status', ['at_risk', 'critical']);
+    const atRiskClientIds = new Set((atRiskRows || []).map(r => r.client_id));
+
+    // Codebox 62 — annual return due/overdue flag. Same lightweight direct
+    // query pattern as at-risk clients above — no call into secretarial.js's
+    // getCorporateProfile() per item, just a plain date filter.
+    const returnWindow = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+    const { data: returnRows } = await supabase.from('practice_annual_returns')
+        .select('client_id, due_date, status').eq('company_id', cid).in('status', ['pending', 'overdue']).lte('due_date', returnWindow);
+    const returnDueClientIds = new Set((returnRows || []).map(r => r.client_id));
+
+    // Codebox 63 — pending statutory change flag. Same lightweight direct
+    // query pattern — a case awaiting review/implementation is a plain
+    // status lookup, not a call into secretarial-workflows.js's engine.
+    const { data: pendingChangeRows } = await supabase.from('practice_secretarial_change_cases')
+        .select('client_id, case_status').eq('company_id', cid).in('case_status', ['ready_for_review', 'approved']);
+    const pendingChangeClientIds = new Set((pendingChangeRows || []).map(r => r.client_id));
+
+    // Codebox 65 — BO readiness concern flag. Scoped to 'blocked' readiness
+    // items only (a plain status filter) rather than replicating the full
+    // ready/partial/incomplete score calculation from beneficial-ownership.js
+    // for every client on every board load — this is the spec's "Optional"
+    // integration, kept intentionally lightweight per session convention.
+    const { data: blockedBoRows } = await supabase.from('practice_bo_readiness_items')
+        .select('client_id, status, required').eq('company_id', cid).eq('status', 'blocked').eq('required', true);
+    const boConcernClientIds = new Set((blockedBoRows || []).map(r => r.client_id));
+
+    // Codebox 67 — statutory workload flags. Same deliberately lightweight
+    // approach as Codebox 65's BO badge above — plain date/status filters,
+    // not a call into secretarial-calendar.js's buildStatutoryCalendar()
+    // (which does per-item dependency resolution) for every client on every
+    // board load. "Upcoming" here means due within 30 days; "blocked" is
+    // approximated as a pending schedule item with a non-overridden
+    // dependency due within 30 days — the exact category still requires a
+    // visit to /practice/secretarial-calendar.html for the authoritative view.
+    const statutoryWindow = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const { data: upcomingStatutoryRows } = await supabase.from('practice_statutory_schedule')
+        .select('id, client_id, due_date, status').eq('company_id', cid).eq('status', 'pending').lte('due_date', statutoryWindow);
+    const statutoryWorkloadClientIds = new Set((upcomingStatutoryRows || []).map(r => r.client_id));
+
+    const upcomingScheduleIds = new Set((upcomingStatutoryRows || []).map(r => r.id));
+    let statutoryBlockedClientIds = new Set();
+    if (upcomingStatutoryRows && upcomingStatutoryRows.length) {
+        const { data: depRows } = await supabase.from('practice_statutory_dependencies')
+            .select('client_id, schedule_id, manager_override').eq('company_id', cid).eq('manager_override', false);
+        statutoryBlockedClientIds = new Set((depRows || []).filter(d => upcomingScheduleIds.has(d.schedule_id)).map(d => d.client_id));
+    }
+
+    // Codebox 66 — evidence-blocked flag. Same lightweight direct query
+    // pattern — a plain status filter on required items, not a call into
+    // secretarial-evidence.js's checklist readiness computation per client.
+    const { data: blockedEvidenceRows } = await supabase.from('practice_secretarial_evidence_items')
+        .select('checklist_id, status, required').eq('company_id', cid).eq('status', 'blocked').eq('required', true);
+    let evidenceBlockedClientIds = new Set();
+    if (blockedEvidenceRows && blockedEvidenceRows.length) {
+        const checklistIds = [...new Set(blockedEvidenceRows.map(r => r.checklist_id))];
+        const { data: checklistRows } = await supabase.from('practice_secretarial_evidence_checklists').select('id, client_id').in('id', checklistIds).eq('company_id', cid);
+        evidenceBlockedClientIds = new Set((checklistRows || []).map(c => c.client_id));
+    }
+
+    // Codebox 68 — lifecycle transition pending/blocked flag. Same
+    // deliberately lightweight direct-query pattern as every badge above —
+    // a plain status filter, not a call into entity-lifecycle.js's
+    // getEntityLifecycleProfile() (which composes 4 other modules) per
+    // client on every board load. "Pending" = awaiting manager review or
+    // implementation (ready_for_review/approved); the authoritative detail
+    // still lives on /practice/entity-lifecycle.html.
+    const { data: pendingLifecycleRows } = await supabase.from('practice_entity_lifecycle_transitions')
+        .select('client_id, transition_status').eq('company_id', cid).in('transition_status', ['ready_for_review', 'approved']);
+    const lifecycleTransitionPendingClientIds = new Set((pendingLifecycleRows || []).map(r => r.client_id));
+
     const perMember = await Promise.all((members || []).map(async m => {
         const items = await workQueue.buildActiveQueue(cid, m.id);
-        return items.map(item => Object.assign({}, item, { team_member_id: m.id, team_member_name: m.display_name }));
+        return items.map(item => Object.assign({}, item, {
+            team_member_id: m.id, team_member_name: m.display_name,
+            at_risk_client: !!(item.client_id && atRiskClientIds.has(item.client_id)),
+            annual_return_due: !!(item.client_id && returnDueClientIds.has(item.client_id)),
+            pending_statutory_change: !!(item.client_id && pendingChangeClientIds.has(item.client_id)),
+            evidence_blocked: !!(item.client_id && evidenceBlockedClientIds.has(item.client_id)),
+            statutory_workload_upcoming: !!(item.client_id && statutoryWorkloadClientIds.has(item.client_id)),
+            statutory_workload_blocked: !!(item.client_id && statutoryBlockedClientIds.has(item.client_id)),
+            bo_readiness_concern: !!(item.client_id && boConcernClientIds.has(item.client_id)),
+            lifecycle_transition_pending: !!(item.client_id && lifecycleTransitionPendingClientIds.has(item.client_id)),
+        }));
     }));
 
     const result = { members: members || [], items: perMember.flat() };

@@ -3236,6 +3236,61 @@ router.use('/delegation', delegationRouter);
 const skillsMatrixRouter = require('./skills-matrix');
 router.use('/skills-matrix', skillsMatrixRouter);
 
+// Practice Learning, Development & Training Centre (Codebox 60)
+// Manager-controlled development plans, goals, activities, CPD tracking.
+// Complements the Skills Matrix. NOT AI coaching. NOT an LMS.
+const learningCentreRouter = require('./learning-centre');
+router.use('/learning-centre', learningCentreRouter);
+
+// Practice Client Success & Relationship Management (Codebox 61)
+// Relationship health, success activities, opportunities, contacts,
+// communication cadence, meeting history. NOT a CRM/sales pipeline.
+const clientSuccessRouter = require('./client-success');
+router.use('/client-success', clientSuccessRouter);
+
+// Practice Secretarial Foundation (Codebox 62)
+// Corporate profile, director/shareholder registers, annual returns, timeline.
+// NOT CIPC API integration. NOT statutory change workflows (Codebox 63).
+const secretarialRouter = require('./secretarial');
+router.use('/secretarial', secretarialRouter);
+
+// Practice Secretarial Workflows + Statutory Change Management (Codebox 63)
+// Controlled change cases (approval, checklist, effective date) — the only
+// path that mutates the Codebox 62 registers. NOT CIPC API. NOT auto-filing.
+const secretarialWorkflowsRouter = require('./secretarial-workflows');
+router.use('/secretarial-workflows', secretarialWorkflowsRouter);
+
+// Secretarial Resolutions + Minutes Register Foundation (Codebox 64)
+// Governance evidence — resolutions, meetings, attendees, decisions —
+// optionally linked to Codebox 63 statutory change cases. NOT PDF
+// generation. NOT e-signature. NOT CIPC submission.
+const secretarialGovernanceRouter = require('./secretarial-governance');
+router.use('/secretarial-governance', secretarialGovernanceRouter);
+
+// Secretarial Beneficial Ownership + Ownership Chain Foundation (Codebox 65)
+// Beneficial owner register, ownership chains, BO readiness tracking.
+// NOT CIPC API. NOT automatic filing. NOT legal advice.
+const beneficialOwnershipRouter = require('./beneficial-ownership');
+router.use('/beneficial-ownership', beneficialOwnershipRouter);
+
+// Secretarial Document Checklist + Governance Evidence Requests (Codebox 66)
+// Evidence templates/checklists/items linking to existing Document Requests.
+// NOT document storage. NOT file uploads. NEVER a duplicate document system.
+const secretarialEvidenceRouter = require('./secretarial-evidence');
+router.use('/secretarial-evidence', secretarialEvidenceRouter);
+
+// Secretarial Statutory Calendar + Compliance Scheduler (Codebox 67)
+// Statutory obligation register, recurrence, deadline synchronisation.
+// NOT another Deadlines module — links to practice_deadlines, never duplicates.
+const secretarialCalendarRouter = require('./secretarial-calendar');
+router.use('/secretarial-calendar', secretarialCalendarRouter);
+
+// Practice Secretarial Entity Lifecycle Management (Codebox 68)
+// Lifecycle profile, controlled stage transitions, checklists. NOT CIPC API.
+// NOT automatic deregistration/restoration/liquidation. Manual control only.
+const entityLifecycleRouter = require('./entity-lifecycle');
+router.use('/entity-lifecycle', entityLifecycleRouter);
+
 // Management Dashboard — Executive Command Centre (Codebox 50)
 // Read-only aggregator for partners. NOT an operational page.
 const managementDashboardRouter = require('./management-dashboard');

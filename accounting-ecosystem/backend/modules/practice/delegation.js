@@ -23,6 +23,9 @@ const planningBoard = require('./planning-board');
 // to the response, never a gate: a low-competency or restricted new owner
 // can still be delegated to. See _competencyAdvisory().
 const skillsMatrix = require('./skills-matrix');
+// Codebox 60 — badge only ("In Development" / "Mentored"), same advisory,
+// never-a-gate treatment as the Skills Matrix competency check above.
+const learningCentre = require('./learning-centre');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -227,9 +230,14 @@ async function changeOwnership({ cid, sourceModule, sourceType, sourceId, role, 
 // them on every list load.
 async function _competencyAdvisory(cid, sourceModule, previousOwnerId, newOwnerId) {
     try {
-        const [prev, next] = await Promise.all([
+        const [prev, next, developmentBadge] = await Promise.all([
             previousOwnerId != null ? skillsMatrix.getCompetency(cid, previousOwnerId, sourceModule) : Promise.resolve(null),
             newOwnerId != null ? skillsMatrix.getCompetency(cid, newOwnerId, sourceModule) : Promise.resolve(null),
+            // Codebox 60 — "In Development" / "Mentored" badge only, not
+            // skill-specific (resolving MODULE_SKILL_MAP's skill_key to a
+            // skill_id would need an extra lookup for marginal precision
+            // gain on what's already a soft, non-blocking hint).
+            newOwnerId != null ? learningCentre.getDevelopmentBadge(cid, newOwnerId, null).catch(() => null) : Promise.resolve(null),
         ]);
         let warning = null;
         if (next && next.restrictions.length) warning = `${next.team_member_name || 'The new owner'} is marked restricted for: ${next.restrictions.join(', ')}.`;
@@ -238,6 +246,7 @@ async function _competencyAdvisory(cid, sourceModule, previousOwnerId, newOwnerI
         return {
             previous_owner: prev ? { level: prev.specific_skill_matched ? prev.specific_level : prev.overall_level, specific_skill_matched: prev.specific_skill_matched, restrictions: prev.restrictions } : null,
             new_owner: next ? { level: next.specific_skill_matched ? next.specific_level : next.overall_level, specific_skill_matched: next.specific_skill_matched, restrictions: next.restrictions } : null,
+            new_owner_development_badge: developmentBadge,
             warning,
         };
     } catch (e) {

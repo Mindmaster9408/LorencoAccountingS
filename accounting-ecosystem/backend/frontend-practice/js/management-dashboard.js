@@ -134,6 +134,66 @@
             _kpi(_kpiClass(ch.critical || 0, 1, 3), ch.critical || 0, 'Critical', '/practice/client-health.html') +
             _kpi('kpi-neutral', ch.unknown || 0, 'Unassessed', '/practice/client-health.html');
 
+        // Codebox 61 — RELATIONSHIP health (manager assessment + communication
+        // cadence), a separate concept from client_health above (operational risk).
+        var cr = d.client_relationship || {};
+        var kpiClientRelationshipEl = document.getElementById('kpiClientRelationship');
+        if (kpiClientRelationshipEl) {
+            kpiClientRelationshipEl.innerHTML =
+                _kpi('kpi-good', cr.healthy || 0, 'Relationship: Healthy', '/practice/client-success.html') +
+                _kpi('kpi-warn', cr.watch || 0, 'Relationship: Watch', '/practice/client-success.html') +
+                _kpi(_kpiClass(cr.at_risk || 0, 1, 3), cr.at_risk || 0, 'Relationship: At Risk', '/practice/client-success.html') +
+                _kpi(_kpiClass(cr.critical || 0, 1, 2), cr.critical || 0, 'Relationship: Critical', '/practice/client-success.html');
+        }
+
+        // Codebox 65 — Beneficial Ownership summary. Low-risk counts only,
+        // same optional-card treatment as the client relationship section above.
+        var bo = d.beneficial_ownership || {};
+        var boByStatus = bo.owners_by_status || {};
+        var kpiBoEl = document.getElementById('kpiBeneficialOwnership');
+        if (kpiBoEl) {
+            kpiBoEl.innerHTML =
+                _kpi('kpi-good', boByStatus.verified || 0, 'BO: Verified Owners', '/practice/beneficial-ownership.html') +
+                _kpi('kpi-neutral', boByStatus.incomplete || 0, 'BO: Incomplete Owners', '/practice/beneficial-ownership.html') +
+                _kpi('kpi-neutral', bo.reportable_owners || 0, 'BO: Reportable Owners', '/practice/beneficial-ownership.html') +
+                _kpi(_kpiClass(bo.clients_with_blocked_items || 0, 1, 3), bo.clients_with_blocked_items || 0, 'BO: Clients Blocked', '/practice/beneficial-ownership.html');
+        }
+
+        // Codebox 67 — Statutory Compliance summary. Reuses the same
+        // buildStatutoryCalendar() counts the Statutory Calendar page itself shows.
+        var sca = d.statutory_compliance || {};
+        var kpiScEl = document.getElementById('kpiStatutoryCompliance');
+        if (kpiScEl) {
+            kpiScEl.innerHTML =
+                _kpi(_kpiClass(sca.overdue || 0, 1, 5), sca.overdue || 0, 'Statutory: Overdue', '/practice/secretarial-calendar.html') +
+                _kpi(_kpiClass(sca.due_today || 0, 1, 3), sca.due_today || 0, 'Statutory: Due Today', '/practice/secretarial-calendar.html') +
+                _kpi('kpi-neutral', sca.upcoming || 0, 'Statutory: Upcoming', '/practice/secretarial-calendar.html') +
+                _kpi(_kpiClass(sca.blocked || 0, 1, 3), sca.blocked || 0, 'Statutory: Blocked', '/practice/secretarial-calendar.html');
+        }
+
+        // Codebox 66 — Evidence readiness summary.
+        var ev = d.evidence_readiness || {};
+        var evByR = ev.by_readiness || {};
+        var kpiEvEl = document.getElementById('kpiEvidenceReadiness');
+        if (kpiEvEl) {
+            kpiEvEl.innerHTML =
+                _kpi('kpi-good', evByR.ready || 0, 'Evidence: Ready', '/practice/secretarial-evidence.html') +
+                _kpi('kpi-neutral', evByR.partial || 0, 'Evidence: Partial', '/practice/secretarial-evidence.html') +
+                _kpi(_kpiClass(evByR.incomplete || 0, 1, 5), evByR.incomplete || 0, 'Evidence: Incomplete', '/practice/secretarial-evidence.html') +
+                _kpi(_kpiClass(ev.blocked || 0, 1, 3), ev.blocked || 0, 'Evidence: Blocked', '/practice/secretarial-evidence.html');
+        }
+
+        // Codebox 68 — Entity Lifecycle summary.
+        var el = d.entity_lifecycle || {};
+        var kpiElEl = document.getElementById('kpiEntityLifecycle');
+        if (kpiElEl) {
+            kpiElEl.innerHTML =
+                _kpi('kpi-neutral', el.entities_tracked || 0, 'Lifecycle: Entities Tracked', '/practice/entity-lifecycle.html') +
+                _kpi(_kpiClass(el.high_risk || 0, 1, 3), el.high_risk || 0, 'Lifecycle: High/Critical Risk', '/practice/entity-lifecycle.html') +
+                _kpi(_kpiClass(el.non_compliant || 0, 1, 3), el.non_compliant || 0, 'Lifecycle: Non-Compliant', '/practice/entity-lifecycle.html') +
+                _kpi(_kpiClass(el.transitions_pending_review || 0, 1, 5), el.transitions_pending_review || 0, 'Lifecycle: Transitions Pending Review', '/practice/entity-lifecycle.html');
+        }
+
         document.getElementById('kpiKnowledgeSop').innerHTML =
             _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/practice/knowledge-base.html') +
             _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/practice/knowledge-base.html') +

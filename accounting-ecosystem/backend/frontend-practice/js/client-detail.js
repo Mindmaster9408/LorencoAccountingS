@@ -69,6 +69,7 @@
             document.getElementById('provisionalTaxSection').classList.remove('hidden');
             document.getElementById('individualTaxSection').classList.remove('hidden');
             document.getElementById('companyTaxSection').classList.remove('hidden');
+            document.getElementById('secretarialSection').classList.remove('hidden');
             document.getElementById('archiveBtn').classList.remove('hidden');
             var commLink = document.getElementById('commViewAllLink');
             if (commLink) commLink.href = '/practice/communications.html?client_id=' + clientId;
@@ -84,6 +85,8 @@
             if (itLink) itLink.href = '/practice/individual-tax.html?client_id=' + clientId;
             var ctLink = document.getElementById('ctViewAllLink');
             if (ctLink) ctLink.href = '/practice/company-tax.html?client_id=' + clientId;
+            var secLink = document.getElementById('secViewAllLink');
+            if (secLink) secLink.href = '/practice/secretarial.html?client_id=' + clientId;
             loadContacts();
             loadEngagements();
             loadClientHealth();
@@ -92,6 +95,7 @@
             loadClientCompliancePacks();
             loadClientTaxpayerProfiles();
             loadClientProvisionalTaxPlans();
+            loadClientSecretarial();
             loadClientIndividualTaxReturns();
             loadClientCompanyTaxReturns();
         } catch(e) {
@@ -1480,6 +1484,101 @@
 
     window.loadClientHealth   = loadClientHealth;
     window.recalcClientHealth = recalcClientHealth;
+
+    // ── Secretarial (Section 22) — lightweight read-only summary. Full CRUD
+    // lives only in secretarial.html; this reuses GET /secretarial/:clientId
+    // (Codebox 62's getCorporateProfile()) rather than duplicating any logic.
+    var SEC_STATUS_LABEL = { active: 'Active', dormant: 'Dormant', deregistration_process: 'Deregistration Process', deregistered: 'Deregistered', in_liquidation: 'In Liquidation', other: 'Other' };
+
+    async function loadClientSecretarial() {
+        var loading = document.getElementById('secLoading');
+        var wrap = document.getElementById('secWrap');
+        if (!wrap) return;
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/secretarial/' + clientId);
+            if (!res.ok) throw new Error('Secretarial data unavailable');
+            var d = await res.json();
+            var status = (d.profile && d.profile.company_status) || 'active';
+            var activeDirectors = (d.directors || []).filter(function (x) { return x.status === 'active'; }).length;
+            var nextAction = (d.upcoming_statutory_actions || [])[0];
+
+            // Codebox 63 — latest statutory change cases, reused via GET
+            // /secretarial-workflows (no duplicate case logic here).
+            var changesHtml = '';
+            try {
+                var chRes = await PracticeAPI.fetch('/api/practice/secretarial-workflows?client_id=' + clientId + '&limit=3');
+                if (chRes.ok) {
+                    var chData = await chRes.json();
+                    var cases = chData.cases || [];
+                    if (cases.length) {
+                        changesHtml = '<div style="margin-top:8px;font-size:.8rem;">Latest changes: ' +
+                            cases.map(function (c) { return esc(c.change_title) + ' (' + esc(c.case_status) + ')'; }).join(', ') + '</div>';
+                    }
+                }
+            } catch (e2) { /* non-fatal — summary above still renders */ }
+
+            // Codebox 64 — latest governance records, reused via GET
+            // /secretarial-governance/* (no duplicate governance logic here).
+            var governanceHtml = '';
+            try {
+                var govBase = '/api/practice/secretarial-governance';
+                var govResults = await Promise.all([
+                    PracticeAPI.fetch(govBase + '/resolutions?client_id=' + clientId + '&limit=2').then(function (r) { return r.ok ? r.json() : { resolutions: [] }; }),
+                    PracticeAPI.fetch(govBase + '/meetings?client_id=' + clientId + '&limit=2').then(function (r) { return r.ok ? r.json() : { meetings: [] }; }),
+                ]);
+                var govItems = [];
+                (govResults[0].resolutions || []).forEach(function (r) { govItems.push(r.resolution_title + ' (' + r.resolution_status + ')'); });
+                (govResults[1].meetings || []).forEach(function (m) { govItems.push(m.meeting_title + ' (' + m.meeting_status + ')'); });
+                if (govItems.length) {
+                    governanceHtml = '<div style="margin-top:4px;font-size:.8rem;">Latest governance: ' + govItems.map(esc).join(', ') + '</div>';
+                }
+            } catch (e3) { /* non-fatal — summary above still renders */ }
+
+            // Codebox 65 — BO readiness, reportable owners count, missing
+            // information count, reused via GET /beneficial-ownership/client/:clientId
+            // (no duplicate BO logic here).
+            var boHtml = '';
+            try {
+                var boRes = await PracticeAPI.fetch('/api/practice/beneficial-ownership/client/' + clientId);
+                if (boRes.ok) {
+                    var boData = await boRes.json();
+                    var boReadiness = boData.readiness || {};
+                    boHtml = '<div style="margin-top:4px;font-size:.8rem;">BO readiness: <strong>' + esc(boReadiness.status || 'unknown') + '</strong>' +
+                        ' &middot; Reportable owners: ' + (boData.reportable_owners || []).length +
+                        ' &middot; Missing information: ' + (boData.missing_information_count || 0) + '</div>';
+                }
+            } catch (e4) { /* non-fatal — summary above still renders */ }
+
+            // Codebox 68 — entity lifecycle status/risk, reused via GET
+            // /entity-lifecycle/client/:clientId (no duplicate lifecycle
+            // logic here). Separate model from company_status above —
+            // never synchronised, see migration 125's header.
+            var lifecycleHtml = '';
+            try {
+                var lcRes = await PracticeAPI.fetch('/api/practice/entity-lifecycle/client/' + clientId);
+                if (lcRes.ok) {
+                    var lcData = await lcRes.json();
+                    var lcFlags = lcData.risk_flags || [];
+                    lifecycleHtml = '<div style="margin-top:4px;font-size:.8rem;">Lifecycle status: <strong>' + esc(lcData.current_status || 'unknown') + '</strong>' +
+                        (lcFlags.length ? ' &middot; ' + lcFlags.length + ' risk flag(s)' : '') + '</div>';
+                }
+            } catch (e5) { /* non-fatal — summary above still renders */ }
+
+            wrap.innerHTML =
+                '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:.85rem;">' +
+                '<span>Company Status: <strong>' + esc(SEC_STATUS_LABEL[status] || status) + '</strong></span>' +
+                '<span>Active Directors: <strong>' + activeDirectors + '</strong></span>' +
+                '<span>' + (nextAction ? (esc(nextAction.label)) : 'No upcoming statutory actions') + '</span>' +
+                '</div>' + changesHtml + governanceHtml + boHtml + lifecycleHtml;
+            if (loading) loading.classList.add('hidden');
+            wrap.classList.remove('hidden');
+        } catch (e) {
+            if (loading) loading.classList.add('hidden');
+            wrap.classList.remove('hidden');
+            wrap.innerHTML = '<p style="color:var(--muted);font-size:0.83rem;">No secretarial profile yet — <a href="/practice/secretarial.html?client_id=' + clientId + '">open Secretarial</a> to create one.</p>';
+        }
+    }
+    window.loadClientSecretarial = loadClientSecretarial;
 
     // ── Document Requests (Section 16) ────────────────────────────────────────
 
