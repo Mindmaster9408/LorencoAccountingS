@@ -260,6 +260,106 @@ async function computeSummary(cid) {
         const lifecycleHighRiskCount = (lifecycleProfileRows.data || []).filter(p => ['high', 'critical'].includes(p.risk_status)).length;
         const lifecycleNonCompliantCount = (lifecycleProfileRows.data || []).filter(p => p.compliance_status === 'non_compliant').length;
 
+        // Codebox 69 — Secretarial Integrity summary. Reads only the LATEST
+        // run's stored counts plus a live open-findings count — never triggers
+        // a new audit run from a dashboard page load (runIntegrityAudit() is
+        // an explicit, manager-initiated action only).
+        const [latestIntegrityRunRes, openIntegrityFindingsRes] = await Promise.all([
+            supabase.from('practice_secretarial_integrity_runs').select('overall_score, critical_count, high_count, scan_started_at, passed').eq('company_id', cid).order('scan_started_at', { ascending: false }).limit(1).maybeSingle(),
+            supabase.from('practice_secretarial_integrity_findings').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('status', 'open'),
+        ]);
+        const latestIntegrityRun = latestIntegrityRunRes.data || null;
+
+        // Codebox 70 — Client Onboarding summary. Low-risk, count-only
+        // queries (same pattern as every other KPI block above) — no call
+        // into client-onboarding.js's buildOnboardingWorkspace() (a write
+        // operation) for a read-only dashboard load.
+        const { data: onboardingRows } = await supabase.from('practice_onboarding_profiles')
+            .select('onboarding_status, expected_go_live_date, completion_percentage, created_at').eq('company_id', cid);
+        const obRows = onboardingRows || [];
+        const obToday = _today();
+        const obMonthStart = obToday.slice(0, 7) + '-01';
+        const obActive = obRows.filter(p => !['completed', 'cancelled'].includes(p.onboarding_status));
+        const obDelayed = obActive.filter(p => p.expected_go_live_date && p.expected_go_live_date < obToday);
+        const obNewThisMonth = obRows.filter(p => p.created_at && p.created_at.slice(0, 10) >= obMonthStart).length;
+        const obAvgCompletion = obActive.length ? Math.round(obActive.reduce((s, p) => s + (p.completion_percentage || 0), 0) / obActive.length) : 0;
+
+        // Codebox 71 — Engagement Management summary. Low-risk, count-only
+        // queries (same pattern as every other KPI block above) — no call
+        // into engagement-management.js's getClientEngagementProfile() (a
+        // per-client, multi-query function) for every client on every
+        // dashboard load. "Clients with work but no engagement" is a cheaper
+        // company-wide approximation (any tax/secretarial/time-entry record
+        // vs. zero active engagements) — not the fully-typed per-service gap
+        // detection the client-level profile performs.
+        const [engRows, taxClientRows, secClientRows, timeClientRows] = await Promise.all([
+            supabase.from('practice_client_engagements').select('client_id, engagement_status, status, risk_level, risk_accepted_by, engagement_letter_status, next_review_date').eq('company_id', cid),
+            supabase.from('practice_taxpayer_profiles').select('client_id').eq('company_id', cid),
+            supabase.from('practice_secretarial_profiles').select('client_id').eq('company_id', cid),
+            supabase.from('practice_time_entries').select('client_id').eq('company_id', cid),
+        ]);
+        const ACTIVE_LIKE = ['active', 'under_review', 'renewal_due', 'renewed'];
+        const isActiveEng = e => ACTIVE_LIKE.includes(e.engagement_status) || e.status === 'active';
+        const engagementRows = engRows.data || [];
+        const activeEngagements = engagementRows.filter(isActiveEng);
+        const engDueForReview = activeEngagements.filter(e => e.next_review_date && e.next_review_date <= obToday).length;
+        const engMissingLetters = activeEngagements.filter(e => !['not_required', 'signed', 'waived'].includes(e.engagement_letter_status)).length;
+        const engHighRiskNoAcceptance = engagementRows.filter(e => ['high', 'critical'].includes(e.risk_level) && !e.risk_accepted_by).length;
+
+        const clientsWithActiveEngagement = new Set(activeEngagements.map(e => e.client_id));
+        const clientsWithWork = new Set([
+            ...(taxClientRows.data || []).map(r => r.client_id),
+            ...(secClientRows.data || []).map(r => r.client_id),
+            ...(timeClientRows.data || []).map(r => r.client_id),
+        ]);
+        const clientsWithWorkNoEngagement = [...clientsWithWork].filter(id => !clientsWithActiveEngagement.has(id)).length;
+
+        // Codebox 72 — Work Authorization summary. Low-risk, count-only
+        // query (same pattern as every other KPI block above) — no call
+        // into work-authorization.js's checkWorkAuthorization() (a write
+        // operation) for a read-only dashboard load.
+        const { data: authRows } = await supabase.from('practice_work_authorizations')
+            .select('authorization_status, scope_result, risk_level').eq('company_id', cid).neq('authorization_status', 'cancelled');
+        const authorizations = authRows || [];
+        const outOfScopeWork = authorizations.filter(a => ['out_of_scope', 'no_active_engagement'].includes(a.scope_result)).length;
+        const pendingOverrides = authorizations.filter(a => a.authorization_status === 'override_requested').length;
+        const highRiskOverrides = authorizations.filter(a => a.authorization_status === 'override_approved' && ['high', 'critical'].includes(a.risk_level)).length;
+
+        // Codebox 73 — Profitability summary. Low-risk, count-only query
+        // (same pattern as every other KPI block above) — no call into
+        // profitability.js's calculateProfitability() (a multi-query
+        // computation) for every client on every dashboard load. Reads the
+        // most recent 500 saved snapshots, same honest approximation as
+        // that module's own /summary endpoint.
+        const { data: profitRows } = await supabase.from('practice_profitability_snapshots')
+            .select('profitability_status, warnings').eq('company_id', cid).order('created_at', { ascending: false }).limit(500);
+        const snapshots = profitRows || [];
+        const lowMarginClients = snapshots.filter(s => s.profitability_status === 'low_margin').length;
+        const unprofitableClients = snapshots.filter(s => s.profitability_status === 'unprofitable').length;
+        const highWriteoffs = snapshots.filter(s => (s.warnings || []).includes('HIGH_WRITEOFFS')).length;
+        const lowRealization = snapshots.filter(s => (s.warnings || []).includes('LOW_REALIZATION')).length;
+
+        // Codebox 74 — Pricing Review summary. Same count-only pattern as
+        // every other KPI block — never computes buildPricingReview() for
+        // every client on every dashboard load.
+        const { data: pricingRows } = await supabase.from('practice_pricing_reviews')
+            .select('pricing_status').eq('company_id', cid);
+        const pricingReviews = pricingRows || [];
+        const pricingReviewsTotal = pricingReviews.length;
+        const partnerApprovalsWaiting = pricingReviews.filter(r => r.pricing_status === 'partner_review').length;
+        const commercialDiscussionsPending = pricingReviews.filter(r => ['under_review', 'partner_review'].includes(r.pricing_status)).length;
+        const approvedNotImplemented = pricingReviews.filter(r => r.pricing_status === 'approved').length;
+
+        // Codebox 75 — Partner Scorecards summary. Same count-only pattern as
+        // every other KPI block — never calls buildScorecard() from a
+        // dashboard load. Reads only the most recent 500 saved snapshots.
+        const { data: scorecardRows } = await supabase.from('practice_partner_scorecards')
+            .select('id, scorecard_type, team_member_id, overall_score, created_at').eq('company_id', cid).order('created_at', { ascending: false }).limit(500);
+        const scorecards = scorecardRows || [];
+        const latestPractice = scorecards.find(s => s.scorecard_type === 'practice') || null;
+        const scoredSnapshots = scorecards.filter(s => s.overall_score != null);
+        const lowestScoring = scoredSnapshots.length ? scoredSnapshots.reduce((min, s) => (s.overall_score < min.overall_score ? s : min)) : null;
+
         return {
             practice: {
                 active_clients: activeClients,
@@ -320,6 +420,48 @@ async function computeSummary(cid) {
                 high_risk: lifecycleHighRiskCount,
                 non_compliant: lifecycleNonCompliantCount,
                 transitions_pending_review: (lifecyclePendingRows.data || []).length,
+            },
+            secretarial_integrity: {
+                latest_score: latestIntegrityRun ? latestIntegrityRun.overall_score : null,
+                latest_run_at: latestIntegrityRun ? latestIntegrityRun.scan_started_at : null,
+                latest_passed: latestIntegrityRun ? latestIntegrityRun.passed : null,
+                critical_findings: latestIntegrityRun ? latestIntegrityRun.critical_count : 0,
+                open_findings: openIntegrityFindingsRes.count || 0,
+            },
+            client_onboarding: {
+                new_clients_this_month: obNewThisMonth,
+                active_onboardings: obActive.length,
+                delayed_onboardings: obDelayed.length,
+                avg_completion_pct: obAvgCompletion,
+            },
+            engagement_management: {
+                due_for_review: engDueForReview,
+                missing_engagement_letters: engMissingLetters,
+                high_risk_without_acceptance: engHighRiskNoAcceptance,
+                clients_with_work_no_engagement: clientsWithWorkNoEngagement,
+            },
+            work_authorization: {
+                out_of_scope_work: outOfScopeWork,
+                pending_overrides: pendingOverrides,
+                high_risk_overrides: highRiskOverrides,
+            },
+            profitability: {
+                low_margin_clients: lowMarginClients,
+                unprofitable_clients: unprofitableClients,
+                high_writeoffs: highWriteoffs,
+                low_realization: lowRealization,
+            },
+            pricing_review: {
+                total: pricingReviewsTotal,
+                partner_approvals_waiting: partnerApprovalsWaiting,
+                commercial_discussions_pending: commercialDiscussionsPending,
+                approved_not_implemented: approvedNotImplemented,
+            },
+            partner_scorecards: {
+                practice_score: latestPractice ? latestPractice.overall_score : null,
+                practice_score_generated_at: latestPractice ? latestPractice.created_at : null,
+                total_snapshots: scorecards.length,
+                lowest_scoring_snapshot: lowestScoring,
             },
             knowledge: {
                 draft: kbDraft, under_review: kbUnderReview, approved: kbApproved,

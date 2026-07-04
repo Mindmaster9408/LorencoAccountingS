@@ -786,3 +786,8 @@ module.exports = router;
 
 // Reusable for other modules — see docs/new-app/61_client_success.md
 module.exports.calculateClientHealth = calculateClientHealth;
+
+// Codebox 70 — client-onboarding.js reuses this exact get-or-create helper
+// instead of re-implementing the lazy-row-creation pattern a second time.
+// Purely additive export — zero change to any existing route's behavior.
+module.exports.getOrInitSuccessRow = _getOrInitSuccessRow;

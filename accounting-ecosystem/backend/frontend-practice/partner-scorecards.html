@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Partner Scorecards — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        .filter-bar select, .filter-bar input { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 7px 10px; font-size: .8rem; }
+        .filter-bar .fg { display: flex; flex-direction: column; gap: 4px; }
+        .filter-bar label { font-size: .7rem; color: #718096; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .trend-improved { background: rgba(104,211,145,.2); color: #68d391; }
+        .trend-declined { background: rgba(229,62,62,.22); color: #fc8181; }
+        .trend-stable { background: rgba(160,174,192,.2); color: #a0aec0; }
+        .trend-unknown { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .rs-draft, .rs-under_review { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .rs-reviewed { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .rs-action_required { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .rs-accepted { background: rgba(104,211,145,.2); color: #68d391; }
+        .rs-archived, .rs-cancelled { background: rgba(74,85,104,.3); color: #a0aec0; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 900px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .mini-card.flag { border-left: 3px solid #fc8181; }
+        .readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .readonly-field { background: #0d0d1f; border-radius: 8px; padding: 10px 12px; font-size: .82rem; }
+        .readonly-field .rf-label { color: #718096; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+        .readonly-field .rf-value { color: #e2e8f0; font-weight: 700; }
+        .component-card { background: #12122a; border-radius: 9px; padding: 12px 14px; margin-bottom: 8px; }
+        .component-card .c-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: .85rem; }
+        .component-card .c-meta { color: #718096; font-size: .72rem; margin-top: 4px; }
+        .conf-high { color: #68d391; } .conf-medium { color: #f6ad55; } .conf-low { color: #fc8181; } .conf-none { color: #718096; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Partner Scorecards</h1>
+        </div>
+        <div class="inline-msg info">Executive operational reporting — aggregates existing KPIs (Profitability, Quality, Risk, Capacity, Client Success, Engagement, Learning, Planning, Notifications) into partner/manager/team/practice scorecards. NOT HR. NOT payroll performance. NOT employee ranking. NOT disciplinary management.</div>
+        <div class="inline-msg warn">Every component score states its source, formula, weight, and confidence. If a source metric is unavailable, that component shows a warning instead of a fabricated score. NOT AI — deterministic weighted arithmetic only.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Compute tabs: practice / partners / managers / teams share one panel skeleton -->
+        <div class="tab-panel" id="panel-practice">
+            <div class="panel">
+                <div class="panel-title">Practice Scorecard</div>
+                <div class="filter-bar">
+                    <div class="fg"><label>Period Start</label><input type="text" id="prPeriodStart" placeholder="YYYY-MM-DD" /></div>
+                    <div class="fg"><label>Period End</label><input type="text" id="prPeriodEnd" placeholder="YYYY-MM-DD" /></div>
+                    <button class="btn-add" onclick="pscCalculate('practice')">Calculate</button>
+                </div>
+            </div>
+            <div id="result-practice"></div>
+        </div>
+
+        <div class="tab-panel" id="panel-partners">
+            <div class="panel">
+                <div class="panel-title">Partner Scorecard</div>
+                <div class="filter-bar">
+                    <div class="fg"><label>Partner</label><select id="partnerPicker"></select></div>
+                    <div class="fg"><label>Period Start</label><input type="text" id="partnersPeriodStart" placeholder="YYYY-MM-DD" /></div>
+                    <div class="fg"><label>Period End</label><input type="text" id="partnersPeriodEnd" placeholder="YYYY-MM-DD" /></div>
+                    <button class="btn-add" onclick="pscCalculate('partners')">Calculate</button>
+                </div>
+            </div>
+            <div id="result-partners"></div>
+        </div>
+
+        <div class="tab-panel" id="panel-managers">
+            <div class="panel">
+                <div class="panel-title">Manager Scorecard</div>
+                <div class="filter-bar">
+                    <div class="fg"><label>Manager</label><select id="managerPicker"></select></div>
+                    <div class="fg"><label>Period Start</label><input type="text" id="managersPeriodStart" placeholder="YYYY-MM-DD" /></div>
+                    <div class="fg"><label>Period End</label><input type="text" id="managersPeriodEnd" placeholder="YYYY-MM-DD" /></div>
+                    <button class="btn-add" onclick="pscCalculate('managers')">Calculate</button>
+                </div>
+            </div>
+            <div id="result-managers"></div>
+        </div>
+
+        <div class="tab-panel" id="panel-teams">
+            <div class="panel">
+                <div class="panel-title">Team Scorecard</div>
+                <div class="filter-bar">
+                    <div class="fg"><label>Team (Department)</label><select id="teamPicker"></select></div>
+                    <div class="fg"><label>Period Start</label><input type="text" id="teamsPeriodStart" placeholder="YYYY-MM-DD" /></div>
+                    <div class="fg"><label>Period End</label><input type="text" id="teamsPeriodEnd" placeholder="YYYY-MM-DD" /></div>
+                    <button class="btn-add" onclick="pscCalculate('teams')">Calculate</button>
+                </div>
+            </div>
+            <div id="result-teams"></div>
+        </div>
+
+        <!-- History -->
+        <div class="tab-panel" id="panel-history">
+            <div class="panel">
+                <div class="filter-bar" style="margin-bottom:14px;">
+                    <select id="fHistType" onchange="pscLoadHistory()">
+                        <option value="">All types</option><option value="practice">Practice</option>
+                        <option value="partner">Partner</option><option value="manager">Manager</option><option value="team">Team</option>
+                    </select>
+                    <input type="text" id="fHistPeriodKey" placeholder="Period key (e.g. 2026-06)" onchange="pscLoadHistory()" />
+                </div>
+                <table>
+                    <thead><tr><th>Type</th><th>Scope</th><th>Period</th><th>Overall Score</th><th>Generated</th></tr></thead>
+                    <tbody id="historyBody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Reviews -->
+        <div class="tab-panel" id="panel-reviews">
+            <div class="panel">
+                <div class="toolbar">
+                    <select id="fReviewStatus" onchange="pscLoadReviews()">
+                        <option value="">All statuses</option><option value="draft">Draft</option><option value="under_review">Under Review</option>
+                        <option value="reviewed">Reviewed</option><option value="action_required">Action Required</option>
+                        <option value="accepted">Accepted</option><option value="archived">Archived</option><option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <table>
+                    <thead><tr><th>Scorecard</th><th>Status</th><th>Next Review</th></tr></thead>
+                    <tbody id="reviewsBody"><tr><td colspan="3" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Snapshot Detail / Review Modal ─────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg"><div id="detailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="pscCloseDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Create Review Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createReviewModal">
+        <div class="modal-box">
+            <div class="modal-title">New Executive Review</div>
+            <div class="form-group full"><label>Summary</label><textarea id="rvSummary"></textarea></div>
+            <div class="form-group full"><label>Strengths</label><textarea id="rvStrengths"></textarea></div>
+            <div class="form-group full"><label>Improvement Areas</label><textarea id="rvImprovement"></textarea></div>
+            <div class="form-group full"><label>Action Plan</label><textarea id="rvActionPlan"></textarea></div>
+            <div class="form-group"><label>Next Review Date</label><input type="text" id="rvNextReviewDate" placeholder="YYYY-MM-DD" /></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="pscCloseCreateReview()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="pscSubmitCreateReview()">Create Review</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Notes Modal (for review actions) ──────────────────────────────── -->
+    <div class="modal-overlay" id="notesModal">
+        <div class="modal-box">
+            <div class="modal-title" id="notesModalTitle">Notes</div>
+            <div class="form-group full"><label>Notes (optional)</label><textarea id="nfNotes"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="pscCloseNotes()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="pscSubmitNotes()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/partner-scorecards.js"></script>
+    <script>LAYOUT.init('partner-scorecards');</script>
+</body>
+</html>

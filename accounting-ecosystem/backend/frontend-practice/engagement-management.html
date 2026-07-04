@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Engagement Management — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .client-picker { background: #1e2035; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .client-picker select { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 9px 12px; font-size: .88rem; min-width: 280px; }
+        .client-picker label { font-size: .82rem; color: #a0aec0; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .detail-tab-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+        .detail-tab-btn { background: #12122a; border: none; color: #718096; padding: 6px 14px; border-radius: 6px; font-size: .78rem; cursor: pointer; font-weight: 600; }
+        .detail-tab-btn.active { background: #667eea; color: #fff; }
+        .detail-tab-panel { display: none; }
+        .detail-tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        .toolbar { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 7px 10px; font-size: .8rem; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .es-draft, .es-proposed { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .es-active, .es-renewed { background: rgba(104,211,145,.2); color: #68d391; }
+        .es-paused, .es-under_review, .es-renewal_due { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .es-ended, .es-cancelled, .es-rejected { background: rgba(229,62,62,.22); color: #fc8181; }
+        .risk-low { background: rgba(104,211,145,.2); color: #68d391; }
+        .risk-medium { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .risk-high, .risk-critical { background: rgba(229,62,62,.22); color: #fc8181; }
+        .ls-draft { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .ls-sent { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .ls-signed { background: rgba(104,211,145,.2); color: #68d391; }
+        .ls-waived { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .ls-expired, .ls-cancelled { background: rgba(229,62,62,.22); color: #fc8181; }
+        .ls-archived { background: rgba(74,85,104,.3); color: #a0aec0; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 920px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .mini-card.flag { border-left: 3px solid #fc8181; }
+        .warn-box { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); padding: 8px 12px; border-radius: 8px; font-size: .78rem; margin-bottom: 10px; }
+        .readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .readonly-field { background: #0d0d1f; border-radius: 8px; padding: 10px 12px; font-size: .82rem; }
+        .readonly-field .rf-label { color: #718096; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+        .readonly-field .rf-value { color: #e2e8f0; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Engagement Management</h1>
+        </div>
+        <div class="inline-msg info">"Are we formally engaged to perform this work?" and "What engagements need review or renewal?" NOT document generation. NOT e-signature. NOT automatic proposal acceptance. Engagement letters are tracked here, never generated or signed.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- All Engagements -->
+        <div class="tab-panel" id="panel-all">
+            <div class="toolbar">
+                <div class="filter-bar">
+                    <select id="fEngagementStatus" onchange="emLoadAllEngagements()">
+                        <option value="">All statuses</option>
+                        <option value="draft">Draft</option><option value="proposed">Proposed</option><option value="active">Active</option>
+                        <option value="paused">Paused</option><option value="under_review">Under Review</option><option value="renewal_due">Renewal Due</option>
+                        <option value="renewed">Renewed</option><option value="ended">Ended</option><option value="cancelled">Cancelled</option><option value="rejected">Rejected</option>
+                    </select>
+                    <select id="fRiskLevel" onchange="emLoadAllEngagements()">
+                        <option value="">All risk levels</option>
+                        <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
+                    </select>
+                </div>
+                <button class="btn-add" onclick="emOpenCreate()">+ New Engagement</button>
+            </div>
+            <table>
+                <thead><tr><th>Client</th><th>Engagement</th><th>Type</th><th>Status</th><th>Risk</th><th>Letter</th><th>Next Review</th></tr></thead>
+                <tbody id="allEngagementsBody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- Client Profile -->
+        <div class="tab-panel" id="panel-profile">
+            <div class="client-picker">
+                <label for="clientPicker">Client</label>
+                <select id="clientPicker" onchange="emOnClientChange()"><option value="">Select a client…</option></select>
+            </div>
+            <div id="profileArea" style="display:none;">
+                <div class="panel">
+                    <div class="panel-title">Services Covered</div>
+                    <div id="servicesCovered"><div class="empty-state">None.</div></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Possible Gaps</div>
+                    <div id="possibleGaps"><div class="empty-state">None detected.</div></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Due for Review / Renewal Due / Missing Letters / High Risk</div>
+                    <div id="attentionSummary"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Engagements <button class="btn-add" onclick="emOpenCreateForClient()">+ New Engagement</button></div>
+                    <table>
+                        <thead><tr><th>Engagement</th><th>Type</th><th>Status</th><th>Risk</th><th>Letter</th></tr></thead>
+                        <tbody id="clientEngagementsBody"><tr><td colspan="5" class="empty-state">None.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Engagement Modal ───────────────────────────────────────── -->
+    <div class="modal-overlay" id="createModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">New Engagement</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Client *</label><select id="cfClient"></select></div>
+                <div class="form-group full"><label>Engagement Name *</label><input type="text" id="cfName" /></div>
+                <div class="form-group"><label>Service Category *</label>
+                    <select id="cfServiceCategory">
+                        <option value="vat">VAT</option><option value="paye">PAYE</option><option value="emp501">EMP501</option><option value="income_tax">Income Tax</option>
+                        <option value="annual_financials">Annual Financials</option><option value="bookkeeping">Bookkeeping</option><option value="payroll">Payroll</option>
+                        <option value="secretarial">Secretarial</option><option value="consulting">Consulting</option><option value="cipc">CIPC</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Engagement Type</label>
+                    <select id="cfEngagementType">
+                        <option value="">—</option><option value="accounting">Accounting</option><option value="tax">Tax</option><option value="payroll">Payroll</option>
+                        <option value="secretarial">Secretarial</option><option value="advisory">Advisory</option><option value="compliance">Compliance</option>
+                        <option value="bookkeeping">Bookkeeping</option><option value="company_secretarial">Company Secretarial</option><option value="management">Management</option><option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Risk Level</label>
+                    <select id="cfRiskLevel"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+                </div>
+                <div class="form-group"><label>Fee Basis</label>
+                    <select id="cfFeeBasis">
+                        <option value="">—</option><option value="fixed_monthly">Fixed Monthly</option><option value="fixed_annual">Fixed Annual</option>
+                        <option value="hourly">Hourly</option><option value="per_service">Per Service</option><option value="once_off">Once-Off</option>
+                        <option value="retainer">Retainer</option><option value="quote_based">Quote-Based</option><option value="no_charge">No Charge</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Fee Amount</label><input type="number" id="cfFeeAmount" step="0.01" /></div>
+                <div class="form-group"><label>Start Date</label><input type="text" id="cfStartDate" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Next Review Date</label><input type="text" id="cfNextReviewDate" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Scope Summary</label><textarea id="cfScopeSummary"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="emCloseCreate()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="emSubmitCreate()">Create Engagement</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Engagement Detail Modal ───────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg"><div id="detailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="emCloseDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Reason Modal (generic: reject/end/cancel/waive) ───────────────── -->
+    <div class="modal-overlay" id="reasonModal">
+        <div class="modal-box">
+            <div class="modal-title" id="reasonModalTitle">Reason</div>
+            <div class="form-group full"><label>Reason *</label><textarea id="rfReason"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="emCloseReason()">Cancel</button>
+                <button class="btn-action btn-danger" onclick="emSubmitReason()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Accept Risk Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="riskModal">
+        <div class="modal-box">
+            <div class="modal-title">Accept Risk</div>
+            <div class="form-group full"><label>Reason *</label><textarea id="rkReason"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="emCloseRisk()">Cancel</button>
+                <button class="btn-action btn-danger" onclick="emSubmitRisk()">Accept Risk</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── New Letter Modal ──────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="letterModal">
+        <div class="modal-box">
+            <div class="modal-title">New Engagement Letter</div>
+            <div class="form-group full"><label>Letter Title *</label><input type="text" id="lfTitle" /></div>
+            <div class="form-group full"><label>Reference</label><input type="text" id="lfReference" /></div>
+            <div class="form-group full"><label>Expiry Date</label><input type="text" id="lfExpiryDate" placeholder="YYYY-MM-DD" /></div>
+            <div class="form-group full"><label>Notes</label><textarea id="lfNotes"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="emCloseLetter()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="emSubmitLetter()">Create Letter</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/engagement-management.js"></script>
+    <script>LAYOUT.init('engagement-management');</script>
+</body>
+</html>

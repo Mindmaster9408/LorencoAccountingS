@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profitability — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        .filter-bar select, .filter-bar input { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 7px 10px; font-size: .8rem; }
+        .filter-bar .fg { display: flex; flex-direction: column; gap: 4px; }
+        .filter-bar label { font-size: .7rem; color: #718096; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .ps-profitable { background: rgba(104,211,145,.2); color: #68d391; }
+        .ps-watch { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .ps-low_margin { background: rgba(246,173,85,.3); color: #f6ad55; }
+        .ps-unprofitable { background: rgba(229,62,62,.22); color: #fc8181; }
+        .ps-unknown { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .rs-draft, .rs-under_review { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .rs-reviewed { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .rs-action_required { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .rs-accepted { background: rgba(104,211,145,.2); color: #68d391; }
+        .rs-archived, .rs-cancelled { background: rgba(74,85,104,.3); color: #a0aec0; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 860px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .mini-card.flag { border-left: 3px solid #fc8181; }
+        .readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .readonly-field { background: #0d0d1f; border-radius: 8px; padding: 10px 12px; font-size: .82rem; }
+        .readonly-field .rf-label { color: #718096; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+        .readonly-field .rf-value { color: #e2e8f0; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Profitability</h1>
+        </div>
+        <div class="inline-msg info">"Where are we making or losing money?" and "Which clients or services need a pricing/scope conversation?" NOT accounting. NOT a ledger. NOT invoicing automation — analysis only, using existing Time/Billing/Engagement data.</div>
+        <div class="inline-msg warn">No cost-rate data exists yet for team members — margin % is always 100 (or unavailable) until that's added. Realization % is the reliable signal in this pass.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Analysis -->
+        <div class="tab-panel" id="panel-analysis">
+            <div class="panel">
+                <div class="panel-title">Run Analysis</div>
+                <div class="filter-bar">
+                    <div class="fg"><label>Scope</label>
+                        <select id="anScope" onchange="pfOnScopeChange()">
+                            <option value="practice">Practice-wide</option><option value="client">Client</option>
+                            <option value="engagement">Engagement</option><option value="service">Service</option>
+                        </select>
+                    </div>
+                    <div class="fg" id="anClientGroup" style="display:none;"><label>Client</label><select id="anClient"></select></div>
+                    <div class="fg" id="anEngagementGroup" style="display:none;"><label>Engagement ID</label><input type="number" id="anEngagementId" /></div>
+                    <div class="fg" id="anServiceGroup" style="display:none;"><label>Service ID</label><input type="number" id="anServiceId" /></div>
+                    <div class="fg"><label>Period Start</label><input type="text" id="anPeriodStart" placeholder="YYYY-MM-DD" /></div>
+                    <div class="fg"><label>Period End</label><input type="text" id="anPeriodEnd" placeholder="YYYY-MM-DD" /></div>
+                    <button class="btn-add" onclick="pfCalculate()">Calculate</button>
+                </div>
+            </div>
+            <div class="panel" id="analysisResultPanel" style="display:none;">
+                <div class="panel-title">Result: <span id="analysisStatusPill"></span>
+                    <div class="action-bar" style="margin:0;">
+                        <button class="btn-action btn-primary" onclick="pfSaveSnapshot()">Save Snapshot</button>
+                        <button class="btn-action btn-secondary" onclick="pfOpenCreateReview()">Create Review</button>
+                        <button class="btn-action btn-secondary" onclick="pfOpenPricingReview()">Create Pricing Review</button>
+                    </div>
+                </div>
+                <div class="readonly-grid" id="analysisGrid"></div>
+                <div id="analysisWarnings"></div>
+            </div>
+        </div>
+
+        <!-- Snapshots -->
+        <div class="tab-panel" id="panel-snapshots">
+            <div class="panel">
+                <div class="filter-bar" style="margin-bottom:14px;">
+                    <select id="fSnapshotType" onchange="pfLoadSnapshots()">
+                        <option value="">All types</option><option value="client">Client</option><option value="engagement">Engagement</option>
+                        <option value="service">Service</option><option value="practice">Practice</option><option value="manual">Manual</option>
+                    </select>
+                    <select id="fSnapshotStatus" onchange="pfLoadSnapshots()">
+                        <option value="">All statuses</option><option value="profitable">Profitable</option><option value="watch">Watch</option>
+                        <option value="low_margin">Low Margin</option><option value="unprofitable">Unprofitable</option><option value="unknown">Unknown</option>
+                    </select>
+                </div>
+                <table>
+                    <thead><tr><th>Type</th><th>Client</th><th>Period</th><th>Status</th><th>Realization</th><th>Margin</th><th>Billed</th></tr></thead>
+                    <tbody id="snapshotsBody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Reviews -->
+        <div class="tab-panel" id="panel-reviews">
+            <div class="panel">
+                <div class="toolbar">
+                    <select id="fReviewStatus" onchange="pfLoadReviews()">
+                        <option value="">All statuses</option><option value="draft">Draft</option><option value="under_review">Under Review</option>
+                        <option value="reviewed">Reviewed</option><option value="action_required">Action Required</option>
+                        <option value="accepted">Accepted</option><option value="archived">Archived</option><option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <table>
+                    <thead><tr><th>Title</th><th>Client</th><th>Status</th><th>Recommended Action</th><th>Next Review</th></tr></thead>
+                    <tbody id="reviewsBody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Review Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createReviewModal">
+        <div class="modal-box">
+            <div class="modal-title">New Profitability Review</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Review Title *</label><input type="text" id="rvTitle" /></div>
+                <div class="form-group full"><label>Summary</label><textarea id="rvSummary"></textarea></div>
+                <div class="form-group"><label>Recommended Action</label>
+                    <select id="rvRecommendedAction">
+                        <option value="">—</option><option value="no_action">No Action</option><option value="reprice">Reprice</option>
+                        <option value="rescope">Rescope</option><option value="improve_process">Improve Process</option>
+                        <option value="write_off_review">Write-Off Review</option><option value="client_discussion">Client Discussion</option>
+                        <option value="terminate_service">Terminate Service</option><option value="monitor">Monitor</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Next Review Date</label><input type="text" id="rvNextReviewDate" placeholder="YYYY-MM-DD" /></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="pfCloseCreateReview()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="pfSubmitCreateReview()">Create Review</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Detail Modal (Snapshot or Review) ─────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg"><div id="detailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="pfCloseDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Notes Modal (for review actions) ──────────────────────────────── -->
+    <div class="modal-overlay" id="notesModal">
+        <div class="modal-box">
+            <div class="modal-title" id="notesModalTitle">Notes</div>
+            <div class="form-group full"><label>Notes (optional)</label><textarea id="nfNotes"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="pfCloseNotes()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="pfSubmitNotes()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/profitability.js"></script>
+    <script>LAYOUT.init('profitability');</script>
+</body>
+</html>

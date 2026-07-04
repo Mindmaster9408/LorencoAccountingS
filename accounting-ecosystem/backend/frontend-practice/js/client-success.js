@@ -118,18 +118,57 @@
 
     function csOpenClientDetail(clientId) {
         _currentClientId = clientId;
+        var now = new Date();
+        var periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        var periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
         Promise.all([
             window.PracticeAPI.fetch(BASE + '/' + clientId).then(function (r) { return r.json(); }),
             window.PracticeAPI.fetch(BASE + '/' + clientId + '/health').then(function (r) { return r.json(); }),
             window.PracticeAPI.fetch(CONTACTS_BASE + '/' + clientId + '/contacts').then(function (r) { return r.json(); }).catch(function () { return { contacts: [] }; }),
+            // Codebox 71 — engagement profile reused via GET
+            // /engagement-management/client/:clientId/profile (no duplicate
+            // engagement logic here).
+            window.PracticeAPI.fetch('/api/practice/engagement-management/client/' + clientId + '/profile').then(function (r) { return r.json(); }).catch(function () { return null; }),
+            // Codebox 73 — current-month profitability reused from
+            // Profitability (no duplicate margin/realization logic here).
+            window.PracticeAPI.fetch('/api/practice/profitability/client/' + clientId + '?period_start=' + periodStart + '&period_end=' + periodEnd).then(function (r) { return r.json(); }).catch(function () { return null; }),
+            window.PracticeAPI.fetch('/api/practice/profitability/reviews?client_id=' + clientId).then(function (r) { return r.json(); }).catch(function () { return { reviews: [] }; }),
+            // Codebox 74 — pricing reviews reused from Pricing Review (no
+            // duplicate workflow logic here).
+            window.PracticeAPI.fetch('/api/practice/pricing-review/?client_id=' + clientId).then(function (r) { return r.json(); }).catch(function () { return { reviews: [] }; }),
         ]).then(function (results) {
-            _renderClientDetail(results[0], results[1], results[2].contacts || []);
+            _renderClientDetail(results[0], results[1], results[2].contacts || [], results[3], results[4], results[5].reviews || [], results[6].reviews || []);
             document.getElementById('clientDetailModal').classList.add('open');
+            var responsibleId = results[0].client && results[0].client.responsible_team_member_id;
+            if (responsibleId) {
+                _loadResponsibleScorecard(responsibleId);
+            } else {
+                var el = document.getElementById('responsibleScorecardBody');
+                if (el) el.innerHTML = '<div class="empty-state">No responsible team member assigned to this client.</div>';
+            }
         }).catch(function () { _showToast('Failed to load client detail.'); });
+    }
+
+    // Codebox 75 — read-only reuse of the responsible team member's most
+    // recently SAVED Partner/Manager Scorecard (no new calculation here —
+    // buildScorecard() is never called from this page). Purely informational.
+    function _loadResponsibleScorecard(teamMemberId) {
+        var el = document.getElementById('responsibleScorecardBody');
+        if (!el) return;
+        window.PracticeAPI.fetch('/api/practice/partner-scorecards/snapshots?team_member_id=' + teamMemberId + '&limit=1')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var s = (d.scorecards || [])[0];
+                el.innerHTML = s
+                    ? '<div class="mini-card">' + _html(s.team_member_name || 'Responsible team member') + ' — overall score: <strong>' + (s.overall_score != null ? s.overall_score : '—') + '</strong>' +
+                      '<div class="mini-card-meta">' + _html(s.scorecard_type) + ' scorecard, ' + _fmtDate(s.period_start) + ' – ' + _fmtDate(s.period_end) + '</div></div>'
+                    : '<div class="empty-state">No saved scorecard for the responsible team member yet.</div>';
+            })
+            .catch(function () { if (el) el.innerHTML = ''; });
     }
     function csCloseClientDetail() { document.getElementById('clientDetailModal').classList.remove('open'); }
 
-    function _renderClientDetail(detail, health, contacts) {
+    function _renderClientDetail(detail, health, contacts, engagementProfile, profitability, profitabilityReviews, pricingReviews) {
         var s = detail.success || {};
         var client = detail.client || {};
         var html = '';
@@ -171,6 +210,57 @@
             return '<div class="mini-card">' + _html(o.title) + ' ' + _oppStatusPill(o.status) +
                 '<div class="mini-card-meta">' + _html(OPP_TYPE_LABELS[o.opportunity_type] || o.opportunity_type) + (o.estimated_value ? ' &middot; R' + Number(o.estimated_value).toLocaleString() : '') + '</div></div>';
         }).join('') : '<div class="empty-state">No opportunities logged.</div>';
+
+        // Codebox 75 — read-only reuse of the responsible team member's most
+        // recently saved Partner/Manager Scorecard. No new calculation here
+        // — populated asynchronously by _loadResponsibleScorecard() after
+        // this modal opens.
+        html += '<div class="detail-section-title">Responsible Team Member Performance <a href="/practice/partner-scorecards.html" class="btn-action btn-secondary" style="text-decoration:none;">Open Partner Scorecards →</a></div>';
+        html += '<div id="responsibleScorecardBody"><div class="empty-state">Loading…</div></div>';
+
+        // Codebox 71 — engagement summary reused from Engagement Management
+        // (active services, renewal due, missing letters, high-risk
+        // engagements). No duplicate engagement logic here.
+        html += '<div class="detail-section-title">Engagements <a href="/practice/engagement-management.html?client_id=' + client.id + '" class="btn-action btn-secondary" style="text-decoration:none;">Manage Engagements →</a></div>';
+        if (engagementProfile && !engagementProfile.error) {
+            var activeServices = engagementProfile.services_covered || [];
+            html += '<div class="mini-card">Active services: ' + (activeServices.length ? activeServices.map(_html).join(', ') : 'None') + '</div>';
+            html += '<div class="mini-card">Renewal due: <strong>' + (engagementProfile.renewal_due || []).length + '</strong> &middot; ' +
+                'Missing letters: <strong>' + (engagementProfile.missing_engagement_letters || []).length + '</strong> &middot; ' +
+                'High risk: <strong>' + (engagementProfile.high_risk_engagements || []).length + '</strong></div>';
+        } else {
+            html += '<div class="empty-state">No engagement data available.</div>';
+        }
+
+        // Codebox 73 — profitability status reused from Profitability (no
+        // duplicate margin/realization logic here).
+        html += '<div class="detail-section-title">Profitability <a href="/practice/profitability.html" class="btn-action btn-secondary" style="text-decoration:none;">Open Profitability →</a></div>';
+        if (profitability && profitability.analysis && !profitability.error) {
+            var a = profitability.analysis;
+            var lowMargin = ['low_margin', 'unprofitable'].indexOf(a.profitability_status) !== -1;
+            html += '<div class="mini-card" style="' + (lowMargin ? 'border-left:3px solid #fc8181;' : '') + '">Status: <strong>' + _html(a.profitability_status) + '</strong>' +
+                (a.realization_percentage != null ? ' &middot; Realization: ' + a.realization_percentage + '%' : '') + '</div>';
+            if (lowMargin) html += '<div class="mini-card" style="border-left:3px solid #fc8181;">⚠ Low margin/unprofitable this month — consider a pricing or scope conversation.</div>';
+        } else {
+            html += '<div class="empty-state">No profitability data for this month yet.</div>';
+        }
+        var openReviews = (profitabilityReviews || []).filter(function (r) { return ['draft', 'under_review', 'reviewed', 'action_required'].indexOf(r.review_status) !== -1; });
+        var dueReviews = openReviews.filter(function (r) { return r.next_review_date && r.next_review_date <= new Date().toISOString().slice(0, 10); });
+        if (dueReviews.length) html += '<div class="mini-card" style="border-left:3px solid #f6ad55;">📌 ' + dueReviews.length + ' profitability review(s) due for a repricing/scope discussion.</div>';
+
+        // Codebox 74 — pricing reviews reused from Pricing Review (no
+        // duplicate workflow logic here). "Commercial review due" is a
+        // deterministic flag (low margin + no active pricing review), never
+        // a suggested fee — that remains a partner decision on the Pricing
+        // Reviews page.
+        var activePricingReviews = (pricingReviews || []).filter(function (r) { return ['implemented', 'rejected', 'cancelled'].indexOf(r.pricing_status) === -1; });
+        html += '<div class="detail-section-title">Pricing Reviews <a href="/practice/pricing-review.html?client_id=' + client.id + '" class="btn-action btn-secondary" style="text-decoration:none;">Open Pricing Reviews →</a></div>';
+        html += activePricingReviews.length ? activePricingReviews.map(function (r) {
+            return '<div class="mini-card">' + _html(r.review_title) + ' <span class="pill">' + _html(r.pricing_status) + '</span></div>';
+        }).join('') : '<div class="empty-state">No active pricing review.</div>';
+        if (typeof lowMargin !== 'undefined' && lowMargin && !activePricingReviews.length) {
+            html += '<div class="mini-card" style="border-left:3px solid #f6ad55;">📌 Commercial review due — low margin this month with no active pricing review in progress.</div>';
+        }
 
         html += '<div class="detail-section-title">Key Contacts <button class="btn-action btn-primary" onclick="csOpenContact()">+ Add</button></div>';
         html += contacts.length ? contacts.map(function (c) {

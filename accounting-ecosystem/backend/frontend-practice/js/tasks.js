@@ -239,6 +239,7 @@ function renderTasks(tasks, total) {
         '<div style="display:flex;gap:6px;align-items:center;">' +
           '<a class="btn-ghost-sm" href="/practice/practice-sop.html?linked_type=task&linked_id=' + t.id + '" title="View standard procedure for this task" aria-label="Standard procedure">📋 Procedure</a>' +
           '<a class="btn-ghost-sm" href="/practice/quality-management.html?linked_type=task&linked_id=' + t.id + '" title="View quality reviews for this task" aria-label="QMS review">QMS Review ↗</a>' +
+          (t.client_id ? '<button class="btn-ghost-sm" onclick="checkTaskScope(' + t.id + ',' + t.client_id + ',\'' + esc(t.type || 'general') + '\')" title="Check whether this work is covered by an active engagement">🔍 Check Scope</button>' : '') +
           '<button class="btn-ghost-sm" onclick="openTaskModal(' + t.id + ')" aria-label="Edit task">Edit</button>' +
         '</div>' +
       '</div>' +
@@ -312,6 +313,29 @@ function buildReviewActions(t) {
   btns.push('<button class="btn btn-sm btn-ghost" onclick="openReviewHistory(' + t.id + ', \'' + esc(t.title) + '\')">History</button>');
 
   return btns.join('');
+}
+
+// Codebox 72 — optional "Check Scope" action, reused via POST
+// /work-authorization/check (no duplicate scope logic here). task.type maps
+// to work_type deterministically — no guessing.
+var TASK_TYPE_TO_WORK_TYPE = {
+  vat_return: 'tax', tax_return: 'tax', annual_financial: 'tax',
+  payroll: 'payroll', bookkeeping: 'bookkeeping', secretarial: 'secretarial',
+  audit: 'compliance', general: 'custom', other: 'custom',
+};
+async function checkTaskScope(taskId, clientId, taskType) {
+  var workType = TASK_TYPE_TO_WORK_TYPE[taskType] || 'custom';
+  try {
+    var res = await PracticeAPI.fetch('/api/practice/work-authorization/check', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId, work_type: workType, source_module: 'tasks', source_type: 'task', source_id: taskId }),
+    });
+    var d = await res.json();
+    if (d.error) { PracticeAPI.showToast('Error: ' + d.error, true); return; }
+    PracticeAPI.showToast(d.recommended_action || 'Scope checked.', d.authorization.scope_result !== 'in_scope');
+  } catch (e) {
+    PracticeAPI.showToast('Failed to check scope: ' + e.message, true);
+  }
 }
 
 function getUserName(userId) {

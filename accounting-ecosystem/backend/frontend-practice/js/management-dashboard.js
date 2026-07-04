@@ -194,6 +194,82 @@
                 _kpi(_kpiClass(el.transitions_pending_review || 0, 1, 5), el.transitions_pending_review || 0, 'Lifecycle: Transitions Pending Review', '/practice/entity-lifecycle.html');
         }
 
+        // Codebox 69 — Secretarial Integrity summary.
+        var si = d.secretarial_integrity || {};
+        var kpiSiEl = document.getElementById('kpiSecretarialIntegrity');
+        if (kpiSiEl) {
+            kpiSiEl.innerHTML =
+                _kpi(si.latest_score == null ? 'kpi-neutral' : (si.latest_score >= 85 ? 'kpi-good' : (si.latest_score >= 60 ? 'kpi-neutral' : 'kpi-bad')), si.latest_score != null ? si.latest_score : '—', 'Integrity: Latest Score', '/practice/secretarial-integrity.html') +
+                _kpi(_kpiClass(si.critical_findings || 0, 1, 3), si.critical_findings || 0, 'Integrity: Critical Findings', '/practice/secretarial-integrity.html') +
+                _kpi(_kpiClass(si.open_findings || 0, 1, 10), si.open_findings || 0, 'Integrity: Open Findings', '/practice/secretarial-integrity.html') +
+                _kpi('kpi-neutral', si.latest_run_at ? new Date(si.latest_run_at).toLocaleDateString('en-ZA') : 'Never run', 'Integrity: Latest Audit', '/practice/secretarial-integrity.html');
+        }
+
+        // Codebox 70 — Client Onboarding summary.
+        var cb = d.client_onboarding || {};
+        var kpiCbEl = document.getElementById('kpiClientOnboarding');
+        if (kpiCbEl) {
+            kpiCbEl.innerHTML =
+                _kpi('kpi-neutral', cb.new_clients_this_month || 0, 'Onboarding: New This Month', '/practice/client-onboarding.html') +
+                _kpi('kpi-neutral', cb.active_onboardings || 0, 'Onboarding: Active', '/practice/client-onboarding.html') +
+                _kpi(_kpiClass(cb.delayed_onboardings || 0, 1, 3), cb.delayed_onboardings || 0, 'Onboarding: Delayed', '/practice/client-onboarding.html') +
+                _kpi('kpi-neutral', (cb.avg_completion_pct != null ? cb.avg_completion_pct + '%' : '—'), 'Onboarding: Avg Progress', '/practice/client-onboarding.html');
+        }
+
+        // Codebox 71 — Engagement Management summary.
+        var em = d.engagement_management || {};
+        var kpiEmEl = document.getElementById('kpiEngagementManagement');
+        if (kpiEmEl) {
+            kpiEmEl.innerHTML =
+                _kpi(_kpiClass(em.due_for_review || 0, 1, 5), em.due_for_review || 0, 'Engagements: Due for Review', '/practice/engagement-management.html') +
+                _kpi(_kpiClass(em.missing_engagement_letters || 0, 1, 5), em.missing_engagement_letters || 0, 'Engagements: Missing Letters', '/practice/engagement-management.html') +
+                _kpi(_kpiClass(em.high_risk_without_acceptance || 0, 1, 3), em.high_risk_without_acceptance || 0, 'Engagements: High Risk, No Acceptance', '/practice/engagement-management.html') +
+                _kpi(_kpiClass(em.clients_with_work_no_engagement || 0, 1, 3), em.clients_with_work_no_engagement || 0, 'Clients: Work, No Engagement', '/practice/engagement-management.html');
+        }
+
+        // Codebox 72 — Work Authorization summary.
+        var wa = d.work_authorization || {};
+        var kpiWaEl = document.getElementById('kpiWorkAuthorization');
+        if (kpiWaEl) {
+            kpiWaEl.innerHTML =
+                _kpi(_kpiClass(wa.out_of_scope_work || 0, 1, 5), wa.out_of_scope_work || 0, 'Authorization: Out of Scope', '/practice/work-authorization.html') +
+                _kpi(_kpiClass(wa.pending_overrides || 0, 1, 5), wa.pending_overrides || 0, 'Authorization: Pending Overrides', '/practice/work-authorization.html') +
+                _kpi(_kpiClass(wa.high_risk_overrides || 0, 1, 3), wa.high_risk_overrides || 0, 'Authorization: High Risk Overrides', '/practice/work-authorization.html');
+        }
+
+        // Codebox 73 — Profitability summary.
+        var pf = d.profitability || {};
+        var kpiPfEl = document.getElementById('kpiProfitability');
+        if (kpiPfEl) {
+            kpiPfEl.innerHTML =
+                _kpi(_kpiClass(pf.low_margin_clients || 0, 1, 5), pf.low_margin_clients || 0, 'Profitability: Low Margin', '/practice/profitability.html') +
+                _kpi(_kpiClass(pf.unprofitable_clients || 0, 1, 3), pf.unprofitable_clients || 0, 'Profitability: Unprofitable', '/practice/profitability.html') +
+                _kpi(_kpiClass(pf.high_writeoffs || 0, 1, 5), pf.high_writeoffs || 0, 'Profitability: High Write-Offs', '/practice/profitability.html') +
+                _kpi(_kpiClass(pf.low_realization || 0, 1, 5), pf.low_realization || 0, 'Profitability: Low Realization', '/practice/profitability.html');
+        }
+
+        // Codebox 74 — Pricing Review summary.
+        var pr = d.pricing_review || {};
+        var kpiPrEl = document.getElementById('kpiPricingReview');
+        if (kpiPrEl) {
+            kpiPrEl.innerHTML =
+                _kpi('kpi-neutral', pr.total || 0, 'Pricing: Total Reviews', '/practice/pricing-review.html') +
+                _kpi(_kpiClass(pr.partner_approvals_waiting || 0, 1, 3), pr.partner_approvals_waiting || 0, 'Pricing: Awaiting Partner', '/practice/pricing-review.html') +
+                _kpi(_kpiClass(pr.commercial_discussions_pending || 0, 1, 5), pr.commercial_discussions_pending || 0, 'Pricing: Discussions Pending', '/practice/pricing-review.html') +
+                _kpi(_kpiClass(pr.approved_not_implemented || 0, 1, 5), pr.approved_not_implemented || 0, 'Pricing: Approved, Not Implemented', '/practice/pricing-review.html');
+        }
+
+        // Codebox 75 — Partner Scorecards summary.
+        var psc = d.partner_scorecards || {};
+        var kpiPscEl = document.getElementById('kpiPartnerScorecards');
+        if (kpiPscEl) {
+            var lowest = psc.lowest_scoring_snapshot;
+            kpiPscEl.innerHTML =
+                _kpi('kpi-neutral', psc.practice_score != null ? psc.practice_score : '—', 'Practice Performance Score', '/practice/partner-scorecards.html') +
+                _kpi('kpi-neutral', psc.total_snapshots || 0, 'Scorecard Snapshots', '/practice/partner-scorecards.html') +
+                _kpi(lowest && lowest.overall_score < 60 ? 'kpi-bad' : 'kpi-neutral', lowest ? lowest.overall_score : '—', 'Lowest Score Needing Review', '/practice/partner-scorecards.html');
+        }
+
         document.getElementById('kpiKnowledgeSop').innerHTML =
             _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/practice/knowledge-base.html') +
             _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/practice/knowledge-base.html') +

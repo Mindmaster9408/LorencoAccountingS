@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Client Onboarding — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .client-picker { background: #1e2035; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .client-picker select { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 9px 12px; font-size: .88rem; min-width: 280px; }
+        .client-picker label { font-size: .82rem; color: #a0aec0; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .os-draft, .os-information_collection, .os-document_collection { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .os-secretarial_setup, .os-tax_setup, .os-practice_setup { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .os-review { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .os-completed { background: rgba(104,211,145,.2); color: #68d391; }
+        .os-cancelled { background: rgba(229,62,62,.22); color: #fc8181; }
+        .st-pending, .st-in_progress { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .st-completed { background: rgba(104,211,145,.2); color: #68d391; }
+        .st-skipped { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .st-blocked { background: rgba(229,62,62,.22); color: #fc8181; }
+        .risk-low { background: rgba(104,211,145,.2); color: #68d391; }
+        .risk-medium { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .risk-high, .risk-critical { background: rgba(229,62,62,.22); color: #fc8181; }
+        .rd-ready, .rd-ready_for_review { background: rgba(104,211,145,.2); color: #68d391; }
+        .rd-in_progress { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .rd-not_ready { background: rgba(229,62,62,.22); color: #fc8181; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="email"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .mini-card.flag { border-left: 3px solid #fc8181; }
+        .readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+        .module-card { background: #12122a; border-radius: 9px; padding: 12px; font-size: .8rem; }
+        .module-card.ready { border-left: 3px solid #68d391; }
+        .module-card.missing { border-left: 3px solid #f6ad55; }
+        .step-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #1e2035; font-size: .82rem; }
+        .step-row:first-child { border-top: none; }
+        .step-row select { width: auto; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Client Onboarding</h1>
+        </div>
+        <div class="inline-msg info">"What is still required before this client is fully operational?" NOT CIPC incorporation. NOT SARS registration. NOT banking integration. NOT a client portal — this prepares the Practice for those activities.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="client-picker">
+            <label for="clientPicker">Client</label>
+            <select id="clientPicker" onchange="cbOnClientChange()"><option value="">Select a client…</option></select>
+        </div>
+
+        <div id="startArea" style="display:none;">
+            <div class="panel">
+                <div class="panel-title">Start Onboarding</div>
+                <div class="form-row">
+                    <div class="form-group full"><label>Entity Type *</label>
+                        <select id="sfEntityType">
+                            <option value="pty_ltd">Pty Ltd</option><option value="cc">CC</option><option value="trust">Trust</option>
+                            <option value="partnership">Partnership</option><option value="sole_proprietor">Sole Proprietor</option>
+                            <option value="npc">NPC</option><option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn-add" onclick="cbStartOnboarding()">▶ Start Onboarding</button>
+            </div>
+        </div>
+
+        <div id="clientArea" style="display:none;">
+            <div class="tab-bar" id="tabBar"></div>
+
+            <!-- Profile -->
+            <div class="tab-panel" id="panel-profile">
+                <div class="panel">
+                    <div class="panel-title">
+                        <span>Status: <span id="statusPill"></span> &middot; Completion: <span id="completionPct">—</span>%</span>
+                    </div>
+                    <div id="profileActionBar"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Onboarding Details <button class="btn-action btn-primary" onclick="cbSaveProfile()">Save</button></div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Priority</label>
+                            <select id="pfPriority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+                        </div>
+                        <div class="form-group"><label>Risk Level</label>
+                            <select id="pfRiskLevel"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+                        </div>
+                        <div class="form-group"><label>Assigned Team Member ID</label><input type="text" id="pfAssignedTeamMember" placeholder="Numeric team member ID" /></div>
+                        <div class="form-group"><label>Expected Go-Live Date</label><input type="text" id="pfGoLiveDate" placeholder="YYYY-MM-DD" /></div>
+                        <div class="form-group"><label>Client Contact Name</label><input type="text" id="pfContactName" /></div>
+                        <div class="form-group"><label>Client Contact Email</label><input type="email" id="pfContactEmail" /></div>
+                        <div class="form-group"><label>Client Contact Phone</label><input type="text" id="pfContactPhone" /></div>
+                        <div class="form-group full"><label>Notes</label><textarea id="pfNotes"></textarea></div>
+                        <div class="form-group full"><label>Internal Notes</label><textarea id="pfInternalNotes"></textarea></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workflow (Steps) -->
+            <div class="tab-panel" id="panel-workflow">
+                <div class="panel">
+                    <div class="panel-title">Onboarding Workflow Steps</div>
+                    <div id="stepsBody"><div class="empty-state">Loading…</div></div>
+                </div>
+            </div>
+
+            <!-- Checklist -->
+            <div class="tab-panel" id="panel-checklist">
+                <div class="panel">
+                    <div class="panel-title">Onboarding Checklist <button class="btn-action btn-secondary" onclick="cbRegenerateChecklist()">Regenerate</button></div>
+                    <table>
+                        <thead><tr><th></th><th>Item</th><th>Type</th><th>Required</th></tr></thead>
+                        <tbody id="checklistBody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Readiness -->
+            <div class="tab-panel" id="panel-readiness">
+                <div class="panel">
+                    <div class="panel-title">Overall Readiness: <span id="readinessPill"></span></div>
+                    <div id="recommendedActions"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Module Readiness</div>
+                    <div class="module-grid" id="moduleGrid"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Missing Information</div>
+                    <div id="missingInfo"><div class="empty-state">None.</div></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Engagement Status <a href="/practice/engagement-management.html" id="onbEngagementLink" class="btn-action btn-secondary" style="text-decoration:none;">Manage Engagements →</a></div>
+                    <div id="engagementReadiness"><div class="empty-state">Loading…</div></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Onboarding Work Coverage <button class="btn-action btn-secondary" onclick="cbCheckOnboardingCoverage()">Check Coverage</button></div>
+                    <div id="onboardingCoverage"><div class="empty-state">Not yet checked.</div></div>
+                </div>
+            </div>
+
+            <!-- Events -->
+            <div class="tab-panel" id="panel-events">
+                <div class="panel">
+                    <div class="panel-title">Onboarding Events</div>
+                    <div id="eventsBody"><div class="empty-state">Select a client.</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Cancel Modal ──────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="cancelModal">
+        <div class="modal-box">
+            <div class="modal-title">Cancel Onboarding</div>
+            <div class="form-group full"><label>Reason *</label><textarea id="cfReason"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="cbCloseCancel()">Close</button>
+                <button class="btn-action btn-danger" onclick="cbSubmitCancel()">Cancel Onboarding</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/client-onboarding.js"></script>
+    <script>LAYOUT.init('client-onboarding');</script>
+</body>
+</html>

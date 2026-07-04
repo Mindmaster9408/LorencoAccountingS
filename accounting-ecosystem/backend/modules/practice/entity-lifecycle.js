@@ -892,3 +892,8 @@ module.exports = router;
 
 // Reusable for other modules — see docs/new-app/68_entity_lifecycle.md
 module.exports.getEntityLifecycleProfile = getEntityLifecycleProfile;
+
+// Codebox 69 — secretarial-integrity.js reuses this exact terminal-status
+// list for its lifecycle consistency checks instead of redeclaring it.
+// Purely additive export — zero change to any existing route's behavior.
+module.exports.TERMINAL_STATUSES = TERMINAL_STATUSES;

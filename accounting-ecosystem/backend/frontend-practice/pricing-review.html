@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pricing Reviews — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        .filter-bar select, .filter-bar input { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 7px 10px; font-size: .8rem; }
+        .filter-bar .fg { display: flex; flex-direction: column; gap: 4px; }
+        .filter-bar label { font-size: .7rem; color: #718096; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .prs-draft { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .prs-under_review { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .prs-partner_review { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .prs-approved { background: rgba(104,211,145,.2); color: #68d391; }
+        .prs-rejected { background: rgba(229,62,62,.22); color: #fc8181; }
+        .prs-implemented { background: rgba(104,211,145,.32); color: #68d391; }
+        .prs-cancelled { background: rgba(74,85,104,.3); color: #a0aec0; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 860px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .mini-card.flag { border-left: 3px solid #fc8181; }
+        .readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .readonly-field { background: #0d0d1f; border-radius: 8px; padding: 10px 12px; font-size: .82rem; }
+        .readonly-field .rf-label { color: #718096; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+        .readonly-field .rf-value { color: #e2e8f0; font-weight: 700; }
+        .item-row { display: flex; align-items: flex-start; gap: 8px; }
+        .item-row input[type="checkbox"] { margin-top: 4px; }
+        .section-heading { font-size: .78rem; font-weight: 700; color: #a0aec0; text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 8px; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Pricing Reviews</h1>
+            <button class="btn-add" onclick="prOpenCreate()">+ New Pricing Review</button>
+        </div>
+        <div class="inline-msg info">Every fee/scope change should be reviewed, justified, approved, documented, and auditable. This module governs the DECISION only — it never modifies invoices, accounting, billing, or engagements automatically, and never generates letters or emails.</div>
+        <div class="inline-msg warn">This system may recommend a review CATEGORY (e.g. "review realization", "review write-offs") — it will never recommend a specific fee amount. Pricing remains a partner decision.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="panel">
+            <div class="toolbar">
+                <div class="fg"><label>Status</label>
+                    <select id="fStatus" onchange="prLoadReviews()">
+                        <option value="">All statuses</option>
+                        <option value="draft">Draft</option><option value="under_review">Under Review</option>
+                        <option value="partner_review">Partner Review</option><option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option><option value="implemented">Implemented</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="fg"><label>Client</label><select id="fClient" onchange="prLoadReviews()"><option value="">All clients</option></select></div>
+            </div>
+            <table>
+                <thead><tr><th>Title</th><th>Client</th><th>Reason</th><th>Status</th><th>Current Fee</th><th>Proposed Fee</th><th>Effective</th></tr></thead>
+                <tbody id="reviewsBody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Create Review Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createModal">
+        <div class="modal-box modal-lg">
+            <div class="modal-title">New Pricing Review</div>
+            <div class="form-row">
+                <div class="form-group"><label>Client *</label><select id="crClient" onchange="prPrepare()"></select></div>
+                <div class="form-group"><label>Engagement ID (optional)</label><input type="number" id="crEngagementId" /></div>
+                <div class="form-group full"><label>Review Title *</label><input type="text" id="crTitle" /></div>
+                <div class="form-group"><label>Review Reason *</label>
+                    <select id="crReason">
+                        <option value="profitability">Profitability</option><option value="scope_change">Scope Change</option>
+                        <option value="inflation">Inflation</option><option value="annual_review">Annual Review</option>
+                        <option value="client_growth">Client Growth</option><option value="service_growth">Service Growth</option>
+                        <option value="writeoffs">Write-Offs</option><option value="low_realization">Low Realization</option>
+                        <option value="manual">Manual</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Effective Date</label><input type="text" id="crEffectiveDate" placeholder="YYYY-MM-DD" /></div>
+            </div>
+            <div class="readonly-grid" id="crCurrentFeeGrid" style="display:none;"></div>
+            <div id="crAssumptions"></div>
+            <div class="section-heading" id="crItemsHeading" style="display:none;">Suggested Evidence (from most recent profitability data)</div>
+            <div id="crSuggestedItems"></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="prCloseCreate()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="prSubmitCreate()">Create Review</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Detail Modal ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg">
+            <div id="detailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="prCloseDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Reason Modal (reject/cancel) ────────────────────────────────────── -->
+    <div class="modal-overlay" id="reasonModal">
+        <div class="modal-box">
+            <div class="modal-title" id="reasonModalTitle">Reason Required</div>
+            <div class="form-group full"><label>Reason *</label><textarea id="rfReason"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="prCloseReason()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="prSubmitReason()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add Evidence Item Modal ──────────────────────────────────────────── -->
+    <div class="modal-overlay" id="itemModal">
+        <div class="modal-box">
+            <div class="modal-title">Add Evidence Item</div>
+            <div class="form-group full"><label>Item Type *</label>
+                <select id="itType">
+                    <option value="low_realization">Low Realization</option><option value="high_writeoffs">High Write-Offs</option>
+                    <option value="scope_creep">Scope Creep</option><option value="time_increase">Time Increase</option>
+                    <option value="new_services">New Services</option><option value="additional_compliance">Additional Compliance</option>
+                    <option value="manual_justification">Manual Justification</option><option value="other">Other</option>
+                </select>
+            </div>
+            <div class="form-group full"><label>Title *</label><input type="text" id="itTitle" /></div>
+            <div class="form-group full"><label>Description</label><textarea id="itDescription"></textarea></div>
+            <div class="form-group"><label>Supporting Value</label><input type="number" step="0.01" id="itSupportingValue" /></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="prCloseItem()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="prSubmitItem()">Add Item</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/pricing-review.js"></script>
+    <script>LAYOUT.init('pricing-review');</script>
+</body>
+</html>

@@ -169,6 +169,63 @@ async function _buildTeamItemPool(cid) {
         .select('client_id, transition_status').eq('company_id', cid).in('transition_status', ['ready_for_review', 'approved']);
     const lifecycleTransitionPendingClientIds = new Set((pendingLifecycleRows || []).map(r => r.client_id));
 
+    // Codebox 69 — critical/high integrity finding flag. Same lightweight
+    // direct-query pattern — a plain status+severity filter on OPEN findings
+    // only, not a call into secretarial-integrity.js's runIntegrityAudit()
+    // (which is an explicit, manager-triggered action, never run implicitly
+    // from a board load).
+    const { data: criticalIntegrityRows } = await supabase.from('practice_secretarial_integrity_findings')
+        .select('client_id, severity').eq('company_id', cid).eq('status', 'open').in('severity', ['critical', 'high']);
+    const criticalIntegrityClientIds = new Set((criticalIntegrityRows || []).filter(r => r.client_id).map(r => r.client_id));
+
+    // Codebox 71 — high/critical-risk engagement without risk acceptance
+    // flag. Same lightweight direct-query pattern — a plain risk_level +
+    // risk_accepted_by filter, not a call into engagement-management.js's
+    // getClientEngagementProfile() (a multi-query, per-client function) for
+    // every client on every board load.
+    const { data: unacceptedRiskRows } = await supabase.from('practice_client_engagements')
+        .select('client_id, risk_level, risk_accepted_by').eq('company_id', cid).in('risk_level', ['high', 'critical']).is('risk_accepted_by', null);
+    const unacceptedRiskClientIds = new Set((unacceptedRiskRows || []).map(r => r.client_id));
+
+    // Codebox 72 — out-of-scope work authorization flag. Same lightweight
+    // direct-query pattern — a plain scope_result filter on live (not
+    // cancelled) authorizations, not a call into work-authorization.js's
+    // checkWorkAuthorization() (which is a write operation) per client on
+    // every board load.
+    const { data: outOfScopeRows } = await supabase.from('practice_work_authorizations')
+        .select('client_id, scope_result').eq('company_id', cid).in('scope_result', ['out_of_scope', 'no_active_engagement'])
+        .not('authorization_status', 'in', '("override_approved","accepted_risk","cancelled")');
+    const outOfScopeClientIds = new Set((outOfScopeRows || []).map(r => r.client_id));
+
+    // Codebox 73 — low-margin/high-write-off client flag. Same lightweight
+    // direct-query pattern — reads only the most recent 500 SAVED snapshots
+    // (a manager-triggered action, never computed live here) rather than
+    // calling profitability.js's calculateProfitability() per client on
+    // every board load. Only clients with at least one saved snapshot are
+    // ever flagged — this badge is informational, not a live recalculation.
+    const { data: profitRows } = await supabase.from('practice_profitability_snapshots')
+        .select('client_id, profitability_status, warnings').eq('company_id', cid).not('client_id', 'is', null)
+        .order('created_at', { ascending: false }).limit(500);
+    const lowMarginClientIds = new Set();
+    (profitRows || []).forEach(s => {
+        if (['low_margin', 'unprofitable'].includes(s.profitability_status) || (s.warnings || []).includes('HIGH_WRITEOFFS')) lowMarginClientIds.add(s.client_id);
+    });
+
+    // Codebox 74 (Pricing Review) — "commercial review due" badge: low
+    // margin/unprofitable with NO active (non-terminal) pricing review
+    // already in progress. Same lightweight, snapshot/count-only pattern as
+    // every other badge here — never a live buildPricingReview() call per
+    // client on every board load.
+    const { data: pricingRows } = await supabase.from('practice_pricing_reviews')
+        .select('client_id, pricing_status').eq('company_id', cid).not('client_id', 'is', null);
+    const activePricingReviewClientIds = new Set();
+    (pricingRows || []).forEach(r => {
+        if (!['implemented', 'rejected', 'cancelled'].includes(r.pricing_status)) activePricingReviewClientIds.add(r.client_id);
+    });
+    const commercialReviewDueClientIds = new Set(
+        [...lowMarginClientIds].filter(id => !activePricingReviewClientIds.has(id))
+    );
+
     const perMember = await Promise.all((members || []).map(async m => {
         const items = await workQueue.buildActiveQueue(cid, m.id);
         return items.map(item => Object.assign({}, item, {
@@ -181,6 +238,11 @@ async function _buildTeamItemPool(cid) {
             statutory_workload_blocked: !!(item.client_id && statutoryBlockedClientIds.has(item.client_id)),
             bo_readiness_concern: !!(item.client_id && boConcernClientIds.has(item.client_id)),
             lifecycle_transition_pending: !!(item.client_id && lifecycleTransitionPendingClientIds.has(item.client_id)),
+            critical_integrity_finding: !!(item.client_id && criticalIntegrityClientIds.has(item.client_id)),
+            engagement_risk_unaccepted: !!(item.client_id && unacceptedRiskClientIds.has(item.client_id)),
+            out_of_scope_work: !!(item.client_id && outOfScopeClientIds.has(item.client_id)),
+            low_margin_client: !!(item.client_id && lowMarginClientIds.has(item.client_id)),
+            commercial_review_due: !!(item.client_id && commercialReviewDueClientIds.has(item.client_id)),
         }));
     }));
 
@@ -295,7 +357,7 @@ router.get('/team', async (req, res) => {
         const weekEnd = _addDays(weekStart, 6);
         const today = _todayStr();
 
-        const [pool, teamCapacity, notesRes, skillRows] = await Promise.all([
+        const [pool, teamCapacity, notesRes, skillRows, onboardingRows] = await Promise.all([
             _buildTeamItemPool(cid),
             capacity.buildTeamCapacity(cid),
             supabase.from('practice_planning_notes').select('team_member_id').eq('company_id', cid).eq('week_start', weekStart).neq('status', 'archived').not('team_member_id', 'is', null),
@@ -305,10 +367,30 @@ router.get('/team', async (req, res) => {
             // this only needs a MAX(level) and a gap flag, not the full
             // advisory shape that helper returns.
             supabase.from('practice_team_skills').select('team_member_id, current_level, target_level').eq('company_id', cid),
+            // Codebox 70 (Client Onboarding) — active onboarding workload per
+            // assigned team member. Same lightweight direct-query pattern —
+            // not a call into client-onboarding.js's buildOnboardingWorkspace()
+            // (a write operation) for a read-only team board load.
+            supabase.from('practice_onboarding_profiles').select('assigned_team_member_id, onboarding_status').eq('company_id', cid).not('assigned_team_member_id', 'is', null).not('onboarding_status', 'in', '("completed","cancelled")'),
         ]);
+
+        // Codebox 75 (Partner Scorecards) — optional "team health" badge. One
+        // lightweight direct query for the whole team's most recent
+        // partner/manager scorecard, never a live buildScorecard() call per
+        // member on every team-board load (that's an explicit, manager-
+        // triggered snapshot action on the Partner Scorecards page).
+        const { data: scorecardRows } = await supabase.from('practice_partner_scorecards')
+            .select('team_member_id, overall_score, created_at').eq('company_id', cid)
+            .in('scorecard_type', ['partner', 'manager']).not('team_member_id', 'is', null)
+            .order('created_at', { ascending: false });
+        const latestScoreByMember = {};
+        (scorecardRows || []).forEach(s => { if (!(s.team_member_id in latestScoreByMember)) latestScoreByMember[s.team_member_id] = s.overall_score; });
 
         const notesByMember = {};
         (notesRes.data || []).forEach(n => { notesByMember[n.team_member_id] = (notesByMember[n.team_member_id] || 0) + 1; });
+
+        const onboardingByMember = {};
+        (onboardingRows.data || []).forEach(o => { onboardingByMember[o.assigned_team_member_id] = (onboardingByMember[o.assigned_team_member_id] || 0) + 1; });
 
         const capacityByMember = {};
         teamCapacity.forEach(c => { capacityByMember[c.member_id] = c; });
@@ -345,6 +427,14 @@ router.get('/team', async (req, res) => {
                 waiting_for_review_count: memberItems.filter(i => i.waiting_on === 'me').length,
                 planning_notes_count: notesByMember[m.id] || 0,
                 competency_badge: competencyBadge(m.id),
+                active_onboardings_count: onboardingByMember[m.id] || 0,
+                // Codebox 75 — most recent saved partner/manager scorecard
+                // overall_score for this member, if one exists. 60 is a
+                // documented, literal threshold (same style as this file's
+                // other badge thresholds) — below it, "needs_support" flags
+                // for the manager's attention. Never computed live here.
+                latest_scorecard_score: latestScoreByMember[m.id] != null ? latestScoreByMember[m.id] : null,
+                needs_support: latestScoreByMember[m.id] != null && latestScoreByMember[m.id] < 60,
                 work_queue_link: '/practice/work-queue.html?team_member_id=' + m.id,
                 capacity_link: '/practice/capacity.html?member_id=' + m.id,
             };

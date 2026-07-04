@@ -845,3 +845,10 @@ module.exports = router;
 // Reusable for other modules — see docs/new-app/66_secretarial_evidence.md
 module.exports.getChecklistReadiness = getChecklistReadiness;
 module.exports.getEvidenceSummary = getEvidenceSummary;
+
+// Codebox 70 — client-onboarding.js reuses this exact idempotent seeding
+// helper to ensure the company's default evidence templates exist as part
+// of "Evidence initialized" onboarding, instead of re-implementing the
+// seed-only-if-missing logic a second time. Purely additive export — zero
+// change to any existing route's behavior.
+module.exports.ensureDefaultTemplates = _ensureDefaultTemplates;

@@ -1,8 +1,8 @@
 # Session Handoff — Codebox 68: Practice Secretarial Entity Lifecycle Management
 
 > Date: 2026-07-03
-> Status: COMPLETE — migration 125 NOT yet applied to Supabase
-> Codeboxes 60-67 are ALSO still uncommitted from prior session turns — all nine (60-68) are staged together for this session's push, per the user's explicit "after this one please push" instruction.
+> Status: COMPLETE — migrations 117-125 confirmed applied to Supabase by the user (2026-07-03), including 125 for this codebox
+> Codeboxes 60-68 have been committed and pushed to origin/main (commit fa53a26), per the user's explicit "after this one please push" instruction.
 
 ---
 

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Work Authorization — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .toolbar { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-bar select { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 7px 10px; font-size: .8rem; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .as-clear { background: rgba(104,211,145,.2); color: #68d391; }
+        .as-warning { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .as-out_of_scope { background: rgba(229,62,62,.22); color: #fc8181; }
+        .as-override_requested { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .as-override_approved, .as-accepted_risk { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .as-override_rejected { background: rgba(229,62,62,.22); color: #fc8181; }
+        .as-cancelled { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .sr-in_scope { background: rgba(104,211,145,.2); color: #68d391; }
+        .sr-possible_gap { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .sr-out_of_scope, .sr-no_active_engagement { background: rgba(229,62,62,.22); color: #fc8181; }
+        .sr-unknown { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .risk-low { background: rgba(104,211,145,.2); color: #68d391; }
+        .risk-medium { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .risk-high, .risk-critical { background: rgba(229,62,62,.22); color: #fc8181; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 800px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .mini-card.flag { border-left: 3px solid #fc8181; }
+        .warn-box { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); padding: 8px 12px; border-radius: 8px; font-size: .78rem; margin-bottom: 10px; }
+        .readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .readonly-field { background: #0d0d1f; border-radius: 8px; padding: 10px 12px; font-size: .82rem; }
+        .readonly-field .rf-label { color: #718096; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+        .readonly-field .rf-value { color: #e2e8f0; }
+        .detail-tab-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+        .detail-tab-btn { background: #12122a; border: none; color: #718096; padding: 6px 14px; border-radius: 6px; font-size: .78rem; cursor: pointer; font-weight: 600; }
+        .detail-tab-btn.active { background: #667eea; color: #fff; }
+        .detail-tab-panel { display: none; }
+        .detail-tab-panel.active { display: block; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Work Authorization</h1>
+        </div>
+        <div class="inline-msg info">"Are we allowed to do this work under the current engagement?" and "If not, who approved the exception?" NOT legal advice. NOT billing automation. NOT hard blocking — this system warns and records; managers and partners decide.</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="toolbar">
+            <div class="filter-bar">
+                <select id="fStatus" onchange="waLoadList()">
+                    <option value="">All statuses</option>
+                    <option value="clear">Clear</option><option value="warning">Warning</option><option value="out_of_scope">Out of Scope</option>
+                    <option value="override_requested">Override Requested</option><option value="override_approved">Override Approved</option>
+                    <option value="override_rejected">Override Rejected</option><option value="accepted_risk">Accepted Risk</option><option value="cancelled">Cancelled</option>
+                </select>
+                <select id="fScopeResult" onchange="waLoadList()">
+                    <option value="">All scope results</option>
+                    <option value="in_scope">In Scope</option><option value="possible_gap">Possible Gap</option>
+                    <option value="out_of_scope">Out of Scope</option><option value="no_active_engagement">No Active Engagement</option><option value="unknown">Unknown</option>
+                </select>
+                <select id="fWorkType" onchange="waLoadList()">
+                    <option value="">All work types</option>
+                    <option value="accounting">Accounting</option><option value="tax">Tax</option><option value="payroll">Payroll</option>
+                    <option value="secretarial">Secretarial</option><option value="advisory">Advisory</option><option value="compliance">Compliance</option>
+                    <option value="bookkeeping">Bookkeeping</option><option value="company_secretarial">Company Secretarial</option>
+                    <option value="management">Management</option><option value="billing">Billing</option><option value="onboarding">Onboarding</option><option value="custom">Custom</option>
+                </select>
+            </div>
+            <button class="btn-add" onclick="waOpenCheck()">🔍 Check Work</button>
+        </div>
+
+        <table>
+            <thead><tr><th>Client</th><th>Work Type</th><th>Source</th><th>Scope Result</th><th>Status</th><th>Risk</th></tr></thead>
+            <tbody id="authorizationsBody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- ── Check Work Modal ──────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="checkModal">
+        <div class="modal-box">
+            <div class="modal-title">Check Work Authorization</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Client *</label><select id="ckClient"></select></div>
+                <div class="form-group"><label>Work Type *</label>
+                    <select id="ckWorkType">
+                        <option value="accounting">Accounting</option><option value="tax">Tax</option><option value="payroll">Payroll</option>
+                        <option value="secretarial">Secretarial</option><option value="advisory">Advisory</option><option value="compliance">Compliance</option>
+                        <option value="bookkeeping">Bookkeeping</option><option value="company_secretarial">Company Secretarial</option>
+                        <option value="management">Management</option><option value="billing">Billing</option><option value="onboarding">Onboarding</option><option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Risk Level (optional override)</label>
+                    <select id="ckRiskLevel"><option value="">— auto —</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="waCloseCheck()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="waSubmitCheck()">Run Check</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Detail Modal ──────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box modal-lg"><div id="detailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="waCloseDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Reason Modal (request-override / reject-override / accept-risk / cancel) ── -->
+    <div class="modal-overlay" id="reasonModal">
+        <div class="modal-box">
+            <div class="modal-title" id="reasonModalTitle">Reason</div>
+            <div class="form-group full"><label>Reason *</label><textarea id="rfReason"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="waCloseReason()">Cancel</button>
+                <button class="btn-action btn-danger" onclick="waSubmitReason()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/work-authorization.js"></script>
+    <script>LAYOUT.init('work-authorization');</script>
+</body>
+</html>

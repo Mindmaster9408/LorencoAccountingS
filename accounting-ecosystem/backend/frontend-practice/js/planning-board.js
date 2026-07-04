@@ -217,9 +217,44 @@
         var lifecycleBadge = item.lifecycle_transition_pending
             ? ' <span class="pill" style="background:rgba(246,173,85,.2);color:#f6ad55;" title="This client has a lifecycle transition awaiting review or implementation — see Entity Lifecycle">🔄 Lifecycle Pending</span>'
             : '';
+        // Codebox 69 — soft "critical integrity finding" hint (an open
+        // critical/high Secretarial Integrity finding), sourced from
+        // Secretarial Integrity. Informational only — never affects priority
+        // ordering.
+        var integrityBadge = item.critical_integrity_finding
+            ? ' <span class="pill" style="background:rgba(229,62,62,.3);color:#fc8181;" title="This client has an open critical/high Secretarial Integrity finding — see Secretarial Integrity">⚠ Integrity Issue</span>'
+            : '';
+        // Codebox 71 — soft "engagement risk unaccepted" hint (a high/critical
+        // risk engagement with no recorded risk acceptance), sourced from
+        // Engagement Management. Informational only — never affects priority
+        // ordering.
+        var engagementRiskBadge = item.engagement_risk_unaccepted
+            ? ' <span class="pill" style="background:rgba(229,62,62,.3);color:#fc8181;" title="This client has a high/critical risk engagement with no recorded risk acceptance — see Engagement Management">🛑 Risk Not Accepted</span>'
+            : '';
+        // Codebox 72 — soft "out of scope work" hint (an unresolved
+        // out-of-scope or no-active-engagement work authorization), sourced
+        // from Work Authorization. Informational only — never affects
+        // priority ordering, never blocks the work itself.
+        var scopeBadge = item.out_of_scope_work
+            ? ' <span class="pill" style="background:rgba(229,62,62,.22);color:#fc8181;" title="This client has work flagged out of scope with no override/accepted risk yet — see Work Authorization">🚧 Out of Scope</span>'
+            : '';
+        // Codebox 73 — soft "low margin / high write-off" hint, sourced from
+        // the most recently SAVED Profitability snapshot for this client
+        // (never computed live here). Informational only — never affects
+        // priority ordering.
+        var profitabilityBadge = item.low_margin_client
+            ? ' <span class="pill" style="background:rgba(246,173,85,.2);color:#f6ad55;" title="This client\'s latest saved profitability snapshot shows low margin/unprofitable or high write-offs — see Profitability">📉 Low Margin</span>'
+            : '';
+        // Codebox 74 — soft "commercial review due" hint: low margin/high
+        // write-offs with no active pricing review already in progress,
+        // sourced from Pricing Review. Informational only — never affects
+        // priority ordering, never suggests a fee.
+        var pricingReviewBadge = item.commercial_review_due
+            ? ' <span class="pill" style="background:rgba(246,173,85,.2);color:#f6ad55;" title="Low margin with no active pricing review in progress — see Pricing Reviews">📌 Commercial Review Due</span>'
+            : '';
         return '<div class="work-item pr-' + _html(label) + '" style="display:flex;align-items:center;" onclick="pbOpenDeepLink(\'' + _html(item.deep_link) + '\')">' +
             '<div class="wi-body">' +
-            '<div class="wi-title">' + _html(item.title) + ' <span class="pill st-' + _html(label === 'critical' ? 'archived' : 'open') + '">' + _html(label) + '</span>' + atRiskBadge + returnBadge + changeBadge + boBadge + statutoryBadge + evidenceBadge + lifecycleBadge + '</div>' +
+            '<div class="wi-title">' + _html(item.title) + ' <span class="pill st-' + _html(label === 'critical' ? 'archived' : 'open') + '">' + _html(label) + '</span>' + atRiskBadge + returnBadge + changeBadge + boBadge + statutoryBadge + evidenceBadge + lifecycleBadge + integrityBadge + engagementRiskBadge + scopeBadge + profitabilityBadge + pricingReviewBadge + '</div>' +
             '<div class="wi-reason">' + _html(item.reason) + '</div>' +
             '<div class="wi-meta">' + meta.join(' · ') + '</div>' +
             '</div>' + delegateBtn + '</div>';
@@ -253,8 +288,14 @@
             var pct = m.utilization_percentage != null ? Math.min(100, m.utilization_percentage) : 0;
             var color = CAP_COLORS[m.capacity_status] || '#4a5568';
             var badge = m.competency_badge ? '<span class="pill" style="background:rgba(255,255,255,.08);color:' + BADGE_COLORS[m.competency_badge] + ';margin-left:6px;">' + BADGE_LABELS[m.competency_badge] + '</span>' : '';
+            // Codebox 75 — optional "team health" badge from the member's
+            // most recent saved Partner/Manager Scorecard. Informational
+            // only — never affects sort order or capacity math.
+            var scorecardBadge = m.needs_support
+                ? '<span class="pill" style="background:rgba(229,62,62,.22);color:#fc8181;margin-left:6px;" title="Latest scorecard overall score is ' + m.latest_scorecard_score + ' — see Partner Scorecards">📉 Needs Support</span>'
+                : '';
             return '<div class="member-card cap-' + _html(m.capacity_status) + '">' +
-                '<div class="mc-name">' + _html(m.display_name) + badge + '</div>' +
+                '<div class="mc-name">' + _html(m.display_name) + badge + scorecardBadge + '</div>' +
                 '<div class="mc-role">' + _html(m.role || '') + '</div>' +
                 '<div class="mc-util-bar"><div class="mc-util-fill" style="width:' + pct + '%;background:' + color + ';"></div></div>' +
                 '<div style="font-size:.72rem;color:#a0aec0;">' + (m.utilization_percentage != null ? m.utilization_percentage + '% utilized' : 'No capacity set') + '</div>' +
@@ -265,10 +306,12 @@
                 '<div>Critical: <b>' + m.critical_count + '</b></div>' +
                 '<div>Waiting review: <b>' + m.waiting_for_review_count + '</b></div>' +
                 '<div>Notes: <b>' + m.planning_notes_count + '</b></div>' +
+                '<div>Onboardings: <b>' + m.active_onboardings_count + '</b></div>' +
                 '</div>' +
                 '<div class="mc-links">' +
                 '<a class="mc-link" href="' + m.work_queue_link + '">Open Queue</a>' +
                 '<a class="mc-link" href="' + m.capacity_link + '">Capacity</a>' +
+                (m.active_onboardings_count ? '<a class="mc-link" href="/practice/client-onboarding.html">Onboarding</a>' : '') +
                 '</div></div>';
         }).join('');
     }

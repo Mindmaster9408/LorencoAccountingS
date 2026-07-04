@@ -892,3 +892,10 @@ module.exports.getBeneficialOwnershipProfile = getBeneficialOwnershipProfile;
 // readiness uses evidence completion, no duplicate readiness logic").
 // Purely additive export — zero change to any existing route's behavior.
 module.exports.generateReadinessItems = _generateReadinessItems;
+
+// Codebox 69 — secretarial-integrity.js reuses this exact readiness
+// computation over a bulk-fetched, per-client-grouped items array instead of
+// re-implementing the score/status thresholds a second time for its
+// company-wide audit scan. Purely additive export — zero change to any
+// existing route's behavior.
+module.exports.computeReadinessFromItems = _computeReadiness;

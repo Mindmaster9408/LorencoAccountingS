@@ -112,12 +112,18 @@
         if (calLink) calLink.href = '/practice/secretarial-calendar.html?client_id=' + _currentClientId;
         var lifecycleLink = document.getElementById('secLifecycleLink');
         if (lifecycleLink) lifecycleLink.href = '/practice/entity-lifecycle.html?client_id=' + _currentClientId;
+        var integrityLink = document.getElementById('secIntegrityLink');
+        if (integrityLink) integrityLink.href = '/practice/secretarial-integrity.html?client_id=' + _currentClientId;
+        var onboardingLink = document.getElementById('secOnboardingLink');
+        if (onboardingLink) onboardingLink.href = '/practice/client-onboarding.html?client_id=' + _currentClientId;
         secLoadClientData();
         _loadRecentChanges();
         _loadRecentGovernance();
         _loadBoSummary();
         _loadStatutoryPanel();
         _loadLifecyclePanel();
+        _loadIntegrityPanel();
+        _loadOnboardingPanel();
     }
 
     function secLoadClientData() {
@@ -233,6 +239,43 @@
                     (d.active_transitions && d.active_transitions.length ? ' &middot; ' + d.active_transitions.length + ' transition(s) in progress' : '') + '</div>';
                 if (flags.length) html += '<div class="mini-card" style="border-left:3px solid #fc8181;">' + flags.length + ' risk flag(s): ' + _html(flags[0]) + (flags.length > 1 ? ' (+' + (flags.length - 1) + ' more)' : '') + '</div>';
                 el.innerHTML = html;
+            })
+            .catch(function () { el.innerHTML = '<div class="empty-state">Failed to load.</div>'; });
+    }
+
+    // Codebox 69 — open findings for this client, reused via GET
+    // /secretarial-integrity/findings?client_id=&status=open (no duplicate
+    // validation/scoring logic here).
+    function _loadIntegrityPanel() {
+        var el = document.getElementById('integrityPanel');
+        if (!el) return;
+        window.PracticeAPI.fetch('/api/practice/secretarial-integrity/findings?client_id=' + _currentClientId + '&status=open')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var findings = d.findings || [];
+                if (!findings.length) { el.innerHTML = '<div class="mini-card">No open findings for this client.</div>'; return; }
+                var critHigh = findings.filter(function (f) { return f.severity === 'critical' || f.severity === 'high'; }).length;
+                var html = '<div class="mini-card">' + findings.length + ' open finding(s)' + (critHigh ? ', ' + critHigh + ' critical/high' : '') + '</div>';
+                html += findings.slice(0, 5).map(function (f) {
+                    return '<div class="mini-card" style="' + (f.severity === 'critical' || f.severity === 'high' ? 'border-left:3px solid #fc8181;' : '') + '">' + _html(f.title) + ' <span class="pill">' + _html(f.severity) + '</span></div>';
+                }).join('');
+                el.innerHTML = html;
+            })
+            .catch(function () { el.innerHTML = '<div class="empty-state">Failed to load.</div>'; });
+    }
+
+    // Codebox 70 — onboarding status for this client, reused via GET
+    // /client-onboarding/profiles/:clientId (no duplicate onboarding logic
+    // here).
+    function _loadOnboardingPanel() {
+        var el = document.getElementById('onboardingPanel');
+        if (!el) return;
+        window.PracticeAPI.fetch('/api/practice/client-onboarding/profiles/' + _currentClientId)
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.error) { el.innerHTML = '<div class="empty-state">' + _html(d.error) + '</div>'; return; }
+                if (!d.profile) { el.innerHTML = '<div class="empty-state">Not yet onboarded — <a href="/practice/client-onboarding.html?client_id=' + _currentClientId + '">start onboarding</a>.</div>'; return; }
+                el.innerHTML = '<div class="mini-card">Status: <strong>' + _html(d.profile.onboarding_status) + '</strong> &middot; Completion: ' + (d.profile.completion_percentage || 0) + '%</div>';
             })
             .catch(function () { el.innerHTML = '<div class="empty-state">Failed to load.</div>'; });
     }

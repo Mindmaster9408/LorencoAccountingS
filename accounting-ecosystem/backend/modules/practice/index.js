@@ -3291,6 +3291,55 @@ router.use('/secretarial-calendar', secretarialCalendarRouter);
 const entityLifecycleRouter = require('./entity-lifecycle');
 router.use('/entity-lifecycle', entityLifecycleRouter);
 
+// Secretarial Register Integrity Audit + Statutory Data Quality Review (Codebox 69)
+// Detects, classifies, and reports data-quality issues across the Secretarial
+// suite. NOT data correction. NOT automatic repair. NOT CIPC validation.
+const secretarialIntegrityRouter = require('./secretarial-integrity');
+router.use('/secretarial-integrity', secretarialIntegrityRouter);
+
+// Practice Client Onboarding + Entity Formation Foundation (Codebox 70)
+// Onboarding workspace over an existing client — initializes the Secretarial
+// suite's per-client profiles. NOT CIPC incorporation. NOT SARS registration.
+// NOT banking integration. NOT a client portal.
+const clientOnboardingRouter = require('./client-onboarding');
+router.use('/client-onboarding', clientOnboardingRouter);
+
+// Practice Engagement Management + Engagement Letter Foundation (Codebox 71)
+// ENHANCEMENT LAYER over the existing engagements.js/engagement-periods.js
+// (Codebox 15/16) — mounted at its OWN dedicated prefix (not root '/') so it
+// never collides with those routers' existing /engagements/:id path space.
+// NOT document generation. NOT e-signature. NOT automatic proposal acceptance.
+const engagementManagementRouter = require('./engagement-management');
+router.use('/engagement-management', engagementManagementRouter);
+
+// Practice Engagement Scope Control + Work Authorization Gate (Codebox 72)
+// "Are we allowed to do this work under the current engagement?" Warns and
+// records — never hard-blocks. NOT legal advice. NOT billing automation.
+const workAuthorizationRouter = require('./work-authorization');
+router.use('/work-authorization', workAuthorizationRouter);
+
+// Practice Client Profitability + Service Margin Foundation (Codebox 73)
+// "Where are we making or losing money?" Analyzes existing Time/Billing/
+// Engagement data — NOT accounting, NOT a ledger, NOT invoicing automation.
+const profitabilityRouter = require('./profitability');
+router.use('/profitability', profitabilityRouter);
+
+// Practice Pricing Review + Fee Adjustment Workflow (Codebox 74)
+// Governs the DECISION to change a fee/scope — never modifies invoices,
+// accounting, billing, or engagements itself. Never recommends a specific
+// fee amount. "Implemented" means the commercial decision was accepted;
+// a future codebox may consume that to actually update an engagement.
+const pricingReviewRouter = require('./pricing-review');
+router.use('/pricing-review', pricingReviewRouter);
+
+// Practice Partner Performance + Practice Scorecards (Codebox 75)
+// Executive operational reporting — aggregates existing KPIs (Profitability,
+// Quality, Risk, Capacity, Client Success, Engagement, Learning, Planning,
+// Notifications) into partner/manager/team/practice scorecards. NOT HR.
+// NOT payroll performance. NOT employee ranking. NOT disciplinary management.
+const partnerScorecardsRouter = require('./partner-scorecards');
+router.use('/partner-scorecards', partnerScorecardsRouter);
+
 // Management Dashboard — Executive Command Centre (Codebox 50)
 // Read-only aggregator for partners. NOT an operational page.
 const managementDashboardRouter = require('./management-dashboard');

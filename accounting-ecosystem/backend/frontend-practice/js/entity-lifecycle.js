@@ -136,6 +136,25 @@
                 _renderProfile(d);
             })
             .catch(function () { _showToast('Failed to load entity lifecycle data.'); });
+        _loadIntegrityWarnings();
+    }
+
+    // Codebox 69 — open Secretarial Integrity findings for this client,
+    // reused via GET /secretarial-integrity/findings?client_id=&status=open
+    // (no duplicate validation/scoring logic here).
+    function _loadIntegrityWarnings() {
+        var el = document.getElementById('integrityWarnings');
+        if (!el) return;
+        window.PracticeAPI.fetch('/api/practice/secretarial-integrity/findings?client_id=' + _currentClientId + '&status=open')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var findings = d.findings || [];
+                el.innerHTML = findings.length ? findings.map(function (f) {
+                    return '<div class="mini-card' + (f.severity === 'critical' || f.severity === 'high' ? ' flag' : '') + '">' +
+                        '<span class="pill">' + _html(f.severity) + '</span> ' + _html(f.title) + '</div>';
+                }).join('') : '<div class="empty-state">No open integrity findings for this client.</div>';
+            })
+            .catch(function () { el.innerHTML = '<div class="empty-state">Failed to load.</div>'; });
     }
 
     function _renderProfile(d) {
