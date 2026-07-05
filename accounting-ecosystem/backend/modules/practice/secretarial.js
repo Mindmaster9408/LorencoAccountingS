@@ -19,6 +19,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -30,8 +31,6 @@ const supabase = createClient(
 );
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 
 const COMPANY_TYPES = ['pty_ltd', 'cc', 'npc', 'trust', 'partnership', 'sole_proprietor', 'other'];
 const COMPANY_STATUSES = ['active', 'dormant', 'deregistration_process', 'deregistered', 'in_liquidation', 'other'];
@@ -52,21 +51,13 @@ const UPCOMING_RETURN_WINDOW_DAYS = 60;
 function today() { return new Date().toISOString().split('T')[0]; }
 function daysFromNow(n) { return new Date(Date.now() + n * 86400000).toISOString().split('T')[0]; }
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role')
-        .eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can edit Secretarial records.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can edit Secretarial records.');
 }
 
 async function _verifyClient(cid, clientId) {

@@ -28,6 +28,7 @@ const entityLifecycle = require('./entity-lifecycle');
 const clientSuccess = require('./client-success');
 const beneficialOwnership = require('./beneficial-ownership');
 const secretarialEvidence = require('./secretarial-evidence');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -40,7 +41,6 @@ const supabase = createClient(
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 const ENTITY_TYPES = ['pty_ltd', 'cc', 'trust', 'partnership', 'sole_proprietor', 'npc', 'other'];
 const ONBOARDING_STATUSES = ['draft', 'information_collection', 'document_collection', 'secretarial_setup', 'tax_setup', 'practice_setup', 'review', 'completed', 'cancelled'];
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -137,21 +137,13 @@ ONBOARDING_CHECKLIST_DEFAULTS.other = [
 
 function today() { return new Date().toISOString().split('T')[0]; }
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role')
-        .eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can manage client onboarding.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can manage client onboarding.');
 }
 
 async function _verifyClient(cid, clientId) {

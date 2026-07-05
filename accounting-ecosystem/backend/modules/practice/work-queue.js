@@ -12,6 +12,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -32,10 +33,8 @@ const RISK_RATING_BONUS = { flagged: 30, high: 20, medium: 10, normal: 0, low: 0
 const PRIORITY_BONUS = { urgent: 40, high: 25, medium: 10, normal: 10, low: 0 };
 const SEVERITY_BONUS = { critical: 80, high: 50, medium: 20, normal: 20, low: 5, info: 5 };
 
-async function _myTeamMemberId(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role').eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMemberId(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
 
 async function _writeEvent(cid, teamMemberId, eventType, sourceModule, sourceType, sourceId, actorUserId, notes, meta) {
@@ -386,8 +385,6 @@ async function _fetchCompletedRecent(cid, tmId, days) {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
-
 // Codebox 56 (Planning Board) reuses this router's own endpoints to open a
 // specific employee's queue ("Work Queue: Open directly into employee
 // queue"). ?team_member_id= is honoured ONLY when the caller's own role is
@@ -397,10 +394,10 @@ const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 // queue by editing the URL.
 async function _requireTeamMember(req, res) {
     const cid = req.companyId;
-    const me = await _myTeamMemberId(cid, req.user?.userId);
+    const me = await _myTeamMemberId(cid, req.user);
 
     const requestedId = req.query.team_member_id ? parseInt(req.query.team_member_id, 10) : null;
-    if (requestedId && me && MANAGER_ROLES.includes(me.role)) {
+    if (requestedId && me && teamAccess.isManagerRole(me.role)) {
         const { data } = await supabase.from('practice_team_members').select('id, display_name, role').eq('id', requestedId).eq('company_id', cid).eq('is_active', true).maybeSingle();
         if (data) return data;
     }
@@ -626,7 +623,7 @@ router.put('/preferences', async (req, res) => {
 router.post('/events', async (req, res) => {
     try {
         const cid = req.companyId;
-        const member = await _myTeamMemberId(cid, req.user?.userId);
+        const member = await _myTeamMemberId(cid, req.user);
         const body = req.body || {};
         const validTypes = ['page_opened', 'item_opened', 'item_completed', 'item_snoozed', 'item_delegated', 'queue_filtered'];
         if (!validTypes.includes(body.event_type)) return res.status(422).json({ error: `event_type must be one of ${validTypes.join(', ')}.` });

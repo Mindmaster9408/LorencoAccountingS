@@ -17,6 +17,8 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
 
+const teamAccess = require('./lib/team-access');
+
 const router = express.Router();
 router.use(authenticateToken);
 router.use(requireCompany);
@@ -27,8 +29,6 @@ const supabase = createClient(
 );
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 
 const OWNER_TYPES = ['natural_person', 'company', 'trust', 'partnership', 'nominee', 'other'];
 const CONTROL_TYPES = ['shareholding', 'voting_rights', 'board_control', 'trustee_control', 'beneficiary_control', 'nominee_control', 'agreement_control', 'other_control'];
@@ -48,21 +48,13 @@ const DEFAULT_REPORTING_THRESHOLD_PCT = 5;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role')
-        .eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can manage beneficial ownership records.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can manage beneficial ownership records.');
 }
 
 async function _verifyClient(cid, clientId) {

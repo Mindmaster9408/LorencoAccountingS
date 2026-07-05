@@ -16,6 +16,7 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
 const engagementManagement = require('./engagement-management');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -28,7 +29,6 @@ const supabase = createClient(
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 // Partner-or-above — the required approver role for high/critical risk
 // overrides. See _approveOverrideOrRisk() for the "unverified" fallback.
 const PARTNER_ROLES = ['owner', 'partner'];
@@ -56,22 +56,14 @@ const SCOPE_TO_AUTH_STATUS = { in_scope: 'clear', possible_gap: 'warning', out_o
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role')
-        .eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 function _isPartner(member) { return !!member && PARTNER_ROLES.includes(member.role); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can manage work authorizations.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can manage work authorizations.');
 }
 
 async function _verifyClient(cid, clientId) {

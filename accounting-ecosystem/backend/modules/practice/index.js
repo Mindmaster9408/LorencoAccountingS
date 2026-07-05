@@ -261,6 +261,40 @@ function sanitizeTeamBody(body) {
   return out;
 }
 
+// A submitted user_id is never trusted as-is — the "Link to Login Account"
+// picker is a <select> populated from /api/practice/users, but nothing
+// previously stopped a raw/stale id from being accepted by this endpoint
+// directly. Every user_id is now checked against an active
+// user_company_access row for this company before being written.
+//
+// selfHealFromEmail (create only): if no user_id was submitted but the
+// display email matches exactly one active ecosystem user for this
+// company, auto-link it. This closes the actual gap behind the 2026-07-05
+// Planning Board access incident — the 4 super-admin roster rows were
+// created with the "Link to Login Account" picker left on "Not linked"
+// (its /api/practice/users load can fail silently), leaving user_id NULL
+// despite a matching login already existing.
+async function _resolveTeamUserId(companyId, body, { selfHealFromEmail } = {}) {
+  if (body.user_id !== undefined && body.user_id !== null && body.user_id !== '') {
+    const uid = parseInt(body.user_id, 10);
+    if (!Number.isInteger(uid)) throw new Error('user_id must be a valid integer.');
+    const { data } = await supabase.from('user_company_access')
+      .select('user_id').eq('company_id', companyId).eq('user_id', uid).eq('is_active', true).maybeSingle();
+    if (!data) throw new Error('That login account is not an active member of this company. Pick a valid user from the list.');
+    body.user_id = uid;
+    return;
+  }
+
+  if (body.user_id === null || body.user_id === '') body.user_id = null;
+
+  if (selfHealFromEmail && !body.user_id && body.email) {
+    const { data: accessRows } = await supabase.from('user_company_access')
+      .select('users:user_id(id, email)').eq('company_id', companyId).eq('is_active', true);
+    const matches = (accessRows || []).map(r => r.users).filter(u => u && u.email && u.email.toLowerCase() === body.email.toLowerCase());
+    if (matches.length === 1) body.user_id = matches[0].id;
+  }
+}
+
 router.get('/team', async (req, res) => {
   const { active = 'true', role, search, page, limit } = req.query;
   let q = supabase
@@ -311,6 +345,11 @@ router.post('/team', async (req, res) => {
   const body = sanitizeTeamBody(req.body);
   if (!body.display_name) return res.status(400).json({ error: 'display_name is required' });
   if (body.role && !TEAM_ROLES.includes(body.role)) return res.status(400).json({ error: 'Invalid role' });
+  try {
+    await _resolveTeamUserId(req.companyId, body, { selfHealFromEmail: true });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
   body.company_id = req.companyId;
   if (req.userId) body.created_by = req.userId;
 
@@ -335,6 +374,14 @@ router.put('/team/:id', async (req, res) => {
 
   const body = sanitizeTeamBody(req.body);
   if (body.role && !TEAM_ROLES.includes(body.role)) return res.status(400).json({ error: 'Invalid role' });
+  try {
+    // No email self-heal on edit: an explicitly blanked "Link to Login
+    // Account" field means the admin is intentionally unlinking someone,
+    // not a silent dropdown-load failure — that gap only exists on create.
+    await _resolveTeamUserId(req.companyId, body, { selfHealFromEmail: false });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
   body.updated_at = new Date().toISOString();
   if (req.userId) body.updated_by = req.userId;
 

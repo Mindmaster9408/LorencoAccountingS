@@ -13,6 +13,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -67,10 +68,12 @@ async function _writeEvent(cid, notificationId, eventType, oldStatus, newStatus,
 
 // Resolves the current HTTP caller's own practice_team_members.id (if any),
 // used for the "Assigned To Me" filter and the notification-bell count.
-async function _myTeamMemberId(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id').eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data ? data.id : null;
+// Delegates to the shared team-access helper so this lookup gets the same
+// email self-heal / super-admin bypass as every other practice module (see
+// lib/team-access.js — 2026-07-05 Planning Board access incident).
+async function _myTeamMemberId(cid, user) {
+    const member = await teamAccess.getMyTeamMember(supabase, cid, user);
+    return member ? member.id : null;
 }
 
 // ── Routing — the documented assignment-resolution rule ────────────────────────
@@ -189,7 +192,7 @@ router.get('/summary', async (req, res) => {
     try {
         const cid = req.companyId;
         const today = new Date().toISOString().slice(0, 10);
-        const myId = await _myTeamMemberId(cid, req.user?.userId);
+        const myId = await _myTeamMemberId(cid, req.user);
 
         const { data, error } = await supabase.from('practice_notifications')
             .select('notification_status, severity, category, assigned_team_member_id, due_date')
@@ -258,7 +261,7 @@ router.get('/', async (req, res) => {
         if (overdue === 'true') q = q.lt('due_date', today).not('notification_status', 'in', '("completed","archived","cancelled")');
 
         if (assigned_to_me === 'true') {
-            const myId = await _myTeamMemberId(cid, req.user?.userId);
+            const myId = await _myTeamMemberId(cid, req.user);
             q = myId != null ? q.eq('assigned_team_member_id', myId) : q.eq('id', -1); // no team member linked — no results, not an error
         } else if (assigned_team_member_id) {
             q = q.eq('assigned_team_member_id', parseInt(assigned_team_member_id, 10));

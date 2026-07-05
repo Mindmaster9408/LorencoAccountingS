@@ -19,6 +19,7 @@ const secretarial = require('./secretarial');
 const secretarialCalendar = require('./secretarial-calendar');
 const beneficialOwnership = require('./beneficial-ownership');
 const secretarialEvidence = require('./secretarial-evidence');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -30,8 +31,6 @@ const supabase = createClient(
 );
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 
 const ENTITY_CATEGORIES = ['company', 'close_corporation', 'trust', 'non_profit', 'sole_proprietor', 'partnership', 'other'];
 const LIFECYCLE_STATUSES = [
@@ -171,21 +170,13 @@ const GENERIC_DEFAULTS = [_item('Internal review', 'internal_review'), _item('Pa
 
 function today() { return new Date().toISOString().split('T')[0]; }
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role')
-        .eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can manage entity lifecycle records.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can manage entity lifecycle records.');
 }
 
 async function _verifyClient(cid, clientId) {

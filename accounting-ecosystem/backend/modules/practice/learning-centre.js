@@ -13,6 +13,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -25,7 +26,6 @@ const supabase = createClient(
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 const PLAN_STATUSES = ['draft', 'active', 'on_hold', 'completed', 'cancelled'];
 const GOAL_STATUSES = ['not_started', 'in_progress', 'completed', 'on_hold', 'cancelled'];
 const ACTIVITY_STATUSES = ['planned', 'in_progress', 'completed', 'cancelled'];
@@ -35,20 +35,13 @@ const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role').eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can edit the Learning Centre.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can edit the Learning Centre.');
 }
 
 async function _writeEvent(cid, eventType, entityType, entityId, actorUserId, notes, meta) {
@@ -218,7 +211,7 @@ router.get('/summary', async (req, res) => {
 router.get('/plans', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         let q = supabase.from('practice_learning_plans').select('*').eq('company_id', cid).order('created_at', { ascending: false });
         if (req.query.status) q = q.eq('status', req.query.status);
 
@@ -279,7 +272,7 @@ router.post('/plans', async (req, res) => {
 router.get('/plans/:id', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const plan = await _verifyPlan(req.params.id, cid);
         if (!plan) return res.status(404).json({ error: 'Learning plan not found.' });
         if (!_canView(plan, me)) return res.status(403).json({ error: 'You cannot view this learning plan.' });
@@ -345,7 +338,7 @@ router.delete('/plans/:id', async (req, res) => {
 router.get('/goals', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         if (!req.query.learning_plan_id) return res.status(422).json({ error: 'learning_plan_id query param is required.' });
 
         const plan = await _verifyPlan(req.query.learning_plan_id, cid);
@@ -446,7 +439,7 @@ router.delete('/goals/:id', async (req, res) => {
 router.get('/activities', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         if (!req.query.goal_id) return res.status(422).json({ error: 'goal_id query param is required.' });
 
         const goal = await _verifyGoal(req.query.goal_id, cid);
@@ -548,7 +541,7 @@ router.delete('/activities/:id', async (req, res) => {
 router.get('/progress/:plan_id', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const plan = await _verifyPlan(req.params.plan_id, cid);
         if (!plan) return res.status(404).json({ error: 'Learning plan not found.' });
         if (!_canView(plan, me)) return res.status(403).json({ error: 'You cannot view progress for this learning plan.' });
@@ -589,7 +582,7 @@ router.post('/progress/:plan_id/snapshot', async (req, res) => {
 router.get('/progress/:plan_id/history', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const plan = await _verifyPlan(req.params.plan_id, cid);
         if (!plan) return res.status(404).json({ error: 'Learning plan not found.' });
         if (!_canView(plan, me)) return res.status(403).json({ error: 'You cannot view progress history for this learning plan.' });
@@ -608,7 +601,7 @@ router.get('/progress/:plan_id/history', async (req, res) => {
 router.get('/cpd', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         let q = supabase.from('practice_cpd_records').select('*').eq('company_id', cid).eq('is_active', true).order('issue_date', { ascending: false });
 
         if (req.query.team_member_id) {
@@ -707,7 +700,7 @@ router.delete('/cpd/:id', async (req, res) => {
 router.get('/suggested-goals/:team_member_id', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const requestedId = parseInt(req.params.team_member_id, 10);
         if (!_isManager(me) && (!me || me.id !== requestedId)) return res.status(403).json({ error: 'You can only view your own suggested goals.' });
 

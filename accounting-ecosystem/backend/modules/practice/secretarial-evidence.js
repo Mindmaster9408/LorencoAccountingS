@@ -20,6 +20,7 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
 const beneficialOwnership = require('./beneficial-ownership');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -31,8 +32,6 @@ const supabase = createClient(
 );
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 
 const TEMPLATE_TYPES = [
     'director_appointment', 'director_resignation', 'share_transfer',
@@ -131,21 +130,13 @@ const DEFAULT_TEMPLATES = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role')
-        .eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can manage secretarial evidence.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can manage secretarial evidence.');
 }
 
 async function _verifyClient(cid, clientId) {

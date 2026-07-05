@@ -9,6 +9,13 @@
     var editingId = null;
     var PAGE_SIZE = 20;
     var currentPage = 1;
+    // Tracks whether the "Link to Login Account" picker actually loaded —
+    // if /api/practice/users fails, the picker used to silently fall back
+    // to "Not linked" with no warning, letting a member be saved without
+    // its login link even though a matching account exists (root cause of
+    // the 2026-07-05 Planning Board access incident). Now surfaced instead
+    // of swallowed.
+    var loginUsersLoaded = false;
 
     var ROLE_LABEL = {
         owner: 'Owner', partner: 'Partner', manager: 'Manager', senior: 'Senior',
@@ -39,7 +46,7 @@
     async function loadLoginUsers() {
         try {
             var res = await PracticeAPI.fetch('/api/practice/users');
-            if (!res.ok) return;
+            if (!res.ok) throw new Error('Load failed (' + res.status + ')');
             var d = await res.json();
             var users = d.users || [];
             var opts = users.map(function(u) {
@@ -48,7 +55,13 @@
             }).join('');
             document.getElementById('tmUserId').innerHTML =
                 '<option value="">Not linked (roster only — cannot receive tasks)</option>' + opts;
-        } catch(e) {}
+            loginUsersLoaded = true;
+        } catch(e) {
+            loginUsersLoaded = false;
+            document.getElementById('tmUserId').innerHTML =
+                '<option value="">⚠️ Could not load login accounts — reopen this form to retry</option>';
+            PracticeAPI.showToast('❌ Could not load login accounts for the "Link to Login Account" picker. Reopen Add/Edit Member to retry before saving a link.', true);
+        }
     }
 
     // ── Load team list ─────────────────────────────────────────────────────────
@@ -228,11 +241,25 @@
 
     async function saveMember(e) {
         e.preventDefault();
+
+        var userIdRaw = document.getElementById('tmUserId').value;
+        // Guard against saving without a login link just because the
+        // picker silently failed to load (the actual root cause of the
+        // 2026-07-05 Planning Board access incident) — the admin must
+        // explicitly confirm they mean "no login account" when the picker
+        // never loaded, rather than that being an unnoticed accident.
+        if (!loginUsersLoaded && !userIdRaw) {
+            var proceed = confirm('The login account picker failed to load, so this save cannot verify whether ' +
+                (document.getElementById('tmEmail').value.trim() || 'this person') +
+                ' already has a login account.\n\nSaving now will leave them "Not linked" (roster only — cannot receive tasks).\n\n' +
+                'Click Cancel to close this form and reopen it to retry loading the picker. Click OK to save as-is.');
+            if (!proceed) return false;
+        }
+
         var btn = document.getElementById('tmSaveBtn');
         btn.disabled = true;
 
         var hourlyRaw = document.getElementById('tmHourlyRate').value;
-        var userIdRaw = document.getElementById('tmUserId').value;
         var body = {
             display_name:       document.getElementById('tmDisplayName').value.trim(),
             email:              document.getElementById('tmEmail').value.trim() || null,

@@ -14,6 +14,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -26,7 +27,6 @@ const supabase = createClient(
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 const LEVELS = { 0: 'No Exposure', 1: 'Basic', 2: 'Working Knowledge', 3: 'Independent', 4: 'Advanced', 5: 'Expert' };
 const CERT_STATUSES = ['active', 'expired', 'pending', 'revoked'];
 const EVENT_TYPES = [
@@ -101,20 +101,13 @@ const MODULE_SKILL_MAP = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role').eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can edit the Skills Matrix.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can edit the Skills Matrix.');
 }
 
 async function _writeEvent(cid, eventType, entityType, entityId, actorUserId, notes, meta) {
@@ -383,7 +376,7 @@ router.delete('/skills/:id', async (req, res) => {
 router.get('/team-skills', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         let q = supabase.from('practice_team_skills').select('*, practice_skills:skill_id(skill_key, display_name, category_id)').eq('company_id', cid);
 
         if (req.query.team_member_id) {
@@ -566,7 +559,7 @@ router.delete('/certifications/:id', async (req, res) => {
 router.get('/team-certifications', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         let q = supabase.from('practice_team_certifications').select('*, practice_certifications:certification_id(certification_name, issuer)').eq('company_id', cid).eq('is_active', true);
 
         if (req.query.team_member_id) {
@@ -721,7 +714,7 @@ async function getCompetency(cid, teamMemberId, sourceModule) {
 router.get('/competency/:team_member_id', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const requestedId = parseInt(req.params.team_member_id, 10);
         if (!_isManager(me) && (!me || me.id !== requestedId)) return res.status(403).json({ error: 'You can only view your own competency profile.' });
 

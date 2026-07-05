@@ -17,6 +17,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
 const capacity = require('./capacity');
 const workQueue = require('./work-queue');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -29,7 +30,6 @@ const supabase = createClient(
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 const NOTE_STATUSES = ['open', 'in_progress', 'done', 'archived'];
 const EVENT_TYPES = ['board_opened', 'note_created', 'note_updated', 'note_archived', 'filter_changed', 'week_changed'];
 
@@ -48,19 +48,12 @@ function _mondayOf(dateStr) {
 }
 function _addDays(dateStr, n) { return new Date(new Date(dateStr + 'T00:00:00').getTime() + n * 86400000).toISOString().slice(0, 10); }
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role').eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!member || !MANAGER_ROLES.includes(member.role)) {
-        res.status(403).json({ error: 'The Planning Board is only available to owners, partners, admins, and practice managers.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'The Planning Board is only available to owners, partners, admins, and practice managers.');
 }
 
 async function _writeEvent(cid, noteId, eventType, actorUserId, notes, meta) {

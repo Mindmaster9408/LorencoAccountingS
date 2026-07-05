@@ -26,6 +26,7 @@ const skillsMatrix = require('./skills-matrix');
 // Codebox 60 — badge only ("In Development" / "Mentored"), same advisory,
 // never-a-gate treatment as the Skills Matrix competency check above.
 const learningCentre = require('./learning-centre');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -38,7 +39,6 @@ const supabase = createClient(
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 const STATUSES = ['draft', 'delegated', 'accepted', 'declined', 'cancelled', 'completed'];
 const ACTIVE_STATUSES = ['delegated', 'accepted'];
 
@@ -112,12 +112,10 @@ const SOURCE_REGISTRY = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role').eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _writeEvent(cid, delegationId, eventType, oldOwnerId, newOwnerId, actorUserId, notes, meta) {
     await supabase.from('practice_work_delegation_events').insert({
@@ -295,7 +293,7 @@ function _isInvolved(delegation, teamMemberId) {
 router.get('/summary', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const manager = _isManager(me);
 
         let q = supabase.from('practice_work_delegations').select('delegation_status, previous_owner_id, new_owner_id, delegated_by').eq('company_id', cid);
@@ -328,7 +326,7 @@ router.get('/summary', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const manager = _isManager(me);
 
         let q = supabase.from('practice_work_delegations').select('*').eq('company_id', cid).order('created_at', { ascending: false });
@@ -388,7 +386,7 @@ router.get('/competency-preview', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const delegation = await _verifyDelegation(req.params.id, cid);
         if (!delegation) return res.status(404).json({ error: 'Delegation not found.' });
         if (!_isManager(me) && !_isInvolved(delegation, me?.id)) return res.status(403).json({ error: 'You are not involved in this delegation.' });
@@ -406,7 +404,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const body = req.body || {};
 
         if (!body.source_module) return res.status(422).json({ error: 'source_module is required.' });
@@ -451,7 +449,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const delegation = await _verifyDelegation(req.params.id, cid);
         if (!delegation) return res.status(404).json({ error: 'Delegation not found.' });
 
@@ -483,7 +481,7 @@ router.put('/:id', async (req, res) => {
 router.put('/:id/accept', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const delegation = await _verifyDelegation(req.params.id, cid);
         if (!delegation) return res.status(404).json({ error: 'Delegation not found.' });
         if (!_isManager(me) && (!me || delegation.new_owner_id !== me.id)) return res.status(403).json({ error: 'Only the new owner or a manager can accept this delegation.' });
@@ -518,7 +516,7 @@ router.put('/:id/accept', async (req, res) => {
 router.put('/:id/decline', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const delegation = await _verifyDelegation(req.params.id, cid);
         if (!delegation) return res.status(404).json({ error: 'Delegation not found.' });
         if (!_isManager(me) && (!me || delegation.new_owner_id !== me.id)) return res.status(403).json({ error: 'Only the new owner or a manager can decline this delegation.' });
@@ -555,7 +553,7 @@ router.put('/:id/decline', async (req, res) => {
 router.put('/:id/cancel', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const delegation = await _verifyDelegation(req.params.id, cid);
         if (!delegation) return res.status(404).json({ error: 'Delegation not found.' });
         if (!_isManager(me) && (!me || delegation.delegated_by !== me.id)) return res.status(403).json({ error: 'Only the delegator or a manager can cancel this delegation.' });
@@ -590,7 +588,7 @@ router.put('/:id/cancel', async (req, res) => {
 router.put('/:id/complete', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const delegation = await _verifyDelegation(req.params.id, cid);
         if (!delegation) return res.status(404).json({ error: 'Delegation not found.' });
         if (!_isManager(me) && (!me || delegation.new_owner_id !== me.id)) return res.status(403).json({ error: 'Only the new owner or a manager can complete this delegation.' });
@@ -614,7 +612,7 @@ router.put('/:id/complete', async (req, res) => {
 router.get('/:id/events', async (req, res) => {
     try {
         const cid = req.companyId;
-        const me = await _myTeamMember(cid, req.user?.userId);
+        const me = await _myTeamMember(cid, req.user);
         const delegation = await _verifyDelegation(req.params.id, cid);
         if (!delegation) return res.status(404).json({ error: 'Delegation not found.' });
         if (!_isManager(me) && !_isInvolved(delegation, me?.id)) return res.status(403).json({ error: 'You are not involved in this delegation.' });

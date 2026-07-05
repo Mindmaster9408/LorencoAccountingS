@@ -14,6 +14,7 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
 const secretarial = require('./secretarial');
+const teamAccess = require('./lib/team-access');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -25,8 +26,6 @@ const supabase = createClient(
 );
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const MANAGER_ROLES = ['owner', 'partner', 'admin', 'manager'];
 
 const RESOLUTION_TYPES = ['directors_resolution', 'shareholders_resolution', 'written_resolution', 'ordinary_resolution', 'special_resolution', 'trustee_resolution', 'member_resolution', 'custom'];
 const RESOLUTION_STATUSES = ['draft', 'prepared', 'approved', 'signed', 'implemented', 'archived', 'cancelled'];
@@ -41,21 +40,13 @@ const DECISION_STATUSES = ['draft', 'approved', 'implemented', 'cancelled'];
 
 function today() { return new Date().toISOString().split('T')[0]; }
 
-async function _myTeamMember(cid, userId) {
-    if (!userId) return null;
-    const { data } = await supabase.from('practice_team_members').select('id, display_name, role')
-        .eq('company_id', cid).eq('user_id', userId).eq('is_active', true).maybeSingle();
-    return data || null;
+async function _myTeamMember(cid, user) {
+    return teamAccess.getMyTeamMember(supabase, cid, user);
 }
-function _isManager(member) { return !!member && MANAGER_ROLES.includes(member.role); }
+function _isManager(member) { return teamAccess.isManager(member); }
 
 async function _requireManager(req, res) {
-    const member = await _myTeamMember(req.companyId, req.user?.userId);
-    if (!_isManager(member)) {
-        res.status(403).json({ error: 'Only owners, partners, admins, and practice managers can manage governance records.' });
-        return null;
-    }
-    return member;
+    return teamAccess.requireManager(req, res, supabase, 'Only owners, partners, admins, and practice managers can manage governance records.');
 }
 
 // No frontend company_id trusted — every linked record is re-verified
