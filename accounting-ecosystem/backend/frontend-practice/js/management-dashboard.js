@@ -281,6 +281,27 @@
                 _kpi(_kpiClass(sp.reviews_due || 0, 1, 3), sp.reviews_due || 0, 'Strategic Reviews Due', '/practice/strategic-planning.html');
         }
 
+        // Codebox 77 — Executive Reporting summary.
+        var er = d.executive_reporting || {};
+        var kpiErEl = document.getElementById('kpiExecutiveReporting');
+        if (kpiErEl) {
+            var latestReport = er.latest_report;
+            kpiErEl.innerHTML =
+                _kpi('kpi-neutral', latestReport ? latestReport.report_title : 'None yet', 'Latest Executive Report', '/practice/executive-reporting.html') +
+                _kpi(_kpiClass(er.reports_awaiting_approval || 0, 1, 3), er.reports_awaiting_approval || 0, 'Reports Awaiting Approval', '/practice/executive-reporting.html') +
+                _kpi(_kpiClass(er.outstanding_actions || 0, 1, 10), er.outstanding_actions || 0, 'Outstanding Executive Actions', '/practice/executive-reporting.html');
+        }
+
+        // Codebox 78 — Automation summary.
+        var auto = d.automation || {};
+        var kpiAutoEl = document.getElementById('kpiAutomation');
+        if (kpiAutoEl) {
+            kpiAutoEl.innerHTML =
+                _kpi('kpi-neutral', auto.active_rules || 0, 'Active Automations', '/practice/automation.html') +
+                _kpi(_kpiClass(auto.failed_runs || 0, 1, 3), auto.failed_runs || 0, 'Failed Runs (recent)', '/practice/automation.html') +
+                _kpi(_kpiClass(auto.runs_with_warnings || 0, 1, 5), auto.runs_with_warnings || 0, 'Runs With Warnings (recent)', '/practice/automation.html');
+        }
+
         document.getElementById('kpiKnowledgeSop').innerHTML =
             _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/practice/knowledge-base.html') +
             _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/practice/knowledge-base.html') +

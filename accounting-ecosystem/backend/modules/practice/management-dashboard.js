@@ -377,6 +377,31 @@ async function computeSummary(cid) {
         const stratToday = _today();
         const strategicReviews = strategicReviewRows || [];
 
+        // Codebox 77 — Executive Reporting summary. Same count-only pattern
+        // as every other KPI block above — never calls
+        // executiveReporting.buildExecutiveReport() (a multi-engine
+        // aggregator) from a dashboard load, and never requires
+        // executive-reporting.js at all (that module already requires this
+        // one for its own report engine, so a reverse require here would be
+        // circular — direct queries avoid that entirely).
+        const { data: latestReportRows } = await supabase.from('practice_executive_reports')
+            .select('id, report_title, report_type, report_status, period_start, period_end, generated_at, created_at')
+            .eq('company_id', cid).not('report_status', 'in', '("cancelled")').order('created_at', { ascending: false }).limit(1);
+        const { count: reportsAwaitingApproval } = await supabase.from('practice_executive_reports')
+            .select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('report_status', 'under_review');
+        const { count: outstandingExecutiveActions } = await supabase.from('practice_executive_action_register')
+            .select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['open', 'in_progress', 'waiting']);
+
+        // Codebox 78 — Automation summary. Same count-only pattern as every
+        // other KPI block — never calls evaluateAutomationRule() (a
+        // multi-step execution engine) from a dashboard load.
+        const { count: activeAutomationRules } = await supabase.from('practice_automation_rules')
+            .select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('rule_status', 'active');
+        const { data: failedAutomationRunRows } = await supabase.from('practice_automation_runs')
+            .select('id').eq('company_id', cid).eq('run_status', 'failed').eq('dry_run', false).order('created_at', { ascending: false }).limit(20);
+        const { data: automationWarningRunRows } = await supabase.from('practice_automation_runs')
+            .select('id').eq('company_id', cid).eq('run_status', 'completed_with_warnings').order('created_at', { ascending: false }).limit(20);
+
         return {
             practice: {
                 active_clients: activeClients,
@@ -485,6 +510,16 @@ async function computeSummary(cid) {
                 at_risk_objectives: (strategicObjRows || []).filter(o => ['at_risk', 'off_track'].includes(o.objective_status)).length,
                 blocked_initiatives: (strategicInitRows || []).filter(i => i.initiative_status === 'blocked').length,
                 reviews_due: strategicReviews.filter(r => r.next_review_date && r.next_review_date <= stratToday && !['completed', 'cancelled'].includes(r.review_status)).length,
+            },
+            executive_reporting: {
+                latest_report: (latestReportRows || [])[0] || null,
+                reports_awaiting_approval: reportsAwaitingApproval || 0,
+                outstanding_actions: outstandingExecutiveActions || 0,
+            },
+            automation: {
+                active_rules: activeAutomationRules || 0,
+                failed_runs: (failedAutomationRunRows || []).length,
+                runs_with_warnings: (automationWarningRunRows || []).length,
             },
             knowledge: {
                 draft: kbDraft, under_review: kbUnderReview, approved: kbApproved,

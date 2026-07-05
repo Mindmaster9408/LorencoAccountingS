@@ -15,6 +15,7 @@
     var _currentObjectiveId = null;
     var _pendingReasonAction = null;
     var _teamOptionsHtml = '<option value="">— None —</option>';
+    var _reviewsById = {};   // Codebox 77 — cache for spCreateExecutiveReport()'s title/period prefill
 
     var PLAN_STATUS_LABELS = { draft: 'Draft', active: 'Active', under_review: 'Under Review', completed: 'Completed', archived: 'Archived', cancelled: 'Cancelled' };
     var OBJECTIVE_STATUS_LABELS = { not_started: 'Not Started', in_progress: 'In Progress', on_track: 'On Track', at_risk: 'At Risk', off_track: 'Off Track', achieved: 'Achieved', deferred: 'Deferred', cancelled: 'Cancelled' };
@@ -372,12 +373,17 @@
     }
     function _renderPlanReviews(rows) {
         var el = document.getElementById('planReviewsBody');
+        rows.forEach(function (r) { _reviewsById[r.id] = r; });
         if (!rows.length) { el.innerHTML = '<div class="empty-state">No reviews yet.</div>'; return; }
         el.innerHTML = rows.map(function (r) {
             var btns = [];
             if (['draft', 'under_review', 'action_required'].indexOf(r.review_status) !== -1) btns.push('<button class="btn-action btn-success" onclick="spReviewAction(' + r.id + ',\'complete\')">Complete</button>');
             if (['draft', 'under_review'].indexOf(r.review_status) !== -1) btns.push('<button class="btn-action btn-secondary" onclick="spReviewAction(' + r.id + ',\'action-required\')">Mark Action Required</button>');
             if (['completed', 'cancelled'].indexOf(r.review_status) === -1) btns.push('<button class="btn-action btn-danger" onclick="spOpenReason(\'cancel-review:' + r.id + '\')">Cancel</button>');
+            // Codebox 77 — deep-links into Executive Reporting with this
+            // review's own title/period pre-filled. Does not create a report
+            // itself — the partner still confirms/generates it there.
+            btns.push('<button class="btn-action btn-secondary" onclick="spCreateExecutiveReport(' + r.id + ')">Create Executive Report</button>');
             return '<div class="mini-card"><div style="display:flex;justify-content:space-between;"><strong>' + _html(r.review_title) + '</strong><span class="pill ps-' + _html(r.review_status) + '">' + _html(REVIEW_STATUS_LABELS[r.review_status] || r.review_status) + '</span></div>' +
                 '<div class="mini-card-meta">Overall progress: ' + (r.overall_progress != null ? r.overall_progress + '%' : '—') + ' &middot; Next review: ' + _fmtDate(r.next_review_date) + '</div>' +
                 (r.review_summary ? '<div class="mini-card-meta">' + _html(r.review_summary) + '</div>' : '') +
@@ -407,6 +413,23 @@
             .then(function (d) { if (d.error) { _showToast(d.error); return; } _showToast('Review created.'); spCloseCreateReview(); _loadPlanReviews(_currentPlanId); _loadSummary(); spLoadReviews(); })
             .catch(function () { _showToast('Failed to create review.'); });
     }
+    // Codebox 77 — deep-link into Executive Reporting, pre-filling
+    // report_type/period from this review. Never creates the report itself
+    // (Strategic Planning does not require executive-reporting.js, and does
+    // not write to its tables) — the partner still reviews and generates it
+    // on the Executive Reporting page.
+    function spCreateExecutiveReport(reviewId) {
+        var r = _reviewsById[reviewId];
+        if (!r) { _showToast('Review data not loaded yet — try again.'); return; }
+        var params = new URLSearchParams({
+            report_title: r.review_title || 'Executive Report',
+            report_type: 'board',
+            period_start: r.review_period_start || '',
+            period_end: r.review_period_end || '',
+        });
+        window.location.href = '/practice/executive-reporting.html?' + params.toString();
+    }
+
     function spReviewAction(id, action) {
         window.PracticeAPI.fetch(BASE + '/reviews/' + id + '/' + action, { method: 'PUT' })
             .then(function (r) { return r.json(); })
@@ -500,6 +523,7 @@
 
     // ── Expose ────────────────────────────────────────────────────────────────
 
+    window.spCreateExecutiveReport = spCreateExecutiveReport;
     window.spSetTab = spSetTab;
     window.spOpenCreatePlan = spOpenCreatePlan;
     window.spCloseCreatePlan = spCloseCreatePlan;

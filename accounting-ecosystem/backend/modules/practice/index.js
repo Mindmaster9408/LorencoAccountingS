@@ -3411,6 +3411,21 @@ router.use('/kpi-history', kpiHistoryRouter);
 const partnerReviewPacksRouter = require('./partner-review-packs');
 router.use('/partner-review-packs', partnerReviewPacksRouter);
 
+// Practice Executive Reporting + Board Pack Foundation (Codebox 77)
+// "What decisions do we need to make today?" NOT Business Intelligence. NOT
+// Power BI. NOT AI reporting. Assembles existing engines into a frozen,
+// approvable board pack — never a duplicate KPI/scoring engine.
+const executiveReportingRouter = require('./executive-reporting');
+router.use('/executive-reporting', executiveReportingRouter);
+
+// Practice Automation Foundation + Workflow Orchestration (Codebox 78)
+// The nervous system of Practice Management — safe, deterministic,
+// manager-controlled rules. NOT AI. NOT autonomous decision making. Manual
+// test-run/run-now execution only; no existing module is wired to
+// auto-fire a trigger yet (see automation.js's own scope note).
+const automationRouter = require('./automation');
+router.use('/automation', automationRouter);
+
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
 router.use('/dashboard', dashboardRouter);

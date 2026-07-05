@@ -31,6 +31,8 @@
         { key: 'strategic-planning', label: 'Strategic Planning', href: '/practice/strategic-planning.html' },
         { key: 'kpi-history', label: 'KPI History', href: '/practice/kpi-history.html' },
         { key: 'partner-review-packs', label: 'Partner Review Packs', href: '/practice/partner-review-packs.html' },
+        { key: 'executive-reporting', label: 'Executive Reporting', href: '/practice/executive-reporting.html' },
+        { key: 'automation', label: 'Automation', href: '/practice/automation.html' },
         { key: 'alert-rules', label: 'Alert Rules', href: '/practice/alert-rules.html' },
         { key: 'notifications', label: 'Notifications', href: '/practice/notifications.html' },
         { key: 'profile',     label: 'Profile',     href: '/practice/profile.html' },
