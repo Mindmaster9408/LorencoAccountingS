@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Operational Health — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); }
+
+        .score-hero { background: #1e2035; border-radius: 14px; padding: 28px; text-align: center; margin-bottom: 18px; }
+        .score-hero .score-value { font-size: 3rem; font-weight: 800; }
+        .score-hero .score-status { font-size: .95rem; text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
+        .score-healthy { color: #68d391; }
+        .score-warning { color: #f6ad55; }
+        .score-critical { color: #fc8181; }
+
+        .category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .category-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .cc-score { font-size: 1.3rem; font-weight: 800; }
+        .cc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .sev-info { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .sev-low { background: rgba(104,211,145,.2); color: #68d391; }
+        .sev-medium { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .sev-high { background: rgba(246,173,85,.32); color: #f6ad55; }
+        .sev-critical { background: rgba(229,62,62,.22); color: #fc8181; }
+        .status-healthy, .status-completed { background: rgba(104,211,145,.2); color: #68d391; }
+        .status-warning, .status-running { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .status-critical, .status-failed { background: rgba(229,62,62,.22); color: #fc8181; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .checklist-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #12122a; border-radius: 8px; margin-bottom: 6px; font-size: .82rem; }
+        .checklist-icon { font-size: 1.1rem; }
+        .checklist-icon.pass { color: #68d391; }
+        .checklist-icon.fail { color: #fc8181; }
+        .checklist-detail { color: #718096; font-size: .72rem; margin-left: auto; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 800px; max-height: 88vh; overflow-y: auto; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Operational Health Centre</h1>
+            <div class="action-bar" style="margin:0;">
+                <a class="btn-action btn-secondary" href="/practice/management-dashboard.html" style="text-decoration:none;">← Management Dashboard</a>
+                <button class="btn-add" onclick="ohRunHealthCheck()">Run Health Check Now</button>
+            </div>
+        </div>
+        <div class="inline-msg info">"Is the platform ready?" — a read-only monitor over every other Practice module. NOT AI. NOT scheduled — every check runs only when a manager requests it.</div>
+
+        <div class="score-hero" id="scoreHero">
+            <div class="score-value">—</div>
+            <div class="score-status">No health check has been run yet</div>
+        </div>
+
+        <div class="category-grid" id="categoryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <div class="tab-panel" id="panel-checklist">
+            <div class="panel">
+                <div class="panel-title">Pilot Readiness Checklist</div>
+                <div id="checklistBody"><div class="empty-state">Run a health check to populate the checklist.</div></div>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="panel-findings">
+            <div class="panel">
+                <div class="panel-title">Findings</div>
+                <table>
+                    <thead><tr><th>Category</th><th>Severity</th><th>Message</th></tr></thead>
+                    <tbody id="findingsBody"><tr><td colspan="3" class="empty-state">Run a health check to see findings.</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="panel-history">
+            <div class="panel">
+                <div class="panel-title">Run History</div>
+                <table>
+                    <thead><tr><th>Run</th><th>Status</th><th>Score</th><th>Started</th></tr></thead>
+                    <tbody id="historyBody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Run Detail Modal ────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="runDetailModal">
+        <div class="modal-box">
+            <div id="runDetailHeader"></div>
+            <div id="runDetailEvents"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="ohCloseRunDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/operational-health.js"></script>
+    <script>LAYOUT.init('operational-health');</script>
+</body>
+</html>

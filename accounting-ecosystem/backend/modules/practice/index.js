@@ -3426,6 +3426,12 @@ router.use('/executive-reporting', executiveReportingRouter);
 const automationRouter = require('./automation');
 router.use('/automation', automationRouter);
 
+// Practice Operational Health Centre + System Readiness Monitor (Codebox 79)
+// "Is the platform ready?" Read-only monitor over every other Practice
+// module — never mutates anything outside its own two tables.
+const operationalHealthRouter = require('./operational-health');
+router.use('/operational-health', operationalHealthRouter);
+
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.
 router.use('/dashboard', dashboardRouter);

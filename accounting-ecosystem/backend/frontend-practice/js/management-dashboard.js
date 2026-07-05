@@ -302,6 +302,18 @@
                 _kpi(_kpiClass(auto.runs_with_warnings || 0, 1, 5), auto.runs_with_warnings || 0, 'Runs With Warnings (recent)', '/practice/automation.html');
         }
 
+        // Codebox 79 — Operational Health summary.
+        var oh = d.operational_health || {};
+        var kpiOhEl = document.getElementById('kpiOperationalHealth');
+        if (kpiOhEl) {
+            var latestHealth = oh.latest_run;
+            kpiOhEl.innerHTML =
+                _kpi(latestHealth ? ('kpi-' + (latestHealth.overall_status === 'healthy' ? 'good' : latestHealth.overall_status === 'warning' ? 'warn' : 'bad')) : 'kpi-neutral',
+                    latestHealth ? latestHealth.overall_score : 'Not run yet', 'System Readiness Score', '/practice/operational-health.html') +
+                _kpi('kpi-neutral', latestHealth ? _html(latestHealth.overall_status) : '—', 'Status', '/practice/operational-health.html') +
+                _kpi('kpi-neutral', latestHealth ? _fmt(latestHealth.completed_at) : '—', 'Last Checked', '/practice/operational-health.html');
+        }
+
         document.getElementById('kpiKnowledgeSop').innerHTML =
             _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/practice/knowledge-base.html') +
             _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/practice/knowledge-base.html') +

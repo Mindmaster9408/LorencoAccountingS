@@ -402,6 +402,14 @@ async function computeSummary(cid) {
         const { data: automationWarningRunRows } = await supabase.from('practice_automation_runs')
             .select('id').eq('company_id', cid).eq('run_status', 'completed_with_warnings').order('created_at', { ascending: false }).limit(20);
 
+        // Codebox 79 — Operational Health summary. Shows the latest STORED
+        // health-check run only — never calls computeOperationalHealth()
+        // (a multi-table scan) from a dashboard load. A manager runs a
+        // fresh check from the Operational Health page itself.
+        const { data: latestHealthRunRows } = await supabase.from('practice_health_check_runs')
+            .select('id, overall_score, overall_status, completed_at').eq('company_id', cid).eq('run_status', 'completed')
+            .order('completed_at', { ascending: false }).limit(1);
+
         return {
             practice: {
                 active_clients: activeClients,
@@ -520,6 +528,9 @@ async function computeSummary(cid) {
                 active_rules: activeAutomationRules || 0,
                 failed_runs: (failedAutomationRunRows || []).length,
                 runs_with_warnings: (automationWarningRunRows || []).length,
+            },
+            operational_health: {
+                latest_run: (latestHealthRunRows || [])[0] || null,
             },
             knowledge: {
                 draft: kbDraft, under_review: kbUnderReview, approved: kbApproved,
