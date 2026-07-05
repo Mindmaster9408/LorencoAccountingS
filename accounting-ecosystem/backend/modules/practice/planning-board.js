@@ -386,6 +386,19 @@ router.get('/team', async (req, res) => {
         const latestScoreByMember = {};
         (scorecardRows || []).forEach(s => { if (!(s.team_member_id in latestScoreByMember)) latestScoreByMember[s.team_member_id] = s.overall_score; });
 
+        // Codebox 76 (Strategic Planning) — strategic initiatives due this
+        // week / overdue per owner. One lightweight direct query — never a
+        // call into strategic-planning.js's getStrategicPlanHealth() (a
+        // multi-query, plan-scoped engine) for a read-only team board load.
+        const { data: strategicInitRows } = await supabase.from('practice_strategic_initiatives')
+            .select('owner_team_member_id, due_date, initiative_status').eq('company_id', cid)
+            .not('owner_team_member_id', 'is', null).not('initiative_status', 'in', '("completed","cancelled")');
+        const strategicDueByMember = {}, strategicOverdueByMember = {};
+        (strategicInitRows || []).forEach(i => {
+            if (i.due_date && i.due_date >= weekStart && i.due_date <= weekEnd) strategicDueByMember[i.owner_team_member_id] = (strategicDueByMember[i.owner_team_member_id] || 0) + 1;
+            if (i.due_date && i.due_date < today) strategicOverdueByMember[i.owner_team_member_id] = (strategicOverdueByMember[i.owner_team_member_id] || 0) + 1;
+        });
+
         const notesByMember = {};
         (notesRes.data || []).forEach(n => { notesByMember[n.team_member_id] = (notesByMember[n.team_member_id] || 0) + 1; });
 
@@ -435,6 +448,8 @@ router.get('/team', async (req, res) => {
                 // for the manager's attention. Never computed live here.
                 latest_scorecard_score: latestScoreByMember[m.id] != null ? latestScoreByMember[m.id] : null,
                 needs_support: latestScoreByMember[m.id] != null && latestScoreByMember[m.id] < 60,
+                strategic_initiatives_due_count: strategicDueByMember[m.id] || 0,
+                strategic_initiatives_overdue_count: strategicOverdueByMember[m.id] || 0,
                 work_queue_link: '/practice/work-queue.html?team_member_id=' + m.id,
                 capacity_link: '/practice/capacity.html?member_id=' + m.id,
             };

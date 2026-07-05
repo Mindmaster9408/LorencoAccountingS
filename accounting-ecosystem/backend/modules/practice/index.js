@@ -3340,6 +3340,13 @@ router.use('/pricing-review', pricingReviewRouter);
 const partnerScorecardsRouter = require('./partner-scorecards');
 router.use('/partner-scorecards', partnerScorecardsRouter);
 
+// Practice Strategic Planning + Objectives Management (Codebox 76)
+// "Where are we going?" NOT project management. NOT task management. NOT HR
+// performance. Strategic objectives/initiatives/KPI links reference (never
+// duplicate) the KPI engines already built above.
+const strategicPlanningRouter = require('./strategic-planning');
+router.use('/strategic-planning', strategicPlanningRouter);
+
 // Management Dashboard — Executive Command Centre (Codebox 50)
 // Read-only aggregator for partners. NOT an operational page.
 const managementDashboardRouter = require('./management-dashboard');

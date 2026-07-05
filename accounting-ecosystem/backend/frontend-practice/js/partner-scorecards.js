@@ -161,8 +161,32 @@
                 (c.warning ? '<div class="c-meta" style="color:#f6ad55;">⚠ ' + _html(c.warning) + '</div>' : '') + '</div>';
         }).join('');
 
+        if (sc.team_member_id) {
+            html += '<div class="c-meta" style="margin-top:10px;" id="linkedObjectives-' + kind + '">Loading linked strategic objectives…</div>';
+        }
         html += '</div>';
+
+        if (sc.team_member_id) _loadLinkedObjectives(sc.team_member_id, kind);
         return html;
+    }
+
+    // Codebox 76 — read-only reuse of Strategic Planning's cross-plan
+    // objective lookup ("show linked strategic objectives where safe"). No
+    // new calculation here — Partner Scorecards never computes objective
+    // progress itself.
+    function _loadLinkedObjectives(teamMemberId, kind) {
+        window.PracticeAPI.fetch('/api/practice/strategic-planning/objectives?owner_team_member_id=' + teamMemberId)
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var el = document.getElementById('linkedObjectives-' + kind);
+                if (!el) return;
+                var objectives = d.objectives || [];
+                el.innerHTML = objectives.length
+                    ? '<strong>Linked Strategic Objectives:</strong> ' + objectives.map(function (o) { return _html(o.objective_title) + ' (' + _html(o.objective_status) + ')'; }).join(', ') +
+                      ' <a href="/practice/strategic-planning.html" style="color:#a3bffa;">Open Strategic Planning →</a>'
+                    : '';
+            })
+            .catch(function () { var el = document.getElementById('linkedObjectives-' + kind); if (el) el.innerHTML = ''; });
     }
 
     function pscSaveSnapshot(kind) {

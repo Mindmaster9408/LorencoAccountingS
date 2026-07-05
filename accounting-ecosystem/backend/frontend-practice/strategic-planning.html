@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Strategic Planning — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        .filter-bar select, .filter-bar input { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 7px 10px; font-size: .8rem; }
+        .filter-bar .fg { display: flex; flex-direction: column; gap: 4px; }
+        .filter-bar label { font-size: .7rem; color: #718096; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .ps-draft, .ps-not_started { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .ps-active, .ps-in_progress, .ps-on_track { background: rgba(104,211,145,.2); color: #68d391; }
+        .ps-under_review { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .ps-at_risk, .ps-blocked { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .ps-off_track { background: rgba(229,62,62,.22); color: #fc8181; }
+        .ps-achieved, .ps-completed { background: rgba(104,211,145,.32); color: #68d391; }
+        .ps-deferred, .ps-archived, .ps-cancelled { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .ps-action_required { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .prio-low { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .prio-medium { background: rgba(102,126,234,.18); color: #a3bffa; }
+        .prio-high { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .prio-critical { background: rgba(229,62,62,.22); color: #fc8181; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-box.modal-lg { max-width: 920px; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], input[type="number"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .mini-card.flag { border-left: 3px solid #fc8181; }
+        .readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .readonly-field { background: #0d0d1f; border-radius: 8px; padding: 10px 12px; font-size: .82rem; }
+        .readonly-field .rf-label { color: #718096; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+        .readonly-field .rf-value { color: #e2e8f0; font-weight: 700; }
+        .progress-bar { background: #0d0d1f; border-radius: 6px; height: 8px; overflow: hidden; margin-top: 4px; }
+        .progress-bar-fill { background: #667eea; height: 100%; }
+        .detail-tab-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; border-bottom: 1px solid #2d3748; padding-bottom: 10px; }
+        .detail-tab-btn { background: transparent; border: none; color: #718096; padding: 6px 12px; border-radius: 6px; font-size: .78rem; cursor: pointer; font-weight: 600; }
+        .detail-tab-btn.active { background: #12122a; color: #a3bffa; }
+        .detail-tab-panel { display: none; }
+        .detail-tab-panel.active { display: block; }
+        .section-heading { font-size: .78rem; font-weight: 700; color: #a0aec0; text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 8px; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Strategic Planning</h1>
+        </div>
+        <div class="inline-msg info">"Are we making progress on the strategic priorities?" NOT project management. NOT task management. NOT HR performance. Strategic practice leadership only — annual objectives, quarterly priorities, and initiatives. Tasks/workflows remain the operational execution layer.</div>
+        <div class="inline-msg warn">KPI links reference existing KPI engines (Profitability, Client Success, Risk, QMS, Partner Scorecards, etc.) — this page never recalculates a metric differently. Unmatched or manually-entered values are always labelled "manual".</div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Plans -->
+        <div class="tab-panel" id="panel-plans">
+            <div class="panel">
+                <div class="panel-title">Strategic Plans <button class="btn-add" onclick="spOpenCreatePlan()">+ New Plan</button></div>
+                <table>
+                    <thead><tr><th>Plan</th><th>Year</th><th>Period</th><th>Status</th><th>Theme</th></tr></thead>
+                    <tbody id="plansBody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Reviews -->
+        <div class="tab-panel" id="panel-reviews">
+            <div class="panel">
+                <table>
+                    <thead><tr><th>Review</th><th>Plan</th><th>Status</th><th>Overall Progress</th><th>Next Review</th></tr></thead>
+                    <tbody id="reviewsBody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Events -->
+        <div class="tab-panel" id="panel-events">
+            <div class="panel">
+                <table>
+                    <thead><tr><th>Event</th><th>Old → New</th><th>Notes</th><th>When</th></tr></thead>
+                    <tbody id="eventsBody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Plan Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createPlanModal">
+        <div class="modal-box">
+            <div class="modal-title">New Strategic Plan</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Plan Name *</label><input type="text" id="npName" /></div>
+                <div class="form-group"><label>Plan Year *</label><input type="number" id="npYear" /></div>
+                <div class="form-group"><label>Strategic Theme</label><input type="text" id="npTheme" /></div>
+                <div class="form-group"><label>Period Start *</label><input type="text" id="npPeriodStart" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group"><label>Period End *</label><input type="text" id="npPeriodEnd" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Vision Statement</label><textarea id="npVision"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="spCloseCreatePlan()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="spSubmitCreatePlan()">Create Plan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Plan Detail Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="planDetailModal">
+        <div class="modal-box modal-lg">
+            <div id="planDetailHeader"></div>
+            <div class="detail-tab-bar" id="planDetailTabBar"></div>
+            <div class="detail-tab-panel active" id="pdpanel-overview"><div id="planOverviewBody"></div></div>
+            <div class="detail-tab-panel" id="pdpanel-objectives">
+                <div class="action-bar"><button class="btn-action btn-add" onclick="spOpenCreateObjective()">+ Add Objective</button></div>
+                <div id="objectivesBody"></div>
+            </div>
+            <div class="detail-tab-panel" id="pdpanel-reviews">
+                <div class="action-bar"><button class="btn-action btn-add" onclick="spOpenCreateReview()">+ Create Review</button></div>
+                <div id="planReviewsBody"></div>
+            </div>
+            <div class="detail-tab-panel" id="pdpanel-events"><div id="planEventsBody"></div></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="spClosePlanDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Objective Detail Modal (Details + Initiatives + KPI Links) ─────── -->
+    <div class="modal-overlay" id="objectiveDetailModal">
+        <div class="modal-box modal-lg">
+            <div id="objectiveDetailBody"></div>
+            <div class="modal-footer"><button class="btn-action btn-secondary" onclick="spCloseObjectiveDetail()">Close</button></div>
+        </div>
+    </div>
+
+    <!-- ── Create Objective Modal ──────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createObjectiveModal">
+        <div class="modal-box">
+            <div class="modal-title">New Strategic Objective</div>
+            <div class="form-row">
+                <div class="form-group full"><label>Objective Title *</label><input type="text" id="noTitle" /></div>
+                <div class="form-group full"><label>Description</label><textarea id="noDescription"></textarea></div>
+                <div class="form-group"><label>Area *</label>
+                    <select id="noArea">
+                        <option value="growth">Growth</option><option value="profitability">Profitability</option><option value="quality">Quality</option>
+                        <option value="client_success">Client Success</option><option value="capacity">Capacity</option><option value="team_development">Team Development</option>
+                        <option value="risk">Risk</option><option value="compliance">Compliance</option><option value="secretarial">Secretarial</option>
+                        <option value="tax">Tax</option><option value="operational_excellence">Operational Excellence</option><option value="technology">Technology</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Priority</label>
+                    <select id="noPriority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+                </div>
+                <div class="form-group"><label>Owner</label><select id="noOwner"><option value="">— None —</option></select></div>
+                <div class="form-group"><label>Target Date</label><input type="text" id="noTargetDate" placeholder="YYYY-MM-DD" /></div>
+                <div class="form-group full"><label>Success Measure</label><input type="text" id="noSuccessMeasure" /></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="spCloseCreateObjective()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="spSubmitCreateObjective()">Create Objective</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Initiative Modal ─────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createInitiativeModal">
+        <div class="modal-box">
+            <div class="modal-title">New Initiative</div>
+            <div class="form-group full"><label>Initiative Title *</label><input type="text" id="niTitle" /></div>
+            <div class="form-group full"><label>Description</label><textarea id="niDescription"></textarea></div>
+            <div class="form-row">
+                <div class="form-group"><label>Owner</label><select id="niOwner"><option value="">— None —</option></select></div>
+                <div class="form-group"><label>Due Date</label><input type="text" id="niDueDate" placeholder="YYYY-MM-DD" /></div>
+            </div>
+            <div class="form-group full"><label>Next Action</label><input type="text" id="niNextAction" /></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="spCloseCreateInitiative()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="spSubmitCreateInitiative()">Add Initiative</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create KPI Link Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createKpiModal">
+        <div class="modal-box">
+            <div class="modal-title">New KPI Link</div>
+            <div class="form-row">
+                <div class="form-group"><label>KPI Source *</label>
+                    <select id="nkSource">
+                        <option value="management_dashboard">Management Dashboard</option><option value="kpi_history">KPI History</option>
+                        <option value="partner_scorecard">Partner Scorecard</option><option value="profitability">Profitability</option>
+                        <option value="client_success">Client Success</option><option value="risk">Risk</option><option value="qms">QMS</option>
+                        <option value="planning">Planning</option><option value="capacity">Capacity</option><option value="tax">Tax</option>
+                        <option value="secretarial">Secretarial</option><option value="custom">Custom (manual only)</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Metric Key *</label><input type="text" id="nkMetricKey" placeholder="e.g. overall_score" /></div>
+                <div class="form-group full"><label>Metric Label *</label><input type="text" id="nkMetricLabel" /></div>
+                <div class="form-group"><label>Direction *</label>
+                    <select id="nkDirection"><option value="increase">Increase</option><option value="decrease">Decrease</option><option value="maintain">Maintain</option><option value="threshold">Threshold</option></select>
+                </div>
+                <div class="form-group"><label>Weight</label><input type="number" step="0.1" id="nkWeight" value="1" /></div>
+                <div class="form-group"><label>Baseline Value</label><input type="number" step="0.01" id="nkBaseline" /></div>
+                <div class="form-group"><label>Target Value</label><input type="number" step="0.01" id="nkTarget" /></div>
+                <div class="form-group"><label>Current Value (manual)</label><input type="number" step="0.01" id="nkCurrent" /></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="spCloseCreateKpi()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="spSubmitCreateKpi()">Add KPI Link</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Review Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createReviewModal">
+        <div class="modal-box">
+            <div class="modal-title">New Strategic Review</div>
+            <div class="form-group full"><label>Review Title *</label><input type="text" id="nrTitle" /></div>
+            <div class="form-group full"><label>Summary</label><textarea id="nrSummary"></textarea></div>
+            <div class="form-group full"><label>Wins</label><textarea id="nrWins"></textarea></div>
+            <div class="form-group full"><label>Concerns</label><textarea id="nrConcerns"></textarea></div>
+            <div class="form-group"><label>Next Review Date</label><input type="text" id="nrNextReviewDate" placeholder="YYYY-MM-DD" /></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="spCloseCreateReview()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="spSubmitCreateReview()">Create Review</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Reason Modal (cancel actions) ───────────────────────────────────── -->
+    <div class="modal-overlay" id="reasonModal">
+        <div class="modal-box">
+            <div class="modal-title" id="reasonModalTitle">Reason Required</div>
+            <div class="form-group full"><label>Reason *</label><textarea id="rfReason"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="spCloseReason()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="spSubmitReason()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/strategic-planning.js"></script>
+    <script>LAYOUT.init('strategic-planning');</script>
+</body>
+</html>

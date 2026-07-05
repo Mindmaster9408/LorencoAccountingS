@@ -270,6 +270,17 @@
                 _kpi(lowest && lowest.overall_score < 60 ? 'kpi-bad' : 'kpi-neutral', lowest ? lowest.overall_score : '—', 'Lowest Score Needing Review', '/practice/partner-scorecards.html');
         }
 
+        // Codebox 76 — Strategic Planning summary.
+        var sp = d.strategic_planning || {};
+        var kpiSpEl = document.getElementById('kpiStrategicPlanning');
+        if (kpiSpEl) {
+            kpiSpEl.innerHTML =
+                _kpi('kpi-neutral', sp.active_plans || 0, 'Active Strategic Plans', '/practice/strategic-planning.html') +
+                _kpi(_kpiClass(sp.at_risk_objectives || 0, 1, 5), sp.at_risk_objectives || 0, 'At-Risk Objectives', '/practice/strategic-planning.html') +
+                _kpi(_kpiClass(sp.blocked_initiatives || 0, 1, 3), sp.blocked_initiatives || 0, 'Blocked Initiatives', '/practice/strategic-planning.html') +
+                _kpi(_kpiClass(sp.reviews_due || 0, 1, 3), sp.reviews_due || 0, 'Strategic Reviews Due', '/practice/strategic-planning.html');
+        }
+
         document.getElementById('kpiKnowledgeSop').innerHTML =
             _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/practice/knowledge-base.html') +
             _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/practice/knowledge-base.html') +

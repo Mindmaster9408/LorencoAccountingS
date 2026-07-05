@@ -360,6 +360,23 @@ async function computeSummary(cid) {
         const scoredSnapshots = scorecards.filter(s => s.overall_score != null);
         const lowestScoring = scoredSnapshots.length ? scoredSnapshots.reduce((min, s) => (s.overall_score < min.overall_score ? s : min)) : null;
 
+        // Codebox 76 — Strategic Planning summary. Same count-only pattern as
+        // every other KPI block — never calls getStrategicPlanHealth() (a
+        // multi-query engine) from a dashboard load.
+        const { data: planRows } = await supabase.from('practice_strategic_plans').select('id, plan_status').eq('company_id', cid);
+        const strategicPlans = planRows || [];
+        const activePlanIds = strategicPlans.filter(p => ['active', 'under_review'].includes(p.plan_status)).map(p => p.id);
+        const { data: strategicObjRows } = activePlanIds.length
+            ? await supabase.from('practice_strategic_objectives').select('id, objective_status').eq('company_id', cid).in('plan_id', activePlanIds)
+            : { data: [] };
+        const strategicObjectiveIds = (strategicObjRows || []).map(o => o.id);
+        const { data: strategicInitRows } = strategicObjectiveIds.length
+            ? await supabase.from('practice_strategic_initiatives').select('initiative_status').eq('company_id', cid).in('objective_id', strategicObjectiveIds)
+            : { data: [] };
+        const { data: strategicReviewRows } = await supabase.from('practice_strategic_reviews').select('review_status, next_review_date').eq('company_id', cid);
+        const stratToday = _today();
+        const strategicReviews = strategicReviewRows || [];
+
         return {
             practice: {
                 active_clients: activeClients,
@@ -462,6 +479,12 @@ async function computeSummary(cid) {
                 practice_score_generated_at: latestPractice ? latestPractice.created_at : null,
                 total_snapshots: scorecards.length,
                 lowest_scoring_snapshot: lowestScoring,
+            },
+            strategic_planning: {
+                active_plans: activePlanIds.length,
+                at_risk_objectives: (strategicObjRows || []).filter(o => ['at_risk', 'off_track'].includes(o.objective_status)).length,
+                blocked_initiatives: (strategicInitRows || []).filter(i => i.initiative_status === 'blocked').length,
+                reviews_due: strategicReviews.filter(r => r.next_review_date && r.next_review_date <= stratToday && !['completed', 'cancelled'].includes(r.review_status)).length,
             },
             knowledge: {
                 draft: kbDraft, under_review: kbUnderReview, approved: kbApproved,

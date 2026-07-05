@@ -307,10 +307,13 @@
                 '<div>Waiting review: <b>' + m.waiting_for_review_count + '</b></div>' +
                 '<div>Notes: <b>' + m.planning_notes_count + '</b></div>' +
                 '<div>Onboardings: <b>' + m.active_onboardings_count + '</b></div>' +
+                '<div>Strategic due: <b>' + m.strategic_initiatives_due_count + '</b></div>' +
+                '<div>Strategic overdue: <b>' + m.strategic_initiatives_overdue_count + '</b></div>' +
                 '</div>' +
                 '<div class="mc-links">' +
                 '<a class="mc-link" href="' + m.work_queue_link + '">Open Queue</a>' +
                 '<a class="mc-link" href="' + m.capacity_link + '">Capacity</a>' +
+                (m.strategic_initiatives_due_count || m.strategic_initiatives_overdue_count ? '<a class="mc-link" href="/practice/strategic-planning.html">Strategic Planning</a>' : '') +
                 (m.active_onboardings_count ? '<a class="mc-link" href="/practice/client-onboarding.html">Onboarding</a>' : '') +
                 '</div></div>';
         }).join('');

@@ -28,6 +28,7 @@
         { key: 'profitability', label: 'Profitability', href: '/practice/profitability.html' },
         { key: 'pricing-review', label: 'Pricing Reviews', href: '/practice/pricing-review.html' },
         { key: 'partner-scorecards', label: 'Partner Scorecards', href: '/practice/partner-scorecards.html' },
+        { key: 'strategic-planning', label: 'Strategic Planning', href: '/practice/strategic-planning.html' },
         { key: 'kpi-history', label: 'KPI History', href: '/practice/kpi-history.html' },
         { key: 'partner-review-packs', label: 'Partner Review Packs', href: '/practice/partner-review-packs.html' },
         { key: 'alert-rules', label: 'Alert Rules', href: '/practice/alert-rules.html' },
