@@ -410,6 +410,16 @@ async function computeSummary(cid) {
             .select('id, overall_score, overall_status, completed_at').eq('company_id', cid).eq('run_status', 'completed')
             .order('completed_at', { ascending: false }).limit(1);
 
+        // Codebox 80 — Pilot Readiness summary. Shows the latest STORED
+        // readiness run only — never calls computePilotReadiness() (which
+        // itself only reads Operational Health's latest stored run) from a
+        // dashboard load.
+        const { data: latestReadinessRunRows } = await supabase.from('practice_pilot_readiness_runs')
+            .select('id, run_name, readiness_status, overall_score, decision, created_at').eq('company_id', cid)
+            .order('created_at', { ascending: false }).limit(1);
+        const { count: openCriticalPilotIssues } = await supabase.from('practice_pilot_known_issues')
+            .select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('severity', 'critical').in('issue_status', ['open', 'in_progress']);
+
         return {
             practice: {
                 active_clients: activeClients,
@@ -531,6 +541,10 @@ async function computeSummary(cid) {
             },
             operational_health: {
                 latest_run: (latestHealthRunRows || [])[0] || null,
+            },
+            pilot_readiness: {
+                latest_run: (latestReadinessRunRows || [])[0] || null,
+                open_critical_issues: openCriticalPilotIssues || 0,
             },
             knowledge: {
                 draft: kbDraft, under_review: kbUnderReview, approved: kbApproved,

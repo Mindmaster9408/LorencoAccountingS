@@ -18,6 +18,7 @@ const engagementsRouter      = require('./engagements');
 const engagementPeriodsRouter = require('./engagement-periods');
 const dashboardRouter        = require('./dashboard');
 const capacityRouter         = require('./capacity');
+const teamAccess             = require('./lib/team-access');
 const clientHealthRouter     = require('./client-health');
 const remindersRouter        = require('./reminders');
 const communicationsRouter   = require('./communications');
@@ -294,6 +295,27 @@ async function _resolveTeamUserId(companyId, body, { selfHealFromEmail } = {}) {
     if (matches.length === 1) body.user_id = matches[0].id;
   }
 }
+
+// Codebox 80 — lets the frontend safely infer whether to show manager-level
+// navigation groups. Read-only; reuses teamAccess.getMyTeamMember()/
+// isManager() directly rather than a second role-resolution
+// implementation. The backend remains the sole authorization boundary on
+// every existing manager-gated route — this endpoint is UX-only (see
+// layout.js's role-aware nav).
+router.get('/team/me', async (req, res) => {
+  try {
+    const member = await teamAccess.getMyTeamMember(supabase, req.companyId, req.user);
+    return res.json({
+      linked: !!member,
+      role: member ? member.role : null,
+      is_manager: teamAccess.isManager(member),
+      display_name: member ? member.display_name : null,
+    });
+  } catch (err) {
+    console.error('GET /api/practice/team/me', err);
+    return res.status(500).json({ error: 'Failed to load current team member.' });
+  }
+});
 
 router.get('/team', async (req, res) => {
   const { active = 'true', role, search, page, limit } = req.query;
@@ -3431,6 +3453,12 @@ router.use('/automation', automationRouter);
 // module — never mutates anything outside its own two tables.
 const operationalHealthRouter = require('./operational-health');
 router.use('/operational-health', operationalHealthRouter);
+
+// Practice Pilot Launch Readiness + Navigation/UX Consolidation (Codebox 80)
+// "Can we start pilot testing?" Reads Operational Health's latest STORED
+// run only — never a fresh multi-table scan, never invented health data.
+const pilotReadinessRouter = require('./pilot-readiness');
+router.use('/pilot-readiness', pilotReadinessRouter);
 
 // Dashboard: operational command centre sub-routes (summary, workload, risk, activity)
 // Mounted before the inline /dashboard GET so /dashboard/summary is matched here.

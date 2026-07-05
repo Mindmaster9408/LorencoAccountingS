@@ -314,6 +314,19 @@
                 _kpi('kpi-neutral', latestHealth ? _fmt(latestHealth.completed_at) : '—', 'Last Checked', '/practice/operational-health.html');
         }
 
+        // Codebox 80 — Pilot Readiness summary.
+        var pr = d.pilot_readiness || {};
+        var kpiPrEl = document.getElementById('kpiPilotReadiness');
+        if (kpiPrEl) {
+            var latestReadiness = pr.latest_run;
+            var decisionLabel = latestReadiness ? { no_decision: 'No Decision Yet', go: 'GO', no_go: 'NO-GO', conditional_go: 'CONDITIONAL GO' }[latestReadiness.decision] : '—';
+            kpiPrEl.innerHTML =
+                _kpi(latestReadiness ? ('kpi-' + (['launch_ready', 'pilot_ready'].indexOf(latestReadiness.readiness_status) !== -1 ? 'good' : latestReadiness.readiness_status === 'needs_attention' ? 'warn' : 'bad')) : 'kpi-neutral',
+                    latestReadiness ? latestReadiness.overall_score : 'Not run yet', 'Pilot Readiness Score', '/practice/pilot-readiness.html') +
+                _kpi(_kpiClass(pr.open_critical_issues || 0, 1, 1), pr.open_critical_issues || 0, 'Open Critical Issues', '/practice/pilot-readiness.html') +
+                _kpi('kpi-neutral', decisionLabel, 'Latest Decision', '/practice/pilot-readiness.html');
+        }
+
         document.getElementById('kpiKnowledgeSop').innerHTML =
             _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/practice/knowledge-base.html') +
             _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/practice/knowledge-base.html') +

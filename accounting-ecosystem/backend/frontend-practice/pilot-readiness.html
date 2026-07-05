@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pilot Readiness — Lorenco Practice</title>
+    <link rel="stylesheet" href="/practice/css/layout.css" />
+    <style>
+        body { background: #1a1a2e; color: #e2e8f0; font-family: 'Inter', sans-serif; margin: 0; }
+        .page-content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.3rem; font-weight: 700; margin: 0; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+        .inline-msg { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-bottom: 16px; }
+        .inline-msg.info { background: rgba(102,126,234,.1); color: #a3bffa; border: 1px solid rgba(102,126,234,.2); }
+        .inline-msg.warn { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); }
+
+        .decision-hero { border-radius: 14px; padding: 28px; text-align: center; margin-bottom: 18px; background: #1e2035; }
+        .decision-hero .decision-value { font-size: 2.6rem; font-weight: 900; letter-spacing: .04em; }
+        .decision-hero .decision-sub { font-size: .95rem; margin-top: 8px; color: #a0aec0; }
+        .decision-go { color: #68d391; }
+        .decision-no_go { color: #fc8181; }
+        .decision-conditional_go { color: #f6ad55; }
+        .decision-none { color: #718096; }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .summary-card { background: #1e2035; border-radius: 10px; padding: 12px 14px; text-align: center; }
+        .sc-count { font-size: 1.4rem; font-weight: 800; }
+        .sc-label { font-size: .68rem; color: #718096; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+        .tab-btn { background: #12122a; border: none; color: #718096; padding: 8px 16px; border-radius: 7px; font-size: .82rem; cursor: pointer; font-weight: 600; }
+        .tab-btn.active { background: #667eea; color: #fff; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .panel { background: #1e2035; border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+        .panel-title { font-size: .92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+        .filter-bar select, .filter-bar input { background: #12122a; border: 1px solid #2d3748; border-radius: 7px; color: #e2e8f0; padding: 7px 10px; font-size: .8rem; }
+        .filter-bar .fg { display: flex; flex-direction: column; gap: 4px; }
+        .filter-bar label { font-size: .7rem; color: #718096; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #12122a; color: #a0aec0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; padding: 9px 12px; text-align: left; }
+        td { padding: 9px 12px; font-size: .8rem; border-bottom: 1px solid #12122a; vertical-align: middle; }
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover td { background: #1a1c30; }
+        tr:last-child td { border-bottom: none; }
+        .empty-state { text-align: center; color: #4a5568; padding: 24px; font-size: .82rem; }
+
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+        .sev-critical { background: rgba(229,62,62,.22); color: #fc8181; }
+        .sev-high { background: rgba(246,173,85,.32); color: #f6ad55; }
+        .sev-medium { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .sev-low, .sev-info { background: rgba(104,211,145,.2); color: #68d391; }
+        .status-not_started, .status-open, .status-deferred, .status-no_decision { background: rgba(74,85,104,.3); color: #a0aec0; }
+        .status-passed, .status-resolved, .status-go, .status-launch_ready, .status-pilot_ready { background: rgba(104,211,145,.2); color: #68d391; }
+        .status-warning, .status-in_progress, .status-conditional_go, .status-needs_attention, .status-accepted_risk { background: rgba(246,173,85,.2); color: #f6ad55; }
+        .status-failed, .status-no_go, .status-not_ready, .status-blocked, .status-cancelled { background: rgba(229,62,62,.22); color: #fc8181; }
+        .status-not_applicable { background: rgba(74,85,104,.3); color: #a0aec0; }
+
+        .btn-add { background: #48bb78; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+        .btn-action { padding: 5px 12px; border: none; border-radius: 6px; font-size: .74rem; font-weight: 700; cursor: pointer; }
+        .btn-primary { background: #667eea; color: #fff; }
+        .btn-secondary { background: #2d3748; color: #e2e8f0; }
+        .btn-success { background: #48bb78; color: #fff; }
+        .btn-danger { background: #e53e3e; color: #fff; }
+        .btn-warn { background: #dd6b20; color: #fff; }
+        .action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+
+        .matrix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+        .matrix-card { background: #12122a; border-radius: 9px; padding: 12px; text-align: center; }
+        .matrix-score { font-size: 1.2rem; font-weight: 800; }
+        .matrix-label { font-size: .68rem; color: #718096; margin-top: 3px; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #1e2035; border-radius: 14px; padding: 28px; width: 92%; max-width: 640px; max-height: 88vh; overflow-y: auto; }
+        .modal-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+        .form-group.full { grid-column: 1 / -1; }
+        label { font-size: .78rem; color: #a0aec0; }
+        input[type="text"], select, textarea {
+            background: #12122a; border: 1px solid #2d3748; border-radius: 7px;
+            color: #e2e8f0; padding: 8px 11px; font-size: .85rem; width: 100%; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 55px; }
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+        .mini-card { background: #12122a; border-radius: 9px; padding: 10px 14px; margin-bottom: 6px; font-size: .8rem; }
+        .mini-card-meta { color: #718096; font-size: .72rem; margin-top: 3px; }
+        .warn-box { background: rgba(246,173,85,.12); color: #f6ad55; border: 1px solid rgba(246,173,85,.3); border-radius: 8px; padding: 8px 12px; font-size: .76rem; margin-bottom: 8px; }
+        .error-box { background: rgba(229,62,62,.12); color: #fc8181; border: 1px solid rgba(229,62,62,.3); border-radius: 8px; padding: 8px 12px; font-size: .76rem; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <div id="app-topbar"></div>
+    <nav id="app-nav"></nav>
+
+    <div class="page-content">
+        <div class="header-row">
+            <h1>Pilot Readiness</h1>
+            <div class="action-bar" style="margin:0;">
+                <a class="btn-action btn-secondary" href="/practice/management-dashboard.html" style="text-decoration:none;">← Management Dashboard</a>
+                <button class="btn-add" onclick="prOpenRunReadiness()">Run Readiness Check</button>
+            </div>
+        </div>
+        <div class="inline-msg info">"Can we start pilot testing?" — GO, NO-GO, or CONDITIONAL GO, with a reason. This is a consolidation layer — it never invents health data, it reads Operational Health's latest stored run plus this platform's own checklist and known issues.</div>
+
+        <div class="decision-hero" id="decisionHero">
+            <div class="decision-value decision-none">NO DATA YET</div>
+            <div class="decision-sub">Run a readiness check to get a Go/No-Go recommendation.</div>
+        </div>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="tab-bar" id="tabBar"></div>
+
+        <div class="tab-panel" id="panel-matrix">
+            <div class="panel">
+                <div class="panel-title">Module Readiness Matrix</div>
+                <div class="matrix-grid" id="matrixGrid"><div class="empty-state">Run a readiness check to populate the matrix.</div></div>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="panel-checklist">
+            <div class="panel">
+                <div class="panel-title">
+                    Smoke-Test Checklist
+                    <button class="btn-action btn-secondary" onclick="prSeedChecklist()">Seed Default Checklist</button>
+                </div>
+                <table>
+                    <thead><tr><th>Check</th><th>Category</th><th>Severity</th><th>Status</th><th></th></tr></thead>
+                    <tbody id="checklistBody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="panel-issues">
+            <div class="panel">
+                <div class="panel-title">Known Issues <button class="btn-add" onclick="prOpenCreateIssue()">+ Report Issue</button></div>
+                <div class="filter-bar">
+                    <div class="fg"><label>Status</label>
+                        <select id="fIssueStatus" onchange="prLoadIssues()">
+                            <option value="">All</option>
+                            <option value="open">Open</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option>
+                            <option value="accepted_risk">Accepted Risk</option><option value="deferred">Deferred</option><option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="fg"><label>Severity</label>
+                        <select id="fIssueSeverity" onchange="prLoadIssues()">
+                            <option value="">All</option>
+                            <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                        </select>
+                    </div>
+                </div>
+                <table>
+                    <thead><tr><th>Issue</th><th>Category</th><th>Severity</th><th>Status</th></tr></thead>
+                    <tbody id="issuesBody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="panel-runs">
+            <div class="panel">
+                <div class="panel-title">Readiness Runs</div>
+                <table>
+                    <thead><tr><th>Run</th><th>Type</th><th>Status</th><th>Score</th><th>Decision</th><th>When</th></tr></thead>
+                    <tbody id="runsBody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="panel-events">
+            <div class="panel">
+                <table>
+                    <thead><tr><th>Event</th><th>Old → New</th><th>Notes</th><th>When</th></tr></thead>
+                    <tbody id="eventsBody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Run Readiness Modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="runReadinessModal">
+        <div class="modal-box">
+            <div class="modal-title">Run Pilot Readiness Check</div>
+            <div class="form-group full"><label>Run Name *</label><input type="text" id="rrName" placeholder="e.g. Pre-pilot check 1" /></div>
+            <div class="form-group full"><label>Run Type *</label>
+                <select id="rrType">
+                    <option value="internal_test">Internal Test</option><option value="pilot_test">Pilot Test</option>
+                    <option value="pre_launch">Pre-Launch</option><option value="go_no_go">Go/No-Go</option><option value="post_fix_review">Post-Fix Review</option>
+                </select>
+            </div>
+            <div id="runReadinessError"></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="prCloseRunReadiness()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="prSubmitRunReadiness()">Run Check</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Run Detail / Decision Modal ─────────────────────────────────────── -->
+    <div class="modal-overlay" id="runDetailModal">
+        <div class="modal-box">
+            <div id="runDetailHeader"></div>
+            <div id="runDetailBody"></div>
+            <div class="form-group full"><label>Decision Notes</label><textarea id="rdDecisionNotes"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="prCloseRunDetail()">Close</button>
+                <button class="btn-action btn-danger" onclick="prRecordDecision('no_go')">Record NO-GO</button>
+                <button class="btn-action btn-warn" onclick="prRecordDecision('conditional_go')">Record CONDITIONAL GO</button>
+                <button class="btn-action btn-success" onclick="prRecordDecision('go')">Record GO</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create Known Issue Modal ────────────────────────────────────────── -->
+    <div class="modal-overlay" id="createIssueModal">
+        <div class="modal-box">
+            <div class="modal-title">Report Known Issue</div>
+            <div class="form-group full"><label>Issue Title *</label><input type="text" id="niTitle" /></div>
+            <div class="form-group full"><label>Description</label><textarea id="niDescription"></textarea></div>
+            <div class="form-row">
+                <div class="form-group"><label>Category *</label>
+                    <select id="niCategory">
+                        <option value="bug">Bug</option><option value="ux">UX</option><option value="performance">Performance</option>
+                        <option value="data">Data</option><option value="security">Security</option><option value="access">Access</option>
+                        <option value="navigation">Navigation</option><option value="integration">Integration</option>
+                        <option value="documentation">Documentation</option><option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Severity *</label>
+                    <select id="niSeverity"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+                </div>
+                <div class="form-group"><label>Affected Module</label><input type="text" id="niAffectedModule" /></div>
+                <div class="form-group"><label>Affected URL</label><input type="text" id="niAffectedUrl" /></div>
+            </div>
+            <div class="form-group full"><label>Reproduction Steps</label><textarea id="niRepro"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="prCloseCreateIssue()">Cancel</button>
+                <button class="btn-action btn-primary" onclick="prSubmitCreateIssue()">Report Issue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Issue Detail Modal ──────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="issueDetailModal">
+        <div class="modal-box">
+            <div id="issueDetailHeader"></div>
+            <div id="issueDetailBody"></div>
+            <div class="form-group full"><label>Resolution / Risk-Acceptance Notes</label><textarea id="idResolutionNotes"></textarea></div>
+            <div class="modal-footer">
+                <button class="btn-action btn-secondary" onclick="prCloseIssueDetail()">Close</button>
+                <button class="btn-action btn-warn" onclick="prAcceptRisk()">Accept Risk</button>
+                <button class="btn-action btn-success" onclick="prResolveIssue()">Mark Resolved</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/practice/js/polyfills.js"></script>
+    <script src="/practice/js/auth.js"></script>
+    <script src="/practice/js/api.js"></script>
+    <script src="/practice/js/layout.js"></script>
+    <script src="/practice/js/pilot-readiness.js"></script>
+    <script>LAYOUT.init('pilot-readiness');</script>
+</body>
+</html>
