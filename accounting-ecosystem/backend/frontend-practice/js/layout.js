@@ -3,13 +3,21 @@
    Injects topbar + nav into #app-topbar and #app-nav.
    Call LAYOUT.init('page-key') after DOM ready.
 
-   Codebox 80 — Navigation/UX Consolidation. The nav below used to render
-   as one flat list of ~66 links that wrapped into an unreadable multi-line
-   block. It is now grouped into 9 dropdown menus. CSS for the new nav is
-   injected by this file itself (not practice.css) — same reasoning as
-   _renderBell()'s inline styling below: layout.js is shared by every
-   Practice page and must render correctly regardless of which stylesheet
-   (if any) a given page links.
+   Codebox 80 — Navigation/UX Consolidation. The nav used to render as one
+   flat list of ~66 links that wrapped into an unreadable multi-line block.
+   Grouped into 9 dropdown menus.
+
+   Codebox 80A — Navigation UX Hardening + Mega Menu Consolidation. Pure
+   UI/UX refactor of the same renderer — no route, endpoint, permission, or
+   database change. PAGES and NAV_GROUPS below are byte-for-byte the same
+   routes as Codebox 80 (audited, not reshuffled) — only the interaction
+   layer (single-open-at-a-time via delegation instead of inline onclick,
+   keyboard nav, ESC, animated open/close), search, and responsive behavior
+   (tablet icon-only, mobile hamburger+accordion reusing the exact same
+   rendered markup) are new. CSS is still self-injected by this file — same
+   reasoning as _renderBell()'s inline styling below: layout.js is shared
+   by every Practice page and must render correctly regardless of which
+   stylesheet (if any) a given page links.
    ============================================================ */
 (function () {
     var PAGES = [
@@ -87,12 +95,14 @@
     var PAGES_BY_KEY = {};
     PAGES.forEach(function (p) { PAGES_BY_KEY[p.key] = p; });
 
-    // Codebox 80 — grouped navigation. Every existing PAGES key must appear
-    // in exactly one group (no route removed, no route dropped from nav).
-    // Groups/order match the spec exactly; the 6 pre-existing pages the
-    // spec's own group lists didn't name (workflows, compliance, tasks,
-    // billing, period-queue, client-health) are folded into the closest-fit
-    // existing group rather than inventing a 10th "Other" bucket.
+    // Same 8 groups/composition as Codebox 80 — audited, not reshuffled.
+    // The hardening spec's own group-name example (Operations/Clients/
+    // Secretarial/People/Compliance/Quality/Executive/Alerts/Settings) is
+    // illustrative, not literal: this app has no distinct "Settings" area
+    // beyond Profile (already in People & Practice) and no content that
+    // would justify splitting Alert Rules out of Strategy & Executive into
+    // its own near-empty group. Introducing empty/near-empty groups would
+    // be worse UX, not better — documented Architect-Freedom judgment call.
     var NAV_GROUPS = [
         { label: 'Dashboard', icon: '🏠', keys: ['dashboard', 'management-dashboard', 'work-queue', 'notifications'] },
         { label: 'Operations', icon: '⚙️', keys: ['planning-board', 'resource-forecasting', 'capacity', 'delegation', 'work-queue', 'workflows', 'tasks', 'reminders', 'communications', 'documents', 'time', 'billing', 'period-queue'] },
@@ -160,8 +170,14 @@
             .catch(function () { /* non-fatal — bell just shows no badge */ });
     }
 
-    // ── Codebox 80 — Grouped nav CSS (injected once, works with or without
+    // ── Codebox 80A — Nav CSS (injected once; works with or without
     // practice.css / the page's own embedded styles) ───────────────────────
+    // Mega menu capped at 280-340px per spec. Dropdown open/close is
+    // animated via opacity+transform (never display:none, so the
+    // transition can actually play). Tablet hides button label text
+    // (icon+caret only — "collapsed groups"); mobile hides the whole
+    // group row behind a hamburger and re-flows dropdowns to be static/
+    // stacked (same rendered markup, no second render path).
 
     var NAV_CSS_ID = 'lorenco-practice-nav-css';
     function _injectNavCss() {
@@ -169,22 +185,53 @@
         var style = document.createElement('style');
         style.id = NAV_CSS_ID;
         style.textContent =
-            '.lp-nav{display:flex;flex-wrap:wrap;gap:4px;padding:8px 24px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.08);position:relative;z-index:90;font-family:"Segoe UI",Inter,sans-serif;}' +
+            '.lp-nav{display:flex;align-items:center;gap:4px;padding:6px 24px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.08);position:relative;z-index:90;font-family:"Segoe UI",Inter,sans-serif;}' +
+            '.lp-hamburger{display:none;background:transparent;border:1px solid rgba(255,255,255,0.12);color:#f5f0ff;border-radius:8px;width:36px;height:36px;font-size:16px;cursor:pointer;flex:0 0 auto;}' +
+            '.lp-nav-groups{display:flex;align-items:center;gap:2px;flex-wrap:nowrap;}' +
             '.lp-nav-group{position:relative;}' +
-            '.lp-nav-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;background:transparent;border:none;color:rgba(245,240,255,0.75);font-size:0.85rem;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;}' +
-            '.lp-nav-btn:hover,.lp-nav-btn.lp-open{background:rgba(167,139,250,0.15);color:#f5f0ff;}' +
-            '.lp-nav-btn.lp-active{color:#a78bfa;background:rgba(167,139,250,0.12);}' +
-            '.lp-caret{font-size:0.6rem;opacity:0.7;}' +
-            '.lp-dropdown{display:none;position:absolute;top:100%;left:0;margin-top:4px;min-width:220px;max-width:320px;background:#1a1330;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,0.5);padding:6px;z-index:200;max-height:70vh;overflow-y:auto;}' +
-            '.lp-dropdown.lp-open{display:block;}' +
-            '.lp-dropdown a{display:block;padding:8px 12px;border-radius:7px;color:rgba(245,240,255,0.85);text-decoration:none;font-size:0.82rem;white-space:nowrap;}' +
-            '.lp-dropdown a:hover{background:rgba(167,139,250,0.15);color:#fff;}' +
+            '.lp-nav-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 13px;background:transparent;border:none;color:rgba(245,240,255,0.72);font-size:0.84rem;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:background .15s ease,color .15s ease;}' +
+            '.lp-btn-icon{display:inline-flex;width:16px;justify-content:center;flex:0 0 auto;}' +
+            '.lp-nav-btn:hover,.lp-nav-btn.lp-open{background:rgba(167,139,250,0.14);color:#f5f0ff;}' +
+            '.lp-nav-btn.lp-active{color:#a78bfa;background:rgba(167,139,250,0.11);}' +
+            '.lp-nav-btn:focus-visible{outline:2px solid #a78bfa;outline-offset:1px;}' +
+            '.lp-caret{font-size:0.6rem;opacity:0.65;transition:transform .15s ease;}' +
+            '.lp-nav-btn.lp-open .lp-caret{transform:rotate(180deg);}' +
+            '.lp-dropdown{position:absolute;top:100%;left:0;margin-top:6px;min-width:230px;max-width:340px;background:#1a1330;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,0.5);padding:6px;z-index:200;max-height:70vh;overflow-y:auto;' +
+                'opacity:0;visibility:hidden;transform:translateY(-6px);pointer-events:none;transition:opacity .14s ease,transform .14s ease,visibility 0s linear .14s;}' +
+            '.lp-dropdown.lp-open{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto;transition:opacity .14s ease,transform .14s ease;}' +
+            '.lp-dropdown a{display:block;padding:9px 12px;border-radius:7px;color:rgba(245,240,255,0.85);text-decoration:none;font-size:0.82rem;white-space:nowrap;transition:background .1s ease;}' +
+            '.lp-dropdown a:hover,.lp-dropdown a:focus-visible{background:rgba(167,139,250,0.16);color:#fff;outline:none;}' +
             '.lp-dropdown a.lp-active-link{color:#a78bfa;font-weight:700;background:rgba(167,139,250,0.1);}' +
-            '@media (max-width:900px){.lp-nav{overflow-x:auto;flex-wrap:nowrap;}}';
+            // Search
+            '.lp-search-wrap{position:relative;margin-left:auto;flex:0 0 auto;}' +
+            '.lp-search-input{width:190px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#f5f0ff;padding:8px 10px;font-size:0.8rem;transition:width .15s ease,border-color .15s ease;}' +
+            '.lp-search-input:focus{width:240px;border-color:#a78bfa;outline:none;}' +
+            '.lp-search-results{position:absolute;top:100%;right:0;margin-top:6px;width:280px;background:#1a1330;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,0.5);padding:6px;z-index:210;max-height:60vh;overflow-y:auto;' +
+                'opacity:0;visibility:hidden;transform:translateY(-6px);pointer-events:none;transition:opacity .12s ease,transform .12s ease;}' +
+            '.lp-search-results.lp-open{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto;}' +
+            '.lp-search-results a{display:block;padding:8px 12px;border-radius:7px;color:rgba(245,240,255,0.85);text-decoration:none;font-size:0.82rem;}' +
+            '.lp-search-results a:hover,.lp-search-results a:focus-visible{background:rgba(167,139,250,0.16);color:#fff;outline:none;}' +
+            '.lp-search-empty{padding:10px 12px;font-size:0.78rem;color:rgba(245,240,255,0.4);}' +
+            // Tablet — collapse group labels to icon+caret only
+            '@media (max-width:1100px){.lp-nav-btn .lp-btn-label{display:none;}.lp-nav-btn{padding:10px 11px;}.lp-search-input{width:130px;}.lp-search-input:focus{width:180px;}}' +
+            // Mobile — hamburger + stacked/static accordion using the SAME markup
+            '@media (max-width:700px){' +
+                '.lp-hamburger{display:inline-flex;align-items:center;justify-content:center;}' +
+                '.lp-nav-groups{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;background:#160f26;border-bottom:1px solid rgba(255,255,255,0.1);padding:8px;max-height:80vh;overflow-y:auto;z-index:150;}' +
+                '.lp-nav.lp-mobile-open .lp-nav-groups{display:flex;}' +
+                '.lp-nav-btn{width:100%;justify-content:flex-start;}' +
+                '.lp-nav-btn .lp-btn-label{display:inline;}' +
+                '.lp-dropdown{position:static;box-shadow:none;border:none;background:rgba(255,255,255,0.03);margin:2px 0 6px;max-width:none;transform:none;max-height:none;}' +
+                '.lp-dropdown.lp-open,.lp-dropdown{transition:none;}' +
+                '.lp-search-wrap{margin:0 0 8px;width:100%;order:-1;}' +
+                '.lp-search-input{width:100%;}' +
+                '.lp-search-input:focus{width:100%;}' +
+                '.lp-search-results{position:static;width:100%;box-shadow:none;margin-top:4px;}' +
+            '}';
         document.head.appendChild(style);
     }
 
-    // ── Grouped nav rendering ────────────────────────────────────────────────
+    // ── Grouped nav rendering — one renderer, reused at every breakpoint ────
 
     function _groupContainsActive(group, activePage) {
         return group.keys.indexOf(activePage) !== -1;
@@ -200,10 +247,10 @@
         }).join('');
         var btnCls = 'lp-nav-btn' + (isActiveGroup ? ' lp-active' : '');
         return '<div class="lp-nav-group" data-group="' + escHtml(group.label) + '">' +
-            '<button type="button" class="' + btnCls + '" onclick="LAYOUT._toggleGroup(this)">' +
-                '<span>' + group.icon + '</span><span>' + escHtml(group.label) + '</span><span class="lp-caret">▾</span>' +
+            '<button type="button" class="' + btnCls + '" aria-haspopup="true" aria-expanded="false">' +
+                '<span class="lp-btn-icon">' + group.icon + '</span><span class="lp-btn-label">' + escHtml(group.label) + '</span><span class="lp-caret">▾</span>' +
             '</button>' +
-            '<div class="lp-dropdown">' + links + '</div>' +
+            '<div class="lp-dropdown" role="menu">' + links + '</div>' +
         '</div>';
     }
 
@@ -211,23 +258,150 @@
         return groupsToShow.map(function (g) { return _renderGroup(g, activePage); }).join('');
     }
 
-    function _toggleGroup(btn) {
-        var wrap = btn.parentElement;
-        var dropdown = wrap.querySelector('.lp-dropdown');
-        var wasOpen = dropdown.classList.contains('lp-open');
-        // Close every other open dropdown first — only one open at a time.
+    // ── Open/close (single source of truth — used by click, keyboard, and
+    // outside-click/ESC handlers alike; no duplicated logic) ────────────────
+
+    function _closeAllGroups() {
         document.querySelectorAll('.lp-dropdown.lp-open').forEach(function (d) { d.classList.remove('lp-open'); });
-        document.querySelectorAll('.lp-nav-btn.lp-open').forEach(function (b) { b.classList.remove('lp-open'); });
-        if (!wasOpen) {
-            dropdown.classList.add('lp-open');
-            btn.classList.add('lp-open');
+        document.querySelectorAll('.lp-nav-btn.lp-open').forEach(function (b) { b.classList.remove('lp-open'); b.setAttribute('aria-expanded', 'false'); });
+    }
+
+    function _openGroup(groupEl) {
+        _closeAllGroups();
+        var btn = groupEl.querySelector('.lp-nav-btn');
+        var dropdown = groupEl.querySelector('.lp-dropdown');
+        dropdown.classList.add('lp-open');
+        btn.classList.add('lp-open');
+        btn.setAttribute('aria-expanded', 'true');
+    }
+
+    function _toggleGroup(btn) {
+        var groupEl = btn.closest ? btn.closest('.lp-nav-group') : btn.parentElement;
+        var dropdown = groupEl.querySelector('.lp-dropdown');
+        var wasOpen = dropdown.classList.contains('lp-open');
+        _closeAllGroups();
+        if (!wasOpen) _openGroup(groupEl);
+    }
+
+    function _closeSearch(searchWrap) {
+        var results = searchWrap.querySelector('.lp-search-results');
+        if (results) results.classList.remove('lp-open');
+    }
+
+    // ── Event delegation — one click listener, one keydown listener per
+    // nav instance. Survives _applyRoleAwareNav()'s innerHTML swap because
+    // both listeners are attached to navEl itself (only its children are
+    // replaced), never to the individual buttons/links it renders. ─────────
+
+    function _wireNav(navEl) {
+        navEl.addEventListener('click', function (e) {
+            var hamburger = e.target.closest('.lp-hamburger');
+            if (hamburger) { navEl.classList.toggle('lp-mobile-open'); return; }
+            var btn = e.target.closest('.lp-nav-btn');
+            if (btn) { _toggleGroup(btn); return; }
+            if (e.target.tagName === 'A') { _closeAllGroups(); } // clicking a link closes menus (mobile keeps its own panel open until hamburger is toggled again — acceptable, matches most enterprise navs)
+        });
+
+        navEl.addEventListener('keydown', function (e) {
+            var btn = e.target.closest('.lp-nav-btn');
+            var link = e.target.tagName === 'A' ? e.target.closest('.lp-dropdown') && e.target : null;
+
+            if (btn) {
+                var allBtns = Array.prototype.slice.call(navEl.querySelectorAll('.lp-nav-btn'));
+                var idx = allBtns.indexOf(btn);
+                if (e.key === 'ArrowRight') { e.preventDefault(); (allBtns[idx + 1] || allBtns[0]).focus(); }
+                else if (e.key === 'ArrowLeft') { e.preventDefault(); (allBtns[idx - 1] || allBtns[allBtns.length - 1]).focus(); }
+                else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    var groupEl = btn.closest('.lp-nav-group');
+                    _openGroup(groupEl);
+                    var firstLink = groupEl.querySelector('.lp-dropdown a');
+                    if (firstLink) firstLink.focus();
+                } else if (e.key === 'Escape') {
+                    _closeAllGroups();
+                }
+                return;
+            }
+
+            if (link) {
+                var dropdown = link.closest('.lp-dropdown');
+                var links = Array.prototype.slice.call(dropdown.querySelectorAll('a'));
+                var lIdx = links.indexOf(link);
+                if (e.key === 'ArrowDown') { e.preventDefault(); (links[lIdx + 1] || links[0]).focus(); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); (links[lIdx - 1] || links[links.length - 1]).focus(); }
+                else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    var groupBtn = dropdown.parentElement.querySelector('.lp-nav-btn');
+                    _closeAllGroups();
+                    if (groupBtn) groupBtn.focus();
+                }
+            }
+        });
+    }
+
+    // ESC anywhere on the page closes any open menu/search (covers focus
+    // outside the nav entirely, e.g. focus in page content).
+    function _globalEscHandler(e) {
+        if (e.key === 'Escape') {
+            _closeAllGroups();
+            document.querySelectorAll('.lp-search-results.lp-open').forEach(function (r) { r.classList.remove('lp-open'); });
         }
     }
 
     function _closeAllOnOutsideClick(e) {
         if (e.target.closest && e.target.closest('.lp-nav-group')) return;
-        document.querySelectorAll('.lp-dropdown.lp-open').forEach(function (d) { d.classList.remove('lp-open'); });
-        document.querySelectorAll('.lp-nav-btn.lp-open').forEach(function (b) { b.classList.remove('lp-open'); });
+        if (e.target.closest && e.target.closest('.lp-search-wrap')) return;
+        _closeAllGroups();
+        document.querySelectorAll('.lp-search-results.lp-open').forEach(function (r) { r.classList.remove('lp-open'); });
+    }
+
+    // ── Codebox 80A — quick module search. Frontend-only, filters the same
+    // PAGES list the nav itself is built from; never touches the DOM nodes
+    // the nav renderer owns (separate results panel). No storage of any
+    // kind — nothing persists between page loads. ──────────────────────────
+
+    function _renderSearchBox() {
+        return '<div class="lp-search-wrap">' +
+            '<input type="text" class="lp-search-input" placeholder="Search modules…" aria-label="Search modules" autocomplete="off" />' +
+            '<div class="lp-search-results" role="listbox"></div>' +
+        '</div>';
+    }
+
+    function _wireSearch(searchWrap) {
+        var input = searchWrap.querySelector('.lp-search-input');
+        var results = searchWrap.querySelector('.lp-search-results');
+
+        function _renderResults(query) {
+            var q = query.trim().toLowerCase();
+            if (!q) { results.innerHTML = ''; results.classList.remove('lp-open'); return; }
+            var matches = PAGES.filter(function (p) { return p.label.toLowerCase().indexOf(q) !== -1; }).slice(0, 12);
+            results.innerHTML = matches.length
+                ? matches.map(function (p) { return '<a href="' + p.href + '">' + escHtml(p.label) + '</a>'; }).join('')
+                : '<div class="lp-search-empty">No modules match "' + escHtml(query) + '".</div>';
+            results.classList.add('lp-open');
+        }
+
+        input.addEventListener('input', function () { _renderResults(input.value); });
+        input.addEventListener('focus', function () { if (input.value.trim()) _renderResults(input.value); });
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { input.value = ''; results.innerHTML = ''; results.classList.remove('lp-open'); input.blur(); return; }
+            if (e.key === 'ArrowDown') {
+                var first = results.querySelector('a');
+                if (first) { e.preventDefault(); first.focus(); }
+                return;
+            }
+            if (e.key === 'Enter') {
+                var firstLink = results.querySelector('a');
+                if (firstLink) { window.location.href = firstLink.getAttribute('href'); }
+            }
+        });
+        results.addEventListener('keydown', function (e) {
+            var links = Array.prototype.slice.call(results.querySelectorAll('a'));
+            var idx = links.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown') { e.preventDefault(); (links[idx + 1] || links[0]).focus(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); (idx <= 0 ? input : links[idx - 1]).focus(); }
+            else if (e.key === 'Escape') { input.value = ''; results.innerHTML = ''; results.classList.remove('lp-open'); input.focus(); }
+        });
     }
 
     // Codebox 80 — role-aware nav (UX only, never a security boundary; the
@@ -236,14 +410,14 @@
     // default — fails open, never closed, if this check is slow/fails), then
     // trims to the reduced staff group set only if the current user is
     // confirmed non-manager.
-    function _applyRoleAwareNav(activePage, navEl) {
+    function _applyRoleAwareNav(activePage, groupsEl) {
         if (!window.PracticeAPI || !window.PracticeAPI.fetch) return;
         window.PracticeAPI.fetch('/api/practice/team/me')
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (d.is_manager) return; // full nav already rendered — nothing to trim
                 var staffGroups = NAV_GROUPS.filter(function (g) { return STAFF_GROUP_LABELS.indexOf(g.label) !== -1; });
-                navEl.innerHTML = _renderNav(activePage, staffGroups);
+                groupsEl.innerHTML = _renderNav(activePage, staffGroups);
             })
             .catch(function () { /* non-fatal — full nav remains visible */ });
     }
@@ -272,9 +446,16 @@
         var navEl = document.getElementById('app-nav');
         if (navEl) {
             navEl.classList.add('lp-nav');
-            navEl.innerHTML = _renderNav(activePage, NAV_GROUPS);
+            navEl.innerHTML =
+                '<button type="button" class="lp-hamburger" aria-label="Toggle navigation menu">☰</button>' +
+                '<div class="lp-nav-groups">' + _renderNav(activePage, NAV_GROUPS) + _renderSearchBox() + '</div>';
+
+            var groupsEl = navEl.querySelector('.lp-nav-groups');
+            _wireNav(navEl);
+            _wireSearch(navEl.querySelector('.lp-search-wrap'));
             document.addEventListener('click', _closeAllOnOutsideClick);
-            _applyRoleAwareNav(activePage, navEl);
+            document.addEventListener('keydown', _globalEscHandler);
+            _applyRoleAwareNav(activePage, groupsEl);
         }
 
         _loadBellCount();
