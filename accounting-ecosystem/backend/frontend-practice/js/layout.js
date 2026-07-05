@@ -18,6 +18,25 @@
    reasoning as _renderBell()'s inline styling below: layout.js is shared
    by every Practice page and must render correctly regardless of which
    stylesheet (if any) a given page links.
+
+   Codebox 80B — Enterprise Header & Navigation Polish. Presentation-only:
+   no route/endpoint/permission/database change, NAV_GROUPS page membership
+   unchanged. Audit found the real cause of "too much vertical space": of
+   the 42 pages that call LAYOUT.init(), 36 link a dead stylesheet path
+   (/practice/css/layout.css, confirmed absent from disk — a pre-existing
+   dead link documented back in Codebox 80's own handoff) and so load ZERO
+   topbar CSS — #app-topbar rendered as unstyled stacked block elements
+   with no height cap, no sticky, no flex layout. The topbar's CSS is now
+   self-injected by this file too (same reasoning as the nav CSS below),
+   which fixes that root cause universally instead of only for the 6 pages
+   that happen to link the real practice.css. Header and nav are now a
+   fixed, tightened, stacked sticky pair (header on top, nav pinned
+   directly beneath it via a shared --lp-topbar-h custom property) so page
+   content starts immediately below regardless of which stylesheet (if
+   any) a page links. Dropdown items are now grouped into sections with
+   thin visual dividers for scannability on the larger menus — this
+   reorders items WITHIN a group for readability only; no page moved to a
+   different top-level group.
    ============================================================ */
 (function () {
     var PAGES = [
@@ -95,24 +114,70 @@
     var PAGES_BY_KEY = {};
     PAGES.forEach(function (p) { PAGES_BY_KEY[p.key] = p; });
 
-    // Same 8 groups/composition as Codebox 80 — audited, not reshuffled.
-    // The hardening spec's own group-name example (Operations/Clients/
-    // Secretarial/People/Compliance/Quality/Executive/Alerts/Settings) is
-    // illustrative, not literal: this app has no distinct "Settings" area
-    // beyond Profile (already in People & Practice) and no content that
-    // would justify splitting Alert Rules out of Strategy & Executive into
-    // its own near-empty group. Introducing empty/near-empty groups would
-    // be worse UX, not better — documented Architect-Freedom judgment call.
+    // Same 8 groups/top-level page membership as Codebox 80 — audited, not
+    // reshuffled. The hardening spec's own group-name example (Operations/
+    // Clients/Secretarial/People/Compliance/Quality/Executive/Alerts/
+    // Settings) is illustrative, not literal: this app has no distinct
+    // "Settings" area beyond Profile (already in People & Practice) and no
+    // content that would justify splitting Alert Rules out of Strategy &
+    // Executive into its own near-empty group. Introducing empty/near-empty
+    // groups would be worse UX, not better — documented Architect-Freedom
+    // judgment call.
+    //
+    // Codebox 80B — each group's flat `keys` list is now split into
+    // `sections` (thin dividers rendered between them in the dropdown) for
+    // the larger groups, per the spec's own Operations example. This only
+    // reorders/clusters items WITHIN a group for scannability — the set of
+    // pages belonging to each top-level group is unchanged (verified by the
+    // coverage-diff script, which flattens every `keys:[...]` occurrence
+    // regardless of nesting).
     var NAV_GROUPS = [
-        { label: 'Dashboard', icon: '🏠', keys: ['dashboard', 'management-dashboard', 'work-queue', 'notifications'] },
-        { label: 'Operations', icon: '⚙️', keys: ['planning-board', 'resource-forecasting', 'capacity', 'delegation', 'work-queue', 'workflows', 'tasks', 'reminders', 'communications', 'documents', 'time', 'billing', 'period-queue'] },
-        { label: 'Clients', icon: '👥', keys: ['clients', 'client-success', 'client-onboarding', 'client-health', 'engagement-management', 'work-authorization', 'profitability', 'pricing-review'] },
-        { label: 'Secretarial & Governance', icon: '🏛️', keys: ['secretarial', 'secretarial-workflows', 'secretarial-governance', 'beneficial-ownership', 'secretarial-evidence', 'secretarial-calendar', 'entity-lifecycle', 'secretarial-integrity'] },
-        { label: 'People & Practice', icon: '🧑‍💼', keys: ['team', 'profile', 'skills-matrix', 'learning-centre', 'services'] },
-        { label: 'Compliance & Tax', icon: '📊', keys: ['deadlines', 'compliance', 'compliance-packs', 'tax-dashboard', 'tax-actions', 'tax-checklists', 'tax-bulk-ops', 'tax-reports', 'tax-pipeline', 'tax-submissions', 'tax-payments', 'sars-recon', 'tax-disputes', 'tax-completion', 'taxpayer-profiles', 'provisional-tax', 'individual-tax', 'company-tax', 'tax-configs'] },
-        { label: 'Quality & Risk', icon: '🛡️', keys: ['quality', 'risk-register', 'knowledge-base', 'practice-sop'] },
-        { label: 'Strategy & Executive', icon: '🎯', keys: ['kpi-history', 'partner-review-packs', 'partner-scorecards', 'strategic-planning', 'executive-reporting', 'automation', 'operational-health', 'pilot-readiness', 'alert-rules'] }
+        { label: 'Dashboard', icon: '🏠', sections: [
+            { keys: ['dashboard', 'management-dashboard'] },
+            { keys: ['work-queue', 'notifications'] }
+        ] },
+        { label: 'Operations', icon: '⚙️', sections: [
+            { keys: ['planning-board', 'work-queue', 'tasks'] },
+            { keys: ['capacity', 'resource-forecasting'] },
+            { keys: ['workflows', 'period-queue', 'delegation'] },
+            { keys: ['billing', 'time'] },
+            { keys: ['reminders', 'communications', 'documents'] }
+        ] },
+        { label: 'Clients', icon: '👥', sections: [
+            { keys: ['clients', 'client-onboarding', 'client-success', 'client-health'] },
+            { keys: ['engagement-management', 'work-authorization'] },
+            { keys: ['profitability', 'pricing-review'] }
+        ] },
+        { label: 'Secretarial & Governance', icon: '🏛️', sections: [
+            { keys: ['secretarial', 'secretarial-workflows', 'secretarial-integrity'] },
+            { keys: ['secretarial-governance', 'beneficial-ownership', 'secretarial-evidence'] },
+            { keys: ['secretarial-calendar', 'entity-lifecycle'] }
+        ] },
+        { label: 'People & Practice', icon: '🧑‍💼', sections: [
+            { keys: ['team', 'profile', 'services'] },
+            { keys: ['skills-matrix', 'learning-centre'] }
+        ] },
+        { label: 'Compliance & Tax', icon: '📊', sections: [
+            { keys: ['deadlines', 'compliance', 'compliance-packs'] },
+            { keys: ['tax-dashboard', 'tax-actions', 'tax-checklists', 'tax-bulk-ops', 'tax-pipeline', 'tax-reports'] },
+            { keys: ['taxpayer-profiles', 'provisional-tax', 'individual-tax', 'company-tax', 'tax-configs'] },
+            { keys: ['tax-submissions', 'tax-payments', 'sars-recon', 'tax-disputes', 'tax-completion'] }
+        ] },
+        { label: 'Quality & Risk', icon: '🛡️', sections: [
+            { keys: ['quality', 'risk-register', 'knowledge-base', 'practice-sop'] }
+        ] },
+        { label: 'Strategy & Executive', icon: '🎯', sections: [
+            { keys: ['strategic-planning', 'partner-scorecards', 'kpi-history', 'partner-review-packs'] },
+            { keys: ['executive-reporting', 'automation'] },
+            { keys: ['operational-health', 'pilot-readiness', 'alert-rules'] }
+        ] }
     ];
+
+    function _groupKeys(group) {
+        var out = [];
+        group.sections.forEach(function (s) { out = out.concat(s.keys); });
+        return out;
+    }
 
     // Reduced group set shown to non-manager staff — UX only, never a
     // security boundary (backend manager-gating via lib/team-access.js is
@@ -170,8 +235,28 @@
             .catch(function () { /* non-fatal — bell just shows no badge */ });
     }
 
-    // ── Codebox 80A — Nav CSS (injected once; works with or without
-    // practice.css / the page's own embedded styles) ───────────────────────
+    // ── Codebox 80B — Header + Nav CSS (injected once; works with or
+    // without practice.css / the page's own embedded styles) ───────────────
+    // Header and nav are stacked sticky elements — header pinned at
+    // top:0, nav pinned directly beneath it at top:var(--lp-topbar-h) — so
+    // the two heights must stay in lockstep. --lp-topbar-h is the single
+    // source of truth for that offset, overridden per breakpoint below
+    // rather than duplicated as a magic number in two places.
+    //
+    // .topbar is now defined HERE rather than relying solely on
+    // practice.css: the audit found 36 of the 42 pages that call
+    // LAYOUT.init() link a dead stylesheet path (/practice/css/layout.css,
+    // confirmed absent from disk) and therefore loaded ZERO topbar CSS —
+    // #app-topbar rendered as unstyled stacked block elements with no
+    // height cap and no sticky positioning, which is the real cause of
+    // "too much vertical space / content below the fold." Self-injecting
+    // fixes it universally, the same reasoning _renderBell() and the nav
+    // CSS below already use. Where a page's linked practice.css also
+    // defines `.topbar`, this rule wins on source order (this <style> is
+    // appended to <head> after any linked stylesheet), keeping behavior
+    // identical across every page regardless of which (if any) stylesheet
+    // it links — one deterministic layout, not 42 independent ones.
+    //
     // Mega menu capped at 280-340px per spec. Dropdown open/close is
     // animated via opacity+transform (never display:none, so the
     // transition can actually play). Tablet hides button label text
@@ -185,11 +270,29 @@
         var style = document.createElement('style');
         style.id = NAV_CSS_ID;
         style.textContent =
-            '.lp-nav{display:flex;align-items:center;gap:4px;padding:6px 24px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.08);position:relative;z-index:90;font-family:"Segoe UI",Inter,sans-serif;}' +
-            '.lp-hamburger{display:none;background:transparent;border:1px solid rgba(255,255,255,0.12);color:#f5f0ff;border-radius:8px;width:36px;height:36px;font-size:16px;cursor:pointer;flex:0 0 auto;}' +
+            ':root{--lp-topbar-h:50px;}' +
+            // Header — tightened, sticky, self-contained
+            '.topbar{display:flex;align-items:center;justify-content:space-between;height:var(--lp-topbar-h);padding:0 24px;background:rgba(0,0,0,0.4);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.08);position:sticky;top:0;z-index:110;font-family:"Segoe UI",Inter,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,0.2);}' +
+            '.topbar-left{display:flex;align-items:center;gap:10px;min-width:0;}' +
+            '.topbar .app-icon{width:30px;height:30px;flex:0 0 auto;background:linear-gradient(135deg,#a78bfa,#7c3aed);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;}' +
+            '.topbar .app-title{font-size:0.95rem;font-weight:700;letter-spacing:-0.2px;line-height:1.2;color:#f5f0ff;}' +
+            '.topbar .app-subtitle{font-size:0.65rem;color:rgba(245,240,255,0.5);text-transform:uppercase;letter-spacing:0.06em;line-height:1.2;}' +
+            '.topbar-right{display:flex;align-items:center;gap:10px;flex:0 0 auto;}' +
+            '.topbar .company-badge{padding:4px 11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:20px;font-size:0.74rem;color:rgba(245,240,255,0.55);white-space:nowrap;}' +
+            '.topbar .btn-back{padding:6px 13px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);color:#a78bfa;border-radius:9px;cursor:pointer;font-size:0.74rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:background .15s ease;}' +
+            '.topbar .btn-back:hover{background:rgba(167,139,250,0.2);}' +
+            // Nav — pinned directly beneath the header, tightened padding
+            // overflow:visible is explicit and load-bearing: 16 of the 71 pages
+            // still carry the legacy class="nav-tabs" on #app-nav (harmless
+            // relic from before the grouped nav existed), and practice.css's
+            // .nav-tabs{overflow-x:auto} auto-computes overflow-y:auto too per
+            // the CSS spec, which would clip the absolutely-positioned
+            // .lp-dropdown menus on exactly those 16 pages if not overridden.
+            '.lp-nav{display:flex;align-items:center;gap:4px;padding:4px 24px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.08);position:sticky;top:var(--lp-topbar-h);z-index:100;font-family:"Segoe UI",Inter,sans-serif;overflow:visible;}' +
+            '.lp-hamburger{display:none;background:transparent;border:1px solid rgba(255,255,255,0.12);color:#f5f0ff;border-radius:8px;width:34px;height:34px;font-size:15px;cursor:pointer;flex:0 0 auto;}' +
             '.lp-nav-groups{display:flex;align-items:center;gap:2px;flex-wrap:nowrap;}' +
             '.lp-nav-group{position:relative;}' +
-            '.lp-nav-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 13px;background:transparent;border:none;color:rgba(245,240,255,0.72);font-size:0.84rem;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:background .15s ease,color .15s ease;}' +
+            '.lp-nav-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:transparent;border:none;color:rgba(245,240,255,0.72);font-size:0.82rem;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap;transition:background .15s ease,color .15s ease;}' +
             '.lp-btn-icon{display:inline-flex;width:16px;justify-content:center;flex:0 0 auto;}' +
             '.lp-nav-btn:hover,.lp-nav-btn.lp-open{background:rgba(167,139,250,0.14);color:#f5f0ff;}' +
             '.lp-nav-btn.lp-active{color:#a78bfa;background:rgba(167,139,250,0.11);}' +
@@ -197,14 +300,15 @@
             '.lp-caret{font-size:0.6rem;opacity:0.65;transition:transform .15s ease;}' +
             '.lp-nav-btn.lp-open .lp-caret{transform:rotate(180deg);}' +
             '.lp-dropdown{position:absolute;top:100%;left:0;margin-top:6px;min-width:230px;max-width:340px;background:#1a1330;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,0.5);padding:6px;z-index:200;max-height:70vh;overflow-y:auto;' +
-                'opacity:0;visibility:hidden;transform:translateY(-6px);pointer-events:none;transition:opacity .14s ease,transform .14s ease,visibility 0s linear .14s;}' +
-            '.lp-dropdown.lp-open{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto;transition:opacity .14s ease,transform .14s ease;}' +
+                'opacity:0;visibility:hidden;transform:translateY(-6px);pointer-events:none;transition:opacity .12s ease,transform .12s ease,visibility 0s linear .12s;}' +
+            '.lp-dropdown.lp-open{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto;transition:opacity .12s ease,transform .12s ease;}' +
             '.lp-dropdown a{display:block;padding:9px 12px;border-radius:7px;color:rgba(245,240,255,0.85);text-decoration:none;font-size:0.82rem;white-space:nowrap;transition:background .1s ease;}' +
             '.lp-dropdown a:hover,.lp-dropdown a:focus-visible{background:rgba(167,139,250,0.16);color:#fff;outline:none;}' +
             '.lp-dropdown a.lp-active-link{color:#a78bfa;font-weight:700;background:rgba(167,139,250,0.1);}' +
+            '.lp-dropdown-divider{height:1px;background:rgba(255,255,255,0.08);margin:5px 6px;}' +
             // Search
             '.lp-search-wrap{position:relative;margin-left:auto;flex:0 0 auto;}' +
-            '.lp-search-input{width:190px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#f5f0ff;padding:8px 10px;font-size:0.8rem;transition:width .15s ease,border-color .15s ease;}' +
+            '.lp-search-input{width:190px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#f5f0ff;padding:7px 10px;font-size:0.8rem;transition:width .15s ease,border-color .15s ease;}' +
             '.lp-search-input:focus{width:240px;border-color:#a78bfa;outline:none;}' +
             '.lp-search-results{position:absolute;top:100%;right:0;margin-top:6px;width:280px;background:#1a1330;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,0.5);padding:6px;z-index:210;max-height:60vh;overflow-y:auto;' +
                 'opacity:0;visibility:hidden;transform:translateY(-6px);pointer-events:none;transition:opacity .12s ease,transform .12s ease;}' +
@@ -212,10 +316,20 @@
             '.lp-search-results a{display:block;padding:8px 12px;border-radius:7px;color:rgba(245,240,255,0.85);text-decoration:none;font-size:0.82rem;}' +
             '.lp-search-results a:hover,.lp-search-results a:focus-visible{background:rgba(167,139,250,0.16);color:#fff;outline:none;}' +
             '.lp-search-empty{padding:10px 12px;font-size:0.78rem;color:rgba(245,240,255,0.4);}' +
-            // Tablet — collapse group labels to icon+caret only
-            '@media (max-width:1100px){.lp-nav-btn .lp-btn-label{display:none;}.lp-nav-btn{padding:10px 11px;}.lp-search-input{width:130px;}.lp-search-input:focus{width:180px;}}' +
-            // Mobile — hamburger + stacked/static accordion using the SAME markup
+            // Tablet — compact spacing + collapse group labels to icon+caret only
+            '@media (max-width:1100px){' +
+                ':root{--lp-topbar-h:46px;}' +
+                '.topbar{padding:0 16px;}' +
+                '.topbar .company-badge{display:none;}' +
+                '.lp-nav{padding:3px 16px;}' +
+                '.lp-nav-btn .lp-btn-label{display:none;}.lp-nav-btn{padding:8px 10px;}.lp-search-input{width:130px;}.lp-search-input:focus{width:180px;}' +
+            '}' +
+            // Mobile — existing hamburger + stacked/static accordion using the SAME markup
             '@media (max-width:700px){' +
+                ':root{--lp-topbar-h:44px;}' +
+                '.topbar{padding:0 12px;}' +
+                '.topbar .app-subtitle{display:none;}' +
+                '.lp-nav{padding:3px 12px;}' +
                 '.lp-hamburger{display:inline-flex;align-items:center;justify-content:center;}' +
                 '.lp-nav-groups{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;background:#160f26;border-bottom:1px solid rgba(255,255,255,0.1);padding:8px;max-height:80vh;overflow-y:auto;z-index:150;}' +
                 '.lp-nav.lp-mobile-open .lp-nav-groups{display:flex;}' +
@@ -234,17 +348,19 @@
     // ── Grouped nav rendering — one renderer, reused at every breakpoint ────
 
     function _groupContainsActive(group, activePage) {
-        return group.keys.indexOf(activePage) !== -1;
+        return _groupKeys(group).indexOf(activePage) !== -1;
     }
 
     function _renderGroup(group, activePage) {
         var isActiveGroup = _groupContainsActive(group, activePage);
-        var links = group.keys.map(function (key) {
-            var page = PAGES_BY_KEY[key];
-            if (!page) return ''; // defensive — never throws if a key is mistyped
-            var cls = key === activePage ? ' class="lp-active-link"' : '';
-            return '<a href="' + page.href + '"' + cls + '>' + escHtml(page.label) + '</a>';
-        }).join('');
+        var links = group.sections.map(function (section) {
+            return section.keys.map(function (key) {
+                var page = PAGES_BY_KEY[key];
+                if (!page) return ''; // defensive — never throws if a key is mistyped
+                var cls = key === activePage ? ' class="lp-active-link"' : '';
+                return '<a href="' + page.href + '"' + cls + '>' + escHtml(page.label) + '</a>';
+            }).join('');
+        }).join('<div class="lp-dropdown-divider" role="separator"></div>');
         var btnCls = 'lp-nav-btn' + (isActiveGroup ? ' lp-active' : '');
         return '<div class="lp-nav-group" data-group="' + escHtml(group.label) + '">' +
             '<button type="button" class="' + btnCls + '" aria-haspopup="true" aria-expanded="false">' +
@@ -428,6 +544,7 @@
 
         var topbarEl = document.getElementById('app-topbar');
         if (topbarEl) {
+            topbarEl.classList.add('topbar'); // some pages already hardcode class="topbar" on this div — classList.add is idempotent either way
             topbarEl.innerHTML =
                 '<div class="topbar-left">' +
                     '<div class="app-icon">📋</div>' +

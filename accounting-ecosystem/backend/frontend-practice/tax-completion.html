@@ -92,6 +92,9 @@
 </head>
 <body>
 
+<div id="app-topbar"></div>
+<nav id="app-nav"></nav>
+
 <!-- Layout shell (nav + header injected by layout.js) -->
 <div id="practiceLayout">
     <div id="practiceContent">
@@ -303,8 +306,9 @@
 
 <!-- ── Scripts ──────────────────────────────────────────────────────────────── -->
 <script src="/practice/js/practice-api.js"></script>
-<script src="/practice/js/layout.js" data-active-key="tax-completion"></script>
+<script src="/practice/js/layout.js"></script>
 <script src="/practice/js/tax-completion.js"></script>
+<script>LAYOUT.init('tax-completion');</script>
 
 </body>
 </html>
