@@ -44,6 +44,23 @@ router.get('/preview/:saleId', async (req, res) => {
       .eq('company_id', req.companyId)
       .maybeSingle();
 
+    // Cashier/till display info for the receipt — same relation already used
+    // by sessions.js/reports.js (till_sessions -> tills, till_sessions -> users),
+    // fetched separately rather than nested on the sales select since that
+    // relationship isn't declared as an FK-based embed here.
+    let cashier = null, till = null;
+    if (sale.till_session_id) {
+      const { data: sessionData } = await supabase
+        .from('till_sessions')
+        .select('tills(till_name, till_number), users:user_id(username, full_name)')
+        .eq('id', sale.till_session_id)
+        .maybeSingle();
+      if (sessionData) {
+        cashier = sessionData.users?.full_name || sessionData.users?.username || null;
+        till = sessionData.tills?.till_name || sessionData.tills?.till_number || null;
+      }
+    }
+
     res.json({
       receipt: {
         company: company || {},
@@ -51,6 +68,8 @@ router.get('/preview/:saleId', async (req, res) => {
         items: sale.sale_items || [],
         payments: sale.sale_payments || [],
         customer: sale.customers || null,
+        cashier,
+        till,
         header: settings?.receipt_header || '',
         footer: settings?.receipt_footer || 'Thank you for shopping with us!',
         generated_at: new Date().toISOString()

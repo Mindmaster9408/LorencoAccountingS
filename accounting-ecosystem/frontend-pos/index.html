@@ -1287,26 +1287,45 @@
             body * { visibility: hidden; }
             #printReceiptArea,
             #printReceiptArea * { visibility: visible; }
+            /* Pure black, bold, no grey/washed-out text on thermal paper. Bold
+               weight is load-bearing here, not cosmetic — thin/normal-weight
+               strokes under-transfer heat on thermal printers and come out
+               faint even when the color itself is #000. */
+            body {
+                color: #000 !important;
+                background: #fff !important;
+                font-family: 'Courier New', monospace;
+                font-weight: 700;
+            }
             #printReceiptArea {
                 display: block;
                 position: absolute;
                 top: 0; left: 0;
                 font-family: 'Courier New', monospace;
-                font-size: 12px;
+                font-size: 13px;
+                font-weight: 700;
                 color: #000;
                 background: #fff;
                 /* Force browser to print colors exactly — no "save ink" lightening */
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-            /* Ensure all receipt text prints as pure black */
+            /* Ensure all receipt text prints as pure black with no opacity/
+               shadow/gradient washing it out, regardless of any inline style
+               a template might carry. font-weight is deliberately NOT forced
+               here (no !important) — it inherits the 700 base above, but
+               templates can still go bolder (e.g. 900 for TOTAL) to keep a
+               visual hierarchy; forcing everything to one weight would flatten
+               that emphasis. */
             #printReceiptArea * {
                 color: #000 !important;
+                opacity: 1 !important;
+                text-shadow: none !important;
+                box-shadow: none !important;
+                background-image: none !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-            /* Remove dark-theme backgrounds when printing */
-            body { background: #fff !important; }
         }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
@@ -5596,12 +5615,20 @@
 
         function searchByBarcode(rawBarcode) {
             const barcode = normalizeBarcode(rawBarcode);
+            // Clear immediately — success or not-found — so a failed/garbled lookup
+            // (e.g. an unrecognised barcode) can never leave stale text in the field
+            // for the NEXT physical scan's characters to be appended onto. Previously
+            // this only cleared on a successful match, so any single unresolved scan
+            // would silently corrupt every subsequent scan via string concatenation,
+            // which is what produced "duplicate scan doesn't increase quantity" (the
+            // second, third... scans were actually failing to match anything at all).
+            const input = document.getElementById('barcodeInput');
+            if (input) input.value = '';
             const product = barcodeMap.get(barcode);
             if (product) {
                 // Check existing BEFORE addToCart mutates the quantity
                 const existing = cart.find(item => item.productId === product.id);
                 addToCart(product);
-                document.getElementById('barcodeInput').value = '';
                 if (existing) {
                     showNotification(`Qty ${existing.quantity} × ${product.product_name}`, 'success');
                 } else {
@@ -5851,7 +5878,13 @@
                 paymentMethod: selectedPayment,
                 subtotal,
                 vatAmount,
-                totalAmount
+                totalAmount,
+                // Captured now (both are already loaded client-side at checkout
+                // time) so the offline receipt can show Cashier/Till without a
+                // network round-trip — same fields the online receipt gets via
+                // the till_sessions join in receipts.js.
+                cashierName: currentUser?.full_name || currentUser?.username || null,
+                tillName: currentSession?.tills?.till_name || currentSession?.tills?.till_number || null
             };
 
             // If offline, save to IndexedDB
@@ -6063,16 +6096,16 @@
                 const r = result.receipt;
                 const fmt = (v) => 'R ' + parseFloat(v || 0).toFixed(2);
                 const s = (t) => String(t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                const LINE  = `<div style="border-top:1px dashed #000;margin:5px 0;"></div>`;
-                const DLINE = `<div style="border-top:2px solid #000;margin:5px 0;"></div>`;
-                const ROW   = (l, v, bold) => `<div style="display:flex;justify-content:space-between;${bold?'font-weight:bold;font-size:13px;':''}"><span>${l}</span><span>${v}</span></div>`;
+                const LINE  = `<div style="border-top:2px dashed #000;margin:6px 0;"></div>`;
+                const DLINE = `<div style="border-top:3px solid #000;margin:6px 0;"></div>`;
+                const ROW   = (l, v, bold) => `<div style="display:flex;justify-content:space-between;${bold?'font-weight:900;font-size:15px;':'font-weight:700;'}"><span>${l}</span><span>${v}</span></div>`;
                 const saleDate = new Date(r.sale.created_at || Date.now());
                 const dateStr  = saleDate.toLocaleDateString('en-ZA') + ' ' + saleDate.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
                 const itemsHtml = (r.items || []).map(item => `
-                    <div style="margin-bottom:4px;">
-                        <div>${s(item.products?.product_name || 'Item')}</div>
-                        <div style="display:flex;justify-content:space-between;padding-left:8px;font-size:11px;">
-                            <span>${item.quantity} x ${fmt(item.unit_price)}</span>
+                    <div style="margin-bottom:6px;font-weight:700;">
+                        <div style="font-size:13px;">${item.quantity} x ${s(item.products?.product_name || 'Item')}</div>
+                        <div style="display:flex;justify-content:space-between;padding-left:8px;font-size:12px;">
+                            <span>@ ${fmt(item.unit_price)}</span>
                             <span>${fmt(item.total_price)}</span>
                         </div>
                     </div>`).join('');
@@ -6080,32 +6113,35 @@
                     ROW((p.payment_method || 'Cash').toUpperCase() + ':', fmt(p.amount))
                 ).join('');
                 const companyName = s(r.company?.trading_name || r.company?.company_name || 'Checkout Charlie');
-                const headerHtml = r.header ? `<div style="text-align:center;font-size:11px;margin-bottom:4px;">${s(r.header)}</div>` : '';
+                const headerHtml = r.header ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:4px;">${s(r.header)}</div>` : '';
                 const footerHtml = r.footer ? `<div style="margin-top:6px;">${s(r.footer)}</div>` : '';
-                const vatLine = r.company?.vat_number ? `<div style="text-align:center;font-size:10px;">VAT Reg: ${s(r.company.vat_number)}</div>` : '';
+                const vatLine = r.company?.vat_number ? `<div style="text-align:center;font-size:11px;font-weight:700;">VAT Reg: ${s(r.company.vat_number)}</div>` : '';
 
                 const html = `
                     <div style="text-align:center;margin-bottom:6px;">
-                        <div style="font-size:16px;font-weight:bold;">${companyName}</div>
+                        <div style="font-size:18px;font-weight:900;">${companyName}</div>
                         ${vatLine}
                         ${headerHtml}
                     </div>
                     ${DLINE}
                     ${ROW('Receipt #:', s(r.sale.id))}
                     ${ROW('Date:', s(dateStr))}
+                    ${r.cashier ? ROW('Cashier:', s(r.cashier)) : ''}
+                    ${r.till ? ROW('Till:', s(r.till)) : ''}
                     ${r.customer ? ROW('Customer:', s(r.customer.name)) : ''}
                     ${LINE}
-                    <div style="display:flex;justify-content:space-between;font-weight:bold;"><span>Item</span><span>Amount</span></div>
+                    <div style="display:flex;justify-content:space-between;font-weight:900;font-size:13px;"><span>ITEMS</span><span>Amount</span></div>
                     ${LINE}
                     ${itemsHtml}
                     ${LINE}
                     ${ROW('Subtotal:', fmt(r.sale.subtotal))}
-                    ${ROW('VAT (15%):', fmt(r.sale.vat_amount))}
-                    ${ROW('TOTAL:', fmt(r.sale.total_amount), true)}
-                    ${LINE}
+                    ${ROW('VAT incl.:', fmt(r.sale.vat_amount))}
+                    ${DLINE}
+                    <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(r.sale.total_amount)}</span></div>
+                    ${DLINE}
                     ${paymentsHtml}
                     ${DLINE}
-                    <div style="text-align:center;font-size:10px;margin-top:6px;">
+                    <div style="text-align:center;font-size:11px;font-weight:700;margin-top:6px;">
                         ${footerHtml}
                     </div>`;
                 printBrowserReceipt(html);
@@ -6183,9 +6219,13 @@
             }
             pageStyle.textContent = `@media print { @page { size: ${paperWidth}mm auto; margin: 3mm; } }`;
 
-            // Wrap with receipt-width container so layout matches the paper
+            // Wrap with receipt-width container so layout matches the paper.
+            // font-weight:700 (not the browser default 400) is load-bearing for
+            // thermal printers specifically — a normal-weight font renders as
+            // faint/washed-out dot-matrix on thermal paper even with pure black
+            // color, since thin strokes don't get enough heat-transfer coverage.
             document.getElementById('printReceiptArea').innerHTML = `
-                <div style="width:${paperWidth}mm; font-family:'Courier New',monospace; font-size:12px; color:#000; font-weight:500; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+                <div style="width:${paperWidth}mm; font-family:'Courier New',monospace; font-size:13px; color:#000; font-weight:700; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
                     ${receiptBodyHtml}
                 </div>`;
 
@@ -6228,38 +6268,41 @@
             const s = (text) => String(text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
             const itemsHtml = (sale.items || []).map(item => `
-                <div style="margin-bottom:4px;">
-                    <div>${s(item.productName || 'Item')}</div>
-                    <div style="display:flex;justify-content:space-between;padding-left:8px;font-size:11px;">
-                        <span>${item.quantity} x ${fmt(item.unitPrice)}</span>
+                <div style="margin-bottom:6px;font-weight:700;">
+                    <div style="font-size:13px;">${item.quantity} x ${s(item.productName || 'Item')}</div>
+                    <div style="display:flex;justify-content:space-between;padding-left:8px;font-size:12px;">
+                        <span>@ ${fmt(item.unitPrice)}</span>
                         <span>${fmt(item.totalPrice)}</span>
                     </div>
                 </div>`).join('');
 
-            const LINE  = `<div style="border-top:1px dashed #000;margin:5px 0;"></div>`;
-            const DLINE = `<div style="border-top:2px solid #000;margin:5px 0;"></div>`;
-            const ROW   = (l, r, bold) => `<div style="display:flex;justify-content:space-between;${bold?'font-weight:bold;font-size:13px;':''}"><span>${l}</span><span>${r}</span></div>`;
+            const LINE  = `<div style="border-top:2px dashed #000;margin:6px 0;"></div>`;
+            const DLINE = `<div style="border-top:3px solid #000;margin:6px 0;"></div>`;
+            const ROW   = (l, r, bold) => `<div style="display:flex;justify-content:space-between;${bold?'font-weight:900;font-size:15px;':'font-weight:700;'}"><span>${l}</span><span>${r}</span></div>`;
 
             return `
                 <div style="text-align:center;margin-bottom:6px;">
-                    <div style="font-size:16px;font-weight:bold;">CHECKOUT CHARLIE</div>
-                    <div style="font-size:10px;margin-top:3px;">** OFFLINE RECEIPT **</div>
+                    <div style="font-size:18px;font-weight:900;">CHECKOUT CHARLIE</div>
+                    <div style="font-size:11px;font-weight:700;margin-top:3px;">** OFFLINE RECEIPT **</div>
                 </div>
                 ${DLINE}
                 ${ROW('Receipt:', s(sale.tempSaleNumber))}
                 ${ROW('Date:', s(dateStr))}
+                ${sale.cashierName ? ROW('Cashier:', s(sale.cashierName)) : ''}
+                ${sale.tillName ? ROW('Till:', s(sale.tillName)) : ''}
                 ${LINE}
-                <div style="display:flex;justify-content:space-between;font-weight:bold;"><span>Item</span><span>Amount</span></div>
+                <div style="display:flex;justify-content:space-between;font-weight:900;font-size:13px;"><span>ITEMS</span><span>Amount</span></div>
                 ${LINE}
                 ${itemsHtml}
                 ${LINE}
                 ${ROW('Subtotal:', fmt(sale.subtotal))}
-                ${ROW('VAT (15%):', fmt(sale.vatAmount))}
-                ${ROW('TOTAL:', fmt(sale.totalAmount), true)}
-                ${LINE}
+                ${ROW('VAT incl.:', fmt(sale.vatAmount))}
+                ${DLINE}
+                <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(sale.totalAmount)}</span></div>
+                ${DLINE}
                 ${ROW('Payment:', (sale.paymentMethod || 'Cash').toUpperCase())}
                 ${DLINE}
-                <div style="text-align:center;font-size:10px;margin-top:6px;">
+                <div style="text-align:center;font-size:11px;font-weight:700;margin-top:6px;">
                     Thank you for your purchase!<br>
                     Please come again<br><br>
                     ** Generated offline — will sync when reconnected **
