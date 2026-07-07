@@ -2158,12 +2158,16 @@
                     <div class="settings-menu-item" onclick="showReport('vat-detail', event)">VAT Detail</div>
                     <div class="settings-menu-item" onclick="showReport('vat-summary', event)">VAT Summary</div>
                     
-                    <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Integrations</h3>
-                    <div class="settings-menu-item" onclick="showReport('inventory-sync', event)">Inventory Sync</div>
-                    <div class="settings-menu-item" onclick="showReport('accounting-sync', event)">Accounting Sync</div>
+                    <!-- Workstream 71: Inventory Sync / Accounting Sync hidden — no real
+                         target system exists for either, so the only honest backend for
+                         them would be dummy data. Their loaders (syncToInventory/
+                         syncToAccounting) and case entries are left in place, unreachable,
+                         so nothing else has to be rewired if a real integration is built
+                         later; see docs/checkout-charlie-production/71_POS_REPORTS_FULL_AUDIT.md -->
 
                     <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Operational</h3>
                     <div class="settings-menu-item" onclick="showReport('till-summary', event)">Till Summary</div>
+                    <div class="settings-menu-item" onclick="showReport('cashier-performance', event)">Cashier Performance</div>
                     <div class="settings-menu-item" onclick="showReport('negative-stock', event)">Negative Stock Events</div>
                     <div class="settings-menu-item" onclick="showReport('recovery-sync', event)">Recovery Sync Log</div>
                     <div class="settings-menu-item" onclick="showReport('audit-activity', event)">Audit Activity</div>
@@ -6881,6 +6885,9 @@
                 case 'till-summary':
                     renderTillSummaryReport(data, container);
                     break;
+                case 'cashier-performance':
+                    renderCashierPerformanceReport(data, container);
+                    break;
                 case 'negative-stock':
                     renderNegativeStockReport(data, container);
                     break;
@@ -7644,6 +7651,49 @@
                 html += `<p style="margin-top:10px;font-size:11px;color:#999;">Payment breakdown sourced from <strong>sale_payments</strong> (split-payment authoritative). Rows marked (est.) are sessions not yet cashed up.</p>`;
             }
             container.innerHTML = html;
+        }
+
+        // Workstream 71 — backend already existed (GET /api/reports/cashier-performance,
+        // built for an earlier codebox) but had never been wired into the Reports
+        // sidebar or given a renderer.
+        function renderCashierPerformanceReport(data, container) {
+            const cashiers = data.cashiers || [];
+            if (cashiers.length === 0) {
+                container.innerHTML = '<h2 style="margin-bottom:20px;">Cashier Performance</h2><p style="color:#999;">No sales recorded in this period.</p>';
+                return;
+            }
+            const rows = cashiers.map(c => `
+                <tr>
+                    <td>${c.full_name || c.username || 'Unknown'}</td>
+                    <td style="text-align:center;">${c.sessions_worked}</td>
+                    <td style="text-align:right;">${c.completed_sales}</td>
+                    <td style="text-align:right;">R ${parseFloat(c.total_revenue || 0).toFixed(2)}</td>
+                    <td style="text-align:right;">R ${parseFloat(c.avg_transaction || 0).toFixed(2)}</td>
+                    <td style="text-align:center;">${c.voided_sales}</td>
+                    <td style="text-align:center;">${c.refunds_processed}</td>
+                    <td style="text-align:center;">${c.negative_stock_allowed}</td>
+                    <td style="text-align:center;">${c.manager_overrides}</td>
+                </tr>
+            `).join('');
+            container.innerHTML = `
+                <h2 style="margin-bottom:20px;">Cashier Performance</h2>
+                <table class="products-table">
+                    <thead>
+                        <tr>
+                            <th>Cashier</th>
+                            <th style="text-align:center;">Sessions</th>
+                            <th style="text-align:right;">Sales</th>
+                            <th style="text-align:right;">Revenue</th>
+                            <th style="text-align:right;">Avg Txn</th>
+                            <th style="text-align:center;">Voids</th>
+                            <th style="text-align:center;">Refunds</th>
+                            <th style="text-align:center;">Neg. Stock</th>
+                            <th style="text-align:center;">Overrides</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
         }
 
         function renderNegativeStockReport(data, container) {
@@ -11762,7 +11812,7 @@
             const startDate = document.getElementById('reportStartDate').value;
             const endDate = document.getElementById('reportEndDate').value;
 
-            let url = `${API_URL}/audit/forensic?limit=100`;
+            let url = `${API_URL}/reports/forensic-audit?limit=100`;
             if (actionType) url += `&action_type=${actionType}`;
             if (entityType) url += `&entity_type=${entityType}`;
             if (username) url += `&username=${encodeURIComponent(username)}`;
@@ -11902,7 +11952,7 @@
             container.innerHTML = '<div style="text-align:center;padding:40px;color:#667eea;">Analyzing activity patterns...</div>';
 
             try {
-                const res = await fetch(`${API_URL}/audit/suspicious-activity`, {
+                const res = await fetch(`${API_URL}/reports/suspicious-activity`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
