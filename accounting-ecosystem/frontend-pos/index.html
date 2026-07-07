@@ -269,6 +269,7 @@
             background: white;
             padding: 20px;
             border-bottom: 2px solid #e0e0e0;
+            flex-shrink: 0;
         }
         .cart-header h2 {
             color: #333;
@@ -431,6 +432,94 @@
             text-align: center;
             padding: 40px;
             color: #999;
+        }
+
+        /* ── Workstream 74 — Cart Compact Mode ──────────────────────────────────
+           Scoped entirely under .cart-item-compact so the pre-existing .cart-item/
+           .item-name/.qty-btn/etc base rules (still used by the unreachable
+           updateCartWithQtyInput() — dead code, zero call sites, left untouched)
+           are not affected at all. Turns the old two-row-per-item layout (header
+           row: name+remove; controls row: qty+total) into a single flex row,
+           which is what actually buys back the vertical space — cutting per-item
+           height from ~105px to ~46px so 5-8+ items fit in the same panel height
+           instead of ~2. */
+        .cart-item.cart-item-compact {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 8px;
+            padding: 6px 8px;
+            margin-bottom: 4px;
+            border-radius: 8px;
+        }
+        .cart-item-compact .item-name {
+            flex: 1 1 80px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+        }
+        .cart-item-compact .cart-item-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+        }
+        .cart-item-compact .qty-controls {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .cart-item-compact .qty-btn {
+            width: 30px;
+            height: 30px;
+            border: none;
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        .cart-item-compact .qty-display {
+            font-weight: bold;
+            font-size: 14px;
+            min-width: 20px;
+            text-align: center;
+        }
+        .cart-item-compact .item-total {
+            font-weight: bold;
+            font-size: 14px;
+            color: #667eea;
+            min-width: 64px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .cart-item-compact .item-remove {
+            background: #dc3545;
+            color: white;
+            border: none;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        /* Narrow POS/PWA windows: if name + controls can't share a row, the
+           controls group (qty/total/remove — kept together via flex:0 0 auto
+           above) wraps to its own line rather than overflowing horizontally;
+           the name still truncates with ellipsis instead of forcing width. */
+        @media (max-width: 380px) {
+            .cart-item-compact .item-name { flex-basis: 100%; }
         }
 
         /* Settings Layout */
@@ -5720,12 +5809,13 @@
 
                 cart.forEach(item => {
                     const itemDiv = document.createElement('div');
-                    itemDiv.className = 'cart-item';
+                    itemDiv.className = 'cart-item cart-item-compact';
+                    // Workstream 74 — single compact row (was: a header row with
+                    // name+remove, then a second row with qty+total). Same
+                    // removeItem()/updateQty() handlers, same item.name/quantity/
+                    // price fields — only the markup shape changed.
                     itemDiv.innerHTML = `
-                        <div class="cart-item-header">
-                            <div class="item-name">${item.name}</div>
-                            <button class="item-remove" onclick="removeItem(${item.productId})">✕</button>
-                        </div>
+                        <div class="item-name" title="${item.name.replace(/"/g, '&quot;')}">${item.name}</div>
                         <div class="cart-item-controls">
                             <div class="qty-controls">
                                 <button class="qty-btn" onclick="updateQty(${item.productId}, -1)">-</button>
@@ -5733,6 +5823,7 @@
                                 <button class="qty-btn" onclick="updateQty(${item.productId}, 1)">+</button>
                             </div>
                             <div class="item-total">R ${(item.price * item.quantity).toFixed(2)}</div>
+                            <button class="item-remove" onclick="removeItem(${item.productId})">✕</button>
                         </div>
                     `;
                     container.appendChild(itemDiv);
