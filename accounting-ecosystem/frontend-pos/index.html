@@ -386,6 +386,68 @@
             gap: 6px;
             margin-bottom: 10px;
         }
+        /* Workstream 76 — primary 2x2 layout for the 4 standard methods
+           (Cash/Card/Account/Split). Bigger buttons than the old 8-across row,
+           since there's now room: EFT/SnapScan/Zapper/Gift Card moved behind
+           the "More" popover below. */
+        .payment-methods.payment-methods-primary {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        .payment-methods-primary .payment-btn {
+            padding: 14px 8px;
+            font-size: 13px;
+        }
+        .payment-methods-primary .payment-btn .pay-icon {
+            font-size: 22px;
+        }
+        .payment-more-wrap {
+            position: relative;
+            margin-bottom: 10px;
+        }
+        .payment-more-btn {
+            width: 100%;
+            padding: 8px;
+            border: 2px dashed #ccc;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            color: #667eea;
+            transition: all 0.2s;
+        }
+        .payment-more-btn:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+        .payment-more-btn.selected {
+            border-style: solid;
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+        /* Secondary methods panel — opens upward (bottom: 100%) since the
+           checkout section sits at the bottom of the cart panel; opening
+           downward would push past the Complete Sale button or off-screen. */
+        .payment-more-panel {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            padding: 8px;
+            z-index: 50;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+        .payment-more-panel.open {
+            display: grid;
+        }
         .payment-btn {
             padding: 8px 4px;
             border: 2px solid #e0e0e0;
@@ -1860,15 +1922,25 @@
                     </div>
 
                     <div class="checkout-section">
-                        <div class="payment-methods">
+                        <!-- Workstream 76 — only the 4 standard methods show by default;
+                             EFT/SnapScan/Zapper/Gift Card moved behind "More" below. -->
+                        <div class="payment-methods payment-methods-primary">
                             <button class="payment-btn selected" onclick="selectPayment('CASH', this)"><span class="pay-icon">💵</span>Cash</button>
                             <button class="payment-btn" onclick="selectPayment('CARD', this)"><span class="pay-icon">💳</span>Card</button>
-                            <button class="payment-btn" onclick="selectPayment('EFT', this)"><span class="pay-icon">🏦</span>EFT</button>
                             <button class="payment-btn" onclick="selectPayment('ACCOUNT', this)"><span class="pay-icon">👤</span>Account</button>
-                            <button class="payment-btn" onclick="selectPayment('SNAPSCAN', this)"><span class="pay-icon">📱</span>SnapScan</button>
-                            <button class="payment-btn" onclick="selectPayment('ZAPPER', this)"><span class="pay-icon">⚡</span>Zapper</button>
-                            <button class="payment-btn" onclick="selectPayment('GIFT_CARD', this)"><span class="pay-icon">🎁</span>Gift Card</button>
                             <button class="payment-btn" onclick="toggleSplitPayment()" id="splitPaymentBtn"><span class="pay-icon">✂️</span>Split</button>
+                        </div>
+
+                        <div class="payment-more-wrap" id="paymentMoreWrap">
+                            <button type="button" class="payment-more-btn" id="paymentMoreBtn" onclick="toggleMorePayments(event)">
+                                <span id="paymentMoreLabel">⋯ More</span>
+                            </button>
+                            <div class="payment-more-panel" id="paymentMorePanel">
+                                <button class="payment-btn" onclick="selectPayment('EFT', this)"><span class="pay-icon">🏦</span>EFT</button>
+                                <button class="payment-btn" onclick="selectPayment('SNAPSCAN', this)"><span class="pay-icon">📱</span>SnapScan</button>
+                                <button class="payment-btn" onclick="selectPayment('ZAPPER', this)"><span class="pay-icon">⚡</span>Zapper</button>
+                                <button class="payment-btn" onclick="selectPayment('GIFT_CARD', this)"><span class="pay-icon">🎁</span>Gift Card</button>
+                            </div>
                         </div>
 
                         <!-- Split Payment Section -->
@@ -6097,12 +6169,52 @@
 
         let selectedAccountCustomerId = null;
 
+        // Workstream 76 — secondary methods now live behind the "More" popover,
+        // so selecting one still calls this same function (same selectedPayment
+        // value, same downstream checkout() logic), but the button that shows
+        // the choice ("More") is not the button the cashier actually clicked
+        // once the popover closes. This reflects the current method onto the
+        // More button itself so the cashier still has visible confirmation.
+        const SECONDARY_PAYMENT_LABELS = { EFT: '🏦 EFT', SNAPSCAN: '📱 SnapScan', ZAPPER: '⚡ Zapper', GIFT_CARD: '🎁 Gift Card' };
+
+        function syncPaymentMoreButton(method) {
+            const moreBtn = document.getElementById('paymentMoreBtn');
+            const moreLabel = document.getElementById('paymentMoreLabel');
+            if (!moreBtn || !moreLabel) return;
+            if (SECONDARY_PAYMENT_LABELS[method]) {
+                moreBtn.classList.add('selected');
+                moreLabel.textContent = SECONDARY_PAYMENT_LABELS[method];
+            } else {
+                moreBtn.classList.remove('selected');
+                moreLabel.textContent = '⋯ More';
+            }
+        }
+
+        function toggleMorePayments(e) {
+            if (e) e.stopPropagation();
+            const panel = document.getElementById('paymentMorePanel');
+            if (panel) panel.classList.toggle('open');
+        }
+
+        // Closes the popover on any click outside it — same "close on outside
+        // click" convention already used elsewhere in this file for dropdowns.
+        document.addEventListener('click', function(e) {
+            const wrap = document.getElementById('paymentMoreWrap');
+            const panel = document.getElementById('paymentMorePanel');
+            if (panel && panel.classList.contains('open') && wrap && !wrap.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+        });
+
         function selectPayment(method, btnEl) {
             selectedPayment = method;
             document.querySelectorAll('.payment-btn:not(#splitPaymentBtn)').forEach(btn => {
                 btn.classList.remove('selected');
             });
             if (btnEl) btnEl.classList.add('selected');
+            syncPaymentMoreButton(method);
+            const morePanel = document.getElementById('paymentMorePanel');
+            if (morePanel) morePanel.classList.remove('open'); // close after a secondary selection
 
             // Close split payment if open
             if (splitPaymentMode) {
@@ -8574,6 +8686,7 @@
                 btn.classList.add('selected');
                 // Deselect other payment buttons
                 document.querySelectorAll('.payment-btn:not(#splitPaymentBtn)').forEach(b => b.classList.remove('selected'));
+                syncPaymentMoreButton(null); // clears any "EFT selected" state shown on the More button
                 // Hide account customer section
                 document.getElementById('accountCustomerSection').style.display = 'none';
                 selectedAccountCustomerId = null;
