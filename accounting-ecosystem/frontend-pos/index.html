@@ -166,6 +166,17 @@
             font-size: 24px;
             color: #667eea;
         }
+        /* Workstream 75 — subtle, single, in-place scan status (not a stacking toast).
+           Replaces the static "Scan barcode or type to search products" helper line. */
+        .scan-status-indicator {
+            font-size: 11px;
+            margin-top: 5px;
+            transition: color 0.15s ease;
+        }
+        .scan-status-idle    { color: #999; }
+        .scan-status-scanning{ color: #667eea; font-weight: 600; }
+        .scan-status-success { color: #28a745; font-weight: 600; }
+        .scan-status-error   { color: #dc3545; font-weight: 600; }
         .categories {
             display: flex;
             gap: 10px;
@@ -201,6 +212,10 @@
             grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             gap: 15px;
             align-content: start;
+            /* Workstream 75 — tells the browser vertical panning is a native gesture
+               (so it keeps handling the actual scroll) while still dispatching
+               pointermove events to JS for the tap/scroll distinction below. */
+            touch-action: pan-y;
         }
         .product-tile {
             background: white;
@@ -1807,7 +1822,7 @@
                             >
                             <span class="scan-icon">📷</span>
                         </div>
-                        <div style="font-size: 11px; color: #999; margin-top: 5px;">Scan barcode or type to search products</div>
+                        <div id="scanStatusIndicator" class="scan-status-indicator scan-status-idle">Ready to scan</div>
                     </div>
 
                     <div class="categories" id="categories"></div>
@@ -5644,7 +5659,39 @@
             // Persists across grid innerHTML rewrites because it is on the grid element itself.
             const productsGrid = document.getElementById('productsGrid');
             if (productsGrid) {
+                // Workstream 75 — touch scroll protection. Root cause: the grid's only
+                // gesture handler was a plain 'click' listener, which browsers still fire
+                // after a touch-drag-release in many cases ("ghost click") — so scrolling
+                // the product grid on a touchscreen could register as a tap on whatever
+                // tile happened to be under the finger when it lifted. Pointer Events
+                // (unifies mouse/touch/pen) track the down-position and flag the gesture
+                // as a scroll once movement exceeds SCROLL_THRESHOLD_PX; the existing
+                // 'click' handler below then just checks that flag before adding to cart.
+                const SCROLL_THRESHOLD_PX = 8;
+                let pointerDownX = 0, pointerDownY = 0, isScrollGesture = false;
+
+                productsGrid.addEventListener('pointerdown', function(e) {
+                    isScrollGesture = false;
+                    pointerDownX = e.clientX;
+                    pointerDownY = e.clientY;
+                });
+                productsGrid.addEventListener('pointermove', function(e) {
+                    if (isScrollGesture) return;
+                    const dx = Math.abs(e.clientX - pointerDownX);
+                    const dy = Math.abs(e.clientY - pointerDownY);
+                    if (dx > SCROLL_THRESHOLD_PX || dy > SCROLL_THRESHOLD_PX) {
+                        isScrollGesture = true;
+                    }
+                });
+
                 productsGrid.addEventListener('click', function(e) {
+                    if (isScrollGesture) {
+                        // A real scroll (or fast flick) ended on top of a tile — do not add.
+                        // Reset immediately so the NEXT tap (a fresh pointerdown/click pair)
+                        // is not permanently blocked by a stale flag.
+                        isScrollGesture = false;
+                        return;
+                    }
                     const tile = e.target.closest('[data-product-id]');
                     if (!tile) return;
                     const productId = parseInt(tile.dataset.productId, 10);
@@ -5684,6 +5731,9 @@
                 });
             }
 
+            initGlobalScanCapture();
+            initScannerAutoRefocus();
+
             // Calculate profit when cost or price changes
             const costInput = document.getElementById('productCost');
             const priceInput = document.getElementById('productPrice');
@@ -5706,6 +5756,176 @@
             }
         });
 
+        // ============================================================
+        // Workstream 75 — Global Barcode Scan Capture + Scan-Ready State
+        // ============================================================
+        // A physical barcode scanner is just a keyboard that types very fast and
+        // ends with Enter. Previously the cashier had to click #barcodeInput first
+        // for any of that to be captured. These helpers let a scan register from
+        // anywhere in the Till screen EXCEPT while the cashier is genuinely typing
+        // into some other field (search boxes, payment amounts, product/customer/
+        // settings forms) or a modal is open.
+
+        // True while focus is on an actual editable control other than the
+        // barcode input itself — the one place a global capture must never fight
+        // the field the user is deliberately typing into.
+        function isTypingContext(el) {
+            if (!el) return false;
+            if (el.id === 'barcodeInput') return false;
+            const tag = el.tagName;
+            return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+        }
+
+        // Works for every modal in this file regardless of how it was shown
+        // (inline style toggle or a dynamically created element) — checks actual
+        // computed visibility rather than depending on a specific class/attribute.
+        function isAnyModalOpen() {
+            const overlays = document.querySelectorAll('.modal-overlay');
+            for (let i = 0; i < overlays.length; i++) {
+                if (getComputedStyle(overlays[i]).display !== 'none') return true;
+            }
+            return false;
+        }
+
+        // Single small in-place status line (#scanStatusIndicator) rather than a
+        // stacking toast — deliberately separate from showNotification(), which
+        // already fires its own success/error messages per scan (see
+        // searchByBarcode below); this is the ambient "system is ready" signal the
+        // spec calls for, not a replacement for those. Auto-reverts to the idle
+        // "Ready to scan" state after a short delay so it can never pile up.
+        let scanStatusRevertTimer = null;
+        function setScanStatus(text, tone) {
+            const el = document.getElementById('scanStatusIndicator');
+            if (!el) return;
+            el.textContent = text;
+            el.className = 'scan-status-indicator scan-status-' + (tone || 'idle');
+            clearTimeout(scanStatusRevertTimer);
+            if (tone && tone !== 'idle') {
+                scanStatusRevertTimer = setTimeout(() => setScanStatus('Ready to scan', 'idle'), 1500);
+            }
+        }
+
+        // Set true by initGlobalScanCapture() for the duration of an in-progress
+        // scan burst (first fast keystroke -> Enter/idle-timeout). Found via
+        // real-browser testing: without this, a refocusScanner() call landing
+        // mid-burst (e.g. the 200ms debounced post-click refocus, if a cashier
+        // fires a physical scanner within ~200ms of tapping a product tile) could
+        // shift focus to #barcodeInput partway through, splitting the remaining
+        // keystrokes into the input's own native value instead of the global
+        // buffer — losing the scan. refocusScanner() must never steal focus while
+        // this is true.
+        let globalScanInProgress = false;
+
+        // Returns focus to the barcode input so the next scan needs no click —
+        // but only when it is actually safe to do so: we're on the Till screen,
+        // no modal is covering it, no scan is currently mid-flight, and the
+        // cashier isn't already typing somewhere else on purpose (a payment
+        // amount, split-payment row, account-customer search, etc.). Called
+        // after key actions (see call sites below) AND from a debounced global
+        // click listener so "modal closed" is covered generically without having
+        // to instrument every one of this file's close*Modal() functions
+        // individually.
+        function refocusScanner() {
+            if (globalScanInProgress) return;
+            const tillInterface = document.getElementById('tillInterface');
+            if (!tillInterface || tillInterface.style.display === 'none') return;
+            if (isAnyModalOpen()) return;
+            const barcodeInput = document.getElementById('barcodeInput');
+            if (!barcodeInput) return;
+            const active = document.activeElement;
+            if (isTypingContext(active) && active !== barcodeInput) return;
+            barcodeInput.focus();
+        }
+
+        function initScannerAutoRefocus() {
+            let refocusTimer = null;
+            const scheduleRefocus = () => {
+                clearTimeout(refocusTimer);
+                refocusTimer = setTimeout(refocusScanner, 200);
+            };
+            // Covers "modal closed" generically (every close path ends with some
+            // click), plus payment selection, cart actions, etc. refocusScanner()'s
+            // own guards make this safe to call broadly — it only ever acts when
+            // nothing else legitimately has focus.
+            document.addEventListener('click', scheduleRefocus, true);
+        }
+
+        function initGlobalScanCapture() {
+            const MIN_BARCODE_LENGTH = 4;
+            const MAX_AVG_INTERVAL_MS = 50;   // scanner keystrokes arrive far faster than a human types
+            const BUFFER_IDLE_TIMEOUT_MS = 250;
+
+            let scanBuffer = '';
+            let scanTimestamps = [];
+            let idleTimer = null;
+
+            function resetBuffer() {
+                scanBuffer = '';
+                scanTimestamps = [];
+                clearTimeout(idleTimer);
+                globalScanInProgress = false;
+            }
+
+            document.addEventListener('keydown', function(e) {
+                const active = document.activeElement;
+
+                // The barcode input's own input/keypress listeners already handle
+                // this exact keystroke correctly — never double-process the same
+                // scan through both paths.
+                if (active && active.id === 'barcodeInput') return;
+
+                // Never steal keystrokes from a genuinely focused field, or while
+                // any modal (product/customer/settings edit, payment confirm,
+                // manager auth, etc.) is open.
+                if (isTypingContext(active) || isAnyModalOpen()) return;
+
+                // Ignore modifier combinations (Ctrl+C, Alt+Tab, etc.) so shortcuts
+                // elsewhere in the OS/browser are never swallowed into the buffer.
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+                if (e.key === 'Enter') {
+                    const raw = scanBuffer;
+                    const timestamps = scanTimestamps;
+                    resetBuffer();
+
+                    if (raw.length < MIN_BARCODE_LENGTH) return;
+
+                    let avgInterval = Infinity;
+                    if (timestamps.length >= 2) {
+                        avgInterval = (timestamps[timestamps.length - 1] - timestamps[0]) / (timestamps.length - 1);
+                    }
+                    if (avgInterval > MAX_AVG_INTERVAL_MS) return; // too slow to be a scanner — ignore
+
+                    setScanStatus('Scanning…', 'scanning');
+                    searchByBarcode(raw); // exact same barcodeMap lookup + addToCart path as the input field
+                    return;
+                }
+
+                // Only accumulate single printable characters — e.key for Enter/Tab/
+                // Escape/arrows/function keys etc. is a multi-character name
+                // ("Enter", "Tab", "ArrowDown", ...), so this naturally excludes them.
+                if (e.key.length !== 1) return;
+
+                const now = Date.now();
+                if (scanBuffer.length > 0 && scanTimestamps.length > 0 && (now - scanTimestamps[scanTimestamps.length - 1]) > MAX_AVG_INTERVAL_MS * 3) {
+                    // Gap too large since the last character — this isn't one
+                    // continuous fast scan burst. Start a fresh buffer instead of
+                    // concatenating onto a stale one.
+                    resetBuffer();
+                }
+                if (scanBuffer.length === 0) {
+                    setScanStatus('Scanning…', 'scanning');
+                    globalScanInProgress = true; // blocks refocusScanner() until this burst resolves
+                }
+
+                scanBuffer += e.key;
+                scanTimestamps.push(now);
+
+                clearTimeout(idleTimer);
+                idleTimer = setTimeout(resetBuffer, BUFFER_IDLE_TIMEOUT_MS);
+            });
+        }
+
         function searchByBarcode(rawBarcode) {
             const barcode = normalizeBarcode(rawBarcode);
             // Clear immediately — success or not-found — so a failed/garbled lookup
@@ -5724,11 +5944,14 @@
                 addToCart(product);
                 if (existing) {
                     showNotification(`Qty ${existing.quantity} × ${product.product_name}`, 'success');
+                    setScanStatus(`Qty ${existing.quantity} × ${product.product_name}`, 'success');
                 } else {
                     showNotification(`Added: ${product.product_name}`, 'success');
+                    setScanStatus(`Product added: ${product.product_name}`, 'success');
                 }
             } else {
                 showNotification(`Product not found${barcode !== rawBarcode.trim() ? ` (scanned: ${rawBarcode.trim()})` : ''}`, 'error');
+                setScanStatus('Unknown barcode', 'error');
             }
         }
 
@@ -5787,10 +6010,7 @@
             }
 
             updateCart();
-            setTimeout(() => {
-                const input = document.getElementById('barcodeInput');
-                if (input) input.focus();
-            }, 100);
+            setTimeout(refocusScanner, 100);
         }
 
         function updateCart() {
@@ -5871,6 +6091,7 @@
             if (cart.length > 0 && confirm('Clear all items?')) {
                 cart = [];
                 updateCart();
+                setTimeout(refocusScanner, 100);
             }
         }
 
@@ -5897,6 +6118,10 @@
             } else {
                 accountSection.style.display = 'none';
                 selectedAccountCustomerId = null;
+                // Only for non-ACCOUNT methods — ACCOUNT reveals a customer search
+                // box the cashier is expected to type into next, so don't yank
+                // focus back to the barcode input in that case.
+                setTimeout(refocusScanner, 100);
             }
         }
 
@@ -6177,8 +6402,7 @@
             if (modal) {
                 modal.remove();
             }
-            const input = document.getElementById('barcodeInput');
-            if (input) input.focus();
+            refocusScanner();
         }
 
         async function printReceiptViaBrowser(saleId) {
