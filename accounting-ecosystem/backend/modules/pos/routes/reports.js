@@ -12,6 +12,29 @@ const { requireCompany, requirePermission } = require('../../../middleware/auth'
 
 const router = express.Router();
 
+// ── pos_audit_events has no FK constraint to users (confirmed directly
+// against the live schema — PostgREST error PGRST200: "Could not find a
+// relationship between 'pos_audit_events' and 'user_id'"). Several routes
+// below embedded `users:user_id(username, full_name)` directly on
+// pos_audit_events selects, copying the pattern used successfully
+// elsewhere in this file for till_sessions (which DOES have that FK) —
+// on pos_audit_events specifically this either 400s the whole query or,
+// where the route never checked `.error`, silently returned an empty
+// array with no error surfaced at all. This is the live root cause of
+// the Enterprise Dashboard's "Recent Activity" 500 (Codebox 77).
+// Fix: never embed users on pos_audit_events; fetch events plain, then
+// resolve names via one follow-up query and attach them in the exact
+// same `{ users: { username, full_name } }` shape the embed would have
+// produced, so no downstream code (e.g. `e.users?.full_name`) has to change.
+async function attachUserNames(events) {
+  const ids = [...new Set(events.map(e => e.user_id).filter(id => id != null))];
+  if (ids.length === 0) return events;
+  const { data: users } = await supabase.from('users').select('id, username, full_name').in('id', ids);
+  const byId = {};
+  (users || []).forEach(u => { byId[u.id] = { username: u.username, full_name: u.full_name }; });
+  return events.map(e => ({ ...e, users: byId[e.user_id] || null }));
+}
+
 router.use(requireCompany);
 
 // REPORTS.VIEW = SUPERVISOR_ROLES (config/permissions.js) — excludes cashier/
@@ -433,10 +456,12 @@ router.get('/negative-stock', reportsViewGate, async (req, res) => {
         .lt('stock_quantity', 0)
         .order('stock_quantity', { ascending: true }),
 
-      // Part B: Negative stock audit events in period (created + allowed)
+      // Part B: Negative stock audit events in period (created + allowed).
+      // No users embed here — pos_audit_events has no FK to users (see
+      // attachUserNames() note at the top of this file); resolved below.
       supabase
         .from('pos_audit_events')
-        .select('id, action_type, product_id, user_id, user_email, created_at, metadata, before_snapshot, after_snapshot, users:user_id(username, full_name)')
+        .select('id, action_type, product_id, user_id, user_email, created_at, metadata, before_snapshot, after_snapshot')
         .eq('company_id', req.companyId)
         .in('action_type', ['NEGATIVE_STOCK_CREATED', 'NEGATIVE_STOCK_SALE_ALLOWED'])
         .gte('created_at', start)
@@ -453,9 +478,10 @@ router.get('/negative-stock', reportsViewGate, async (req, res) => {
     ]);
 
     if (productsResult.error) return res.status(500).json({ error: productsResult.error.message });
+    if (eventsResult.error) return res.status(500).json({ error: eventsResult.error.message });
 
     const negativeProducts = productsResult.data || [];
-    const events           = eventsResult.data   || [];
+    const events           = await attachUserNames(eventsResult.data || []);
     const allowNegative    = policyResult.data?.allow_negative_stock_sales ?? false;
 
     // For negative products: find most recent NEGATIVE_STOCK_CREATED per product
@@ -507,10 +533,11 @@ router.get('/recovery-sync', reportsViewGate, async (req, res) => {
     const staleThreshold = new Date(Date.now() - 8 * 3_600_000).toISOString();
 
     const [recoveryResult, syncResult, staleResult, pendingResult] = await Promise.all([
-      // Recovery action events in period
+      // Recovery action events in period. No users embed — see
+      // attachUserNames() note at the top of this file.
       supabase
         .from('pos_audit_events')
-        .select('id, action_type, user_id, user_email, created_at, notes, metadata, users:user_id(username, full_name)')
+        .select('id, action_type, user_id, user_email, created_at, notes, metadata')
         .eq('company_id', req.companyId)
         .in('action_type', [
           'RECOVERY_RETRY_TRIGGERED',
@@ -524,10 +551,10 @@ router.get('/recovery-sync', reportsViewGate, async (req, res) => {
         .order('created_at', { ascending: false })
         .limit(200),
 
-      // Offline sync/conflict events in period
+      // Offline sync/conflict events in period. Same reason, no users embed.
       supabase
         .from('pos_audit_events')
-        .select('id, action_type, user_id, user_email, created_at, metadata, users:user_id(username, full_name)')
+        .select('id, action_type, user_id, user_email, created_at, metadata')
         .eq('company_id', req.companyId)
         .in('action_type', ['OFFLINE_SYNC_RECEIVED', 'OFFLINE_CONFLICT'])
         .gte('created_at', start)
@@ -555,8 +582,8 @@ router.get('/recovery-sync', reportsViewGate, async (req, res) => {
         .limit(50),
     ]);
 
-    const recoveryEvents  = recoveryResult.data || [];
-    const syncEvents      = syncResult.data     || [];
+    const recoveryEvents  = await attachUserNames(recoveryResult.data || []);
+    const syncEvents      = await attachUserNames(syncResult.data     || []);
     const staleSessions   = staleResult.data    || [];
     const pendingCashup   = pendingResult.data  || [];
 
@@ -622,9 +649,11 @@ router.get('/audit-activity', reportsViewGate, async (req, res) => {
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const end   = endDate   || to   || now.toISOString();
 
+    // No users embed — pos_audit_events has no FK to users (see
+    // attachUserNames() note at the top of this file); resolved below.
     let query = supabase
       .from('pos_audit_events')
-      .select('id, action_type, action_category, user_id, user_email, user_role, till_id, till_session_id, sale_id, product_id, created_at, notes, metadata, users:user_id(username, full_name)')
+      .select('id, action_type, action_category, user_id, user_email, user_role, till_id, till_session_id, sale_id, product_id, created_at, notes, metadata')
       .eq('company_id', req.companyId)
       .gte('created_at', start)
       .lte('created_at', end)
@@ -643,7 +672,7 @@ router.get('/audit-activity', reportsViewGate, async (req, res) => {
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
 
-    const events  = data || [];
+    const events  = await attachUserNames(data || []);
     const by_type = {};
     events.forEach(e => { by_type[e.action_type] = (by_type[e.action_type] || 0) + 1; });
 
@@ -1204,9 +1233,11 @@ router.get('/payment-methods', reportsViewGate, async (req, res) => {
 router.get('/forensic-audit', reportsViewGate, async (req, res) => {
   try {
     const { action_type, entity_type, username, start_date, end_date, limit = 100 } = req.query;
+    // No users embed — pos_audit_events has no FK to users (see
+    // attachUserNames() note at the top of this file); resolved below.
     let query = supabase
       .from('pos_audit_events')
-      .select('id, action_type, entity_type, entity_id, user_id, user_email, created_at, metadata, before_snapshot, after_snapshot, ip_address, users:user_id(username, full_name)')
+      .select('id, action_type, entity_type, entity_id, user_id, user_email, created_at, metadata, before_snapshot, after_snapshot, ip_address')
       .eq('company_id', req.companyId)
       .order('created_at', { ascending: false })
       .limit(Math.min(parseInt(limit) || 100, 500));
@@ -1220,7 +1251,7 @@ router.get('/forensic-audit', reportsViewGate, async (req, res) => {
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
 
-    const entries = (data || []).map(e => ({
+    const entries = (await attachUserNames(data || [])).map(e => ({
       created_at: e.created_at,
       username: e.users?.full_name || e.users?.username || e.user_email,
       action_type: e.action_type,
@@ -1258,9 +1289,11 @@ router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
       MANAGER_OVERRIDE: 5,
       SUPERVISOR_OVERRIDE_GRANTED: 5,
     };
+    // No users embed — pos_audit_events has no FK to users (see
+    // attachUserNames() note at the top of this file); resolved below.
     const { data, error } = await supabase
       .from('pos_audit_events')
-      .select('user_id, user_email, action_type, users:user_id(username, full_name)')
+      .select('user_id, user_email, action_type')
       .eq('company_id', req.companyId)
       .in('action_type', Object.keys(THRESHOLDS))
       .gte('created_at', start)
@@ -1268,7 +1301,7 @@ router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     const counts = {}; // `${user_id}:${action_type}` -> { count, username }
-    (data || []).forEach(e => {
+    (await attachUserNames(data || [])).forEach(e => {
       const key = `${e.user_id}:${e.action_type}`;
       if (!counts[key]) {
         counts[key] = { count: 0, username: e.users?.full_name || e.users?.username || e.user_email, action_type: e.action_type };
