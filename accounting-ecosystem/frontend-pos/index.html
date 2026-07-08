@@ -1524,15 +1524,27 @@
         <div class="login-box" id="loginBox">
             <h1>🛒 Checkout Charlie</h1>
 
-            <!-- Device lock banner — visible when this device is locked to a company -->
+            <!-- Device lock banner — visible when this device is a trusted, registered
+                 device (Workstream 82). The company/till shown here always comes from
+                 a backend-validated device record (GET /api/auth/pos/device/validate),
+                 never from an unvalidated local flag. -->
             <div id="deviceLockBanner" style="display:none; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); border-radius:8px; padding:10px 14px; margin-bottom:16px;">
                 <div style="display:flex; align-items:center; gap:10px;">
                     <span style="font-size:20px;">🔒</span>
                     <div>
-                        <div style="font-weight:700; font-size:13px; color:#60a5fa;">Device Assigned</div>
-                        <div style="font-size:12px; color:rgba(255,255,255,0.75);">This till is locked to: <strong id="deviceLockDisplayName" style="color:#fff;"></strong></div>
+                        <div style="font-weight:700; font-size:13px; color:#60a5fa;">Trusted Device</div>
+                        <div style="font-size:12px; color:rgba(255,255,255,0.75);">
+                            <strong id="deviceLockDisplayName" style="color:#fff;"></strong><span id="deviceLockTillName"></span>
+                        </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Unknown-device prompt — visible when this browser has no registered
+                 device yet (Flow 7). Logging in as a manager reveals the activation
+                 modal (see deviceActivationModal) right after login. -->
+            <div id="unknownDeviceBanner" style="display:none; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:12px; color:rgba(255,255,255,0.8);">
+                🆕 This device is not activated yet. A manager can log in below to activate it — after that, employees will only need their PIN.
             </div>
 
             <!-- Login mode tabs -->
@@ -2011,6 +2023,8 @@
                         <button class="btn btn-secondary" onclick="showReceiveStockModal()">Receive Stock</button>
                         <button class="btn btn-secondary" onclick="showSupplierReceiveModal()">Receive from Supplier</button>
                         <button class="btn btn-secondary" onclick="showSupplierReturnModal()">Return to Supplier</button>
+                        <button class="btn btn-secondary" onclick="showCompanySendModal()">Send to Company</button>
+                        <button class="btn btn-secondary" onclick="showCompanyTransfersModal()">Company Transfers</button>
                         <button class="btn btn-secondary" onclick="showTransferModal()">Record Transfer</button>
                         <button class="btn btn-secondary" onclick="showStockAdjustModal()">Adjust Stock</button>
                     </div>
@@ -2322,6 +2336,21 @@
                                 <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="revokeSupplierCompanyLink()">Revoke</button>
                             </div>
                             <p id="supplierEditLinkStatusNote" style="font-size:12px;color:#888;margin:6px 0 0;"></p>
+                            <div id="supplierEditLinkPermissions" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #e0e0e0;">
+                                <p style="font-size:11px;color:#999;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Stock Transfer (Workstream 81)</p>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                    <input type="checkbox" id="permStockTransfer" onchange="updateCompanyLinkPermission('stock_transfer', this.checked)"> Allow sending stock to this company
+                                </label>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                    <input type="checkbox" id="permReceiveTransfer" onchange="updateCompanyLinkPermission('receive_transfer', this.checked)"> Allow receiving stock from this company
+                                </label>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                    <input type="checkbox" id="permReturnTransfer" onchange="updateCompanyLinkPermission('return_transfer', this.checked)"> Allow returning stock to this company
+                                </label>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                    <input type="checkbox" id="permPricingVisible" onchange="updateCompanyLinkPermission('pricing_visible', this.checked)"> Show them our cost/selling price on transfers
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2464,6 +2493,165 @@
                     <span id="supplierReturnSummary" style="margin-right:auto;font-size:13px;color:#333;font-weight:600;"></span>
                     <button class="btn btn-secondary" onclick="closeSupplierReturnModal()">Cancel</button>
                     <button class="btn btn-primary" onclick="submitSupplierReturn()">Return to Supplier</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Send Stock to Company Modal (Workstream 81) -->
+        <div id="companySendModal" class="modal-overlay">
+            <div class="modal" style="max-width:820px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Send Stock to Company</h2>
+                    <button class="close-btn" onclick="closeCompanySendModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 160px);overflow-y:auto;">
+                    <div id="companySendNoCompaniesState" style="display:none;text-align:center;color:#999;padding:20px;background:#f5f7fa;border-radius:8px;margin-bottom:14px;">
+                        No linked companies have stock transfer enabled yet. Enable it from Settings → Suppliers → Manage Linked Products → Company Link, or ask the other company to enable it on their side.
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                        <div class="form-group">
+                            <label>Send To *</label>
+                            <select id="companySendReceiverId" style="width:100%;">
+                                <option value="">Select a linked company...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Expected Receive Date (optional)</label>
+                            <input type="date" id="companySendExpectedDate" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Reference (optional)</label>
+                            <input type="text" id="companySendReference" placeholder="e.g. PO-1234" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Notes (optional)</label>
+                            <input type="text" id="companySendNotes" style="width:100%;">
+                        </div>
+                    </div>
+                    <h4 style="margin:0 0 8px;font-size:14px;">Products</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Product</th>
+                                <th style="padding:7px;text-align:right;width:90px;">Qty *</th>
+                                <th style="padding:7px;width:36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="companySendItemsBody"></tbody>
+                    </table>
+                    <button class="btn btn-secondary" onclick="addCompanySendRow()" style="margin-top:10px;font-size:12px;">+ Add Product</button>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeCompanySendModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitCompanySend()">Send Stock</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Company Transfers Modal (Workstream 81) -->
+        <div id="companyTransfersModal" class="modal-overlay">
+            <div class="modal" style="max-width:980px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Company Transfers</h2>
+                    <button class="close-btn" onclick="closeCompanyTransfersModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 100px);overflow-y:auto;">
+                    <div class="tab-sub-nav">
+                        <button class="sub-tab active" onclick="showCompanyTransferTab('incoming', event)">Incoming</button>
+                        <button class="sub-tab" onclick="showCompanyTransferTab('outgoing', event)">Outgoing</button>
+                        <button class="sub-tab" onclick="showCompanyTransferTab('returns', event)">Returns</button>
+                    </div>
+
+                    <!-- List panels -->
+                    <div id="ctIncomingPanel">
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead><tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Transfer #</th><th style="padding:7px;text-align:left;">From</th>
+                                <th style="padding:7px;text-align:left;">Status</th><th style="padding:7px;text-align:right;">Items</th>
+                                <th style="padding:7px;text-align:left;">Sent</th><th style="padding:7px;width:70px;"></th>
+                            </tr></thead>
+                            <tbody id="ctIncomingBody"><tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div id="ctOutgoingPanel" style="display:none;">
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead><tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Transfer #</th><th style="padding:7px;text-align:left;">To</th>
+                                <th style="padding:7px;text-align:left;">Status</th><th style="padding:7px;text-align:right;">Items</th>
+                                <th style="padding:7px;text-align:left;">Sent</th><th style="padding:7px;width:70px;"></th>
+                            </tr></thead>
+                            <tbody id="ctOutgoingBody"><tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div id="ctReturnsPanel" style="display:none;">
+                        <h4 style="margin:0 0 8px;font-size:14px;">Returns Awaiting Your Confirmation (as sender)</h4>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
+                            <thead><tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Transfer #</th><th style="padding:7px;text-align:left;">Returned By</th>
+                                <th style="padding:7px;text-align:left;">Requested</th><th style="padding:7px;width:130px;"></th>
+                            </tr></thead>
+                            <tbody id="ctReturnsToConfirmBody"><tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr></tbody>
+                        </table>
+                        <h4 style="margin:0 0 8px;font-size:14px;">Received Transfers You Can Return Items From</h4>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead><tr style="background:#667eea;color:white;">
+                                <th style="padding:7px;text-align:left;">Transfer #</th><th style="padding:7px;text-align:left;">From</th>
+                                <th style="padding:7px;text-align:left;">Status</th><th style="padding:7px;width:100px;"></th>
+                            </tr></thead>
+                            <tbody id="ctReturnableBody"><tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Detail / action panel — shown in place of the list when a transfer is opened -->
+                    <div id="ctDetailPanel" style="display:none;">
+                        <button class="btn btn-secondary" style="margin-bottom:12px;font-size:12px;" onclick="closeCompanyTransferDetail()">&larr; Back to list</button>
+                        <div style="background:#f5f7fa;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+                            <strong id="ctDetailNumber"></strong> — <span id="ctDetailStatus"></span><br>
+                            <span id="ctDetailParties" style="color:#666;"></span>
+                            <div id="ctDetailReference" style="color:#666;margin-top:4px;"></div>
+                            <div id="ctDetailNotes" style="color:#666;margin-top:4px;"></div>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead><tr style="background:#667eea;color:white;">
+                                <th style="padding:6px;text-align:left;">Product</th>
+                                <th style="padding:6px;text-align:right;width:60px;">Sent</th>
+                                <th style="padding:6px;text-align:right;width:70px;">Received</th>
+                                <th style="padding:6px;text-align:right;width:70px;">Returned</th>
+                                <th id="ctDetailActionColHeader" style="padding:6px;width:220px;"></th>
+                            </tr></thead>
+                            <tbody id="ctDetailItemsBody"></tbody>
+                        </table>
+                        <div id="ctDetailActions" style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Device Activation Modal (Workstream 82) -->
+        <div id="deviceActivationModal" class="modal-overlay">
+            <div class="modal" style="max-width:480px;">
+                <div class="modal-header">
+                    <h2>Activate This Device</h2>
+                </div>
+                <div class="modal-body">
+                    <p style="font-size:13px;color:#666;margin:0 0 16px;">
+                        Lock this device to <strong id="daCompanyName"></strong>. Once activated, employees on this
+                        device will only need to enter their PIN — no company or store selection.
+                    </p>
+                    <div class="form-group">
+                        <label>Till</label>
+                        <select id="daTillId" style="width:100%;">
+                            <option value="">No specific till (optional)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Device Name</label>
+                        <input type="text" id="daDeviceName" placeholder="e.g. Front Counter, Bakery Till 2" style="width:100%;">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="skipDeviceActivation()">Skip for now</button>
+                    <button class="btn btn-primary" onclick="submitDeviceActivation()">🔒 Lock This Device</button>
                 </div>
             </div>
         </div>
@@ -3240,39 +3428,32 @@
                     <div id="deviceLockSection" style="display: none;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                             <div>
-                                <h3 style="margin:0;">🔒 Device Lock</h3>
-                                <p style="margin:6px 0 0; font-size:13px; opacity:0.7;">Lock this till to a specific company. Cashiers can only log in to the locked company.</p>
+                                <h3 style="margin:0;">🔒 Device Management</h3>
+                                <p style="margin:6px 0 0; font-size:13px; opacity:0.7;">Trusted devices for this company (Workstream 82). Once a device is activated, employees only enter their PIN — no company or store selection.</p>
                             </div>
                         </div>
 
-                        <!-- Current lock status card -->
+                        <!-- This browser's own status -->
                         <div id="deviceLockStatusCard" style="border-radius:8px; padding:20px; margin-bottom:20px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05);">
-                            <div style="font-size:13px; opacity:0.6;">Checking lock status…</div>
+                            <div style="font-size:13px; opacity:0.6;">Checking this device…</div>
                         </div>
 
-                        <!-- Lock to current company -->
-                        <div style="background:rgba(59,130,246,0.1); border-radius:8px; padding:20px; margin-bottom:16px; border:1px solid rgba(59,130,246,0.3);">
-                            <h4 style="margin:0 0 10px 0; color:#60a5fa; font-size:14px;">Lock to Current Company</h4>
-                            <p style="margin:0 0 14px 0; font-size:13px; opacity:0.8;">Lock this device to <strong id="deviceLockCurrentCompanyName" style="color:#fff;"></strong>. Cashiers will only be able to log in to this company on this device.</p>
-                            <button onclick="lockDeviceToCurrentCompany()" style="background:#667eea; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔒 Lock to This Company</button>
-                        </div>
-
-                        <!-- Lock to any other company (super admin — can choose from full list) -->
-                        <div id="deviceLockOtherCompanySection" style="display:none; background:rgba(139,92,246,0.1); border-radius:8px; padding:20px; margin-bottom:16px; border:1px solid rgba(139,92,246,0.3);">
-                            <h4 style="margin:0 0 10px 0; color:#a78bfa; font-size:14px;">Lock to a Different Company</h4>
-                            <p style="margin:0 0 12px 0; font-size:13px; opacity:0.8;">You are logged in as The Infinite Legacy. Choose any company to lock this device to — you do not need to be logged into that company.</p>
-                            <select id="deviceLockCompanySelect" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(139,92,246,0.4); background:rgba(0,0,0,0.3); color:#fff; font-size:13px; margin-bottom:12px; box-sizing:border-box;">
-                                <option value="">Loading companies…</option>
-                            </select>
-                            <button onclick="lockDeviceToSelectedCompany()" style="background:#8b5cf6; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔒 Lock to Selected Company</button>
-                        </div>
-
-                        <!-- Clear lock -->
-                        <div style="background:rgba(245,158,11,0.1); border-radius:8px; padding:20px; border:1px solid rgba(245,158,11,0.3);">
-                            <h4 style="margin:0 0 10px 0; color:#f59e0b; font-size:14px;">Remove Lock</h4>
-                            <p style="margin:0 0 14px 0; font-size:13px; opacity:0.8;">Remove the device lock. Users will see the company selector when logging in.</p>
-                            <button onclick="clearDeviceLock()" style="background:transparent; color:#f59e0b; border:1px solid #f59e0b; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">🔓 Clear Device Lock</button>
-                        </div>
+                        <h4 style="margin:20px 0 10px;font-size:14px;">All Devices</h4>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead>
+                                <tr style="background:rgba(255,255,255,0.06);">
+                                    <th style="padding:8px;text-align:left;">Name</th>
+                                    <th style="padding:8px;text-align:left;">Till</th>
+                                    <th style="padding:8px;text-align:left;">Status</th>
+                                    <th style="padding:8px;text-align:left;">Last Seen</th>
+                                    <th style="padding:8px;text-align:left;">Last User</th>
+                                    <th style="padding:8px;width:220px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="deviceListBody">
+                                <tr><td colspan="6" style="text-align:center;padding:16px;opacity:0.6;">Loading devices...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -3372,25 +3553,43 @@
             </div>
         </div>
 
-        <!-- Transfer / Company Link Readiness — the relationship counts below are
-             REAL data from /api/pos/company-links (Workstream 80), never fabricated.
-             Actual stock-transfer movement itself is still not built (confirmed in
-             the Workstream 71/77 audit — no transfer_headers/transfer_items tables,
-             no routes) — that part remains an honest "not active" static message.
-             See docs/checkout-charlie-future/
-             INTER_COMPANY_CUSTOMER_SUPPLIER_LINKING.md for the architecture this
-             will plug into. -->
+        <!-- Company Links / Transfers — every count below is REAL data from
+             /api/pos/company-links and /api/pos/company-transfers (Workstream
+             80/81), never fabricated. If a company has no relationships and no
+             transfers yet, the honest empty state is shown instead of zeros
+             dressed up as a real panel. See docs/checkout-charlie-future/
+             INTER_COMPANY_CUSTOMER_SUPPLIER_LINKING.md for the architecture. -->
         <div class="enterprise-section" id="dashboardTransferSection">
             <h3>🔄 Company Links / Transfers</h3>
             <div id="dashboardCompanyLinksSummary" style="display:none;background:#f5f7fa;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;"></div>
-            <div class="empty-state">
+            <div id="dashboardTransferKPIs" class="dashboard-grid" style="display:none;margin-bottom:0;">
+                <div class="kpi-card">
+                    <div class="kpi-label">Incoming Pending</div>
+                    <div class="kpi-value" id="kpiIncomingPending">0</div>
+                    <div class="kpi-sub">awaiting your receive</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Outgoing Pending Receive</div>
+                    <div class="kpi-value" id="kpiOutgoingPending">0</div>
+                    <div class="kpi-sub">sent, not yet received</div>
+                </div>
+                <div class="kpi-card orange">
+                    <div class="kpi-label">Returns Pending</div>
+                    <div class="kpi-value" id="kpiReturnsPending">0</div>
+                    <div class="kpi-sub">awaiting your confirmation</div>
+                </div>
+                <div class="kpi-card red">
+                    <div class="kpi-label">Transfer Exceptions</div>
+                    <div class="kpi-value" id="kpiTransferExceptions">0</div>
+                    <div class="kpi-sub">rejected transfers</div>
+                </div>
+            </div>
+            <div id="dashboardTransferEmptyState" class="empty-state">
                 <div class="icon">🚧</div>
-                <p>Inter-company stock transfer is not active yet for this company.</p>
+                <p>No inter-company stock transfers yet for this company.</p>
                 <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
-                    When built, this panel will show outgoing transfers, incoming transfers awaiting acceptance,
-                    returned stock, and transfer exceptions — scoped strictly to companies this one has an
-                    explicit, mutually-confirmed trading relationship with. Company links can already be
-                    requested and approved today via Settings → Suppliers.
+                    Once a linked company has stock transfer enabled, use Stock → Send to Company to
+                    send stock, and Stock → Company Transfers to receive, reject, or return it.
                 </p>
             </div>
         </div>
@@ -4772,7 +4971,7 @@
             await initIndexedDB();
             isOnline = navigator.onLine;
             await updateOfflineBanner();
-            applyDeviceLock(); // Show device lock banner on login screen if locked
+            await checkDeviceIdentity(); // Workstream 82 — validate this device against the backend before showing any login UI
 
             // ── SSO Pickup from Ecosystem Dashboard ──
             const ssoSource = localStorage.getItem('sso_source');
@@ -5037,19 +5236,15 @@
             _pinLoginEntry    = '';
             updatePinDots();
 
-            const body = { user_identifier: username, pin: pinToSend };
-
-            if (currentCompanyId) {
-                body.company_id = currentCompanyId;
-            } else {
-                const compInput = (document.getElementById('pinCompanyInput')?.value || '').trim();
-                if (!compInput) {
-                    showNotification('Please enter your company name or ID', 'error');
-                    return;
-                }
-                if (/^\d+$/.test(compInput)) body.company_id = parseInt(compInput, 10);
-                else body.company_name = compInput;
+            // Workstream 82 — PIN login only works from a registered device; the
+            // company is always derived server-side from the device token, never
+            // sent by the client.
+            const deviceToken = localStorage.getItem('pos_device_token');
+            if (!deviceToken) {
+                showNotification('This device is not activated. Please ask a manager to log in and activate it first.', 'error');
+                return;
             }
+            const body = { user_identifier: username, pin: pinToSend, device_token: deviceToken };
 
             try {
                 const res    = await fetch(`${API_URL}/auth/pos/pin-login`, {
@@ -5068,6 +5263,17 @@
                     currentUser        = result.user;
                     completeLogin();
                 } else {
+                    if (result.device_error === 'unknown_device' || result.device_error === 'revoked') {
+                        localStorage.removeItem('pos_device_token');
+                        localStorage.removeItem('pos_locked_company_id');
+                        localStorage.removeItem('pos_locked_company_name');
+                        trustedDevice = null;
+                        pendingDeviceActivation = true;
+                        const deviceBanner = document.getElementById('deviceLockBanner');
+                        if (deviceBanner) deviceBanner.style.display = 'none';
+                        const unknownBanner = document.getElementById('unknownDeviceBanner');
+                        if (unknownBanner) unknownBanner.style.display = 'block';
+                    }
                     showNotification(result.error || 'PIN login failed', 'error');
                 }
             } catch (e) {
@@ -5251,6 +5457,12 @@
             loadProducts();
             checkSession();
             showTab('till');
+
+            // Workstream 82 — Flow 1: offer to activate this device right after a
+            // manager's first login on it, so daily logins after this need only a PIN.
+            if (pendingDeviceActivation && DEVICE_MANAGEMENT_ROLES.includes(userRole)) {
+                showDeviceActivationModal();
+            }
         }
 
         function applyRoleBasedVisibility() {
@@ -10266,7 +10478,7 @@
                 }
             }
 
-            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData, companyLinksData] = await Promise.all([
+            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData, companyLinksData, transfersIncoming, transfersOutgoing] = await Promise.all([
                 safeFetchJson(`${API_URL}/reports/gross-profit?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/till-summary?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/negative-stock?${dateParams}`),
@@ -10276,6 +10488,8 @@
                 safeFetchJson(`${API_URL}/pos/inventory/receives`),
                 safeFetchJson(`${API_URL}/pos/tills`),
                 safeFetchJson(`${API_URL}/pos/company-links`),
+                safeFetchJson(`${API_URL}/pos/company-transfers/incoming`),
+                safeFetchJson(`${API_URL}/pos/company-transfers/outgoing`),
             ]);
 
             // ── Sales / profit KPIs (real gross profit — the old hardcoded
@@ -10327,6 +10541,32 @@
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML = `<strong>${activeCount}</strong> active compan${activeCount === 1 ? 'y' : 'ies'} linked` +
                     (pendingCount > 0 ? `, <strong>${pendingCount}</strong> pending approval` : '');
+            }
+
+            // ── Inter-company stock transfers (Workstream 81) — real counts
+            // from /api/pos/company-transfers/incoming|outgoing. Empty state
+            // is shown instead of a zeroed-out KPI grid when there is truly
+            // no transfer activity at all for this company. ─────────────────
+            const incomingTransfers = transfersIncoming?.transfers || [];
+            const outgoingTransfers = transfersOutgoing?.transfers || [];
+            const hasAnyTransferActivity = incomingTransfers.length > 0 || outgoingTransfers.length > 0;
+
+            if (hasAnyTransferActivity) {
+                const incomingPending = incomingTransfers.filter(t => t.status === 'sent' || t.status === 'partially_received').length;
+                const outgoingPending = outgoingTransfers.filter(t => t.status === 'sent' || t.status === 'partially_received').length;
+                const returnsPending  = outgoingTransfers.filter(t => t.status === 'return_sent').length;
+                const exceptions      = outgoingTransfers.filter(t => t.status === 'rejected').length + incomingTransfers.filter(t => t.status === 'rejected').length;
+
+                document.getElementById('kpiIncomingPending').textContent = incomingPending;
+                document.getElementById('kpiOutgoingPending').textContent = outgoingPending;
+                document.getElementById('kpiReturnsPending').textContent = returnsPending;
+                document.getElementById('kpiTransferExceptions').textContent = exceptions;
+
+                document.getElementById('dashboardTransferKPIs').style.display = 'grid';
+                document.getElementById('dashboardTransferEmptyState').style.display = 'none';
+            } else {
+                document.getElementById('dashboardTransferKPIs').style.display = 'none';
+                document.getElementById('dashboardTransferEmptyState').style.display = 'block';
             }
 
             // ── Operational Alerts — every entry below is a real, derived
@@ -10649,12 +10889,18 @@
 
         function closeSupplierEditModal() { document.getElementById('supplierEditModal').style.display = 'none'; }
 
+        let currentLinkRelationshipId = null;
+
         function renderSupplierLinkSection(s) {
             const noneEl = document.getElementById('supplierEditLinkNone');
             const activeEl = document.getElementById('supplierEditLinkActive');
+            const permsEl = document.getElementById('supplierEditLinkPermissions');
+            currentLinkRelationshipId = s.linked_relationship_id || null;
+
             if (!s.link_status || s.link_status === 'none' || s.link_status === 'revoked') {
                 noneEl.style.display = 'block';
                 activeEl.style.display = s.link_status === 'revoked' ? 'block' : 'none';
+                permsEl.style.display = 'none';
                 document.getElementById('supplierEditLinkCode').value = '';
                 if (s.link_status === 'revoked') {
                     document.getElementById('supplierEditLinkCompanyName').textContent = `Company #${s.linked_company_id}`;
@@ -10673,7 +10919,42 @@
                 document.getElementById('supplierEditLinkStatusNote').textContent = s.link_status === 'active'
                     ? 'This relationship is confirmed. No pricing, stock, or invoice data is shared automatically — this only records that a trading relationship exists.'
                     : 'Waiting for the other company to approve this link. Nothing is shared until they do.';
+
+                if (s.link_status === 'active') {
+                    permsEl.style.display = 'block';
+                    loadCompanyLinkPermissions();
+                } else {
+                    permsEl.style.display = 'none';
+                }
             }
+        }
+
+        async function loadCompanyLinkPermissions() {
+            if (!currentLinkRelationshipId) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/company-links`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const rel = (data.relationships || []).find(r => r.id === currentLinkRelationshipId);
+                const perms = rel ? (rel.permissions || {}) : {};
+                document.getElementById('permStockTransfer').checked = !!perms.stock_transfer;
+                document.getElementById('permReceiveTransfer').checked = !!perms.receive_transfer;
+                document.getElementById('permReturnTransfer').checked = !!perms.return_transfer;
+                document.getElementById('permPricingVisible').checked = !!perms.pricing_visible;
+            } catch (e) { console.log('Load company link permissions error:', e); }
+        }
+
+        async function updateCompanyLinkPermission(key, value) {
+            if (!currentLinkRelationshipId) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/company-links/${currentLinkRelationshipId}/permissions`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ [key]: value })
+                });
+                const result = await res.json();
+                if (res.ok) showNotification('Permission updated', 'success');
+                else showNotification(result.error || 'Failed to update permission', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 
         async function saveSupplierEdit() {
@@ -11178,6 +11459,399 @@
                     showNotification(`${result.error}: ${lines}`, 'error');
                 } else {
                     showNotification(result.error || 'Return failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Workstream 81: Inter-company stock transfer (send/receive/return) ───
+
+        // ── Send Stock to Company ────────────────────────────────────────────────
+
+        async function showCompanySendModal() {
+            document.getElementById('companySendReference').value = '';
+            document.getElementById('companySendNotes').value = '';
+            document.getElementById('companySendExpectedDate').value = '';
+            document.getElementById('companySendItemsBody').innerHTML = '';
+            addCompanySendRow();
+
+            const select = document.getElementById('companySendReceiverId');
+            select.innerHTML = '<option value="">Select a linked company...</option>';
+            document.getElementById('companySendNoCompaniesState').style.display = 'none';
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/transferable-companies`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const companies = data.companies || [];
+                if (companies.length === 0) document.getElementById('companySendNoCompaniesState').style.display = 'block';
+                companies.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.company_id;
+                    opt.textContent = c.company_name;
+                    select.appendChild(opt);
+                });
+            } catch (e) { console.log('Transferable companies load error:', e); }
+
+            document.getElementById('companySendModal').style.display = 'flex';
+        }
+
+        function closeCompanySendModal() { document.getElementById('companySendModal').style.display = 'none'; }
+
+        function addCompanySendRow() {
+            const tbody = document.getElementById('companySendItemsBody');
+            const options = (products || []).map(p => `<option value="${p.id}">${p.product_name}</option>`).join('');
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #eee';
+            tr.innerHTML = `
+                <td style="padding:5px;">
+                    <select style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;">
+                        <option value="">Select product...</option>${options}
+                    </select>
+                </td>
+                <td style="padding:5px;">
+                    <input type="number" min="1" value="1" style="width:75px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                </td>
+                <td style="padding:5px;text-align:center;">
+                    <button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;line-height:1;">&times;</button>
+                </td>`;
+            tbody.appendChild(tr);
+        }
+
+        async function submitCompanySend() {
+            const receiverCompanyId = document.getElementById('companySendReceiverId').value;
+            if (!receiverCompanyId) { showNotification('Select a company to send to', 'error'); return; }
+            const reference = document.getElementById('companySendReference').value.trim();
+            const notes = document.getElementById('companySendNotes').value.trim();
+            const expected_receive_date = document.getElementById('companySendExpectedDate').value || undefined;
+
+            const items = [];
+            document.querySelectorAll('#companySendItemsBody tr').forEach(row => {
+                const sel = row.querySelector('select');
+                const qty = parseInt(row.querySelector('input[type="number"]')?.value);
+                if (sel?.value && qty > 0) items.push({ product_id: parseInt(sel.value), quantity: qty });
+            });
+            if (items.length === 0) { showNotification('Add at least one product', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ receiverCompanyId: parseInt(receiverCompanyId), items, reference: reference || undefined, notes: notes || undefined, expected_receive_date })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Stock sent — transfer ${result.transfer.transfer_number}`, 'success');
+                    closeCompanySendModal();
+                    loadProducts();
+                    loadStock();
+                } else if (result.exceeding) {
+                    const lines = result.exceeding.map(e => `${e.product_name} (requested ${e.requested}, only ${e.current_stock} in stock)`).join('; ');
+                    showNotification(`${result.error}: ${lines}`, 'error');
+                } else {
+                    showNotification(result.error || 'Send failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Company Transfers list / detail ──────────────────────────────────────
+
+        const COMPANY_TRANSFER_RETURN_REASONS = [
+            ['damaged', 'Damaged'], ['wrong_item', 'Wrong Item'], ['over_supplied', 'Over-supplied'],
+            ['expired', 'Expired'], ['not_ordered', 'Not Ordered'], ['supplier_collection', 'Supplier Collection'], ['other', 'Other'],
+        ];
+
+        let ctCurrentTab = 'incoming';
+        let ctCurrentTransfer = null; // full detail of the currently open transfer, if any
+
+        function showCompanyTransfersModal() {
+            document.getElementById('companyTransfersModal').style.display = 'flex';
+            closeCompanyTransferDetail();
+            showCompanyTransferTab('incoming', null);
+        }
+        function closeCompanyTransfersModal() { document.getElementById('companyTransfersModal').style.display = 'none'; }
+
+        function showCompanyTransferTab(tab, evt) {
+            ctCurrentTab = tab;
+            document.querySelectorAll('#companyTransfersModal .sub-tab').forEach(t => t.classList.remove('active'));
+            if (evt && evt.target) evt.target.classList.add('active');
+            document.getElementById('ctIncomingPanel').style.display = tab === 'incoming' ? 'block' : 'none';
+            document.getElementById('ctOutgoingPanel').style.display = tab === 'outgoing' ? 'block' : 'none';
+            document.getElementById('ctReturnsPanel').style.display = tab === 'returns' ? 'block' : 'none';
+            document.getElementById('ctDetailPanel').style.display = 'none';
+            if (tab === 'incoming') loadCompanyIncoming();
+            if (tab === 'outgoing') loadCompanyOutgoing();
+            if (tab === 'returns') loadCompanyReturns();
+        }
+
+        const CT_STATUS_LABEL = {
+            draft: 'Draft', sent: 'Sent', partially_received: 'Partially Received', received: 'Received',
+            rejected: 'Rejected', cancelled: 'Cancelled', return_sent: 'Return Sent', return_received: 'Return Received',
+        };
+
+        async function loadCompanyIncoming() {
+            const tbody = document.getElementById('ctIncomingBody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/incoming`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const transfers = data.transfers || [];
+                if (transfers.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No incoming transfers</td></tr>'; return; }
+                tbody.innerHTML = transfers.map(t => `
+                    <tr>
+                        <td>${t.transfer_number}</td><td>${t.sender_company_name}</td>
+                        <td>${CT_STATUS_LABEL[t.status] || t.status}</td><td style="text-align:right;">${t.item_count}</td>
+                        <td>${t.sent_at ? new Date(t.sent_at).toLocaleDateString() : '-'}</td>
+                        <td><button class="btn btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="openCompanyTransferDetail(${t.id})">View</button></td>
+                    </tr>`).join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c62828;padding:16px;">Error loading incoming transfers</td></tr>'; }
+        }
+
+        async function loadCompanyOutgoing() {
+            const tbody = document.getElementById('ctOutgoingBody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/outgoing`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const transfers = data.transfers || [];
+                if (transfers.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No outgoing transfers</td></tr>'; return; }
+                tbody.innerHTML = transfers.map(t => `
+                    <tr>
+                        <td>${t.transfer_number}</td><td>${t.receiver_company_name}</td>
+                        <td>${CT_STATUS_LABEL[t.status] || t.status}</td><td style="text-align:right;">${t.item_count}</td>
+                        <td>${t.sent_at ? new Date(t.sent_at).toLocaleDateString() : '-'}</td>
+                        <td><button class="btn btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="openCompanyTransferDetail(${t.id})">View</button></td>
+                    </tr>`).join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c62828;padding:16px;">Error loading outgoing transfers</td></tr>'; }
+        }
+
+        async function loadCompanyReturns() {
+            const confirmBody = document.getElementById('ctReturnsToConfirmBody');
+            const returnableBody = document.getElementById('ctReturnableBody');
+            confirmBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr>';
+            returnableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr>';
+            try {
+                const [outgoingRes, incomingRes] = await Promise.all([
+                    fetch(`${API_URL}/pos/company-transfers/outgoing?status=return_sent`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/pos/company-transfers/incoming`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                ]);
+                const outgoing = (await outgoingRes.json()).transfers || [];
+                const incoming = ((await incomingRes.json()).transfers || []).filter(t => t.status === 'received' || t.status === 'partially_received');
+
+                confirmBody.innerHTML = outgoing.length === 0
+                    ? '<tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">Nothing awaiting your confirmation</td></tr>'
+                    : outgoing.map(t => `
+                        <tr>
+                            <td>${t.transfer_number}</td><td>${t.receiver_company_name}</td>
+                            <td>${t.return_requested_at ? new Date(t.return_requested_at).toLocaleDateString() : '-'}</td>
+                            <td><button class="btn btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="openCompanyTransferDetail(${t.id})">Review</button></td>
+                        </tr>`).join('');
+
+                returnableBody.innerHTML = incoming.length === 0
+                    ? '<tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">No received transfers available to return items from</td></tr>'
+                    : incoming.map(t => `
+                        <tr>
+                            <td>${t.transfer_number}</td><td>${t.sender_company_name}</td>
+                            <td>${CT_STATUS_LABEL[t.status] || t.status}</td>
+                            <td><button class="btn btn-secondary" style="font-size:12px;padding:4px 8px;" onclick="openCompanyTransferDetail(${t.id})">Return Items</button></td>
+                        </tr>`).join('');
+            } catch (e) {
+                confirmBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#c62828;padding:16px;">Error loading returns</td></tr>';
+                returnableBody.innerHTML = '';
+            }
+        }
+
+        function closeCompanyTransferDetail() {
+            document.getElementById('ctDetailPanel').style.display = 'none';
+            ctCurrentTransfer = null;
+            document.getElementById('ctIncomingPanel').style.display = ctCurrentTab === 'incoming' ? 'block' : 'none';
+            document.getElementById('ctOutgoingPanel').style.display = ctCurrentTab === 'outgoing' ? 'block' : 'none';
+            document.getElementById('ctReturnsPanel').style.display = ctCurrentTab === 'returns' ? 'block' : 'none';
+        }
+
+        async function openCompanyTransferDetail(transferId) {
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/${transferId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (!res.ok) { showNotification(data.error || 'Failed to load transfer', 'error'); return; }
+                ctCurrentTransfer = data.transfer;
+            } catch (e) { showNotification('Error: ' + e.message, 'error'); return; }
+
+            document.getElementById('ctIncomingPanel').style.display = 'none';
+            document.getElementById('ctOutgoingPanel').style.display = 'none';
+            document.getElementById('ctReturnsPanel').style.display = 'none';
+            document.getElementById('ctDetailPanel').style.display = 'block';
+            renderCompanyTransferDetail();
+        }
+
+        function renderCompanyTransferDetail() {
+            const t = ctCurrentTransfer;
+            const iAmReceiver = !!t.is_receiver;
+            const iAmSender = !iAmReceiver;
+
+            document.getElementById('ctDetailNumber').textContent = t.transfer_number;
+            document.getElementById('ctDetailStatus').textContent = CT_STATUS_LABEL[t.status] || t.status;
+            document.getElementById('ctDetailParties').textContent = iAmReceiver
+                ? `From: ${t.sender_company_name || ('Company #' + t.company_id)}`
+                : `To: ${t.receiver_company_name || ('Company #' + t.receiver_company_id)}`;
+            document.getElementById('ctDetailReference').textContent = t.reference ? `Reference: ${t.reference}` : '';
+            document.getElementById('ctDetailNotes').textContent = t.notes ? `Notes: ${t.notes}` : '';
+
+            const actionColHeader = document.getElementById('ctDetailActionColHeader');
+            const canReceive = iAmReceiver && ['sent', 'partially_received'].includes(t.status);
+            const canReturn = iAmReceiver && ['received', 'partially_received'].includes(t.status);
+            actionColHeader.textContent = canReceive ? 'Receive Qty' : (canReturn ? 'Return Qty' : '');
+
+            const tbody = document.getElementById('ctDetailItemsBody');
+            tbody.innerHTML = (t.items || []).map(item => {
+                const remaining = item.quantity_sent - item.quantity_received;
+                let actionCell = '-';
+                if (canReceive && remaining > 0) {
+                    const needsMapping = !item.receiver_product_id && !(item.suggested_match && item.suggested_match.id);
+                    if (needsMapping) {
+                        const options = (products || []).map(p => `<option value="${p.id}">${p.product_name}</option>`).join('');
+                        actionCell = `<select class="ct-map-select" data-item-id="${item.id}" style="width:100%;padding:3px;border:1px solid #ddd;border-radius:4px;margin-bottom:3px;">
+                            <option value="">Match to product...</option>${options}
+                        </select>
+                        <input type="number" class="ct-recv-qty" data-item-id="${item.id}" min="0" max="${remaining}" value="0" style="width:60px;padding:3px;text-align:right;border:1px solid #ddd;border-radius:4px;">`;
+                    } else {
+                        const matchName = item.receiver_product_id ? '' : ` <span style="color:#2e7d32;font-size:11px;">(auto: ${item.suggested_match.product_name})</span>`;
+                        actionCell = `<input type="number" class="ct-recv-qty" data-item-id="${item.id}" min="0" max="${remaining}" value="${remaining}" style="width:60px;padding:3px;text-align:right;border:1px solid #ddd;border-radius:4px;">${matchName}`;
+                    }
+                } else if (canReturn && (item.quantity_received - item.quantity_returned) > 0) {
+                    const returnableQty = item.quantity_received - item.quantity_returned;
+                    const reasonOptions = COMPANY_TRANSFER_RETURN_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+                    actionCell = `<input type="number" class="ct-return-qty" data-item-id="${item.id}" min="0" max="${returnableQty}" value="0" style="width:55px;padding:3px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                        <select class="ct-return-reason" data-item-id="${item.id}" style="width:100%;padding:3px;border:1px solid #ddd;border-radius:4px;margin-top:3px;">${reasonOptions}</select>`;
+                }
+                return `
+                    <tr style="border-bottom:1px solid #eee;">
+                        <td style="padding:5px;">${item.description}</td>
+                        <td style="padding:5px;text-align:right;">${item.quantity_sent}</td>
+                        <td style="padding:5px;text-align:right;">${item.quantity_received}</td>
+                        <td style="padding:5px;text-align:right;">${item.quantity_returned}</td>
+                        <td style="padding:5px;">${actionCell}</td>
+                    </tr>`;
+            }).join('');
+
+            const actionsEl = document.getElementById('ctDetailActions');
+            const buttons = [];
+            if (canReceive) {
+                buttons.push(`<button class="btn btn-secondary" onclick="rejectCompanyTransfer()">Reject Transfer</button>`);
+                buttons.push(`<button class="btn btn-primary" onclick="receiveCompanyTransferItems()">Receive Items</button>`);
+            }
+            if (canReturn) {
+                buttons.push(`<button class="btn btn-primary" onclick="returnCompanyTransferItems()">Submit Return</button>`);
+            }
+            if (iAmSender && t.status === 'sent') {
+                buttons.push(`<button class="btn btn-secondary" onclick="cancelCompanyTransfer()">Cancel Transfer</button>`);
+            }
+            if (iAmSender && t.status === 'return_sent') {
+                buttons.push(`<button class="btn btn-primary" onclick="confirmCompanyTransferReturn()">Confirm Return Received</button>`);
+            }
+            actionsEl.innerHTML = buttons.join('');
+        }
+
+        async function receiveCompanyTransferItems() {
+            if (!ctCurrentTransfer) return;
+            const items = [];
+            document.querySelectorAll('.ct-recv-qty').forEach(input => {
+                const qty = parseInt(input.value) || 0;
+                if (qty > 0) {
+                    const itemId = parseInt(input.dataset.itemId);
+                    const mapSelect = document.querySelector(`.ct-map-select[data-item-id="${itemId}"]`);
+                    const entry = { item_id: itemId, quantity_received: qty };
+                    if (mapSelect && mapSelect.value) entry.receiver_product_id = parseInt(mapSelect.value);
+                    items.push(entry);
+                }
+            });
+            if (items.length === 0) { showNotification('Enter a quantity to receive for at least one item', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/${ctCurrentTransfer.id}/receive`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ items })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Transfer received', 'success');
+                    loadProducts(); loadStock();
+                    await openCompanyTransferDetail(ctCurrentTransfer.id);
+                } else if (result.unmapped) {
+                    const lines = result.unmapped.map(u => u.description || u.item_id).join(', ');
+                    showNotification(`${result.error}: ${lines}`, 'error');
+                } else {
+                    showNotification(result.error || 'Receive failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function rejectCompanyTransfer() {
+            if (!ctCurrentTransfer) return;
+            const reason = prompt('Reason for rejecting this transfer (optional):') || '';
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/${ctCurrentTransfer.id}/reject`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ reason })
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Transfer rejected', 'success'); closeCompanyTransferDetail(); loadCompanyIncoming(); }
+                else showNotification(result.error || 'Reject failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function cancelCompanyTransfer() {
+            if (!ctCurrentTransfer) return;
+            if (!confirm('Cancel this transfer? Your stock will be restored.')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/${ctCurrentTransfer.id}/cancel`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Transfer cancelled', 'success'); loadProducts(); loadStock(); closeCompanyTransferDetail(); loadCompanyOutgoing(); }
+                else showNotification(result.error || 'Cancel failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function returnCompanyTransferItems() {
+            if (!ctCurrentTransfer) return;
+            const items = [];
+            document.querySelectorAll('.ct-return-qty').forEach(input => {
+                const qty = parseInt(input.value) || 0;
+                if (qty > 0) {
+                    const itemId = parseInt(input.dataset.itemId);
+                    const reasonSelect = document.querySelector(`.ct-return-reason[data-item-id="${itemId}"]`);
+                    items.push({ item_id: itemId, quantity: qty, reason: reasonSelect?.value || 'other' });
+                }
+            });
+            if (items.length === 0) { showNotification('Enter a quantity to return for at least one item', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/${ctCurrentTransfer.id}/return`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ items })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Return submitted', 'success');
+                    loadProducts(); loadStock();
+                    closeCompanyTransferDetail(); loadCompanyReturns();
+                } else {
+                    showNotification(result.error || 'Return failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function confirmCompanyTransferReturn() {
+            if (!ctCurrentTransfer) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/company-transfers/${ctCurrentTransfer.id}/confirm-return`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Return receipt confirmed', 'success');
+                    loadProducts(); loadStock();
+                    closeCompanyTransferDetail(); loadCompanyReturns();
+                } else {
+                    showNotification(result.error || 'Confirm failed', 'error');
                 }
             } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
@@ -12380,27 +13054,90 @@
             }
         }
 
-        // ========== DEVICE LOCK ==========
-        // Device lock is stored in localStorage as a device UI preference (not business data).
-        // Permitted under CLAUDE.md Rule D2 — it is equivalent to a "device preference."
+        // ========== DEVICE IDENTITY (Workstream 82) ==========
+        // Backend-authoritative: pos_devices is the single source of truth.
+        // localStorage only ever caches what the backend already confirmed —
+        // pos_device_token is a minimal secure device identity token (the one
+        // CLAUDE.md Part D explicitly permits, same category as an auth/session
+        // token); pos_locked_company_id/name are a display-layer cache of that
+        // token's already-validated company, never the enforcement mechanism —
+        // every PIN login independently re-validates the device server-side
+        // regardless of what's cached here. This replaces the previous
+        // "device lock" implementation, which set these same two localStorage
+        // keys directly from a manager's UI click with NO backend check at
+        // all — spoofable by clearing/editing localStorage, since nothing
+        // server-side ever verified them. Root-caused and replaced, not
+        // patched, per Workstream 82.
+
+        let trustedDevice = null;              // { id, device_name, till_id, till_name } once validated this boot
+        let pendingDeviceActivation = false;    // true when this browser has no registered device yet
+
+        const DEVICE_MANAGEMENT_ROLES = ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin'];
+
+        async function checkDeviceIdentity() {
+            const deviceToken = localStorage.getItem('pos_device_token');
+            if (!deviceToken) {
+                pendingDeviceActivation = true;
+                const banner = document.getElementById('unknownDeviceBanner');
+                if (banner) banner.style.display = 'block';
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/auth/pos/device/validate?device_token=${encodeURIComponent(deviceToken)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    trustedDevice = data.device;
+                    pendingDeviceActivation = false;
+                    localStorage.setItem('pos_locked_company_id', String(data.company.id));
+                    localStorage.setItem('pos_locked_company_name', data.company.trading_name || data.company.company_name);
+                    currentCompanyId = data.company.id;
+                    currentCompanyName = data.company.trading_name || data.company.company_name;
+                    applyDeviceLock();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    localStorage.removeItem('pos_device_token');
+                    localStorage.removeItem('pos_locked_company_id');
+                    localStorage.removeItem('pos_locked_company_name');
+                    trustedDevice = null;
+                    pendingDeviceActivation = true;
+                    const banner = document.getElementById('unknownDeviceBanner');
+                    if (banner) banner.style.display = 'block';
+                    if (err.device_error === 'revoked') {
+                        showNotification('This device has been revoked. A manager must reactivate it.', 'error');
+                    }
+                }
+            } catch (e) {
+                // Offline at boot (Flow 8): fall back to the last confirmed company
+                // rather than forcing re-activation just because of a network blip.
+                // PIN login itself still requires a live connection — this codebase
+                // has no offline credential store, unlike the offline sales queue,
+                // which only ever runs after an already-authenticated session.
+                console.log('Device validation unreachable (offline?):', e.message);
+                const cachedId = localStorage.getItem('pos_locked_company_id');
+                const cachedName = localStorage.getItem('pos_locked_company_name');
+                if (cachedId) { currentCompanyId = parseInt(cachedId, 10); currentCompanyName = cachedName; applyDeviceLock(); }
+            }
+        }
 
         function applyDeviceLock() {
             const lockedId   = localStorage.getItem('pos_locked_company_id');
             const lockedName = localStorage.getItem('pos_locked_company_name');
             if (!lockedId) return;
 
-            // Pre-set currentCompanyId so PIN login auto-targets the locked company
             if (!currentCompanyId) currentCompanyId = parseInt(lockedId, 10);
 
-            // Show the lock banner on the login screen
+            const unknownBanner = document.getElementById('unknownDeviceBanner');
+            if (unknownBanner) unknownBanner.style.display = 'none';
+
             const banner = document.getElementById('deviceLockBanner');
             const nameEl = document.getElementById('deviceLockDisplayName');
+            const tillEl = document.getElementById('deviceLockTillName');
             if (banner && nameEl) {
                 nameEl.textContent = lockedName || ('Company #' + lockedId);
+                if (tillEl) tillEl.textContent = trustedDevice && trustedDevice.till_name ? ` — ${trustedDevice.till_name}` : '';
                 banner.style.display = 'block';
             }
 
-            // Show the company name in the PIN login section
             const pinDisplay = document.getElementById('pinCompanyDisplay');
             const pinName    = document.getElementById('pinCompanyName');
             if (pinDisplay && pinName) {
@@ -12408,107 +13145,204 @@
                 pinDisplay.style.display = 'block';
             }
 
-            // Hide the manual company entry field — not needed when device is locked
             const pinCompanyRow = document.getElementById('pinCompanyRow');
             if (pinCompanyRow) pinCompanyRow.style.display = 'none';
         }
 
-        async function loadDeviceSettings() {
-            const lockedId   = localStorage.getItem('pos_locked_company_id');
-            const lockedName = localStorage.getItem('pos_locked_company_name');
+        // ── Activate Device modal (Flow 1 second step — after manager login) ────
 
-            // Show current company name in the "lock to this company" button section
-            const ccEl = document.getElementById('deviceLockCurrentCompanyName');
-            if (ccEl) ccEl.textContent = currentCompanyName || 'this company';
-
-            const card = document.getElementById('deviceLockStatusCard');
-            if (!card) return;
-
-            if (lockedId) {
-                card.style.background = 'rgba(59,130,246,0.08)';
-                card.style.borderColor = 'rgba(59,130,246,0.3)';
-                card.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span style="font-size:28px;">🔒</span>
-                        <div>
-                            <div style="font-weight:700; font-size:15px; color:#60a5fa;">Device is Locked</div>
-                            <div style="font-size:13px; margin-top:4px; opacity:0.8;">
-                                This till is assigned to: <strong style="color:#fff;">${lockedName || 'Company #' + lockedId}</strong>
-                            </div>
-                            <div style="font-size:11px; margin-top:4px; opacity:0.5;">Cashiers cannot switch companies on this device.</div>
-                        </div>
-                    </div>`;
-            } else {
-                card.style.background = 'rgba(255,255,255,0.04)';
-                card.style.borderColor = 'rgba(255,255,255,0.1)';
-                card.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span style="font-size:28px;">🔓</span>
-                        <div>
-                            <div style="font-weight:700; font-size:15px;">Device is Unlocked</div>
-                            <div style="font-size:13px; margin-top:4px; opacity:0.7;">Users see the company selector when logging in.</div>
-                        </div>
-                    </div>`;
-            }
-
-            // Fetch all companies and show the "lock to different company" section
-            // (useful for Infinite Legacy super users who manage multiple company tills)
+        async function showDeviceActivationModal() {
+            document.getElementById('daCompanyName').textContent = currentCompanyName || 'this company';
+            const sel = document.getElementById('daTillId');
+            sel.innerHTML = '<option value="">No specific till (optional)</option>';
             try {
-                const companiesRes = await fetch(`${API_URL}/companies`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (companiesRes.ok) {
-                    const data = await companiesRes.json();
-                    const companies = (data.companies || []).filter(c => c.id != currentCompanyId);
-                    if (companies.length > 0) {
-                        const sel = document.getElementById('deviceLockCompanySelect');
-                        if (sel) {
-                            sel.innerHTML = `<option value="">— choose a company —</option>` +
-                                companies.map(c =>
-                                    `<option value="${c.id}" data-name="${(c.trading_name || c.company_name || '').replace(/"/g, '&quot;')}">${c.trading_name || c.company_name}</option>`
-                                ).join('');
-                        }
-                        const sec = document.getElementById('deviceLockOtherCompanySection');
-                        if (sec) sec.style.display = 'block';
-                    }
+                const res = await fetch(`${API_URL}/pos/tills`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    (data.tills || []).forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t.id; opt.textContent = t.till_name || t.till_number;
+                        sel.appendChild(opt);
+                    });
                 }
+            } catch (e) { /* till list is optional */ }
+            document.getElementById('daDeviceName').value = '';
+            document.getElementById('deviceActivationModal').style.display = 'flex';
+        }
+
+        function skipDeviceActivation() {
+            document.getElementById('deviceActivationModal').style.display = 'none';
+        }
+
+        async function submitDeviceActivation() {
+            const tillId = document.getElementById('daTillId').value;
+            const device_name = document.getElementById('daDeviceName').value.trim();
+            if (!device_name) { showNotification('Enter a name for this device', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/devices/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ till_id: tillId ? parseInt(tillId) : undefined, device_name, platform: navigator.platform, app_version: 'web' })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('pos_device_token', result.device_token);
+                    localStorage.setItem('pos_locked_company_id', String(currentCompanyId));
+                    localStorage.setItem('pos_locked_company_name', currentCompanyName);
+                    trustedDevice = { id: result.device.id, device_name: result.device.device_name, till_id: result.device.till_id, till_name: null };
+                    pendingDeviceActivation = false;
+                    document.getElementById('deviceActivationModal').style.display = 'none';
+                    showNotification(`Device locked: ${result.device.device_name}`, 'success');
+                    applyDeviceLock();
+                    const section = document.getElementById('deviceLockSection');
+                    if (section && section.style.display !== 'none') loadDeviceSettings();
+                } else {
+                    showNotification(result.error || 'Failed to activate device', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Device Management screen (Settings → Device Lock) ───────────────────
+
+        async function loadDeviceSettings() {
+            const card = document.getElementById('deviceLockStatusCard');
+            if (card) {
+                if (trustedDevice) {
+                    card.style.background = 'rgba(59,130,246,0.08)';
+                    card.style.borderColor = 'rgba(59,130,246,0.3)';
+                    card.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <span style="font-size:28px;">🔒</span>
+                            <div>
+                                <div style="font-weight:700; font-size:15px; color:#60a5fa;">This Device is Activated</div>
+                                <div style="font-size:13px; margin-top:4px; opacity:0.8;">Name: <strong style="color:#fff;">${trustedDevice.device_name}</strong></div>
+                                <div style="font-size:11px; margin-top:4px; opacity:0.5;">Employees on this device only need their PIN.</div>
+                            </div>
+                        </div>`;
+                } else {
+                    card.style.background = 'rgba(255,255,255,0.04)';
+                    card.style.borderColor = 'rgba(255,255,255,0.1)';
+                    card.innerHTML = `
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <span style="font-size:28px;">🔓</span>
+                                <div>
+                                    <div style="font-weight:700; font-size:15px;">This Device is Not Activated</div>
+                                    <div style="font-size:13px; margin-top:4px; opacity:0.7;">Employees see the full login screen on this device.</div>
+                                </div>
+                            </div>
+                            <button onclick="showDeviceActivationModal()" style="background:#667eea; color:#fff; border:none; border-radius:6px; padding:10px 20px; font-size:13px; font-weight:600; cursor:pointer;">Activate This Device</button>
+                        </div>`;
+                }
+            }
+
+            const tbody = document.getElementById('deviceListBody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px;opacity:0.6;">Loading devices...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/pos/devices`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const devices = data.devices || [];
+                if (devices.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px;opacity:0.6;">No devices registered yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = devices.map(d => {
+                    const statusBadge = d.status === 'active' ? '<span class="status-badge active">Active</span>' : d.status === 'revoked' ? '<span class="status-badge closed">Revoked</span>' : d.status;
+                    const lastSeen = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'Never';
+                    const lastUser = d.last_user ? (d.last_user.full_name || d.last_user.username) : '-';
+                    const tillName = d.tills ? (d.tills.till_name || d.tills.till_number) : '-';
+                    const safeName = (d.device_name || '').replace(/'/g, "\\'");
+                    const isPinLocked = (d.pin_fail_count || 0) >= 5;
+                    const unlockBtn = isPinLocked ? `<button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;background:#fff3e0;" onclick="unlockDevicePinPrompt(${d.id})">🔓 Unlock PIN</button>` : '';
+                    const actions = d.status === 'active'
+                        ? `${unlockBtn}
+                           <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="renameDevicePrompt(${d.id}, '${safeName}')">Rename</button>
+                           <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="replaceDevicePrompt(${d.id}, '${safeName}')">Replace</button>
+                           <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="revokeDevicePrompt(${d.id})">Revoke</button>`
+                        : '-';
+                    return `<tr>
+                        <td style="padding:6px;">${d.device_name}</td>
+                        <td style="padding:6px;">${tillName}</td>
+                        <td style="padding:6px;">${statusBadge}</td>
+                        <td style="padding:6px;">${lastSeen}</td>
+                        <td style="padding:6px;">${lastUser}</td>
+                        <td style="padding:6px;white-space:nowrap;">${actions}</td>
+                    </tr>`;
+                }).join('');
             } catch (e) {
-                // Not critical — section just stays hidden
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#f87171;padding:16px;">Error loading devices</td></tr>';
             }
         }
 
-        function lockDeviceToSelectedCompany() {
-            const sel = document.getElementById('deviceLockCompanySelect');
-            if (!sel || !sel.value) { showNotification('Please choose a company from the list', 'error'); return; }
-            const companyId   = sel.value;
-            const companyName = sel.selectedOptions[0]?.dataset?.name || sel.selectedOptions[0]?.textContent || 'Company';
-            if (!confirm(`Lock this device to "${companyName}"?\n\nCashiers will only be able to log in to this company.`)) return;
-            localStorage.setItem('pos_locked_company_id',   String(companyId));
-            localStorage.setItem('pos_locked_company_name', companyName);
-            showNotification(`Device locked to ${companyName}`, 'success');
-            loadDeviceSettings();
+        async function renameDevicePrompt(id, currentName) {
+            const name = prompt('New device name:', currentName);
+            if (!name || !name.trim()) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/devices/${id}/rename`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ device_name: name.trim() })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Device renamed', 'success');
+                    if (trustedDevice && trustedDevice.id === id) trustedDevice.device_name = result.device.device_name;
+                    loadDeviceSettings();
+                } else showNotification(result.error || 'Rename failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 
-        function lockDeviceToCurrentCompany() {
-            if (!currentCompanyId || !currentCompanyName) {
-                showNotification('No company context — cannot lock device', 'error');
-                return;
-            }
-            if (!confirm(`Lock this device to "${currentCompanyName}"?\n\nCashiers will only be able to log in to this company. To change the lock, a manager must log in and update it here.`)) return;
-            localStorage.setItem('pos_locked_company_id',   String(currentCompanyId));
-            localStorage.setItem('pos_locked_company_name', currentCompanyName);
-            showNotification(`Device locked to ${currentCompanyName}`, 'success');
-            loadDeviceSettings();
+        async function revokeDevicePrompt(id) {
+            if (!confirm('Revoke this device? It will immediately lose PIN login access and must be re-activated by a manager.')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/devices/${id}/revoke`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Device revoked', 'success');
+                    if (trustedDevice && trustedDevice.id === id) {
+                        localStorage.removeItem('pos_device_token');
+                        localStorage.removeItem('pos_locked_company_id');
+                        localStorage.removeItem('pos_locked_company_name');
+                        trustedDevice = null;
+                    }
+                    loadDeviceSettings();
+                } else showNotification(result.error || 'Revoke failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 
-        function clearDeviceLock() {
-            const lockedName = localStorage.getItem('pos_locked_company_name');
-            if (!lockedName) { showNotification('Device is not locked', 'info'); return; }
-            if (!confirm(`Remove the device lock (currently: "${lockedName}")?\n\nUsers will see the company selector on next login.`)) return;
-            localStorage.removeItem('pos_locked_company_id');
-            localStorage.removeItem('pos_locked_company_name');
-            showNotification('Device lock removed', 'success');
-            loadDeviceSettings();
+        async function unlockDevicePinPrompt(id) {
+            if (!confirm('Clear this device\'s PIN lockout? Employees will be able to try their PIN again immediately.')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/devices/${id}/unlock`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Device PIN lockout cleared', 'success'); loadDeviceSettings(); }
+                else showNotification(result.error || 'Unlock failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function replaceDevicePrompt(id, oldName) {
+            const name = prompt(`Replace "${oldName}" with THIS device. Enter a name for this device:`, oldName);
+            if (!name || !name.trim()) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/devices/${id}/replace`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ device_name: name.trim(), platform: navigator.platform, app_version: 'web' })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('pos_device_token', result.device_token);
+                    localStorage.setItem('pos_locked_company_id', String(currentCompanyId));
+                    localStorage.setItem('pos_locked_company_name', currentCompanyName);
+                    trustedDevice = { id: result.device.id, device_name: result.device.device_name, till_id: result.device.till_id, till_name: null };
+                    showNotification(`This device is now: ${result.device.device_name}`, 'success');
+                    applyDeviceLock();
+                    loadDeviceSettings();
+                } else showNotification(result.error || 'Replace failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 
         // ========== TILLS MANAGEMENT ==========
