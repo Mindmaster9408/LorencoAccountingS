@@ -2009,6 +2009,8 @@
                         </label>
                         <button class="btn btn-primary" onclick="showStockTakeModal()">Stock Take</button>
                         <button class="btn btn-secondary" onclick="showReceiveStockModal()">Receive Stock</button>
+                        <button class="btn btn-secondary" onclick="showSupplierReceiveModal()">Receive from Supplier</button>
+                        <button class="btn btn-secondary" onclick="showSupplierReturnModal()">Return to Supplier</button>
                         <button class="btn btn-secondary" onclick="showTransferModal()">Record Transfer</button>
                         <button class="btn btn-secondary" onclick="showStockAdjustModal()">Adjust Stock</button>
                     </div>
@@ -2251,6 +2253,142 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeTransfer()">Cancel</button>
                     <button class="btn btn-primary" onclick="submitTransfer()">Record Transfer</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manage Linked Products Modal (Workstream 78) -->
+        <div id="supplierLinkModal" class="modal-overlay">
+            <div class="modal" style="max-width:640px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Manage Linked Products — <span id="supplierLinkModalName"></span></h2>
+                    <button class="close-btn" onclick="closeSupplierLinkModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 140px);overflow-y:auto;">
+                    <input type="text" id="supplierLinkSearch" placeholder="Search products..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-bottom:10px;" oninput="renderSupplierLinkList()">
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:6px;width:28px;"></th>
+                                <th style="padding:6px;text-align:left;">Product</th>
+                                <th style="padding:6px;text-align:left;width:120px;">Supplier SKU</th>
+                                <th style="padding:6px;width:70px;">Pref.</th>
+                                <th style="padding:6px;text-align:left;width:130px;">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierLinkListBody"></tbody>
+                    </table>
+                    <p id="supplierLinkEmptyState" style="display:none;text-align:center;color:#999;padding:20px;">No products match your search.</p>
+                </div>
+                <div class="modal-footer">
+                    <span id="supplierLinkCount" style="margin-right:auto;font-size:12px;color:#666;"></span>
+                    <button class="btn btn-secondary" onclick="closeSupplierLinkModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveSupplierLinks()">Save Links</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Receive from Supplier Modal (Workstream 78) -->
+        <div id="supplierReceiveModal" class="modal-overlay">
+            <div class="modal" style="max-width:920px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Receive from Supplier</h2>
+                    <button class="close-btn" onclick="closeSupplierReceiveModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 160px);overflow-y:auto;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                        <div class="form-group">
+                            <label>Supplier *</label>
+                            <select id="supplierReceiveSupplierId" style="width:100%;" onchange="loadSupplierReceiveProducts()">
+                                <option value="">Select a supplier...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Reference (optional)</label>
+                            <input type="text" id="supplierReceiveReference" placeholder="e.g. INV-001" style="width:100%;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label>Notes (optional)</label>
+                        <input type="text" id="supplierReceiveNotes" placeholder="Additional notes..." style="width:100%;">
+                    </div>
+                    <div id="supplierReceiveNoSupplierState" style="text-align:center;color:#999;padding:30px;">Select a supplier to see their linked products.</div>
+                    <div id="supplierReceiveNoProductsState" style="display:none;text-align:center;color:#999;padding:30px;">This supplier has no linked products yet. Link products via Settings → Suppliers → Manage Linked Products.</div>
+                    <table id="supplierReceiveTable" style="display:none;width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:6px;text-align:left;">Product</th>
+                                <th style="padding:6px;text-align:left;width:90px;">Code</th>
+                                <th style="padding:6px;text-align:left;width:90px;">Supp. SKU</th>
+                                <th style="padding:6px;text-align:right;width:70px;">Stock</th>
+                                <th style="padding:6px;text-align:right;width:80px;">Last Price</th>
+                                <th style="padding:6px;text-align:right;width:90px;">New Price</th>
+                                <th style="padding:6px;text-align:center;width:34px;"></th>
+                                <th style="padding:6px;text-align:right;width:70px;">Qty</th>
+                                <th style="padding:6px;text-align:right;width:90px;">Line Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierReceiveItemsBody"></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <span id="supplierReceiveSummary" style="margin-right:auto;font-size:13px;color:#333;font-weight:600;"></span>
+                    <button class="btn btn-secondary" onclick="closeSupplierReceiveModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitSupplierReceive()">Receive Stock</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Return to Supplier Modal (Workstream 78) -->
+        <div id="supplierReturnModal" class="modal-overlay">
+            <div class="modal" style="max-width:920px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2>Return to Supplier</h2>
+                    <button class="close-btn" onclick="closeSupplierReturnModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 160px);overflow-y:auto;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                        <div class="form-group">
+                            <label>Supplier *</label>
+                            <select id="supplierReturnSupplierId" style="width:100%;" onchange="loadSupplierReturnProducts()">
+                                <option value="">Select a supplier...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Reference (optional)</label>
+                            <input type="text" id="supplierReturnReference" placeholder="e.g. RMA-001" style="width:100%;">
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-bottom:14px;">
+                        <div class="form-group" style="margin:0;">
+                            <label>Notes (optional)</label>
+                            <input type="text" id="supplierReturnNotes" placeholder="Additional notes..." style="width:100%;">
+                        </div>
+                        <label class="manager-only" style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;padding-bottom:8px;">
+                            <input type="checkbox" id="supplierReturnOverride">
+                            Allow exceeding current stock
+                        </label>
+                    </div>
+                    <div id="supplierReturnNoSupplierState" style="text-align:center;color:#999;padding:30px;">Select a supplier to see their linked products.</div>
+                    <div id="supplierReturnNoProductsState" style="display:none;text-align:center;color:#999;padding:30px;">This supplier has no linked products yet. Link products via Settings → Suppliers → Manage Linked Products.</div>
+                    <table id="supplierReturnTable" style="display:none;width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:6px;text-align:left;">Product</th>
+                                <th style="padding:6px;text-align:right;width:70px;">Stock</th>
+                                <th style="padding:6px;text-align:right;width:70px;">Qty</th>
+                                <th style="padding:6px;text-align:right;width:90px;">Unit Cost</th>
+                                <th style="padding:6px;text-align:left;width:140px;">Reason</th>
+                                <th style="padding:6px;text-align:left;">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierReturnItemsBody"></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <span id="supplierReturnSummary" style="margin-right:auto;font-size:13px;color:#333;font-weight:600;"></span>
+                    <button class="btn btn-secondary" onclick="closeSupplierReturnModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitSupplierReturn()">Return to Supplier</button>
                 </div>
             </div>
         </div>
@@ -2776,6 +2914,34 @@
                         </div>
                     </div>
 
+                    <!-- Suppliers Section (Workstream 78) -->
+                    <div id="suppliersSection" style="display: none;">
+                        <div class="products-header">
+                            <h3 style="margin:0;">Suppliers</h3>
+                            <div class="header-actions">
+                                <button class="btn btn-primary" onclick="showNewSupplierModal()">Add Supplier</button>
+                            </div>
+                        </div>
+                        <div class="products-container">
+                            <table class="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Name</th>
+                                        <th>Contact</th>
+                                        <th>Email</th>
+                                        <th>Terms</th>
+                                        <th>Linked Products</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="suppliersTableBody">
+                                    <tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">Loading suppliers...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <!-- Receipt Printers Section -->
                     <div id="receipt-printersSection" style="display: none;">
                         <div class="products-header">
@@ -3028,6 +3194,261 @@
                 </div>
             </div>
         </div>
+
+    <!-- ========== ENTERPRISE LAYOUTS ========== -->
+
+    <!-- Dashboard Layout -->
+    <!-- Workstream 77 — Enterprise Dashboard. Every card/alert below is sourced
+         from the same company-scoped, REPORTS.VIEW-gated report endpoints the
+         Reports section itself uses (built in Workstream 71) — no new backend
+         routes were needed, no duplicated query logic, and the exact same
+         permission/company-isolation boundary already proven there applies
+         here automatically. See docs/checkout-charlie-production/
+         77_ENTERPRISE_DASHBOARD_IMPLEMENTED.md for the full data-source map. -->
+    <div id="dashboardLayout" class="enterprise-layout">
+        <h1>Enterprise Dashboard</h1>
+
+        <div id="dashboardCompanyBanner" style="background:white;border-radius:10px;padding:10px 16px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);display:flex;align-items:center;gap:8px;font-size:13px;color:#666;">
+            <span>📍 Showing data for:</span>
+            <strong id="dashboardCompanyName" style="color:#333;font-size:14px;">—</strong>
+            <span style="margin-left:auto;font-size:11px;color:#999;">Figures below never include other companies</span>
+        </div>
+
+        <div class="dashboard-grid" id="dashboardKPIs">
+            <div class="kpi-card">
+                <div class="kpi-label">Today's Sales</div>
+                <div class="kpi-value" id="kpiTodaySales">R 0.00</div>
+                <div class="kpi-sub" id="kpiTodayTransactions">0 transactions</div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-label">Gross Profit</div>
+                <div class="kpi-value" id="kpiGrossProfit">R 0.00</div>
+                <div class="kpi-sub" id="kpiProfitMargin">0% margin</div>
+            </div>
+            <div class="kpi-card orange">
+                <div class="kpi-label">Avg Transaction</div>
+                <div class="kpi-value" id="kpiAvgTransaction">R 0.00</div>
+                <div class="kpi-sub" id="kpiAvgBasket">— items avg</div>
+            </div>
+            <div class="kpi-card purple">
+                <div class="kpi-label">Active Employees</div>
+                <div class="kpi-value" id="kpiActiveEmployees">0</div>
+                <div class="kpi-sub">made a sale today</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Open Till Sessions</div>
+                <div class="kpi-value" id="kpiOpenSessions">0</div>
+                <div class="kpi-sub" id="kpiOpenSessionsSub">of 0 today</div>
+            </div>
+            <div class="kpi-card orange">
+                <div class="kpi-label">Pending Cash-Ups</div>
+                <div class="kpi-value" id="kpiPendingCashups">0</div>
+                <div class="kpi-sub">closed, not yet cashed up</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-label">Cash Variance</div>
+                <div class="kpi-value" id="kpiCashVariance">0</div>
+                <div class="kpi-sub">session(s) today</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-label">Negative Stock</div>
+                <div class="kpi-value" id="kpiNegativeStock">0</div>
+                <div class="kpi-sub">product(s) below zero</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-label">Offline / Sync Issues</div>
+                <div class="kpi-value" id="kpiSyncIssues">0</div>
+                <div class="kpi-sub">unresolved today</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Supplier Receives</div>
+                <div class="kpi-value" id="kpiSupplierReceives">0</div>
+                <div class="kpi-sub">today</div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="enterprise-section">
+                <h3>⚠️ Operational Alerts</h3>
+                <div id="dashboardAlerts">
+                    <div class="empty-state"><div class="icon">&#9989;</div><p>No active alerts</p></div>
+                </div>
+            </div>
+            <div class="enterprise-section">
+                <h3>📋 Recent Activity</h3>
+                <div id="dashboardActivity">
+                    <div class="empty-state"><div class="icon">&#128196;</div><p>No recent activity</p></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="enterprise-section">
+            <h3>📦 Recent Supplier Receives</h3>
+            <div id="dashboardReceives">
+                <div class="empty-state"><div class="icon">&#128230;</div><p>No supplier receives yet</p></div>
+            </div>
+        </div>
+
+        <!-- Transfer Readiness — deliberately static, no fetch. There is no
+             stock-transfer backend yet (confirmed in the Workstream 71/77
+             audit — no transfer_headers/transfer_items tables, no routes).
+             Showing a real "not active" state rather than any placeholder
+             number. See docs/checkout-charlie-future/
+             INTER_COMPANY_STOCK_TRANSFER_AND_CLIENT_LINKING.md for the
+             architecture this will plug into. -->
+        <div class="enterprise-section" id="dashboardTransferSection">
+            <h3>🔄 Transfers / Incoming Stock</h3>
+            <div class="empty-state">
+                <div class="icon">🚧</div>
+                <p>Inter-company stock transfer is not active yet for this company.</p>
+                <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
+                    When built, this panel will show outgoing transfers, incoming transfers awaiting acceptance,
+                    returned stock, and transfer exceptions — scoped strictly to companies this one has an
+                    explicit, mutually-confirmed trading relationship with.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loyalty Layout -->
+    <div id="loyaltyLayout" class="enterprise-layout">
+        <h1>Customer Loyalty & Promotions</h1>
+        <div class="tab-sub-nav">
+            <button class="sub-tab active" onclick="showLoyaltyTab('programs', event)">Programs</button>
+            <button class="sub-tab" onclick="showLoyaltyTab('members', event)">Members</button>
+            <button class="sub-tab" onclick="showLoyaltyTab('promotions', event)">Promotions</button>
+        </div>
+
+        <div id="loyPrograms">
+            <div class="enterprise-toolbar">
+                <h3 style="margin:0;">Loyalty Programs</h3>
+                <button class="ent-btn ent-btn-primary" onclick="showNewProgramModal()">+ New Program</button>
+            </div>
+            <div class="enterprise-section">
+                <table class="enterprise-table">
+                    <thead>
+                        <tr>
+                            <th>Program Name</th>
+                            <th>Points per R1</th>
+                            <th>Point Value</th>
+                            <th>Min Redemption</th>
+                            <th>Expiry</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="loyaltyProgramsBody">
+                        <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading programs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="loyMembers" style="display:none;">
+            <div class="enterprise-toolbar">
+                <input type="text" id="loyMemberSearch" placeholder="Search members..." onkeyup="searchLoyaltyMembers()">
+                <button class="ent-btn ent-btn-primary" onclick="showEnrollCustomerModal()">+ Enroll Customer</button>
+            </div>
+            <div class="enterprise-section">
+                <table class="enterprise-table">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Loyalty #</th>
+                            <th>Program</th>
+                            <th>Tier</th>
+                            <th>Points Balance</th>
+                            <th>Lifetime Spend</th>
+                        </tr>
+                    </thead>
+                    <tbody id="loyaltyMembersBody">
+                        <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading members...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="loyPromotions" style="display:none;">
+            <div class="enterprise-toolbar">
+                <div style="display:flex;gap:10px;">
+                    <input type="text" id="promoSearch" placeholder="Search promotions...">
+                    <select id="promoFilter">
+                        <option value="">All Promotions</option>
+                        <option value="active">Active</option>
+                        <option value="upcoming">Upcoming</option>
+                        <option value="expired">Expired</option>
+                    </select>
+                </div>
+                <button class="ent-btn ent-btn-primary" onclick="showNewPromotionModal()">+ New Promotion</button>
+            </div>
+            <div class="enterprise-section">
+                <table class="enterprise-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Code</th>
+                            <th>Type</th>
+                            <th>Discount</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Usage</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="promotionsTableBody">
+                        <tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading promotions...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recovery Layout (Workstream 4A) -->
+    <div id="recoveryLayout" class="enterprise-layout">
+        <h1>Manager Recovery</h1>
+
+        <!-- Offline Queue Panel -->
+        <div class="enterprise-section">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h3 style="margin:0;">Offline Sales Queue</h3>
+                <div style="display:flex;gap:8px;">
+                    <button class="ent-btn ent-btn-primary" onclick="retryAllRetryable()">Retry All Retryable</button>
+                    <button class="ent-btn" onclick="loadRecovery()">Refresh</button>
+                </div>
+            </div>
+            <div id="recoveryQueueContainer">
+                <p style="color:#999;text-align:center;padding:20px;">Loading queue...</p>
+            </div>
+        </div>
+
+        <!-- Session Health Panel -->
+        <div class="enterprise-section">
+            <h3 style="margin-bottom:15px;">Session Health</h3>
+            <div id="recoverySessionHealth">
+                <p style="color:#999;text-align:center;padding:20px;">Loading sessions...</p>
+            </div>
+        </div>
+
+        <!-- Supervisor Override Panel -->
+        <div class="enterprise-section">
+            <h3>Supervisor Override</h3>
+            <p style="color:#666;font-size:14px;margin-bottom:15px;">Record a supervised override action. Override reason is mandatory. All overrides create an immutable audit trail.</p>
+            <div style="max-width:560px;">
+                <select id="overrideType" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:10px;">
+                    <option value="">Select override type...</option>
+                    <option value="negative_stock_manual">Allow negative stock (manual, one-off)</option>
+                    <option value="price_override">Price override</option>
+                    <option value="session_force_close">Force close abandoned session</option>
+                    <option value="queue_item_cleared">Clear unrecoverable queue item</option>
+                    <option value="other">Other</option>
+                </select>
+                <textarea id="overrideReason" class="override-reason-textarea" placeholder="Override reason (required — describe what you are overriding and why)..."></textarea>
+                <div style="margin-top:10px;">
+                    <button class="ent-btn ent-btn-primary" onclick="confirmOverride()">Record Override</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     </div>
 
     <!-- Add/Edit Product Modal -->
@@ -3695,259 +4116,6 @@
         </div>
     </div>
 
-    <!-- ========== ENTERPRISE LAYOUTS ========== -->
-
-    <!-- Dashboard Layout -->
-    <!-- Workstream 77 — Enterprise Dashboard. Every card/alert below is sourced
-         from the same company-scoped, REPORTS.VIEW-gated report endpoints the
-         Reports section itself uses (built in Workstream 71) — no new backend
-         routes were needed, no duplicated query logic, and the exact same
-         permission/company-isolation boundary already proven there applies
-         here automatically. See docs/checkout-charlie-production/
-         77_ENTERPRISE_DASHBOARD_IMPLEMENTED.md for the full data-source map. -->
-    <div id="dashboardLayout" class="enterprise-layout">
-        <h1>Enterprise Dashboard</h1>
-
-        <div id="dashboardCompanyBanner" style="background:white;border-radius:10px;padding:10px 16px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);display:flex;align-items:center;gap:8px;font-size:13px;color:#666;">
-            <span>📍 Showing data for:</span>
-            <strong id="dashboardCompanyName" style="color:#333;font-size:14px;">—</strong>
-            <span style="margin-left:auto;font-size:11px;color:#999;">Figures below never include other companies</span>
-        </div>
-
-        <div class="dashboard-grid" id="dashboardKPIs">
-            <div class="kpi-card">
-                <div class="kpi-label">Today's Sales</div>
-                <div class="kpi-value" id="kpiTodaySales">R 0.00</div>
-                <div class="kpi-sub" id="kpiTodayTransactions">0 transactions</div>
-            </div>
-            <div class="kpi-card green">
-                <div class="kpi-label">Gross Profit</div>
-                <div class="kpi-value" id="kpiGrossProfit">R 0.00</div>
-                <div class="kpi-sub" id="kpiProfitMargin">0% margin</div>
-            </div>
-            <div class="kpi-card orange">
-                <div class="kpi-label">Avg Transaction</div>
-                <div class="kpi-value" id="kpiAvgTransaction">R 0.00</div>
-                <div class="kpi-sub" id="kpiAvgBasket">— items avg</div>
-            </div>
-            <div class="kpi-card purple">
-                <div class="kpi-label">Active Employees</div>
-                <div class="kpi-value" id="kpiActiveEmployees">0</div>
-                <div class="kpi-sub">made a sale today</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Open Till Sessions</div>
-                <div class="kpi-value" id="kpiOpenSessions">0</div>
-                <div class="kpi-sub" id="kpiOpenSessionsSub">of 0 today</div>
-            </div>
-            <div class="kpi-card orange">
-                <div class="kpi-label">Pending Cash-Ups</div>
-                <div class="kpi-value" id="kpiPendingCashups">0</div>
-                <div class="kpi-sub">closed, not yet cashed up</div>
-            </div>
-            <div class="kpi-card red">
-                <div class="kpi-label">Cash Variance</div>
-                <div class="kpi-value" id="kpiCashVariance">0</div>
-                <div class="kpi-sub">session(s) today</div>
-            </div>
-            <div class="kpi-card red">
-                <div class="kpi-label">Negative Stock</div>
-                <div class="kpi-value" id="kpiNegativeStock">0</div>
-                <div class="kpi-sub">product(s) below zero</div>
-            </div>
-            <div class="kpi-card red">
-                <div class="kpi-label">Offline / Sync Issues</div>
-                <div class="kpi-value" id="kpiSyncIssues">0</div>
-                <div class="kpi-sub">unresolved today</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Supplier Receives</div>
-                <div class="kpi-value" id="kpiSupplierReceives">0</div>
-                <div class="kpi-sub">today</div>
-            </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <div class="enterprise-section">
-                <h3>⚠️ Operational Alerts</h3>
-                <div id="dashboardAlerts">
-                    <div class="empty-state"><div class="icon">&#9989;</div><p>No active alerts</p></div>
-                </div>
-            </div>
-            <div class="enterprise-section">
-                <h3>📋 Recent Activity</h3>
-                <div id="dashboardActivity">
-                    <div class="empty-state"><div class="icon">&#128196;</div><p>No recent activity</p></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="enterprise-section">
-            <h3>📦 Recent Supplier Receives</h3>
-            <div id="dashboardReceives">
-                <div class="empty-state"><div class="icon">&#128230;</div><p>No supplier receives yet</p></div>
-            </div>
-        </div>
-
-        <!-- Transfer Readiness — deliberately static, no fetch. There is no
-             stock-transfer backend yet (confirmed in the Workstream 71/77
-             audit — no transfer_headers/transfer_items tables, no routes).
-             Showing a real "not active" state rather than any placeholder
-             number. See docs/checkout-charlie-future/
-             INTER_COMPANY_STOCK_TRANSFER_AND_CLIENT_LINKING.md for the
-             architecture this will plug into. -->
-        <div class="enterprise-section" id="dashboardTransferSection">
-            <h3>🔄 Transfers / Incoming Stock</h3>
-            <div class="empty-state">
-                <div class="icon">🚧</div>
-                <p>Inter-company stock transfer is not active yet for this company.</p>
-                <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
-                    When built, this panel will show outgoing transfers, incoming transfers awaiting acceptance,
-                    returned stock, and transfer exceptions — scoped strictly to companies this one has an
-                    explicit, mutually-confirmed trading relationship with.
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Loyalty Layout -->
-    <div id="loyaltyLayout" class="enterprise-layout">
-        <h1>Customer Loyalty & Promotions</h1>
-        <div class="tab-sub-nav">
-            <button class="sub-tab active" onclick="showLoyaltyTab('programs', event)">Programs</button>
-            <button class="sub-tab" onclick="showLoyaltyTab('members', event)">Members</button>
-            <button class="sub-tab" onclick="showLoyaltyTab('promotions', event)">Promotions</button>
-        </div>
-
-        <div id="loyPrograms">
-            <div class="enterprise-toolbar">
-                <h3 style="margin:0;">Loyalty Programs</h3>
-                <button class="ent-btn ent-btn-primary" onclick="showNewProgramModal()">+ New Program</button>
-            </div>
-            <div class="enterprise-section">
-                <table class="enterprise-table">
-                    <thead>
-                        <tr>
-                            <th>Program Name</th>
-                            <th>Points per R1</th>
-                            <th>Point Value</th>
-                            <th>Min Redemption</th>
-                            <th>Expiry</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="loyaltyProgramsBody">
-                        <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading programs...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div id="loyMembers" style="display:none;">
-            <div class="enterprise-toolbar">
-                <input type="text" id="loyMemberSearch" placeholder="Search members..." onkeyup="searchLoyaltyMembers()">
-                <button class="ent-btn ent-btn-primary" onclick="showEnrollCustomerModal()">+ Enroll Customer</button>
-            </div>
-            <div class="enterprise-section">
-                <table class="enterprise-table">
-                    <thead>
-                        <tr>
-                            <th>Customer</th>
-                            <th>Loyalty #</th>
-                            <th>Program</th>
-                            <th>Tier</th>
-                            <th>Points Balance</th>
-                            <th>Lifetime Spend</th>
-                        </tr>
-                    </thead>
-                    <tbody id="loyaltyMembersBody">
-                        <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading members...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div id="loyPromotions" style="display:none;">
-            <div class="enterprise-toolbar">
-                <div style="display:flex;gap:10px;">
-                    <input type="text" id="promoSearch" placeholder="Search promotions...">
-                    <select id="promoFilter">
-                        <option value="">All Promotions</option>
-                        <option value="active">Active</option>
-                        <option value="upcoming">Upcoming</option>
-                        <option value="expired">Expired</option>
-                    </select>
-                </div>
-                <button class="ent-btn ent-btn-primary" onclick="showNewPromotionModal()">+ New Promotion</button>
-            </div>
-            <div class="enterprise-section">
-                <table class="enterprise-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Code</th>
-                            <th>Type</th>
-                            <th>Discount</th>
-                            <th>Start</th>
-                            <th>End</th>
-                            <th>Usage</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="promotionsTableBody">
-                        <tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading promotions...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Recovery Layout (Workstream 4A) -->
-    <div id="recoveryLayout" class="enterprise-layout">
-        <h1>Manager Recovery</h1>
-
-        <!-- Offline Queue Panel -->
-        <div class="enterprise-section">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                <h3 style="margin:0;">Offline Sales Queue</h3>
-                <div style="display:flex;gap:8px;">
-                    <button class="ent-btn ent-btn-primary" onclick="retryAllRetryable()">Retry All Retryable</button>
-                    <button class="ent-btn" onclick="loadRecovery()">Refresh</button>
-                </div>
-            </div>
-            <div id="recoveryQueueContainer">
-                <p style="color:#999;text-align:center;padding:20px;">Loading queue...</p>
-            </div>
-        </div>
-
-        <!-- Session Health Panel -->
-        <div class="enterprise-section">
-            <h3 style="margin-bottom:15px;">Session Health</h3>
-            <div id="recoverySessionHealth">
-                <p style="color:#999;text-align:center;padding:20px;">Loading sessions...</p>
-            </div>
-        </div>
-
-        <!-- Supervisor Override Panel -->
-        <div class="enterprise-section">
-            <h3>Supervisor Override</h3>
-            <p style="color:#666;font-size:14px;margin-bottom:15px;">Record a supervised override action. Override reason is mandatory. All overrides create an immutable audit trail.</p>
-            <div style="max-width:560px;">
-                <select id="overrideType" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:10px;">
-                    <option value="">Select override type...</option>
-                    <option value="negative_stock_manual">Allow negative stock (manual, one-off)</option>
-                    <option value="price_override">Price override</option>
-                    <option value="session_force_close">Force close abandoned session</option>
-                    <option value="queue_item_cleared">Clear unrecoverable queue item</option>
-                    <option value="other">Other</option>
-                </select>
-                <textarea id="overrideReason" class="override-reason-textarea" placeholder="Override reason (required — describe what you are overriding and why)..."></textarea>
-                <div style="margin-top:10px;">
-                    <button class="ent-btn ent-btn-primary" onclick="confirmOverride()">Record Override</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Notification -->
     <div id="notification" class="notification"></div>
@@ -10281,6 +10449,443 @@
         function showNewTransferModal() { showNotification('Transfer creation coming soon', 'info'); }
         function showNewPOModal() { showNotification('PO creation coming soon', 'info'); }
         function showNewSupplierModal() { showNotification('Supplier creation coming soon', 'info'); }
+
+        // ── Workstream 78: Supplier-linked products + receive/return price tracking ─
+        // Real suppliers live under /api/pos/suppliers (the plain /api/suppliers used
+        // by loadSuppliers() above is a legacy always-empty stub in server.js — do not
+        // reuse it here).
+
+        let cachedSuppliersList = [];
+
+        async function loadSettingsSuppliers() {
+            const tbody = document.getElementById('suppliersTableBody');
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">Loading suppliers...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                cachedSuppliersList = data.suppliers || [];
+                if (cachedSuppliersList.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">No suppliers yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = cachedSuppliersList.map(s => `
+                    <tr>
+                        <td>${s.supplier_code || '-'}</td>
+                        <td>${s.supplier_name || s.name || '-'}</td>
+                        <td>${s.contact_name || '-'}</td>
+                        <td>${s.contact_email || s.email || '-'}</td>
+                        <td>${s.payment_terms != null ? s.payment_terms : 30} days</td>
+                        <td><button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openSupplierLinkModal(${s.id})">Manage Linked Products</button></td>
+                        <td>-</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.log('Suppliers load error:', e);
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#c62828;padding:20px;">Error loading suppliers</td></tr>';
+            }
+        }
+
+        // ── Manage Linked Products modal ─────────────────────────────────────────
+
+        let supplierLinkModalSupplierId = null;
+        let supplierLinkSelections = new Map(); // product_id -> { selected, supplier_sku, preferred_supplier, notes }
+
+        async function openSupplierLinkModal(supplierId) {
+            const supplier = cachedSuppliersList.find(s => s.id === supplierId);
+            supplierLinkModalSupplierId = supplierId;
+            document.getElementById('supplierLinkModalName').textContent = supplier ? (supplier.supplier_name || supplier.name) : '';
+            document.getElementById('supplierLinkSearch').value = '';
+            supplierLinkSelections = new Map();
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/products`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                (data.products || []).forEach(p => {
+                    supplierLinkSelections.set(p.id, {
+                        selected:            true,
+                        supplier_sku:        p.supplier_sku || '',
+                        preferred_supplier:  !!p.preferred_supplier,
+                        notes:               p.notes || '',
+                    });
+                });
+            } catch (e) {
+                console.log('Load linked products error:', e);
+            }
+            document.getElementById('supplierLinkModal').style.display = 'flex';
+            renderSupplierLinkList();
+        }
+
+        function closeSupplierLinkModal() {
+            document.getElementById('supplierLinkModal').style.display = 'none';
+            supplierLinkModalSupplierId = null;
+        }
+
+        function renderSupplierLinkList() {
+            const search = (document.getElementById('supplierLinkSearch').value || '').toLowerCase();
+            const filtered = (products || []).filter(p => (p.product_name || '').toLowerCase().includes(search));
+            const tbody = document.getElementById('supplierLinkListBody');
+            document.getElementById('supplierLinkEmptyState').style.display = filtered.length === 0 ? 'block' : 'none';
+
+            tbody.innerHTML = filtered.map(p => {
+                const sel = supplierLinkSelections.get(p.id) || { selected: false, supplier_sku: '', preferred_supplier: false, notes: '' };
+                return `
+                    <tr style="border-bottom:1px solid #eee;">
+                        <td style="padding:5px;text-align:center;">
+                            <input type="checkbox" ${sel.selected ? 'checked' : ''} onchange="updateSupplierLinkField(${p.id}, 'selected', this.checked)">
+                        </td>
+                        <td style="padding:5px;">${p.product_name}</td>
+                        <td style="padding:5px;"><input type="text" value="${sel.supplier_sku}" placeholder="optional" style="width:100%;padding:3px;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierLinkField(${p.id}, 'supplier_sku', this.value)"></td>
+                        <td style="padding:5px;text-align:center;"><input type="checkbox" ${sel.preferred_supplier ? 'checked' : ''} onchange="updateSupplierLinkField(${p.id}, 'preferred_supplier', this.checked)"></td>
+                        <td style="padding:5px;"><input type="text" value="${sel.notes}" placeholder="optional" style="width:100%;padding:3px;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierLinkField(${p.id}, 'notes', this.value)"></td>
+                    </tr>`;
+            }).join('');
+
+            const selectedCount = [...supplierLinkSelections.values()].filter(v => v.selected).length;
+            document.getElementById('supplierLinkCount').textContent = `${selectedCount} product(s) linked`;
+        }
+
+        function updateSupplierLinkField(productId, field, value) {
+            const existing = supplierLinkSelections.get(productId) || { selected: false, supplier_sku: '', preferred_supplier: false, notes: '' };
+            existing[field] = value;
+            supplierLinkSelections.set(productId, existing);
+            if (field === 'selected') {
+                document.getElementById('supplierLinkCount').textContent = `${[...supplierLinkSelections.values()].filter(v => v.selected).length} product(s) linked`;
+            }
+        }
+
+        async function saveSupplierLinks() {
+            if (!supplierLinkModalSupplierId) return;
+            const links = [...supplierLinkSelections.entries()]
+                .filter(([, v]) => v.selected)
+                .map(([product_id, v]) => ({ product_id, supplier_sku: v.supplier_sku || null, preferred_supplier: !!v.preferred_supplier, notes: v.notes || null }));
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierLinkModalSupplierId}/products`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ links })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Linked products saved — ${links.length} product(s) linked`, 'success');
+                    closeSupplierLinkModal();
+                } else {
+                    showNotification(result.error || 'Failed to save links', 'error');
+                }
+            } catch (err) {
+                showNotification('Error: ' + err.message, 'error');
+            }
+        }
+
+        // ── Receive from Supplier modal ──────────────────────────────────────────
+
+        let supplierReceiveProducts = [];
+
+        async function showSupplierReceiveModal() {
+            document.getElementById('supplierReceiveReference').value = '';
+            document.getElementById('supplierReceiveNotes').value = '';
+            document.getElementById('supplierReceiveTable').style.display = 'none';
+            document.getElementById('supplierReceiveNoProductsState').style.display = 'none';
+            document.getElementById('supplierReceiveNoSupplierState').style.display = 'block';
+            document.getElementById('supplierReceiveSummary').textContent = '';
+            supplierReceiveProducts = [];
+
+            const select = document.getElementById('supplierReceiveSupplierId');
+            select.innerHTML = '<option value="">Select a supplier...</option>';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                cachedSuppliersList = data.suppliers || [];
+                cachedSuppliersList.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.supplier_name || s.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) { console.log('Suppliers load error:', e); }
+
+            document.getElementById('supplierReceiveModal').style.display = 'flex';
+        }
+
+        function closeSupplierReceiveModal() { document.getElementById('supplierReceiveModal').style.display = 'none'; }
+
+        async function loadSupplierReceiveProducts() {
+            const supplierId = document.getElementById('supplierReceiveSupplierId').value;
+            const table = document.getElementById('supplierReceiveTable');
+            const noSupplierState = document.getElementById('supplierReceiveNoSupplierState');
+            const noProductsState = document.getElementById('supplierReceiveNoProductsState');
+            if (!supplierId) {
+                table.style.display = 'none'; noProductsState.style.display = 'none'; noSupplierState.style.display = 'block';
+                document.getElementById('supplierReceiveSummary').textContent = '';
+                return;
+            }
+            noSupplierState.style.display = 'none';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/products`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                supplierReceiveProducts = data.products || [];
+                if (supplierReceiveProducts.length === 0) {
+                    table.style.display = 'none'; noProductsState.style.display = 'block';
+                    document.getElementById('supplierReceiveSummary').textContent = '';
+                    return;
+                }
+                noProductsState.style.display = 'none'; table.style.display = 'table';
+                const tbody = document.getElementById('supplierReceiveItemsBody');
+                tbody.innerHTML = supplierReceiveProducts.map(p => `
+                    <tr style="border-bottom:1px solid #eee;" data-product-id="${p.id}">
+                        <td style="padding:5px;">${p.product_name}</td>
+                        <td style="padding:5px;">${p.product_code || p.barcode || '-'}</td>
+                        <td style="padding:5px;">${p.supplier_sku || '-'}</td>
+                        <td style="padding:5px;text-align:right;">${parseFloat(p.stock_quantity || 0)}</td>
+                        <td style="padding:5px;text-align:right;">${p.last_purchase_price != null ? 'R ' + parseFloat(p.last_purchase_price).toFixed(2) : '-'}</td>
+                        <td style="padding:5px;">
+                            <input type="number" min="0" step="0.01" class="sr-price" value="${p.last_purchase_price != null ? parseFloat(p.last_purchase_price).toFixed(2) : ''}" placeholder="0.00" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierReceiveRow(${p.id})">
+                        </td>
+                        <td style="padding:5px;text-align:center;" class="sr-indicator"></td>
+                        <td style="padding:5px;">
+                            <input type="number" min="0" value="0" class="sr-qty" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierReceiveRow(${p.id})">
+                        </td>
+                        <td style="padding:5px;text-align:right;" class="sr-line-total">R 0.00</td>
+                    </tr>`).join('');
+                supplierReceiveProducts.forEach(p => updateSupplierReceiveRow(p.id));
+            } catch (e) {
+                console.log('Supplier products load error:', e);
+                table.style.display = 'none'; noProductsState.style.display = 'block';
+            }
+        }
+
+        function updateSupplierReceiveRow(productId) {
+            const row = document.querySelector(`#supplierReceiveItemsBody tr[data-product-id="${productId}"]`);
+            if (!row) return;
+            const product = supplierReceiveProducts.find(p => p.id === productId);
+            const priceInput    = row.querySelector('.sr-price');
+            const qtyInput      = row.querySelector('.sr-qty');
+            const indicatorCell = row.querySelector('.sr-indicator');
+            const lineTotalCell = row.querySelector('.sr-line-total');
+
+            const newPrice  = parseFloat(priceInput.value);
+            const qty       = parseInt(qtyInput.value) || 0;
+            const lastPrice = product && product.last_purchase_price != null ? parseFloat(product.last_purchase_price) : null;
+
+            if (!isNaN(newPrice) && lastPrice != null) {
+                if (newPrice > lastPrice)      indicatorCell.innerHTML = '<span style="color:#c62828;font-weight:bold;">▲</span>';
+                else if (newPrice < lastPrice) indicatorCell.innerHTML = '<span style="color:#2e7d32;font-weight:bold;">▼</span>';
+                else                            indicatorCell.innerHTML = '<span style="color:#999;">–</span>';
+            } else {
+                indicatorCell.innerHTML = '';
+            }
+
+            const lineTotal = (!isNaN(newPrice) ? newPrice : 0) * qty;
+            lineTotalCell.textContent = 'R ' + lineTotal.toFixed(2);
+
+            updateSupplierReceiveSummary();
+        }
+
+        function updateSupplierReceiveSummary() {
+            let itemCount = 0, totalQty = 0, totalValue = 0;
+            document.querySelectorAll('#supplierReceiveItemsBody tr').forEach(row => {
+                const qty = parseInt(row.querySelector('.sr-qty')?.value) || 0;
+                if (qty > 0) {
+                    itemCount++;
+                    totalQty += qty;
+                    const price = parseFloat(row.querySelector('.sr-price')?.value);
+                    totalValue += (!isNaN(price) ? price : 0) * qty;
+                }
+            });
+            document.getElementById('supplierReceiveSummary').textContent =
+                itemCount > 0 ? `${itemCount} product(s) · ${totalQty} unit(s) · R ${totalValue.toFixed(2)}` : '';
+        }
+
+        async function submitSupplierReceive() {
+            const supplierId = document.getElementById('supplierReceiveSupplierId').value;
+            if (!supplierId) { showNotification('Please select a supplier', 'error'); return; }
+            const supplier  = cachedSuppliersList.find(s => s.id === parseInt(supplierId));
+            const reference = document.getElementById('supplierReceiveReference').value.trim();
+            const notes     = document.getElementById('supplierReceiveNotes').value.trim();
+
+            const items = [];
+            document.querySelectorAll('#supplierReceiveItemsBody tr').forEach(row => {
+                const pid = parseInt(row.dataset.productId);
+                const qty = parseInt(row.querySelector('.sr-qty')?.value) || 0;
+                if (qty > 0) {
+                    const price = row.querySelector('.sr-price')?.value;
+                    items.push({ product_id: pid, quantity: qty, cost_price: price ? parseFloat(price) : null });
+                }
+            });
+            if (items.length === 0) { showNotification('Enter a quantity for at least one product', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/inventory/receive`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        supplier_name: supplier ? (supplier.supplier_name || supplier.name) : 'Unknown Supplier',
+                        supplier_id:   parseInt(supplierId),
+                        reference:     reference || undefined,
+                        notes:         notes || undefined,
+                        items
+                    })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Stock received — ${items.length} product(s)`, 'success');
+                    closeSupplierReceiveModal();
+                    loadProducts();
+                    loadStock();
+                } else {
+                    showNotification(result.error || 'Receive failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Return to Supplier modal ─────────────────────────────────────────────
+
+        let supplierReturnProducts = [];
+        const SUPPLIER_RETURN_REASONS = [
+            ['damaged', 'Damaged'],
+            ['expired', 'Expired'],
+            ['wrong_item', 'Wrong Item'],
+            ['over_supplied', 'Over-supplied'],
+            ['credit_requested', 'Credit Requested'],
+            ['supplier_collection', 'Supplier Collection'],
+            ['other', 'Other'],
+        ];
+
+        async function showSupplierReturnModal() {
+            document.getElementById('supplierReturnReference').value = '';
+            document.getElementById('supplierReturnNotes').value = '';
+            document.getElementById('supplierReturnOverride').checked = false;
+            document.getElementById('supplierReturnTable').style.display = 'none';
+            document.getElementById('supplierReturnNoProductsState').style.display = 'none';
+            document.getElementById('supplierReturnNoSupplierState').style.display = 'block';
+            document.getElementById('supplierReturnSummary').textContent = '';
+            supplierReturnProducts = [];
+
+            const select = document.getElementById('supplierReturnSupplierId');
+            select.innerHTML = '<option value="">Select a supplier...</option>';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                cachedSuppliersList = data.suppliers || [];
+                cachedSuppliersList.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.supplier_name || s.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) { console.log('Suppliers load error:', e); }
+
+            document.getElementById('supplierReturnModal').style.display = 'flex';
+        }
+
+        function closeSupplierReturnModal() { document.getElementById('supplierReturnModal').style.display = 'none'; }
+
+        async function loadSupplierReturnProducts() {
+            const supplierId = document.getElementById('supplierReturnSupplierId').value;
+            const table = document.getElementById('supplierReturnTable');
+            const noSupplierState = document.getElementById('supplierReturnNoSupplierState');
+            const noProductsState = document.getElementById('supplierReturnNoProductsState');
+            if (!supplierId) {
+                table.style.display = 'none'; noProductsState.style.display = 'none'; noSupplierState.style.display = 'block';
+                document.getElementById('supplierReturnSummary').textContent = '';
+                return;
+            }
+            noSupplierState.style.display = 'none';
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/products`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                supplierReturnProducts = data.products || [];
+                if (supplierReturnProducts.length === 0) {
+                    table.style.display = 'none'; noProductsState.style.display = 'block';
+                    document.getElementById('supplierReturnSummary').textContent = '';
+                    return;
+                }
+                noProductsState.style.display = 'none'; table.style.display = 'table';
+                const reasonOptions = SUPPLIER_RETURN_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+                const tbody = document.getElementById('supplierReturnItemsBody');
+                tbody.innerHTML = supplierReturnProducts.map(p => `
+                    <tr style="border-bottom:1px solid #eee;" data-product-id="${p.id}">
+                        <td style="padding:5px;">${p.product_name}</td>
+                        <td style="padding:5px;text-align:right;">${parseFloat(p.stock_quantity || 0)}</td>
+                        <td style="padding:5px;">
+                            <input type="number" min="0" value="0" class="srt-qty" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierReturnSummary()">
+                        </td>
+                        <td style="padding:5px;">
+                            <input type="number" min="0" step="0.01" class="srt-cost" value="${p.last_purchase_price != null ? parseFloat(p.last_purchase_price).toFixed(2) : ''}" placeholder="0.00" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                        </td>
+                        <td style="padding:5px;">
+                            <select class="srt-reason" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;">${reasonOptions}</select>
+                        </td>
+                        <td style="padding:5px;">
+                            <input type="text" class="srt-notes" placeholder="optional" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;">
+                        </td>
+                    </tr>`).join('');
+            } catch (e) {
+                console.log('Supplier products load error:', e);
+                table.style.display = 'none'; noProductsState.style.display = 'block';
+            }
+        }
+
+        function updateSupplierReturnSummary() {
+            let itemCount = 0, totalQty = 0;
+            document.querySelectorAll('#supplierReturnItemsBody tr').forEach(row => {
+                const qty = parseInt(row.querySelector('.srt-qty')?.value) || 0;
+                if (qty > 0) { itemCount++; totalQty += qty; }
+            });
+            document.getElementById('supplierReturnSummary').textContent =
+                itemCount > 0 ? `${itemCount} product(s) · ${totalQty} unit(s) to return` : '';
+        }
+
+        async function submitSupplierReturn() {
+            const supplierId = document.getElementById('supplierReturnSupplierId').value;
+            if (!supplierId) { showNotification('Please select a supplier', 'error'); return; }
+            const supplier  = cachedSuppliersList.find(s => s.id === parseInt(supplierId));
+            const reference = document.getElementById('supplierReturnReference').value.trim();
+            const notes     = document.getElementById('supplierReturnNotes').value.trim();
+            const override  = document.getElementById('supplierReturnOverride').checked;
+
+            const items = [];
+            document.querySelectorAll('#supplierReturnItemsBody tr').forEach(row => {
+                const pid = parseInt(row.dataset.productId);
+                const qty = parseInt(row.querySelector('.srt-qty')?.value) || 0;
+                if (qty > 0) {
+                    const cost = row.querySelector('.srt-cost')?.value;
+                    items.push({
+                        product_id: pid,
+                        quantity:   qty,
+                        unit_cost:  cost ? parseFloat(cost) : null,
+                        reason:     row.querySelector('.srt-reason')?.value || 'other',
+                        notes:      row.querySelector('.srt-notes')?.value.trim() || null,
+                    });
+                }
+            });
+            if (items.length === 0) { showNotification('Enter a quantity for at least one product', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/inventory/return`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        supplier_name: supplier ? (supplier.supplier_name || supplier.name) : 'Unknown Supplier',
+                        supplier_id:   parseInt(supplierId),
+                        reference:     reference || undefined,
+                        notes:         notes || undefined,
+                        override,
+                        items
+                    })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Return recorded — ${items.length} product(s)`, 'success');
+                    closeSupplierReturnModal();
+                    loadProducts();
+                    loadStock();
+                } else if (result.exceeding) {
+                    const lines = result.exceeding.map(e => `${e.product_name} (requested ${e.requested}, only ${e.current_stock} in stock)`).join('; ');
+                    showNotification(`${result.error}: ${lines}`, 'error');
+                } else {
+                    showNotification(result.error || 'Return failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
 
         // Employees
         async function loadEmployees() {
