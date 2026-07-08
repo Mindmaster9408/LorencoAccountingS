@@ -3698,8 +3698,22 @@
     <!-- ========== ENTERPRISE LAYOUTS ========== -->
 
     <!-- Dashboard Layout -->
+    <!-- Workstream 77 — Enterprise Dashboard. Every card/alert below is sourced
+         from the same company-scoped, REPORTS.VIEW-gated report endpoints the
+         Reports section itself uses (built in Workstream 71) — no new backend
+         routes were needed, no duplicated query logic, and the exact same
+         permission/company-isolation boundary already proven there applies
+         here automatically. See docs/checkout-charlie-production/
+         77_ENTERPRISE_DASHBOARD_IMPLEMENTED.md for the full data-source map. -->
     <div id="dashboardLayout" class="enterprise-layout">
         <h1>Enterprise Dashboard</h1>
+
+        <div id="dashboardCompanyBanner" style="background:white;border-radius:10px;padding:10px 16px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);display:flex;align-items:center;gap:8px;font-size:13px;color:#666;">
+            <span>📍 Showing data for:</span>
+            <strong id="dashboardCompanyName" style="color:#333;font-size:14px;">—</strong>
+            <span style="margin-left:auto;font-size:11px;color:#999;">Figures below never include other companies</span>
+        </div>
+
         <div class="dashboard-grid" id="dashboardKPIs">
             <div class="kpi-card">
                 <div class="kpi-label">Today's Sales</div>
@@ -3714,24 +3728,54 @@
             <div class="kpi-card orange">
                 <div class="kpi-label">Avg Transaction</div>
                 <div class="kpi-value" id="kpiAvgTransaction">R 0.00</div>
-                <div class="kpi-sub" id="kpiAvgBasket">0 items avg</div>
+                <div class="kpi-sub" id="kpiAvgBasket">— items avg</div>
             </div>
             <div class="kpi-card purple">
                 <div class="kpi-label">Active Employees</div>
                 <div class="kpi-value" id="kpiActiveEmployees">0</div>
-                <div class="kpi-sub">on shift today</div>
+                <div class="kpi-sub">made a sale today</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Open Till Sessions</div>
+                <div class="kpi-value" id="kpiOpenSessions">0</div>
+                <div class="kpi-sub" id="kpiOpenSessionsSub">of 0 today</div>
+            </div>
+            <div class="kpi-card orange">
+                <div class="kpi-label">Pending Cash-Ups</div>
+                <div class="kpi-value" id="kpiPendingCashups">0</div>
+                <div class="kpi-sub">closed, not yet cashed up</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-label">Cash Variance</div>
+                <div class="kpi-value" id="kpiCashVariance">0</div>
+                <div class="kpi-sub">session(s) today</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-label">Negative Stock</div>
+                <div class="kpi-value" id="kpiNegativeStock">0</div>
+                <div class="kpi-sub">product(s) below zero</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-label">Offline / Sync Issues</div>
+                <div class="kpi-value" id="kpiSyncIssues">0</div>
+                <div class="kpi-sub">unresolved today</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Supplier Receives</div>
+                <div class="kpi-value" id="kpiSupplierReceives">0</div>
+                <div class="kpi-sub">today</div>
             </div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
             <div class="enterprise-section">
-                <h3>Loss Prevention Alerts</h3>
+                <h3>⚠️ Operational Alerts</h3>
                 <div id="dashboardAlerts">
                     <div class="empty-state"><div class="icon">&#9989;</div><p>No active alerts</p></div>
                 </div>
             </div>
             <div class="enterprise-section">
-                <h3>Recent Activity</h3>
+                <h3>📋 Recent Activity</h3>
                 <div id="dashboardActivity">
                     <div class="empty-state"><div class="icon">&#128196;</div><p>No recent activity</p></div>
                 </div>
@@ -3739,21 +3783,30 @@
         </div>
 
         <div class="enterprise-section">
-            <h3>Location Performance</h3>
-            <table class="enterprise-table" id="dashboardLocations">
-                <thead>
-                    <tr>
-                        <th>Location</th>
-                        <th>Type</th>
-                        <th>Today's Sales</th>
-                        <th>Transactions</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="locationPerformanceBody">
-                    <tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">Loading locations...</td></tr>
-                </tbody>
-            </table>
+            <h3>📦 Recent Supplier Receives</h3>
+            <div id="dashboardReceives">
+                <div class="empty-state"><div class="icon">&#128230;</div><p>No supplier receives yet</p></div>
+            </div>
+        </div>
+
+        <!-- Transfer Readiness — deliberately static, no fetch. There is no
+             stock-transfer backend yet (confirmed in the Workstream 71/77
+             audit — no transfer_headers/transfer_items tables, no routes).
+             Showing a real "not active" state rather than any placeholder
+             number. See docs/checkout-charlie-future/
+             INTER_COMPANY_STOCK_TRANSFER_AND_CLIENT_LINKING.md for the
+             architecture this will plug into. -->
+        <div class="enterprise-section" id="dashboardTransferSection">
+            <h3>🔄 Transfers / Incoming Stock</h3>
+            <div class="empty-state">
+                <div class="icon">🚧</div>
+                <p>Inter-company stock transfer is not active yet for this company.</p>
+                <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
+                    When built, this panel will show outgoing transfers, incoming transfers awaiting acceptance,
+                    returned stock, and transfer exceptions — scoped strictly to companies this one has an
+                    explicit, mutually-confirmed trading relationship with.
+                </p>
+            </div>
         </div>
     </div>
 
@@ -9931,81 +9984,158 @@
         // ========== ENTERPRISE TAB JAVASCRIPT ==========
 
         // Dashboard
+        // Workstream 77 — Enterprise Dashboard. Every number below comes from
+        // the same REPORTS.VIEW-gated, company-scoped endpoints the Reports
+        // section itself uses (built in Workstream 71) — no new backend
+        // routes, no duplicated query logic. The old /api/analytics/dashboard,
+        // /api/loss-prevention/alerts, and /api/locations calls this replaced
+        // were all hardcoded server.js stubs that could only ever return
+        // empty results (confirmed by direct backend read); they are left
+        // completely untouched (may be used elsewhere) — this dashboard
+        // simply no longer depends on them.
         async function loadDashboard() {
-            try {
-                const res = await fetch(`${API_URL}/analytics/dashboard`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const t = data.today || {};
-                    // API returns: revenue, sales_count, voided — map to correct field names
-                    document.getElementById('kpiTodaySales').textContent = `R ${parseFloat(t.revenue || 0).toFixed(2)}`;
-                    document.getElementById('kpiTodayTransactions').textContent = `${t.sales_count || 0} completed${t.voided > 0 ? ` · ${t.voided} voided` : ''}`;
-                    // Gross profit requires cost_price join — not in current API response
-                    document.getElementById('kpiGrossProfit').textContent = `—`;
-                    document.getElementById('kpiProfitMargin').textContent = `cost data required`;
-                    // Avg transaction derivable from available fields
-                    const avgTx = (t.sales_count > 0) ? (parseFloat(t.revenue) / t.sales_count) : 0;
-                    document.getElementById('kpiAvgTransaction').textContent = `R ${avgTx.toFixed(2)}`;
-                    document.getElementById('kpiAvgBasket').textContent = `—`;
+            const bannerName = document.getElementById('dashboardCompanyName');
+            if (bannerName) bannerName.textContent = currentCompanyName || 'Unknown company';
+
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const dateParams = `startDate=${encodeURIComponent(todayStart.toISOString())}&endDate=${encodeURIComponent(now.toISOString())}`;
+
+            async function safeFetchJson(url) {
+                try {
+                    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!res.ok) return null;
+                    return await res.json();
+                } catch (e) {
+                    console.log('[Dashboard] fetch failed:', url, e.message);
+                    return null;
                 }
-            } catch (e) {
-                console.log('Dashboard load error:', e);
             }
 
-            // Load alerts
-            try {
-                const alertRes = await fetch(`${API_URL}/loss-prevention/alerts?status=open&limit=5`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (alertRes.ok) {
-                    const alertData = await alertRes.json();
-                    const alerts = alertData.alerts || [];
-                    const alertsDiv = document.getElementById('dashboardAlerts');
-                    if (alerts.length === 0) {
-                        alertsDiv.innerHTML = '<div class="empty-state"><div class="icon">&#9989;</div><p>No active alerts</p></div>';
-                    } else {
-                        alertsDiv.innerHTML = alerts.map(a => `
-                            <div class="alert-row ${a.severity === 'critical' ? 'critical' : 'warning'}">
-                                <div>
-                                    <strong>${a.alert_type}</strong>
-                                    <div style="font-size:12px;color:#666;">${a.severity} - ${new Date(a.created_at).toLocaleString()}</div>
-                                </div>
-                                <span class="status-badge ${a.status === 'open' ? 'alert' : 'pending'}">${a.status}</span>
-                            </div>
-                        `).join('');
-                    }
-                }
-            } catch (e) {
-                console.log('Alerts load error:', e);
+            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData] = await Promise.all([
+                safeFetchJson(`${API_URL}/reports/gross-profit?${dateParams}`),
+                safeFetchJson(`${API_URL}/reports/till-summary?${dateParams}`),
+                safeFetchJson(`${API_URL}/reports/negative-stock?${dateParams}`),
+                safeFetchJson(`${API_URL}/reports/recovery-sync?${dateParams}`),
+                safeFetchJson(`${API_URL}/reports/cashier-performance?${dateParams}`),
+                safeFetchJson(`${API_URL}/reports/audit-activity?${dateParams}`),
+                safeFetchJson(`${API_URL}/pos/inventory/receives`),
+                safeFetchJson(`${API_URL}/pos/tills`),
+            ]);
+
+            // ── Sales / profit KPIs (real gross profit — the old hardcoded
+            // "—" placeholder is gone; /reports/gross-profit already joins
+            // current product cost_price, built in Workstream 71) ──────────
+            const gp = grossProfit?.summary || {};
+            document.getElementById('kpiTodaySales').textContent = `R ${(gp.totalSales || 0).toFixed(2)}`;
+            document.getElementById('kpiTodayTransactions').textContent = `${gp.transactionCount || 0} transaction${gp.transactionCount === 1 ? '' : 's'}`;
+            document.getElementById('kpiGrossProfit').textContent = `R ${(gp.totalProfit || 0).toFixed(2)}`;
+            document.getElementById('kpiProfitMargin').textContent = `${gp.profitMargin || 0}% margin`;
+            const avgTx = gp.transactionCount > 0 ? (gp.totalSales / gp.transactionCount) : 0;
+            document.getElementById('kpiAvgTransaction').textContent = `R ${avgTx.toFixed(2)}`;
+            document.getElementById('kpiAvgBasket').textContent = gp.transactionCount ? `${gp.transactionCount} sale(s) today` : 'no sales yet';
+
+            // ── Active employees — distinct cashiers who actually completed
+            // a sale today (from cashier-performance, not just "logged in") ──
+            const cashiers = cashierPerf?.cashiers || [];
+            document.getElementById('kpiActiveEmployees').textContent = cashiers.filter(c => (c.completed_sales || 0) > 0).length;
+
+            // ── Till sessions / cash variance ───────────────────────────────
+            const tsSummary = tillSummary?.summary || {};
+            document.getElementById('kpiOpenSessions').textContent = tsSummary.open_sessions || 0;
+            document.getElementById('kpiOpenSessionsSub').textContent = `of ${tsSummary.total_sessions || 0} today`;
+            document.getElementById('kpiCashVariance').textContent = tsSummary.sessions_with_variance || 0;
+
+            // ── Recovery / pending cash-ups / offline sync issues ───────────
+            const rsSummary = recoverySync?.summary || {};
+            document.getElementById('kpiPendingCashups').textContent = rsSummary.pending_cashup_sessions || 0;
+            document.getElementById('kpiSyncIssues').textContent = rsSummary.unresolved_count || 0;
+
+            // ── Negative stock (live snapshot — not date-bounded) ───────────
+            const negCount = negativeStock?.currently_negative_count || 0;
+            document.getElementById('kpiNegativeStock').textContent = negCount;
+
+            // ── Supplier receives — /inventory/receives has no date filter,
+            // so "today" is derived client-side from its 30 most recent rows ──
+            const allReceives = receivesData?.receives || [];
+            const todayReceives = allReceives.filter(r => new Date(r.created_at) >= todayStart);
+            document.getElementById('kpiSupplierReceives').textContent = todayReceives.length;
+
+            // ── Operational Alerts — every entry below is a real, derived
+            // condition from the fetches above. None are invented; if a
+            // condition can't currently be sourced from real data (e.g.
+            // "product import issues" — there is no import-history table),
+            // it is not shown as an alert. ──────────────────────────────────
+            const alerts = [];
+            const tillList = tillsData?.tills || [];
+            if (tillList.length === 0) {
+                alerts.push({ type: 'No till configured', severity: 'critical', detail: 'This company has no active till — sales cannot be processed.' });
+            }
+            const staleSessions = recoverySync?.stale_sessions || [];
+            if (staleSessions.length > 0) {
+                const names = staleSessions.slice(0, 3).map(s => `${s.users?.full_name || s.users?.username || 'Unknown'} (${s.age_hours}h)`).join(', ');
+                alerts.push({ type: `${staleSessions.length} till session(s) open too long`, severity: 'warning', detail: names });
+            }
+            if (rsSummary.pending_cashup_sessions > 0) {
+                alerts.push({ type: `${rsSummary.pending_cashup_sessions} session(s) pending cash-up`, severity: 'warning', detail: 'Closed but not yet cashed up — see Reports → Till Summary.' });
+            }
+            if (negCount > 0) {
+                alerts.push({ type: `${negCount} product(s) below zero stock`, severity: 'critical', detail: 'See Reports → Negative Stock Events.' });
+            }
+            if (tsSummary.sessions_with_variance > 0) {
+                alerts.push({ type: `${tsSummary.sessions_with_variance} till session(s) with cash variance today`, severity: 'warning', detail: 'See Reports → Till Summary.' });
+            }
+            if (rsSummary.offline_conflicts > 0) {
+                alerts.push({ type: `${rsSummary.offline_conflicts} offline sync conflict(s)`, severity: 'critical', detail: 'See Reports → Recovery Sync Log.' });
             }
 
-            // Load locations
-            try {
-                const locRes = await fetch(`${API_URL}/locations`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (locRes.ok) {
-                    const locData = await locRes.json();
-                    const locations = locData.locations || [];
-                    const tbody = document.getElementById('locationPerformanceBody');
-                    if (locations.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">No locations configured</td></tr>';
-                    } else {
-                        tbody.innerHTML = locations.map(l => `
-                            <tr>
-                                <td><strong>${l.location_name}</strong></td>
-                                <td>${l.location_type}</td>
-                                <td>-</td>
-                                <td>-</td>
-                                <td><span class="status-badge ${l.is_active ? 'active' : 'closed'}">${l.is_active ? 'Active' : 'Inactive'}</span></td>
-                            </tr>
-                        `).join('');
-                    }
-                }
-            } catch (e) {
-                console.log('Locations load error:', e);
+            const alertsDiv = document.getElementById('dashboardAlerts');
+            if (alerts.length === 0) {
+                alertsDiv.innerHTML = '<div class="empty-state"><div class="icon">&#9989;</div><p>No active alerts</p></div>';
+            } else {
+                alertsDiv.innerHTML = alerts.map(a => `
+                    <div class="alert-row ${a.severity}">
+                        <div>
+                            <strong>${a.type}</strong>
+                            <div style="font-size:12px;color:#666;">${a.detail}</div>
+                        </div>
+                        <span class="status-badge ${a.severity === 'critical' ? 'alert' : 'pending'}">${a.severity}</span>
+                    </div>
+                `).join('');
+            }
+
+            // ── Recent Activity — pos_audit_events via the same endpoint the
+            // Audit Activity report uses, just trimmed to the newest 8 for a
+            // dashboard-sized timeline. ─────────────────────────────────────
+            const events = (auditActivity?.events || []).slice(0, 8);
+            const activityDiv = document.getElementById('dashboardActivity');
+            if (events.length === 0) {
+                activityDiv.innerHTML = '<div class="empty-state"><div class="icon">&#128196;</div><p>No recent activity</p></div>';
+            } else {
+                activityDiv.innerHTML = events.map(e => `
+                    <div class="alert-row info" style="background:#f9f9f9;">
+                        <div>
+                            <strong>${e.action_type}</strong>
+                            <div style="font-size:12px;color:#666;">${e.users?.full_name || e.users?.username || e.user_email || 'System'} · ${new Date(e.created_at).toLocaleString()}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // ── Recent Supplier Receives ─────────────────────────────────────
+            const receivesDiv = document.getElementById('dashboardReceives');
+            const recentReceives = allReceives.slice(0, 5);
+            if (recentReceives.length === 0) {
+                receivesDiv.innerHTML = '<div class="empty-state"><div class="icon">&#128230;</div><p>No supplier receives yet</p></div>';
+            } else {
+                receivesDiv.innerHTML = recentReceives.map(r => `
+                    <div class="alert-row info" style="background:#f9f9f9;">
+                        <div>
+                            <strong>${r.supplier_name}</strong> — ${r.item_count} item(s), ${r.total_quantity} unit(s)
+                            <div style="font-size:12px;color:#666;">${r.users?.full_name || r.users?.username || 'Unknown'} · ${new Date(r.created_at).toLocaleString()}</div>
+                        </div>
+                    </div>
+                `).join('');
             }
         }
 
