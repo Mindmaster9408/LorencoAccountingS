@@ -153,8 +153,17 @@ class InterCompanyNetwork {
   /**
    * Create a relationship between two companies
    * Both companies must confirm for invoices to flow
+   *
+   * @param {number} companyAId
+   * @param {number} companyBId
+   * @param {number} initiatedBy
+   * @param {object} [extraPermissions] — additional permission flags merged
+   *   into the default set (e.g. POS's stock_transfer/receive_transfer/
+   *   return_transfer/pricing_visible/invoice_reference_visible flags — see
+   *   Workstream 80). All extra flags default to false unless explicitly
+   *   passed true — a relationship existing must never itself grant access.
    */
-  async createRelationship(companyAId, companyBId, initiatedBy) {
+  async createRelationship(companyAId, companyBId, initiatedBy, extraPermissions = {}) {
     // Check if relationship already exists
     if (this.store && this.store.findRelationship) {
       const existing = await this.store.findRelationship(companyAId, companyBId);
@@ -171,13 +180,19 @@ class InterCompanyNetwork {
       company_a_id: companyAId,
       company_b_id: companyBId,
       initiated_by: initiatedBy,
-      status: 'pending',  // pending → active → suspended → terminated
+      status: 'pending',  // pending → active → revoked
       company_a_confirmed: initiatedBy === companyAId,
       company_b_confirmed: initiatedBy === companyBId,
       permissions: {
         send_invoices: true,
         receive_invoices: true,
-        auto_match_payments: false  // Must be explicitly enabled
+        auto_match_payments: false,  // Must be explicitly enabled
+        stock_transfer: false,
+        receive_transfer: false,
+        return_transfer: false,
+        pricing_visible: false,
+        invoice_reference_visible: false,
+        ...extraPermissions,
       },
       created_at: new Date().toISOString()
     };
@@ -196,37 +211,83 @@ class InterCompanyNetwork {
 
   // ─── Confirm Relationship ────────────────────────────────────────────
 
+  /**
+   * Confirm this company's side of a pending relationship.
+   *
+   * NOTE (Workstream 80 fix): this previously read the relationship via
+   * getRelationships(companyId), which only returns status='active' rows —
+   * so a still-pending relationship (the exact case this method exists to
+   * handle) could never be found, and even when found the mutated object
+   * was never written back to the database at all. Both are fixed here:
+   * lookup is by ID (any status) and the result is persisted via
+   * updateRelationship(). External behaviour/response shape is unchanged.
+   */
   async confirmRelationship(relationshipId, companyId) {
-    if (!this.store) {
+    if (!this.store || !this.store.getRelationshipById) {
       return { success: false, error: 'Data store not available' };
     }
 
-    // Find the relationship in store
-    const relationships = await this.store.getRelationships(companyId);
-    const rel = relationships.find(r => r.id === relationshipId);
-
+    const rel = await this.store.getRelationshipById(relationshipId);
     if (!rel) {
       return { success: false, error: 'Relationship not found' };
     }
-
-    // Mark this company as confirmed
-    if (rel.company_a_id === companyId) {
-      rel.company_a_confirmed = true;
-    } else if (rel.company_b_id === companyId) {
-      rel.company_b_confirmed = true;
+    if (rel.company_a_id !== companyId && rel.company_b_id !== companyId) {
+      return { success: false, error: 'Not authorized to confirm this relationship' };
+    }
+    if (rel.status === 'revoked') {
+      return { success: false, error: 'This relationship has been revoked' };
     }
 
-    // If both confirmed, activate
-    if (rel.company_a_confirmed && rel.company_b_confirmed) {
-      rel.status = 'active';
-    }
+    const updates = {};
+    if (rel.company_a_id === companyId) updates.company_a_confirmed = true;
+    if (rel.company_b_id === companyId) updates.company_b_confirmed = true;
+
+    const aConfirmed = rel.company_a_confirmed || updates.company_a_confirmed;
+    const bConfirmed = rel.company_b_confirmed || updates.company_b_confirmed;
+    if (aConfirmed && bConfirmed) updates.status = 'active';
+
+    const updated = this.store.updateRelationship
+      ? await this.store.updateRelationship(relationshipId, updates)
+      : { ...rel, ...updates };
 
     return {
       success: true,
-      relationship: rel,
-      message: rel.status === 'active'
-        ? 'Relationship confirmed! You can now send and receive invoices.'
+      relationship: updated || { ...rel, ...updates },
+      message: (updated || {}).status === 'active'
+        ? 'Relationship confirmed! You can now trade with this company.'
         : 'Your confirmation recorded. Waiting for the other company to confirm.'
+    };
+  }
+
+  // ─── Revoke Relationship ─────────────────────────────────────────────
+
+  /**
+   * Revoke an active or pending relationship. Either side may revoke.
+   * Revocation is immediate and one-directional — the other company is not
+   * asked to confirm the revocation, only notified of the resulting status
+   * (via their own relationship listing).
+   */
+  async revokeRelationship(relationshipId, companyId) {
+    if (!this.store || !this.store.getRelationshipById) {
+      return { success: false, error: 'Data store not available' };
+    }
+
+    const rel = await this.store.getRelationshipById(relationshipId);
+    if (!rel) {
+      return { success: false, error: 'Relationship not found' };
+    }
+    if (rel.company_a_id !== companyId && rel.company_b_id !== companyId) {
+      return { success: false, error: 'Not authorized to revoke this relationship' };
+    }
+
+    const updated = this.store.updateRelationship
+      ? await this.store.updateRelationship(relationshipId, { status: 'revoked' })
+      : { ...rel, status: 'revoked' };
+
+    return {
+      success: true,
+      relationship: updated || { ...rel, status: 'revoked' },
+      message: 'Relationship revoked.'
     };
   }
 
@@ -237,6 +298,17 @@ class InterCompanyNetwork {
       return [];
     }
     return await this.store.getRelationships(companyId);
+  }
+
+  /**
+   * Get every relationship for this company regardless of status
+   * (pending/active/revoked) — see getAllRelationships() on the store.
+   */
+  async getAllRelationships(companyId) {
+    if (!this.store || !this.store.getAllRelationships) {
+      return [];
+    }
+    return await this.store.getAllRelationships(companyId);
   }
 
   // ─── Utilities ───────────────────────────────────────────────────────

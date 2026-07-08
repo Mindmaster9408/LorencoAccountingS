@@ -341,6 +341,30 @@ async function ensurePosSchema(pool) {
       )
     `);
 
+    // ── suppliers / customers: company-linking foundation (Workstream 80) ────
+    // A supplier or customer record can optionally represent another real
+    // platform company (e.g. Pennygrow links Turkstra as a supplier). The
+    // actual relationship lives in the shared inter_company_relationships
+    // table (accounting's existing inter-company module, migration 001) —
+    // these columns just point a supplier/customer row at that relationship
+    // and cache its status for cheap list-view display. No new parallel
+    // relationship table — see docs/checkout-charlie-future/
+    // INTER_COMPANY_CUSTOMER_SUPPLIER_LINKING.md for the full model.
+    await client.query(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS linked_company_id      INTEGER REFERENCES companies(id)`);
+    await client.query(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS linked_relationship_id INTEGER`);
+    await client.query(`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS link_status             VARCHAR(20) DEFAULT 'none'`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_suppliers_linked_relationship ON suppliers(linked_relationship_id)`);
+
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS linked_company_id      INTEGER REFERENCES companies(id)`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS linked_relationship_id INTEGER`);
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS link_status             VARCHAR(20) DEFAULT 'none'`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customers_linked_relationship ON customers(linked_relationship_id)`);
+
+    // inter_company_relationships (accounting's shared table, migration 001) is
+    // missing updated_at — needed so confirm/revoke can record when a
+    // relationship's status last changed. Defensive/additive only.
+    await client.query(`ALTER TABLE inter_company_relationships ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`).catch(() => {});
+
     // ── user_pos_pins ─────────────────────────────────────────────────────────
     // Stores bcrypt-hashed PINs for PIN-eligible POS users (cashier, senior_cashier,
     // shift_supervisor, assistant_manager). One row per user per company.

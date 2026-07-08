@@ -499,6 +499,42 @@ const supabaseSeanStore = {
       .limit(1)
       .single();
     return data || null;
+  },
+
+  // getRelationships() above only returns status='active' rows — correct for
+  // its original invoice-sync use, but it means a still-pending relationship
+  // is invisible to both sides. getAllRelationships() returns every status
+  // (pending/active/revoked) so callers that need to show pending/revoked
+  // state (Workstream 78 supplier/customer company linking) can do so.
+  async getAllRelationships(companyId) {
+    const { data } = await supabase
+      .from('inter_company_relationships')
+      .select('*')
+      .or(`company_a_id.eq.${companyId},company_b_id.eq.${companyId}`);
+    return data || [];
+  },
+
+  async getRelationshipById(relationshipId) {
+    const { data } = await supabase
+      .from('inter_company_relationships')
+      .select('*')
+      .eq('id', relationshipId)
+      .single();
+    return data || null;
+  },
+
+  async updateRelationship(relationshipId, updates) {
+    const { data, error } = await supabase
+      .from('inter_company_relationships')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', relationshipId)
+      .select()
+      .single();
+    if (error) {
+      console.error('updateRelationship error:', error.message);
+      return null;
+    }
+    return data;
   }
 };
 

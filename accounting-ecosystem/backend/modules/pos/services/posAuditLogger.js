@@ -83,6 +83,17 @@ const POS_EVENTS = {
     SUPPLIER_RETURN_COMPLETED:        'SUPPLIER_RETURN_COMPLETED',
     SUPPLIER_PRICE_INCREASE_DETECTED: 'SUPPLIER_PRICE_INCREASE_DETECTED',
 
+    // Supplier management events (Workstream 80)
+    SUPPLIER_CREATED:                 'SUPPLIER_CREATED',
+    SUPPLIER_UPDATED:                 'SUPPLIER_UPDATED',
+    SUPPLIER_DEACTIVATED:             'SUPPLIER_DEACTIVATED',
+    SUPPLIER_REACTIVATED:             'SUPPLIER_REACTIVATED',
+
+    // Cross-company relationship events (Workstream 80)
+    COMPANY_RELATIONSHIP_REQUESTED:   'COMPANY_RELATIONSHIP_REQUESTED',
+    COMPANY_RELATIONSHIP_APPROVED:    'COMPANY_RELATIONSHIP_APPROVED',
+    COMPANY_RELATIONSHIP_REVOKED:     'COMPANY_RELATIONSHIP_REVOKED',
+
     // Stock policy events
     STOCK_POLICY_CHANGED:        'STOCK_POLICY_CHANGED',        // admin toggled allow_negative_stock_sales
     NEGATIVE_STOCK_SALE_ALLOWED: 'NEGATIVE_STOCK_SALE_ALLOWED', // sale approved despite insufficient stock
@@ -154,6 +165,13 @@ const EVENT_CATEGORY = {
     SUPPLIER_PRODUCT_UNLINKED:        'inventory',
     SUPPLIER_RETURN_COMPLETED:        'inventory',
     SUPPLIER_PRICE_INCREASE_DETECTED: 'inventory',
+    SUPPLIER_CREATED:                 'inventory',
+    SUPPLIER_UPDATED:                 'inventory',
+    SUPPLIER_DEACTIVATED:             'inventory',
+    SUPPLIER_REACTIVATED:             'inventory',
+    COMPANY_RELATIONSHIP_REQUESTED:   'company_link',
+    COMPANY_RELATIONSHIP_APPROVED:    'company_link',
+    COMPANY_RELATIONSHIP_REVOKED:     'company_link',
     STOCK_POLICY_CHANGED:        'settings',
     NEGATIVE_STOCK_SALE_ALLOWED: 'inventory',
     NEGATIVE_STOCK_CREATED:      'inventory',
