@@ -62,6 +62,26 @@ async function syncLinkedRecords(companyId, relationshipId, status) {
 }
 
 /**
+ * GET /api/pos/company-links/my-code
+ * Get this company's own invitation code, generating and persisting one if
+ * it doesn't have one yet (idempotent — see InterCompanyNetwork.enable()).
+ * This is the code a trading partner enters on THEIR side (Settings →
+ * Suppliers → Manage Linked Products → Company Link) to request a link to
+ * this company.
+ */
+router.get('/my-code', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
+  try {
+    const network = getNetwork();
+    const result = await network.enable(req.companyId, {});
+    if (!result.success) return res.status(500).json({ error: result.error });
+    res.json({ invitation_code: result.invitationCode });
+  } catch (err) {
+    console.error('[company-links] my-code:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * POST /api/pos/company-links/lookup
  * Find a company by exact invitation code. Returns only safe preview info
  * (id, name, city, industry) — never financial/contact details, and never a

@@ -29,29 +29,59 @@ class InterCompanyNetwork {
   // ─── Enable Inter-Company for a Company ──────────────────────────────
 
   /**
-   * Enable inter-company features for a company
-   * Generates an invitation code other companies can use to connect
+   * Enable inter-company features for a company.
+   * Generates an invitation code other companies can use to connect, and
+   * PERSISTS it to companies.invitation_code / inter_company_enabled.
+   *
+   * Idempotent: a company that already has a code gets that same code back,
+   * never a freshly-rotated one — rotating silently would break any partner
+   * who already holds the old code and has used it to link.
+   *
+   * NOTE (bug fix): this previously built an "enablement record" object and
+   * returned it, but never actually wrote it to the database at all — every
+   * call minted a new code that vanished the moment the response was sent.
+   * Confirmed live: every company in production had invitation_code = NULL,
+   * inter_company_enabled = false, with no way to ever change that (no
+   * frontend called this route either). Fixed here; contract unchanged for
+   * the one existing caller (POST /api/inter-company/enable).
    */
   async enable(companyId, companyDetails = {}) {
-    const invitationCode = this.generateInviteCode();
+    const { data: existing } = await supabase
+      .from('companies')
+      .select('id, invitation_code, inter_company_enabled')
+      .eq('id', companyId)
+      .maybeSingle();
 
-    // Store the enablement
-    const record = {
-      company_id: companyId,
-      company_name: companyDetails.name || `Company ${companyId}`,
-      tax_number: companyDetails.taxNumber || null,
-      vat_number: companyDetails.vatNumber || null,
-      email_domain: companyDetails.emailDomain || null,
-      invitation_code: invitationCode,
-      inter_company_enabled: true,
-      enabled_at: new Date().toISOString()
-    };
+    if (existing && existing.invitation_code) {
+      return {
+        success: true,
+        invitationCode: existing.invitation_code,
+        message: 'Inter-company features already enabled.',
+        alreadyEnabled: true,
+      };
+    }
+
+    const invitationCode = this.generateInviteCode();
+    const updates = { invitation_code: invitationCode, inter_company_enabled: true };
+    if (companyDetails.taxNumber)  updates.tax_number   = companyDetails.taxNumber;
+    if (companyDetails.vatNumber)  updates.vat_number    = companyDetails.vatNumber;
+    if (companyDetails.emailDomain) updates.email_domain = companyDetails.emailDomain;
+
+    const { data: updated, error } = await supabase
+      .from('companies')
+      .update(updates)
+      .eq('id', companyId)
+      .select('id, invitation_code, inter_company_enabled')
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
 
     return {
       success: true,
-      invitationCode,
+      invitationCode: updated.invitation_code,
       message: 'Inter-company features enabled. Share your invitation code with trading partners.',
-      record
     };
   }
 

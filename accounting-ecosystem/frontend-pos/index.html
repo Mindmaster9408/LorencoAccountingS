@@ -3179,6 +3179,14 @@
 
                     <!-- Suppliers Section (Workstream 78) -->
                     <div id="suppliersSection" style="display: none;">
+                        <div id="myInvitationCodeCard" style="background:#eff3ff;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <div style="font-size:13px;color:#3949ab;">
+                                <strong>Your Company's Invitation Code:</strong>
+                                <span id="myInvitationCodeValue" style="font-family:monospace;font-size:14px;margin-left:6px;">Loading...</span>
+                            </div>
+                            <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;" onclick="copyMyInvitationCode()">Copy</button>
+                            <span style="font-size:12px;color:#888;">Share this with a trading partner so they can link you as a supplier.</span>
+                        </div>
                         <div class="products-header">
                             <div class="search-box">
                                 <input type="text" id="supplierSearch" placeholder="Search suppliers..." oninput="loadSettingsSuppliers()">
@@ -8918,7 +8926,7 @@
                 if (section === 'general')    { loadGeneralSettings(); }
                 if (section === 'users')      { loadCompaniesForUserFilter(); }
                 if (section === 'customers')  { loadCustomers(); }
-                if (section === 'suppliers')  { loadSettingsSuppliers(); }
+                if (section === 'suppliers')  { loadSettingsSuppliers(); loadMyInvitationCode(); }
                 if (section === 'tills')      { loadSettingsTills(); }
             }
         }
@@ -11014,6 +11022,31 @@
         }
 
         // ── Company linking (Workstream 80 — Turkstra/Pennygrow foundation) ─────
+
+        // ── This company's own invitation code — for sharing with a would-be
+        // trading partner, who enters it on their side (requestSupplierCompanyLink). ──
+
+        async function loadMyInvitationCode() {
+            const el = document.getElementById('myInvitationCodeValue');
+            if (!el) return;
+            el.textContent = 'Loading...';
+            try {
+                const res = await fetch(`${API_URL}/pos/company-links/my-code`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                el.textContent = res.ok ? result.invitation_code : 'Unavailable';
+            } catch (e) {
+                el.textContent = 'Unavailable';
+            }
+        }
+
+        function copyMyInvitationCode() {
+            const code = document.getElementById('myInvitationCodeValue')?.textContent;
+            if (!code || code === 'Loading...' || code === 'Unavailable') return;
+            navigator.clipboard?.writeText(code).then(
+                () => showNotification('Invitation code copied', 'success'),
+                () => showNotification('Could not copy — please select and copy manually', 'error')
+            );
+        }
 
         async function requestSupplierCompanyLink() {
             const supplierId = document.getElementById('supplierEditId').value;
