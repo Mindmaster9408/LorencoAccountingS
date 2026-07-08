@@ -2257,6 +2257,81 @@
             </div>
         </div>
 
+        <!-- Add/Edit Supplier Modal (Workstream 80) -->
+        <div id="supplierEditModal" class="modal-overlay">
+            <div class="modal" style="max-width:560px;max-height:90vh;">
+                <div class="modal-header">
+                    <h2 id="supplierEditModalTitle">Add Supplier</h2>
+                    <button class="close-btn" onclick="closeSupplierEditModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(90vh - 140px);overflow-y:auto;">
+                    <input type="hidden" id="supplierEditId" value="">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label>Supplier Name *</label>
+                            <input type="text" id="supplierEditName" placeholder="e.g. ABC Wholesalers" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Supplier Code</label>
+                            <input type="text" id="supplierEditCode" placeholder="Auto-generated if blank" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Payment Terms (days)</label>
+                            <input type="number" id="supplierEditTerms" min="0" value="30" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Contact Name</label>
+                            <input type="text" id="supplierEditContactName" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Contact Phone</label>
+                            <input type="text" id="supplierEditContactPhone" style="width:100%;">
+                        </div>
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label>Contact Email</label>
+                            <input type="email" id="supplierEditContactEmail" style="width:100%;">
+                        </div>
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label>Address</label>
+                            <input type="text" id="supplierEditAddress" style="width:100%;">
+                        </div>
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label>Notes</label>
+                            <input type="text" id="supplierEditNotes" placeholder="optional" style="width:100%;">
+                        </div>
+                    </div>
+
+                    <!-- Company Link (Workstream 80 — Turkstra/Pennygrow foundation) -->
+                    <div id="supplierEditLinkSection" style="display:none;border-top:1px solid #eee;padding-top:14px;margin-top:4px;">
+                        <h4 style="margin:0 0 8px;font-size:14px;">Company Link</h4>
+                        <p style="font-size:12px;color:#888;margin:0 0 10px;">Optionally link this supplier to another Checkout Charlie company using their invitation code. Nothing is shared until they approve.</p>
+
+                        <div id="supplierEditLinkNone">
+                            <div style="display:flex;gap:8px;">
+                                <input type="text" id="supplierEditLinkCode" placeholder="Enter invitation code (e.g. IC-A1B2C3D4)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                                <button class="btn btn-secondary" onclick="requestSupplierCompanyLink()">Link</button>
+                            </div>
+                        </div>
+
+                        <div id="supplierEditLinkActive" style="display:none;background:#f5f7fa;border-radius:8px;padding:10px 12px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <strong id="supplierEditLinkCompanyName">—</strong>
+                                    <span id="supplierEditLinkStatusBadge" class="status-badge" style="margin-left:8px;"></span>
+                                </div>
+                                <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="revokeSupplierCompanyLink()">Revoke</button>
+                            </div>
+                            <p id="supplierEditLinkStatusNote" style="font-size:12px;color:#888;margin:6px 0 0;"></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeSupplierEditModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveSupplierEdit()">Save Supplier</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Manage Linked Products Modal (Workstream 78) -->
         <div id="supplierLinkModal" class="modal-overlay">
             <div class="modal" style="max-width:640px;max-height:90vh;">
@@ -2917,8 +2992,15 @@
                     <!-- Suppliers Section (Workstream 78) -->
                     <div id="suppliersSection" style="display: none;">
                         <div class="products-header">
-                            <h3 style="margin:0;">Suppliers</h3>
+                            <div class="search-box">
+                                <input type="text" id="supplierSearch" placeholder="Search suppliers..." oninput="loadSettingsSuppliers()">
+                                <span class="search-icon">🔍</span>
+                            </div>
                             <div class="header-actions">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                                    <input type="checkbox" id="supplierShowArchived" onchange="loadSettingsSuppliers()">
+                                    Show archived
+                                </label>
                                 <button class="btn btn-primary" onclick="showNewSupplierModal()">Add Supplier</button>
                             </div>
                         </div>
@@ -2931,12 +3013,13 @@
                                         <th>Contact</th>
                                         <th>Email</th>
                                         <th>Terms</th>
-                                        <th>Linked Products</th>
+                                        <th>Company Link</th>
+                                        <th>Status</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="suppliersTableBody">
-                                    <tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">Loading suppliers...</td></tr>
+                                    <tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading suppliers...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -3289,22 +3372,25 @@
             </div>
         </div>
 
-        <!-- Transfer Readiness — deliberately static, no fetch. There is no
-             stock-transfer backend yet (confirmed in the Workstream 71/77
-             audit — no transfer_headers/transfer_items tables, no routes).
-             Showing a real "not active" state rather than any placeholder
-             number. See docs/checkout-charlie-future/
-             INTER_COMPANY_STOCK_TRANSFER_AND_CLIENT_LINKING.md for the
-             architecture this will plug into. -->
+        <!-- Transfer / Company Link Readiness — the relationship counts below are
+             REAL data from /api/pos/company-links (Workstream 80), never fabricated.
+             Actual stock-transfer movement itself is still not built (confirmed in
+             the Workstream 71/77 audit — no transfer_headers/transfer_items tables,
+             no routes) — that part remains an honest "not active" static message.
+             See docs/checkout-charlie-future/
+             INTER_COMPANY_CUSTOMER_SUPPLIER_LINKING.md for the architecture this
+             will plug into. -->
         <div class="enterprise-section" id="dashboardTransferSection">
-            <h3>🔄 Transfers / Incoming Stock</h3>
+            <h3>🔄 Company Links / Transfers</h3>
+            <div id="dashboardCompanyLinksSummary" style="display:none;background:#f5f7fa;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;"></div>
             <div class="empty-state">
                 <div class="icon">🚧</div>
                 <p>Inter-company stock transfer is not active yet for this company.</p>
                 <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
                     When built, this panel will show outgoing transfers, incoming transfers awaiting acceptance,
                     returned stock, and transfer exceptions — scoped strictly to companies this one has an
-                    explicit, mutually-confirmed trading relationship with.
+                    explicit, mutually-confirmed trading relationship with. Company links can already be
+                    requested and approved today via Settings → Suppliers.
                 </p>
             </div>
         </div>
@@ -10180,7 +10266,7 @@
                 }
             }
 
-            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData] = await Promise.all([
+            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData, companyLinksData] = await Promise.all([
                 safeFetchJson(`${API_URL}/reports/gross-profit?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/till-summary?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/negative-stock?${dateParams}`),
@@ -10189,6 +10275,7 @@
                 safeFetchJson(`${API_URL}/reports/audit-activity?${dateParams}`),
                 safeFetchJson(`${API_URL}/pos/inventory/receives`),
                 safeFetchJson(`${API_URL}/pos/tills`),
+                safeFetchJson(`${API_URL}/pos/company-links`),
             ]);
 
             // ── Sales / profit KPIs (real gross profit — the old hardcoded
@@ -10228,6 +10315,19 @@
             const allReceives = receivesData?.receives || [];
             const todayReceives = allReceives.filter(r => new Date(r.created_at) >= todayStart);
             document.getElementById('kpiSupplierReceives').textContent = todayReceives.length;
+
+            // ── Company links (Workstream 80) — real counts from
+            // /api/pos/company-links, never fabricated. Empty state stays
+            // hidden if there are simply no relationships yet. ─────────────
+            const relationships = companyLinksData?.relationships || [];
+            if (relationships.length > 0) {
+                const pendingCount = relationships.filter(r => r.status === 'pending').length;
+                const activeCount  = relationships.filter(r => r.status === 'active').length;
+                const summaryEl = document.getElementById('dashboardCompanyLinksSummary');
+                summaryEl.style.display = 'block';
+                summaryEl.innerHTML = `<strong>${activeCount}</strong> active compan${activeCount === 1 ? 'y' : 'ies'} linked` +
+                    (pendingCount > 0 ? `, <strong>${pendingCount}</strong> pending approval` : '');
+            }
 
             // ── Operational Alerts — every entry below is a real, derived
             // condition from the fetches above. None are invented; if a
@@ -10448,41 +10548,236 @@
         function filterInventory() { /* placeholder for filter */ }
         function showNewTransferModal() { showNotification('Transfer creation coming soon', 'info'); }
         function showNewPOModal() { showNotification('PO creation coming soon', 'info'); }
-        function showNewSupplierModal() { showNotification('Supplier creation coming soon', 'info'); }
-
-        // ── Workstream 78: Supplier-linked products + receive/return price tracking ─
+        // ── Workstream 78/80: Supplier management + linked products/receive/return ──
         // Real suppliers live under /api/pos/suppliers (the plain /api/suppliers used
         // by loadSuppliers() above is a legacy always-empty stub in server.js — do not
         // reuse it here).
 
         let cachedSuppliersList = [];
 
+        const SUPPLIER_LINK_BADGE = {
+            none:    null,
+            pending: { cls: 'pending', label: 'Link Pending' },
+            active:  { cls: 'active',  label: 'Linked' },
+            revoked: { cls: 'closed',  label: 'Link Revoked' },
+        };
+
         async function loadSettingsSuppliers() {
             const tbody = document.getElementById('suppliersTableBody');
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">Loading suppliers...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading suppliers...</td></tr>';
             try {
-                const res = await fetch(`${API_URL}/pos/suppliers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const search = document.getElementById('supplierSearch')?.value.trim() || '';
+                const includeArchived = document.getElementById('supplierShowArchived')?.checked;
+                const params = new URLSearchParams();
+                if (search) params.set('search', search);
+                if (includeArchived) params.set('include_inactive', 'true');
+
+                const res = await fetch(`${API_URL}/pos/suppliers?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
                 const data = await res.json();
                 cachedSuppliersList = data.suppliers || [];
                 if (cachedSuppliersList.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">No suppliers yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">No suppliers found</td></tr>';
                     return;
                 }
-                tbody.innerHTML = cachedSuppliersList.map(s => `
-                    <tr>
-                        <td>${s.supplier_code || '-'}</td>
-                        <td>${s.supplier_name || s.name || '-'}</td>
-                        <td>${s.contact_name || '-'}</td>
-                        <td>${s.contact_email || s.email || '-'}</td>
-                        <td>${s.payment_terms != null ? s.payment_terms : 30} days</td>
-                        <td><button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openSupplierLinkModal(${s.id})">Manage Linked Products</button></td>
-                        <td>-</td>
-                    </tr>
-                `).join('');
+                tbody.innerHTML = cachedSuppliersList.map(s => {
+                    const linkBadge = SUPPLIER_LINK_BADGE[s.link_status] || null;
+                    const linkCell = linkBadge ? `<span class="status-badge ${linkBadge.cls}">${linkBadge.label}</span>` : '-';
+                    const statusCell = s.is_active
+                        ? '<span class="status-badge active">Active</span>'
+                        : '<span class="status-badge closed">Archived</span>';
+                    const archiveBtn = s.is_active
+                        ? `<button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="archiveSupplier(${s.id})">Archive</button>`
+                        : `<button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="restoreSupplier(${s.id})">Restore</button>`;
+                    return `
+                        <tr>
+                            <td>${s.supplier_code || '-'}</td>
+                            <td>${s.supplier_name || s.name || '-'}</td>
+                            <td>${s.contact_name || '-'}</td>
+                            <td>${s.contact_email || s.email || '-'}</td>
+                            <td>${s.payment_terms != null ? s.payment_terms : 30} days</td>
+                            <td>${linkCell}</td>
+                            <td>${statusCell}</td>
+                            <td style="white-space:nowrap;">
+                                <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="editSupplier(${s.id})">Edit</button>
+                                <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openSupplierLinkModal(${s.id})">Linked Products</button>
+                                ${archiveBtn}
+                            </td>
+                        </tr>`;
+                }).join('');
             } catch (e) {
                 console.log('Suppliers load error:', e);
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#c62828;padding:20px;">Error loading suppliers</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:20px;">Error loading suppliers</td></tr>';
             }
+        }
+
+        // ── Add/Edit Supplier modal ──────────────────────────────────────────────
+
+        function showNewSupplierModal() {
+            document.getElementById('supplierEditModalTitle').textContent = 'Add Supplier';
+            document.getElementById('supplierEditId').value = '';
+            document.getElementById('supplierEditName').value = '';
+            document.getElementById('supplierEditCode').value = '';
+            document.getElementById('supplierEditTerms').value = '30';
+            document.getElementById('supplierEditContactName').value = '';
+            document.getElementById('supplierEditContactPhone').value = '';
+            document.getElementById('supplierEditContactEmail').value = '';
+            document.getElementById('supplierEditAddress').value = '';
+            document.getElementById('supplierEditNotes').value = '';
+            document.getElementById('supplierEditLinkSection').style.display = 'none'; // only relevant once a supplier exists
+            document.getElementById('supplierEditModal').style.display = 'flex';
+        }
+
+        function editSupplier(supplierId) {
+            const s = cachedSuppliersList.find(x => x.id === supplierId);
+            if (!s) return;
+            document.getElementById('supplierEditModalTitle').textContent = 'Edit Supplier';
+            document.getElementById('supplierEditId').value = s.id;
+            document.getElementById('supplierEditName').value = s.supplier_name || s.name || '';
+            document.getElementById('supplierEditCode').value = s.supplier_code || '';
+            document.getElementById('supplierEditTerms').value = s.payment_terms != null ? s.payment_terms : 30;
+            document.getElementById('supplierEditContactName').value = s.contact_name || '';
+            document.getElementById('supplierEditContactPhone').value = s.contact_phone || s.phone || '';
+            document.getElementById('supplierEditContactEmail').value = s.contact_email || s.email || '';
+            document.getElementById('supplierEditAddress').value = s.address || '';
+            document.getElementById('supplierEditNotes').value = s.notes || '';
+
+            document.getElementById('supplierEditLinkSection').style.display = 'block';
+            renderSupplierLinkSection(s);
+
+            document.getElementById('supplierEditModal').style.display = 'flex';
+        }
+
+        function closeSupplierEditModal() { document.getElementById('supplierEditModal').style.display = 'none'; }
+
+        function renderSupplierLinkSection(s) {
+            const noneEl = document.getElementById('supplierEditLinkNone');
+            const activeEl = document.getElementById('supplierEditLinkActive');
+            if (!s.link_status || s.link_status === 'none' || s.link_status === 'revoked') {
+                noneEl.style.display = 'block';
+                activeEl.style.display = s.link_status === 'revoked' ? 'block' : 'none';
+                document.getElementById('supplierEditLinkCode').value = '';
+                if (s.link_status === 'revoked') {
+                    document.getElementById('supplierEditLinkCompanyName').textContent = `Company #${s.linked_company_id}`;
+                    document.getElementById('supplierEditLinkStatusBadge').className = 'status-badge closed';
+                    document.getElementById('supplierEditLinkStatusBadge').textContent = 'Revoked';
+                    document.getElementById('supplierEditLinkStatusNote').textContent = 'This link was revoked. You can request a new link above.';
+                    document.querySelector('#supplierEditLinkActive button').style.display = 'none';
+                }
+            } else {
+                noneEl.style.display = 'none';
+                activeEl.style.display = 'block';
+                document.querySelector('#supplierEditLinkActive button').style.display = 'inline-block';
+                document.getElementById('supplierEditLinkCompanyName').textContent = `Company #${s.linked_company_id}`;
+                document.getElementById('supplierEditLinkStatusBadge').className = 'status-badge ' + (s.link_status === 'active' ? 'active' : 'pending');
+                document.getElementById('supplierEditLinkStatusBadge').textContent = s.link_status === 'active' ? 'Active' : 'Pending Approval';
+                document.getElementById('supplierEditLinkStatusNote').textContent = s.link_status === 'active'
+                    ? 'This relationship is confirmed. No pricing, stock, or invoice data is shared automatically — this only records that a trading relationship exists.'
+                    : 'Waiting for the other company to approve this link. Nothing is shared until they do.';
+            }
+        }
+
+        async function saveSupplierEdit() {
+            const id = document.getElementById('supplierEditId').value;
+            const supplier_name = document.getElementById('supplierEditName').value.trim();
+            if (!supplier_name) { showNotification('Supplier name is required', 'error'); return; }
+
+            const body = {
+                supplier_name,
+                supplier_code:  document.getElementById('supplierEditCode').value.trim() || undefined,
+                payment_terms:  document.getElementById('supplierEditTerms').value,
+                contact_name:   document.getElementById('supplierEditContactName').value.trim(),
+                contact_phone:  document.getElementById('supplierEditContactPhone').value.trim(),
+                contact_email:  document.getElementById('supplierEditContactEmail').value.trim(),
+                address:        document.getElementById('supplierEditAddress').value.trim(),
+                notes:          document.getElementById('supplierEditNotes').value.trim(),
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers${id ? '/' + id : ''}`, {
+                    method: id ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(body)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Supplier ${id ? 'updated' : 'created'}`, 'success');
+                    closeSupplierEditModal();
+                    loadSettingsSuppliers();
+                } else {
+                    showNotification(result.error || 'Failed to save supplier', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function archiveSupplier(supplierId) {
+            if (!confirm('Archive this supplier? Existing links, receive and return history are kept.')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/deactivate`, {
+                    method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Supplier archived', 'success'); loadSettingsSuppliers(); }
+                else showNotification(result.error || 'Failed to archive supplier', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function restoreSupplier(supplierId) {
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/activate`, {
+                    method: 'PATCH', headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Supplier restored', 'success'); loadSettingsSuppliers(); }
+                else showNotification(result.error || 'Failed to restore supplier', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Company linking (Workstream 80 — Turkstra/Pennygrow foundation) ─────
+
+        async function requestSupplierCompanyLink() {
+            const supplierId = document.getElementById('supplierEditId').value;
+            if (!supplierId) { showNotification('Save the supplier before linking it to another company', 'error'); return; }
+            const invitationCode = document.getElementById('supplierEditLinkCode').value.trim();
+            if (!invitationCode) { showNotification('Enter an invitation code', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/suppliers/${supplierId}/link-company`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ invitationCode })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(result.message || 'Link request sent', 'success');
+                    await loadSettingsSuppliers();
+                    const updated = cachedSuppliersList.find(x => x.id === parseInt(supplierId));
+                    if (updated) renderSupplierLinkSection(updated);
+                } else {
+                    showNotification(result.error || 'Failed to send link request', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function revokeSupplierCompanyLink() {
+            const supplierId = document.getElementById('supplierEditId').value;
+            const s = cachedSuppliersList.find(x => x.id === parseInt(supplierId));
+            if (!s || !s.linked_relationship_id) return;
+            if (!confirm('Revoke this company link? The other company will no longer be linked as a trading partner.')) return;
+
+            try {
+                const res = await fetch(`${API_URL}/pos/company-links/${s.linked_relationship_id}/revoke`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Company link revoked', 'success');
+                    await loadSettingsSuppliers();
+                    const updated = cachedSuppliersList.find(x => x.id === parseInt(supplierId));
+                    if (updated) renderSupplierLinkSection(updated);
+                } else {
+                    showNotification(result.error || 'Failed to revoke link', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 
         // ── Manage Linked Products modal ─────────────────────────────────────────
