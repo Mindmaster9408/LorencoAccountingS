@@ -7,9 +7,13 @@
  * Routes:
  *   GET    /api/pos/suppliers                         — list suppliers
  *   GET    /api/pos/suppliers/:id/products            — get linked products
- *   PUT    /api/pos/suppliers/:id/products            — replace linked products
+ *                                                         (with per-link price
+ *                                                         tracking + current stock)
+ *   PUT    /api/pos/suppliers/:id/products            — save linked products
+ *                                                         (diff-based upsert)
  *
- * Product-supplier links live in product_suppliers (migration 039).
+ * Product-supplier links live in product_suppliers (migration 039; extended
+ * with price-tracking columns in Workstream 78 — see pos-schema.js).
  * Company isolation enforced on every query via req.companyId.
  * ============================================================================
  */
@@ -17,6 +21,7 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
+const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
 
@@ -46,7 +51,11 @@ router.get('/', requirePermission('INVENTORY.VIEW'), async (req, res) => {
 
 /**
  * GET /api/pos/suppliers/:id/products
- * Get all products linked to this supplier.
+ * Get all products linked to this supplier, including per-link price-tracking
+ * metadata (supplier SKU, last purchase price/date, preferred flag, notes) and
+ * each product's current stock/cost — used by both the "Manage Linked
+ * Products" screen and the "Receive from Supplier" / "Return to Supplier"
+ * screens (same data shape, three consumers — kept in one endpoint).
  */
 router.get('/:id/products', requirePermission('INVENTORY.VIEW'), async (req, res) => {
   try {
@@ -64,15 +73,27 @@ router.get('/:id/products', requirePermission('INVENTORY.VIEW'), async (req, res
 
     const { data, error } = await supabase
       .from('product_suppliers')
-      .select('product_id, products(id, product_name, product_code, barcode, stock_quantity, unit_price)')
+      .select(`
+        id, product_id, supplier_sku, last_purchase_price, last_purchase_date,
+        preferred_supplier, notes,
+        products(id, product_name, product_code, barcode, stock_quantity, unit_price, cost_price)
+      `)
       .eq('company_id', req.companyId)
       .eq('supplier_id', supplierId);
 
     if (error) return res.status(500).json({ error: error.message });
 
     const products = (data || [])
-      .map(row => row.products)
-      .filter(Boolean)
+      .filter(row => row.products)
+      .map(row => ({
+        ...row.products,
+        link_id:              row.id,
+        supplier_sku:         row.supplier_sku,
+        last_purchase_price:  row.last_purchase_price,
+        last_purchase_date:   row.last_purchase_date,
+        preferred_supplier:   row.preferred_supplier,
+        notes:                row.notes,
+      }))
       .sort((a, b) => a.product_name.localeCompare(b.product_name));
 
     res.json({ supplier, products });
@@ -84,20 +105,30 @@ router.get('/:id/products', requirePermission('INVENTORY.VIEW'), async (req, res
 
 /**
  * PUT /api/pos/suppliers/:id/products
- * Replace the full set of products linked to this supplier.
- * Body: { product_ids: [1, 2, 3] }
+ * Save the linked-product set for this supplier, diffed against the current
+ * set so price-tracking history is never destroyed on an unrelated edit.
  *
- * Deletes all existing links then inserts the provided set.
- * Passing an empty array unlinks all products.
+ * Body: { links: [{ product_id, supplier_sku, preferred_supplier, notes }] }
+ *
+ * - Products present now but not in the new set are unlinked (deleted).
+ * - Products newly present are linked (inserted, no price history yet).
+ * - Products present in both only have supplier_sku/preferred_supplier/notes
+ *   updated — last_purchase_price/last_purchase_date are preserved untouched,
+ *   since they are populated by the receive flow, not this screen.
  */
 router.put('/:id/products', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
   try {
     const supplierId = parseInt(req.params.id);
     if (!supplierId) return res.status(400).json({ error: 'Invalid supplier id' });
 
-    const productIds = (req.body.product_ids || [])
-      .map(id => parseInt(id))
-      .filter(id => id > 0);
+    const links = (Array.isArray(req.body.links) ? req.body.links : [])
+      .map(l => ({
+        product_id:         parseInt(l.product_id),
+        supplier_sku:       l.supplier_sku ? String(l.supplier_sku).trim().slice(0, 100) : null,
+        preferred_supplier: !!l.preferred_supplier,
+        notes:              l.notes ? String(l.notes).trim() : null,
+      }))
+      .filter(l => l.product_id > 0);
 
     // Verify supplier belongs to this company
     const { data: supplier } = await supabase
@@ -109,7 +140,8 @@ router.put('/:id/products', requirePermission('INVENTORY.ADJUST'), async (req, r
     if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
 
     // Verify all submitted product_ids belong to this company
-    if (productIds.length > 0) {
+    if (links.length > 0) {
+      const productIds = links.map(l => l.product_id);
       const { data: validProducts } = await supabase
         .from('products')
         .select('id')
@@ -122,25 +154,68 @@ router.put('/:id/products', requirePermission('INVENTORY.ADJUST'), async (req, r
       }
     }
 
-    // Replace link set atomically: delete all, re-insert
-    const { error: delErr } = await supabase
+    const { data: existingRows, error: existingErr } = await supabase
       .from('product_suppliers')
-      .delete()
+      .select('id, product_id')
       .eq('company_id', req.companyId)
       .eq('supplier_id', supplierId);
-    if (delErr) return res.status(500).json({ error: delErr.message });
+    if (existingErr) return res.status(500).json({ error: existingErr.message });
 
-    if (productIds.length > 0) {
-      const rows = productIds.map(pid => ({
-        company_id:  req.companyId,
-        product_id:  pid,
-        supplier_id: supplierId,
+    const existingByProduct = new Map((existingRows || []).map(r => [r.product_id, r]));
+    const newByProduct      = new Map(links.map(l => [l.product_id, l]));
+
+    const toUnlink = (existingRows || []).filter(r => !newByProduct.has(r.product_id));
+    const toInsert = links.filter(l => !existingByProduct.has(l.product_id));
+    const toUpdate = links.filter(l => existingByProduct.has(l.product_id));
+
+    if (toUnlink.length > 0) {
+      const { error: delErr } = await supabase
+        .from('product_suppliers')
+        .delete()
+        .in('id', toUnlink.map(r => r.id));
+      if (delErr) return res.status(500).json({ error: delErr.message });
+    }
+
+    if (toInsert.length > 0) {
+      const rows = toInsert.map(l => ({
+        company_id:         req.companyId,
+        supplier_id:        supplierId,
+        product_id:         l.product_id,
+        supplier_sku:       l.supplier_sku,
+        preferred_supplier: l.preferred_supplier,
+        notes:              l.notes,
       }));
       const { error: insErr } = await supabase.from('product_suppliers').insert(rows);
       if (insErr) return res.status(500).json({ error: insErr.message });
     }
 
-    res.json({ supplier_id: supplierId, product_count: productIds.length });
+    for (const l of toUpdate) {
+      const row = existingByProduct.get(l.product_id);
+      await supabase
+        .from('product_suppliers')
+        .update({
+          supplier_sku:       l.supplier_sku,
+          preferred_supplier: l.preferred_supplier,
+          notes:              l.notes,
+          updated_at:         new Date().toISOString(),
+        })
+        .eq('id', row.id);
+    }
+
+    for (const r of toUnlink) {
+      posAuditFromReq(req, POS_EVENTS.SUPPLIER_PRODUCT_UNLINKED, {
+        productId: r.product_id,
+        metadata:  { supplier_id: supplierId, supplier_name: supplier.supplier_name || supplier.name },
+      });
+    }
+    for (const l of toInsert) {
+      posAuditFromReq(req, POS_EVENTS.SUPPLIER_PRODUCT_LINKED, {
+        productId: l.product_id,
+        metadata:  { supplier_id: supplierId, supplier_name: supplier.supplier_name || supplier.name, supplier_sku: l.supplier_sku },
+      });
+    }
+
+    res.json({ supplier_id: supplierId, product_count: links.length, linked: toInsert.length, unlinked: toUnlink.length, updated: toUpdate.length });
   } catch (err) {
     console.error('[suppliers] put-products:', err.message);
     res.status(500).json({ error: 'Server error' });

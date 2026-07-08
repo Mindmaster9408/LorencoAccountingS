@@ -278,6 +278,69 @@ async function ensurePosSchema(pool) {
       )
     `);
 
+    // ── product_suppliers ─────────────────────────────────────────────────────
+    // Base link table (company_id, supplier_id, product_id) already exists live
+    // in production — this CREATE TABLE is defensive so other environments stay
+    // in sync. Workstream 78 adds supplier-specific price-tracking columns:
+    // last purchase price/date are tracked per supplier-product relationship,
+    // not globally on the product, since the same item can cost differently
+    // from different suppliers.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS product_suppliers (
+        id          SERIAL PRIMARY KEY,
+        company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+        product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`ALTER TABLE product_suppliers ADD COLUMN IF NOT EXISTS supplier_sku         VARCHAR(100)`);
+    await client.query(`ALTER TABLE product_suppliers ADD COLUMN IF NOT EXISTS last_purchase_price  DECIMAL(10,2)`);
+    await client.query(`ALTER TABLE product_suppliers ADD COLUMN IF NOT EXISTS last_purchase_date   TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE product_suppliers ADD COLUMN IF NOT EXISTS preferred_supplier    BOOLEAN DEFAULT false`);
+    await client.query(`ALTER TABLE product_suppliers ADD COLUMN IF NOT EXISTS notes                 TEXT`);
+    await client.query(`ALTER TABLE product_suppliers ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ DEFAULT NOW()`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_product_suppliers_company  ON product_suppliers(company_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_product_suppliers_supplier ON product_suppliers(company_id, supplier_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_product_suppliers_product  ON product_suppliers(company_id, product_id)`);
+
+    // ── pos_supplier_returns ──────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_supplier_returns (
+        id              SERIAL PRIMARY KEY,
+        company_id      INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        supplier_id     INTEGER REFERENCES suppliers(id),
+        supplier_name   VARCHAR(255) NOT NULL,
+        reference       VARCHAR(100),
+        notes           TEXT,
+        item_count      INTEGER DEFAULT 0,
+        total_quantity  INTEGER DEFAULT 0,
+        total_value     DECIMAL(10,2) DEFAULT 0,
+        returned_by     INTEGER REFERENCES users(id),
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_supplier_returns_company
+        ON pos_supplier_returns(company_id)
+    `);
+
+    // ── pos_supplier_return_items ─────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_supplier_return_items (
+        id              SERIAL PRIMARY KEY,
+        return_id       INTEGER NOT NULL REFERENCES pos_supplier_returns(id) ON DELETE CASCADE,
+        company_id      INTEGER NOT NULL REFERENCES companies(id),
+        product_id      INTEGER NOT NULL REFERENCES products(id),
+        quantity        INTEGER NOT NULL,
+        unit_cost       DECIMAL(10,2),
+        reason          VARCHAR(50),
+        qty_before      INTEGER,
+        qty_after       INTEGER,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     // ── user_pos_pins ─────────────────────────────────────────────────────────
     // Stores bcrypt-hashed PINs for PIN-eligible POS users (cashier, senior_cashier,
     // shift_supervisor, assistant_manager). One row per user per company.

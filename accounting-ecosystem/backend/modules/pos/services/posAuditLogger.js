@@ -77,6 +77,12 @@ const POS_EVENTS = {
     SUPPLIER_RECEIVE_COMPLETED:  'SUPPLIER_RECEIVE_COMPLETED',
     STOCK_TRANSFER_RECORDED:     'STOCK_TRANSFER_RECORDED',
 
+    // Supplier-linked products events (Workstream 78)
+    SUPPLIER_PRODUCT_LINKED:          'SUPPLIER_PRODUCT_LINKED',
+    SUPPLIER_PRODUCT_UNLINKED:        'SUPPLIER_PRODUCT_UNLINKED',
+    SUPPLIER_RETURN_COMPLETED:        'SUPPLIER_RETURN_COMPLETED',
+    SUPPLIER_PRICE_INCREASE_DETECTED: 'SUPPLIER_PRICE_INCREASE_DETECTED',
+
     // Stock policy events
     STOCK_POLICY_CHANGED:        'STOCK_POLICY_CHANGED',        // admin toggled allow_negative_stock_sales
     NEGATIVE_STOCK_SALE_ALLOWED: 'NEGATIVE_STOCK_SALE_ALLOWED', // sale approved despite insufficient stock
@@ -144,6 +150,10 @@ const EVENT_CATEGORY = {
     STOCK_TAKE_COMPLETED:        'inventory',
     SUPPLIER_RECEIVE_COMPLETED:  'inventory',
     STOCK_TRANSFER_RECORDED:     'inventory',
+    SUPPLIER_PRODUCT_LINKED:          'inventory',
+    SUPPLIER_PRODUCT_UNLINKED:        'inventory',
+    SUPPLIER_RETURN_COMPLETED:        'inventory',
+    SUPPLIER_PRICE_INCREASE_DETECTED: 'inventory',
     STOCK_POLICY_CHANGED:        'settings',
     NEGATIVE_STOCK_SALE_ALLOWED: 'inventory',
     NEGATIVE_STOCK_CREATED:      'inventory',

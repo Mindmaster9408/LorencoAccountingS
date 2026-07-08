@@ -17,6 +17,9 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
+const { getStockPolicy } = require('../services/stockPolicyCache');
+
+const RETURN_REASONS = new Set(['damaged', 'expired', 'wrong_item', 'over_supplied', 'credit_requested', 'supplier_collection', 'other']);
 
 const router = express.Router();
 
@@ -151,6 +154,146 @@ router.get('/adjustments', requirePermission('INVENTORY.VIEW'), async (req, res)
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+/**
+ * POST /api/pos/inventory/return
+ * Return stock to a supplier — reduces stock. Guards against returning more
+ * than is on hand unless the company's negative-stock policy allows it or the
+ * requester explicitly sets override:true (route is already management-only).
+ *
+ * Body: { supplier_name, supplier_id, reference, notes, override, items:
+ *   [{ product_id, quantity, unit_cost, reason, notes }] }
+ *
+ * Zero/blank-quantity rows are skipped, matching the receive flow.
+ * All lines are validated (existence + stock) before anything is written, so
+ * a return either applies in full or not at all — no partial stock reduction
+ * from a request that was going to fail partway through.
+ */
+router.post('/return', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
+  try {
+    const { supplier_name, supplier_id, reference, notes, override, items } = req.body;
+    if (!supplier_name) return res.status(400).json({ error: 'supplier_name is required' });
+    if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array is required' });
+
+    const lines = items
+      .map(i => ({
+        product_id: parseInt(i.product_id),
+        quantity:   parseInt(i.quantity),
+        unit_cost:  i.unit_cost != null && i.unit_cost !== '' ? parseFloat(i.unit_cost) : null,
+        reason:     RETURN_REASONS.has(i.reason) ? i.reason : 'other',
+        notes:      i.notes ? String(i.notes).trim() : null,
+      }))
+      .filter(l => l.product_id > 0 && l.quantity > 0);
+
+    if (lines.length === 0) return res.status(400).json({ error: 'No items with a quantity greater than zero' });
+
+    const productIds = lines.map(l => l.product_id);
+    const { data: dbProducts, error: prodErr } = await supabase
+      .from('products')
+      .select('id, product_name, stock_quantity')
+      .eq('company_id', req.companyId)
+      .in('id', productIds);
+    if (prodErr) return res.status(500).json({ error: prodErr.message });
+
+    const byId = new Map((dbProducts || []).map(p => [p.id, p]));
+    const missing = productIds.filter(id => !byId.has(id));
+    if (missing.length > 0) {
+      return res.status(400).json({ error: `Product IDs not found for this company: ${missing.join(', ')}` });
+    }
+
+    const allowNegative = await getStockPolicy(req.companyId, supabase);
+    const bypassGuard = allowNegative || override === true;
+
+    if (!bypassGuard) {
+      const exceeding = lines
+        .map(l => ({ ...l, product: byId.get(l.product_id) }))
+        .filter(l => l.quantity > parseFloat(l.product.stock_quantity || 0));
+      if (exceeding.length > 0) {
+        return res.status(400).json({
+          error: 'Return quantity exceeds current stock for one or more products',
+          exceeding: exceeding.map(l => ({ product_id: l.product_id, product_name: l.product.product_name, requested: l.quantity, current_stock: l.product.stock_quantity })),
+        });
+      }
+    }
+
+    const totalQty   = lines.reduce((sum, l) => sum + l.quantity, 0);
+    const totalValue = lines.reduce((sum, l) => sum + (l.unit_cost != null ? l.unit_cost * l.quantity : 0), 0);
+
+    const { data: ret, error: retErr } = await supabase
+      .from('pos_supplier_returns')
+      .insert({
+        company_id:     req.companyId,
+        supplier_id:    supplier_id ? parseInt(supplier_id) : null,
+        supplier_name,
+        reference:      reference || null,
+        notes:          notes || null,
+        item_count:     lines.length,
+        total_quantity: totalQty,
+        total_value:    totalValue,
+        returned_by:    req.user.userId,
+      })
+      .select().single();
+    if (retErr) return res.status(500).json({ error: retErr.message });
+
+    const processedItems = [];
+
+    for (const line of lines) {
+      const product = byId.get(line.product_id);
+      const oldQty  = parseFloat(product.stock_quantity || 0);
+      const newQty  = bypassGuard ? (oldQty - line.quantity) : Math.max(0, oldQty - line.quantity);
+
+      await supabase.from('products')
+        .update({ stock_quantity: newQty, updated_at: new Date().toISOString() })
+        .eq('id', line.product_id).eq('company_id', req.companyId);
+
+      await supabase.from('pos_supplier_return_items').insert({
+        return_id: ret.id, company_id: req.companyId, product_id: line.product_id,
+        quantity: line.quantity, unit_cost: line.unit_cost, reason: line.reason,
+        qty_before: oldQty, qty_after: newQty,
+      });
+
+      await supabase.from('inventory_adjustments').insert({
+        company_id: req.companyId, product_id: line.product_id, adjusted_by: req.user.userId,
+        quantity_before: oldQty, quantity_change: -line.quantity, quantity_after: newQty,
+        reason: 'supplier_return',
+        notes: `Return #${ret.id}: ${supplier_name} (${line.reason})${reference ? ' / ' + reference : ''}`,
+      });
+
+      posAuditFromReq(req, POS_EVENTS.STOCK_ADJUSTED, {
+        productId: line.product_id,
+        beforeSnapshot: { stock_quantity: oldQty },
+        afterSnapshot:  { stock_quantity: newQty },
+        metadata: { product_name: product.product_name, quantity_change: -line.quantity, reason: 'supplier_return', return_id: ret.id, supplier_name, return_reason: line.reason },
+      });
+
+      processedItems.push({ product_id: line.product_id, product_name: product.product_name, quantity: line.quantity, qty_before: oldQty, qty_after: newQty, reason: line.reason });
+    }
+
+    posAuditFromReq(req, POS_EVENTS.SUPPLIER_RETURN_COMPLETED, {
+      metadata: { return_id: ret.id, supplier_name, reference: reference || null, item_count: lines.length, total_quantity: totalQty, total_value: totalValue, stock_override_used: bypassGuard && !allowNegative },
+    });
+
+    res.json({ return: { ...ret, items: processedItems } });
+  } catch (err) {
+    console.error('[inventory] return:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/inventory/returns
+ */
+router.get('/returns', requirePermission('INVENTORY.VIEW'), async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('pos_supplier_returns')
+      .select('*, users:returned_by(username, full_name)')
+      .eq('company_id', req.companyId)
+      .order('created_at', { ascending: false }).limit(30);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ returns: data || [] });
+  } catch (err) { res.status(500).json({ error: 'Server error' }); }
 });
 
 // ── Workstream 7A: Retail inventory operations ────────────────────────────────
@@ -315,6 +458,37 @@ router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) 
         afterSnapshot:  { stock_quantity: newQty },
         metadata: { product_name: product.product_name, quantity_change: qty, reason: 'supplier_correction', receive_id: receive.id, supplier_name },
       });
+
+      // Update per-supplier price tracking (Workstream 78) — only for products
+      // explicitly linked to this supplier via product_suppliers. A receive
+      // against an unlinked product/supplier pair leaves no price history,
+      // since that link is what defines "this supplier's price" for the item.
+      if (supplier_id && costPrice !== null) {
+        const { data: link } = await supabase
+          .from('product_suppliers')
+          .select('id, last_purchase_price')
+          .eq('company_id', req.companyId)
+          .eq('supplier_id', parseInt(supplier_id))
+          .eq('product_id', pid)
+          .maybeSingle();
+
+        if (link) {
+          const previousPrice = link.last_purchase_price != null ? parseFloat(link.last_purchase_price) : null;
+
+          await supabase.from('product_suppliers')
+            .update({ last_purchase_price: costPrice, last_purchase_date: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq('id', link.id);
+
+          if (previousPrice !== null && costPrice > previousPrice) {
+            posAuditFromReq(req, POS_EVENTS.SUPPLIER_PRICE_INCREASE_DETECTED, {
+              productId: pid,
+              beforeSnapshot: { price: previousPrice },
+              afterSnapshot:  { price: costPrice },
+              metadata: { product_name: product.product_name, supplier_id: parseInt(supplier_id), supplier_name, old_price: previousPrice, new_price: costPrice, receive_id: receive.id },
+            });
+          }
+        }
+      }
 
       processedItems.push({ product_id: pid, product_name: product.product_name, quantity: qty, qty_before: oldQty, qty_after: newQty });
     }
