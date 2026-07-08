@@ -15,6 +15,7 @@ const { supabase } = require('../../config/database');
 const { authenticateToken, JWT_SECRET } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { getRolePermissions } = require('../../config/permissions');
+const { logPosEvent, POS_EVENTS } = require('../../modules/pos/services/posAuditLogger');
 
 const router = express.Router();
 
@@ -1368,21 +1369,31 @@ const _PIN_TIMING_DUMMY = bcrypt.hashSync('__cc_pin_timing_dummy__', 10);
  * PIN-based login for cashier-level POS users. Returns the same token shape as
  * POST /api/auth/select-company so the POS frontend can use the same completeLogin() flow.
  *
- * Body: { company_id?, company_name?, user_identifier, pin }
- *   company_id or company_name — which company to log into
- *   user_identifier            — username, email, or employee_id
- *   pin                        — 4–6 digit string (never stored, compared via bcrypt only)
+ * Body: { device_token, user_identifier, pin }
+ *   device_token   — required (Workstream 82). Identifies a registered, active
+ *                    Checkout Charlie device. Company is ALWAYS derived from
+ *                    the device record, never from client-supplied company_id/
+ *                    company_name — a device can only ever log employees into
+ *                    the one company it was activated for.
+ *   user_identifier — username, email, or employee_id
+ *   pin             — 4–6 digit string (never stored, compared via bcrypt only)
  *
  * Security:
+ *   - PIN login is refused outright without a valid, active device_token —
+ *     "PIN login only allowed on trusted devices" (Workstream 82)
  *   - PIN never returned in any response or log
  *   - Timing-safe: bcrypt.compare runs even when user/PIN not found
- *   - Lockout: ≥5 failures in 15 min blocks further attempts (server-side only)
- *   - Company isolation enforced: lookups scoped to resolved company_id
+ *   - Two independent lockouts, both server-side only:
+ *       user-level:   ≥5 failures for this user in 15 min
+ *       device-level: ≥5 failures on this device (any user) since the later
+ *                      of 15 min ago or the device's last manager unlock —
+ *                      "Device lock. Not only user lock." (Workstream 82)
+ *   - Company isolation enforced: lookups scoped to the device's company_id
  *   - Only PIN-eligible roles allowed: cashier, senior_cashier, shift_supervisor, assistant_manager
  */
 router.post('/pos/pin-login', async (req, res) => {
   try {
-    const { company_id, company_name, user_identifier, pin } = req.body;
+    const { device_token, user_identifier, pin } = req.body;
 
     if (!user_identifier || !pin) {
       return res.status(400).json({ error: 'user_identifier and pin are required' });
@@ -1390,24 +1401,55 @@ router.post('/pos/pin-login', async (req, res) => {
     if (!/^\d{4,6}$/.test(String(pin))) {
       return res.status(400).json({ error: 'Invalid PIN format' });
     }
-
-    // ── Resolve company ──────────────────────────────────────────────────────
-    let company = null;
-    if (company_id) {
-      const { data } = await supabase
-        .from('companies')
-        .select('id, company_name, trading_name, modules_enabled, is_active')
-        .eq('id', parseInt(company_id, 10))
-        .maybeSingle();
-      company = data;
-    } else if (company_name) {
-      const { data } = await supabase
-        .from('companies')
-        .select('id, company_name, trading_name, modules_enabled, is_active')
-        .ilike('company_name', String(company_name).trim())
-        .maybeSingle();
-      company = data;
+    if (!device_token) {
+      return res.status(400).json({ error: 'This device is not registered. Please ask a manager to activate it.' });
     }
+
+    // ── Resolve + validate device (Workstream 82) ────────────────────────────
+    const deviceTokenHash = crypto.createHash('sha256').update(String(device_token)).digest('hex');
+    const { data: device } = await supabase
+      .from('pos_devices')
+      .select('id, company_id, till_id, device_name, status, pin_unlocked_at')
+      .eq('device_token_hash', deviceTokenHash)
+      .maybeSingle();
+
+    if (!device) {
+      await bcrypt.compare(String(pin), _PIN_TIMING_DUMMY); // timing protection
+      logPosEvent({ companyId: null, actionType: POS_EVENTS.DEVICE_VALIDATION_FAILED, userEmail: user_identifier, metadata: { reason: 'unknown_device' } });
+      return res.status(401).json({ error: 'Unknown device. Please ask a manager to activate this device.', device_error: 'unknown_device' });
+    }
+    if (device.status !== 'active') {
+      await bcrypt.compare(String(pin), _PIN_TIMING_DUMMY);
+      logPosEvent({ companyId: device.company_id, actionType: POS_EVENTS.DEVICE_VALIDATION_FAILED, userEmail: user_identifier, metadata: { reason: 'device_' + device.status, device_id: device.id } });
+      return res.status(403).json({ error: 'This device has been revoked. Please ask a manager to reactivate it.', device_error: 'revoked' });
+    }
+
+    // ── Device-level lockout check (independent of the per-user check below) ─
+    const deviceLockoutSince = new Date(Date.now() - 15 * 60 * 1000);
+    const deviceWindowStart = (device.pin_unlocked_at && new Date(device.pin_unlocked_at) > deviceLockoutSince)
+      ? device.pin_unlocked_at : deviceLockoutSince.toISOString();
+    const { count: deviceFailCount } = await supabase
+      .from('pos_pin_attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('device_id', device.id)
+      .eq('success', false)
+      .gte('created_at', deviceWindowStart);
+
+    if ((deviceFailCount || 0) >= 5) {
+      await bcrypt.compare(String(pin), _PIN_TIMING_DUMMY);
+      logPosEvent({ companyId: device.company_id, actionType: POS_EVENTS.DEVICE_PIN_LOCKED, userEmail: user_identifier, metadata: { device_id: device.id, device_name: device.device_name } });
+      return res.status(429).json({
+        error: 'This device is locked due to too many failed PIN attempts. A manager must unlock it from Device Management.',
+        device_error: 'device_locked',
+      });
+    }
+
+    // ── Resolve company from the device (never from client input) ───────────
+    const { data: company } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name, modules_enabled, is_active')
+      .eq('id', device.company_id)
+      .maybeSingle();
 
     if (!company || !company.is_active) {
       await bcrypt.compare(String(pin), _PIN_TIMING_DUMMY); // timing protection
@@ -1468,16 +1510,32 @@ router.post('/pos/pin-login', async (req, res) => {
     const pinMatches = await bcrypt.compare(String(pin), hashToCompare);
 
     // ── Now enforce all business rules (after compare) ────────────────────────
-    const logAttempt = (success, reason) =>
+    const logAttempt = (success, reason) => {
       supabase.from('pos_pin_attempts').insert({
         company_id:           company.id,
         user_id:              userData ? userData.id : null,
+        device_id:            device.id,
         attempted_identifier: user_identifier,
         success,
         failure_reason:       reason,
         ip_address:           req.ip || null,
         user_agent:           req.headers['user-agent'] || null,
       }).then(() => {});
+      logPosEvent({
+        companyId: company.id, userId: userData ? userData.id : null, userEmail: user_identifier,
+        actionType: success ? POS_EVENTS.PIN_LOGIN_SUCCESS : POS_EVENTS.PIN_LOGIN_FAILED,
+        metadata: { device_id: device.id, device_name: device.device_name, reason: reason || undefined },
+      });
+      // Best-effort quick-glance counter for the Device Management screen — the
+      // actual lockout decision above is always based on the accurate
+      // pos_pin_attempts window count, not this column.
+      if (!success) {
+        supabase.from('pos_devices').select('pin_fail_count').eq('id', device.id).maybeSingle().then(({ data }) => {
+          const next = ((data && data.pin_fail_count) || 0) + 1;
+          supabase.from('pos_devices').update({ pin_fail_count: next }).eq('id', device.id).then(() => {});
+        });
+      }
+    };
 
     if (!userData || !userRole) {
       logAttempt(false, 'user_not_found');
@@ -1491,7 +1549,8 @@ router.post('/pos/pin-login', async (req, res) => {
       });
     }
 
-    // Lockout check: count failures in last 15 minutes
+    // Lockout check: count failures for THIS USER in last 15 minutes
+    // (independent of, and in addition to, the device-level check above)
     const lockoutSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const { count: failCount } = await supabase
       .from('pos_pin_attempts')
@@ -1503,6 +1562,7 @@ router.post('/pos/pin-login', async (req, res) => {
 
     if ((failCount || 0) >= 5) {
       logAttempt(false, 'lockout');
+      logPosEvent({ companyId: company.id, userId: userData.id, userEmail: user_identifier, actionType: POS_EVENTS.PIN_LOGIN_LOCKED, metadata: { device_id: device.id } });
       return res.status(429).json({
         error: 'Account temporarily locked due to too many failed attempts. Please try again in 15 minutes.',
       });
@@ -1521,6 +1581,7 @@ router.post('/pos/pin-login', async (req, res) => {
     // ── Success ───────────────────────────────────────────────────────────────
     logAttempt(true, null);
     supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', userData.id).then(() => {});
+    supabase.from('pos_devices').update({ last_seen_at: new Date().toISOString(), last_user_id: userData.id, pin_fail_count: 0 }).eq('id', device.id).then(() => {});
 
     const permissions = getRolePermissions(userRole);
     const token = jwt.sign({
@@ -1555,6 +1616,60 @@ router.post('/pos/pin-login', async (req, res) => {
     });
   } catch (err) {
     console.error('[auth/pos/pin-login] error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/auth/pos/device/validate
+ * Workstream 82 — Device Identity System.
+ *
+ * Called by the POS app on every boot, before any user is logged in, to
+ * decide whether to show the PIN screen (pre-filled with this device's
+ * company/till, no selection needed) or the "Activate Device" screen
+ * (unknown/missing/revoked device — Flow 7).
+ *
+ * No JWT exists at this point, so this route is authenticated purely by the
+ * device token itself (query param or X-Device-Token header) — the same
+ * pattern as pos/pin-login above, and deliberately outside the standard
+ * authenticateToken chain used everywhere else, for the same reason.
+ *
+ * Never returns the token hash or any other device row internals beyond
+ * what the PIN screen needs to display.
+ */
+router.get('/pos/device/validate', async (req, res) => {
+  try {
+    const deviceToken = req.headers['x-device-token'] || req.query.device_token;
+    if (!deviceToken) return res.status(400).json({ error: 'device_token is required', device_error: 'missing' });
+
+    const deviceTokenHash = crypto.createHash('sha256').update(String(deviceToken)).digest('hex');
+    const { data: device } = await supabase
+      .from('pos_devices')
+      .select('id, company_id, till_id, device_name, status, tills(till_name, till_number)')
+      .eq('device_token_hash', deviceTokenHash)
+      .maybeSingle();
+
+    if (!device) return res.status(404).json({ error: 'Unknown device', device_error: 'unknown_device' });
+    if (device.status !== 'active') return res.status(403).json({ error: 'Device revoked', device_error: 'revoked' });
+
+    const { data: company } = await supabase
+      .from('companies')
+      .select('id, company_name, trading_name, is_active')
+      .eq('id', device.company_id)
+      .maybeSingle();
+    if (!company || !company.is_active) return res.status(404).json({ error: 'Company not found or inactive', device_error: 'company_inactive' });
+
+    res.json({
+      device: {
+        id: device.id,
+        device_name: device.device_name,
+        till_id: device.till_id,
+        till_name: device.tills ? device.tills.till_name : null,
+      },
+      company: { id: company.id, company_name: company.company_name, trading_name: company.trading_name },
+    });
+  } catch (err) {
+    console.error('[auth/pos/device/validate] error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

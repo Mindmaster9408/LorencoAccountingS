@@ -22,6 +22,8 @@ const supportRoutes        = require('./routes/support');
 const emergencyRoutes      = require('./routes/emergency');
 const suppliersRoutes      = require('./routes/suppliers');
 const companyLinksRoutes   = require('./routes/company-links');
+const companyTransfersRoutes = require('./routes/company-transfers');
+const devicesRoutes        = require('./routes/devices');
 const reportsRoutes        = require('./routes/reports');
 const importRoutes         = require('./routes/import');
 const pinRoutes            = require('./routes/pin');
@@ -51,6 +53,8 @@ router.use('/support',    supportRoutes);
 router.use('/emergency',  emergencyRoutes);
 router.use('/suppliers',  suppliersRoutes);
 router.use('/company-links', companyLinksRoutes);
+router.use('/company-transfers', companyTransfersRoutes);
+router.use('/devices', devicesRoutes);
 router.use('/reports',    reportsRoutes);
 router.use('/import',     importRoutes);
 router.use('/shortcuts',  shortcutsRoutes);  // User product shortcuts: /api/pos/shortcuts

@@ -407,6 +407,55 @@ async function ensurePosSchema(pool) {
         ON pos_pin_attempts(company_id, user_id, success, created_at DESC)
     `);
 
+    // ── pos_devices (Workstream 82 — Device Identity System) ─────────────────
+    // Replaces the old client-side-only "device lock" (localStorage
+    // pos_locked_company_id, never validated server-side — a real security
+    // gap: any cashier could clear/edit localStorage and defeat it). This is
+    // the backend-authoritative source of truth: PIN login is only permitted
+    // from a device with a matching, active row here.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_devices (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        till_id               INTEGER REFERENCES tills(id),
+        device_token_hash     VARCHAR(255) NOT NULL,
+        device_name           VARCHAR(150) NOT NULL,
+        status                VARCHAR(20) NOT NULL DEFAULT 'active',
+        platform              VARCHAR(50),
+        user_agent            TEXT,
+        app_version           VARCHAR(50),
+        registered_by         INTEGER REFERENCES users(id),
+        registered_at         TIMESTAMPTZ DEFAULT NOW(),
+        last_seen_at          TIMESTAMPTZ,
+        last_user_id          INTEGER REFERENCES users(id),
+        pin_fail_count        INTEGER NOT NULL DEFAULT 0,
+        pin_locked_until      TIMESTAMPTZ,
+        pin_unlocked_at       TIMESTAMPTZ,
+        revoked_by            INTEGER REFERENCES users(id),
+        revoked_at            TIMESTAMPTZ,
+        revoke_reason         VARCHAR(255),
+        replaced_by_device_id INTEGER REFERENCES pos_devices(id),
+        created_at            TIMESTAMPTZ DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_devices_company ON pos_devices(company_id, status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_devices_till    ON pos_devices(till_id)`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_devices_token_hash ON pos_devices(device_token_hash)`);
+    // device_token_hash is SHA-256 (not bcrypt) — deliberately. The device token
+    // is a 256-bit random value, not a human-guessable secret like a PIN or
+    // password, so it needs no salting/slow-hashing to resist brute force; it
+    // needs fast, deterministic, indexable exact-match lookup instead (the
+    // same reasoning GitHub/Stripe apply to API-key storage). The raw token
+    // itself is returned to the client exactly once, at registration, and
+    // never stored anywhere in plaintext server-side.
+
+    // pos_pin_attempts gains device_id so lockout can be scoped per-device
+    // ("Device lock. Not only user lock." — the ticket's explicit rule) in
+    // addition to the existing per-user lockout, which is left unchanged.
+    await client.query(`ALTER TABLE pos_pin_attempts ADD COLUMN IF NOT EXISTS device_id INTEGER REFERENCES pos_devices(id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_pin_attempts_device ON pos_pin_attempts(device_id, success, created_at DESC)`);
+
     // ── tills ─────────────────────────────────────────────────────────────────
     // Core table; may already exist from database/schema.sql initial deploy.
     // ADD COLUMN IF NOT EXISTS is safe to run on every startup.
@@ -489,6 +538,71 @@ async function ensurePosSchema(pool) {
       CREATE INDEX IF NOT EXISTS idx_pos_shortcuts_user_order
         ON pos_user_product_shortcuts(company_id, user_id, sort_order)
     `);
+
+    // ── pos_company_transfers ─────────────────────────────────────────────────
+    // Inter-company stock transfer (Workstream 81 — Turkstra/Pennygrow v1).
+    // Reuses the existing linked-company relationship (inter_company_relationships,
+    // linked via suppliers/customers in Workstream 80) — this is the transfer
+    // ledger, not a second relationship system. company_id is always the
+    // SENDING company for a given transfer row.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_company_transfers (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        receiver_company_id   INTEGER NOT NULL REFERENCES companies(id),
+        relationship_id       INTEGER,
+        transfer_number       VARCHAR(50) NOT NULL,
+        status                VARCHAR(30) NOT NULL DEFAULT 'draft',
+        reference             VARCHAR(100),
+        notes                 TEXT,
+        expected_receive_date DATE,
+        item_count            INTEGER DEFAULT 0,
+        total_quantity_sent   INTEGER DEFAULT 0,
+        sent_by               INTEGER REFERENCES users(id),
+        sent_at               TIMESTAMPTZ,
+        received_by           INTEGER REFERENCES users(id),
+        received_at           TIMESTAMPTZ,
+        rejected_by           INTEGER REFERENCES users(id),
+        rejected_at           TIMESTAMPTZ,
+        rejection_reason      TEXT,
+        cancelled_by          INTEGER REFERENCES users(id),
+        cancelled_at          TIMESTAMPTZ,
+        return_requested_by   INTEGER REFERENCES users(id),
+        return_requested_at   TIMESTAMPTZ,
+        return_received_by    INTEGER REFERENCES users(id),
+        return_received_at    TIMESTAMPTZ,
+        created_at            TIMESTAMPTZ DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfers_sender   ON pos_company_transfers(company_id, status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfers_receiver ON pos_company_transfers(receiver_company_id, status)`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_company_transfers_number ON pos_company_transfers(company_id, transfer_number)`);
+
+    // ── pos_company_transfer_items ────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_company_transfer_items (
+        id                  SERIAL PRIMARY KEY,
+        transfer_id         INTEGER NOT NULL REFERENCES pos_company_transfers(id) ON DELETE CASCADE,
+        company_id          INTEGER NOT NULL REFERENCES companies(id),
+        product_id          INTEGER NOT NULL REFERENCES products(id),
+        receiver_product_id INTEGER REFERENCES products(id),
+        product_code        VARCHAR(100),
+        barcode              VARCHAR(100),
+        description          VARCHAR(255) NOT NULL,
+        quantity_sent        INTEGER NOT NULL,
+        quantity_received    INTEGER NOT NULL DEFAULT 0,
+        quantity_returned    INTEGER NOT NULL DEFAULT 0,
+        unit_cost            DECIMAL(10,2),
+        selling_price        DECIMAL(10,2),
+        match_status         VARCHAR(20) DEFAULT 'unmatched',
+        return_reason        VARCHAR(30),
+        notes                TEXT,
+        created_at           TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfer_items_transfer ON pos_company_transfer_items(transfer_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfer_items_company  ON pos_company_transfer_items(company_id)`);
 
     console.log('  ✅ POS schema ready.');
   } catch (err) {

@@ -179,4 +179,51 @@ router.post('/:id/revoke', requirePermission('INVENTORY.ADJUST'), async (req, re
   }
 });
 
+/**
+ * PATCH /api/pos/company-links/:id/permissions
+ * Toggle the POS-specific permission flags on an active relationship
+ * (Workstream 81 — required before either side can send/receive/return
+ * inter-company stock transfers). Only the 5 POS flags below can be set
+ * here — accounting's send_invoices/receive_invoices/auto_match_payments
+ * remain exclusively accounting's concern and are merged through untouched.
+ *
+ * Body: { stock_transfer?, receive_transfer?, return_transfer?, pricing_visible?, invoice_reference_visible? } — booleans
+ *
+ * Either party to an already-active relationship may toggle these flags —
+ * the relationship itself already required mutual confirmation, so
+ * enabling a transfer capability on top of it is not a new trust boundary.
+ * Only an ACTIVE relationship's permissions can be changed (pending/revoked
+ * relationships have nothing to transfer against yet).
+ */
+const POS_PERMISSION_KEYS = ['stock_transfer', 'receive_transfer', 'return_transfer', 'pricing_visible', 'invoice_reference_visible'];
+
+router.patch('/:id/permissions', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
+  try {
+    const relationshipId = parseInt(req.params.id);
+    if (!relationshipId) return res.status(400).json({ error: 'Invalid relationship id' });
+
+    const rel = await supabaseSeanStore.getRelationshipById(relationshipId);
+    if (!rel) return res.status(404).json({ error: 'Relationship not found' });
+    if (rel.company_a_id !== req.companyId && rel.company_b_id !== req.companyId) {
+      return res.status(403).json({ error: 'Not authorized for this relationship' });
+    }
+    if (rel.status !== 'active') {
+      return res.status(400).json({ error: 'Only an active relationship\'s permissions can be changed' });
+    }
+
+    const updatedPermissions = { ...(rel.permissions || {}) };
+    for (const key of POS_PERMISSION_KEYS) {
+      if (typeof req.body[key] === 'boolean') updatedPermissions[key] = req.body[key];
+    }
+
+    const updated = await supabaseSeanStore.updateRelationship(relationshipId, { permissions: updatedPermissions });
+    if (!updated) return res.status(500).json({ error: 'Failed to update permissions' });
+
+    res.json({ relationship: { id: updated.id, status: updated.status, permissions: updated.permissions } });
+  } catch (err) {
+    console.error('[company-links] permissions:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

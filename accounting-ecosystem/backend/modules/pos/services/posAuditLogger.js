@@ -94,6 +94,18 @@ const POS_EVENTS = {
     COMPANY_RELATIONSHIP_APPROVED:    'COMPANY_RELATIONSHIP_APPROVED',
     COMPANY_RELATIONSHIP_REVOKED:     'COMPANY_RELATIONSHIP_REVOKED',
 
+    // Inter-company stock transfer events (Workstream 81)
+    COMPANY_TRANSFER_CREATED:            'COMPANY_TRANSFER_CREATED',
+    COMPANY_TRANSFER_SENT:               'COMPANY_TRANSFER_SENT',
+    COMPANY_TRANSFER_RECEIVED:           'COMPANY_TRANSFER_RECEIVED',
+    COMPANY_TRANSFER_PARTIALLY_RECEIVED: 'COMPANY_TRANSFER_PARTIALLY_RECEIVED',
+    COMPANY_TRANSFER_REJECTED:           'COMPANY_TRANSFER_REJECTED',
+    COMPANY_TRANSFER_CANCELLED:          'COMPANY_TRANSFER_CANCELLED',
+    COMPANY_TRANSFER_RETURN_REQUESTED:   'COMPANY_TRANSFER_RETURN_REQUESTED',
+    COMPANY_TRANSFER_RETURN_SENT:        'COMPANY_TRANSFER_RETURN_SENT',
+    COMPANY_TRANSFER_RETURN_RECEIVED:    'COMPANY_TRANSFER_RETURN_RECEIVED',
+    COMPANY_TRANSFER_PRODUCT_MAPPED:     'COMPANY_TRANSFER_PRODUCT_MAPPED',
+
     // Stock policy events
     STOCK_POLICY_CHANGED:        'STOCK_POLICY_CHANGED',        // admin toggled allow_negative_stock_sales
     NEGATIVE_STOCK_SALE_ALLOWED: 'NEGATIVE_STOCK_SALE_ALLOWED', // sale approved despite insufficient stock
@@ -122,6 +134,15 @@ const POS_EVENTS = {
     PIN_LOGIN_SUCCESS:      'PIN_LOGIN_SUCCESS', // cashier successfully logged in with PIN
     PIN_LOGIN_FAILED:       'PIN_LOGIN_FAILED',  // wrong PIN attempt
     PIN_LOGIN_LOCKED:       'PIN_LOGIN_LOCKED',  // account locked after max failed attempts
+
+    // Device Identity events (Workstream 82)
+    DEVICE_REGISTERED:      'DEVICE_REGISTERED',       // manager activated/locked a new device
+    DEVICE_RENAMED:         'DEVICE_RENAMED',
+    DEVICE_REVOKED:         'DEVICE_REVOKED',          // manager revoked a lost/stolen device
+    DEVICE_REPLACED:        'DEVICE_REPLACED',          // old device revoked + new device registered in its place
+    DEVICE_PIN_LOCKED:      'DEVICE_PIN_LOCKED',        // 5 failed PIN attempts on this device
+    DEVICE_UNLOCKED:        'DEVICE_UNLOCKED',          // manager cleared a device PIN lockout
+    DEVICE_VALIDATION_FAILED: 'DEVICE_VALIDATION_FAILED', // unknown/revoked device attempted PIN login
 };
 
 // Maps each event type to its action_category column value.
@@ -172,6 +193,16 @@ const EVENT_CATEGORY = {
     COMPANY_RELATIONSHIP_REQUESTED:   'company_link',
     COMPANY_RELATIONSHIP_APPROVED:    'company_link',
     COMPANY_RELATIONSHIP_REVOKED:     'company_link',
+    COMPANY_TRANSFER_CREATED:            'company_transfer',
+    COMPANY_TRANSFER_SENT:               'company_transfer',
+    COMPANY_TRANSFER_RECEIVED:           'company_transfer',
+    COMPANY_TRANSFER_PARTIALLY_RECEIVED: 'company_transfer',
+    COMPANY_TRANSFER_REJECTED:           'company_transfer',
+    COMPANY_TRANSFER_CANCELLED:          'company_transfer',
+    COMPANY_TRANSFER_RETURN_REQUESTED:   'company_transfer',
+    COMPANY_TRANSFER_RETURN_SENT:        'company_transfer',
+    COMPANY_TRANSFER_RETURN_RECEIVED:    'company_transfer',
+    COMPANY_TRANSFER_PRODUCT_MAPPED:     'company_transfer',
     STOCK_POLICY_CHANGED:        'settings',
     NEGATIVE_STOCK_SALE_ALLOWED: 'inventory',
     NEGATIVE_STOCK_CREATED:      'inventory',
@@ -194,6 +225,13 @@ const EVENT_CATEGORY = {
     PIN_LOGIN_SUCCESS:      'auth',
     PIN_LOGIN_FAILED:       'auth',
     PIN_LOGIN_LOCKED:       'auth',
+    DEVICE_REGISTERED:        'device',
+    DEVICE_RENAMED:           'device',
+    DEVICE_REVOKED:           'device',
+    DEVICE_REPLACED:          'device',
+    DEVICE_PIN_LOCKED:        'device',
+    DEVICE_UNLOCKED:          'device',
+    DEVICE_VALIDATION_FAILED: 'device',
 };
 
 // ── Core logger ───────────────────────────────────────────────────────────────
