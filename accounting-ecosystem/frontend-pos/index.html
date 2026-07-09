@@ -616,8 +616,19 @@
             width: 250px;
             background: white;
             border-right: 1px solid #e0e0e0;
-            overflow-y: auto;
+            overflow-y: scroll;
+            scrollbar-width: thin;
         }
+        /* The sidebar's item list grows every time a new report/section is
+           added (e.g. Workstream 83's "Customers" section) and can exceed
+           the visible height on shorter screens or at higher browser zoom.
+           overflow-y:scroll (not auto) + an always-visible, easy-to-grab
+           scrollbar fixes the "I can see it but can't scroll down to it"
+           problem this rule addresses. */
+        .settings-sidebar::-webkit-scrollbar { width: 10px; }
+        .settings-sidebar::-webkit-scrollbar-track { background: transparent; }
+        .settings-sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.25); border-radius: 5px; }
+        .settings-sidebar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
         .settings-menu-item {
             padding: 15px 20px;
             cursor: pointer;
