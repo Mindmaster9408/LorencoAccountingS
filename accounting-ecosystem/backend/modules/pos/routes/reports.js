@@ -1335,4 +1335,381 @@ router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
   }
 });
 
+// ── Workstream 83: Sales by Customer + Customer Statement ──────────────────
+//
+// Data-source facts confirmed against the live schema before writing this:
+//   - sale_payments is the correct source for payment-method breakdown
+//     (a sale can be split across methods) — used everywhere a payment
+//     breakdown is shown, per the ticket's explicit "must use sale_payments"
+//     rule, not sales.payment_method (which only reflects one method).
+//   - customer_account_transactions exists but is EMPTY in production and
+//     is only ever written by the manual POST /:id/account/payment route
+//     (type='payment') — nothing in sales.js or the create_sale_atomic RPC
+//     (opaque, not in this repo, never touched per every prior ticket's
+//     explicit rule) is provably writing 'charge' rows there for ACCOUNT
+//     sales. Rather than assume either way, both reports below independently
+//     compute ACCOUNT-sale charges directly from `sales` and de-duplicate
+//     against any ledger rows that DO reference the same sale_id — correct
+//     regardless of whether the RPC turns out to post there or not.
+
+const ACCOUNT_PAYMENT_METHOD = 'ACCOUNT';
+
+async function fetchSalePaymentsForSales(saleIds) {
+  if (saleIds.length === 0) return {};
+  const { data } = await supabase
+    .from('sale_payments')
+    .select('sale_id, payment_method, amount, reference, processed_at')
+    .in('sale_id', saleIds);
+  const bySale = {};
+  (data || []).forEach(p => {
+    if (!bySale[p.sale_id]) bySale[p.sale_id] = [];
+    bySale[p.sale_id].push(p);
+  });
+  return bySale;
+}
+
+async function fetchReturnsForSales(saleIds) {
+  if (saleIds.length === 0) return {};
+  const { data } = await supabase
+    .from('pos_returns')
+    .select('id, original_sale_id, refund_amount, refund_method, reason, status, created_at')
+    .in('original_sale_id', saleIds);
+  const bySale = {};
+  (data || []).forEach(r => {
+    if (r.status === 'cancelled') return; // a cancelled return never happened
+    if (!bySale[r.original_sale_id]) bySale[r.original_sale_id] = [];
+    bySale[r.original_sale_id].push(r);
+  });
+  return bySale;
+}
+
+/**
+ * GET /api/reports/sales-by-customer
+ * Company-scoped, REPORTS.VIEW-gated. Two shapes from one endpoint:
+ *   - no customer_id  → summary row per customer (+ one "Walk-in / No
+ *     Customer" row for customer_id IS NULL sales)
+ *   - customer_id given (a real id, or the sentinel 'walkin') → adds a
+ *     `transactions` array with full per-sale drill-down detail
+ */
+router.get('/sales-by-customer', reportsViewGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+    const { customer_id, cashier_id, till_id, payment_method, account_only, include_voids, search } = req.query;
+
+    let query = supabase
+      .from('sales')
+      .select('id, sale_number, receipt_number, customer_id, user_id, till_session_id, subtotal, vat_amount, total_amount, payment_method, status, created_at, users:user_id(username, full_name)')
+      .eq('company_id', req.companyId)
+      .gte('created_at', start)
+      .lte('created_at', end);
+
+    if (include_voids !== 'true') query = query.eq('status', 'completed');
+    if (cashier_id) query = query.eq('user_id', parseInt(cashier_id));
+    if (payment_method) query = query.eq('payment_method', payment_method);
+    if (account_only === 'true') query = query.eq('payment_method', ACCOUNT_PAYMENT_METHOD);
+
+    if (customer_id) {
+      if (customer_id === 'walkin') query = query.is('customer_id', null);
+      else query = query.eq('customer_id', parseInt(customer_id));
+    }
+
+    if (till_id) {
+      const { data: sessions } = await supabase.from('till_sessions').select('id').eq('company_id', req.companyId).eq('till_id', parseInt(till_id));
+      const sessionIds = (sessions || []).map(s => s.id);
+      query = query.in('till_session_id', sessionIds.length > 0 ? sessionIds : [-1]);
+    }
+
+    const { data: sales, error } = await query.order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+
+    const saleIds = (sales || []).map(s => s.id);
+    const [paymentsBySale, returnsBySale] = await Promise.all([
+      fetchSalePaymentsForSales(saleIds),
+      fetchReturnsForSales(saleIds),
+    ]);
+
+    // Till names for drill-down display
+    const sessionIds = [...new Set((sales || []).map(s => s.till_session_id).filter(Boolean))];
+    let tillNameBySession = {};
+    if (sessionIds.length > 0) {
+      const { data: sessions } = await supabase.from('till_sessions').select('id, till_id, tills(till_name, till_number)').in('id', sessionIds);
+      (sessions || []).forEach(s => { tillNameBySession[s.id] = s.tills ? (s.tills.till_name || s.tills.till_number) : null; });
+    }
+
+    // Customer lookup (+ optional name/code search, applied to which
+    // customers are included — walk-in is always included unless a search
+    // term is given, since it has no name/code to match)
+    const customerIds = [...new Set((sales || []).map(s => s.customer_id).filter(Boolean))];
+    let customersById = {};
+    if (customerIds.length > 0) {
+      const { data: customers } = await supabase.from('customers').select('id, name, customer_number').eq('company_id', req.companyId).in('id', customerIds);
+      (customers || []).forEach(c => { customersById[c.id] = c; });
+    }
+    const searchTerm = (search || '').trim().toLowerCase();
+
+    const perSale = (sales || []).map(sale => {
+      const payments = paymentsBySale[sale.id] || [];
+      const returns = returnsBySale[sale.id] || [];
+      const refund = returns.reduce((sum, r) => sum + parseFloat(r.refund_amount || 0), 0);
+      const gross = parseFloat(sale.total_amount || 0);
+      // Fall back to the sale's single payment_method if no sale_payments
+      // rows exist (older data predating the sale_payments table) — an
+      // honest fallback, not a silent zero.
+      const effectivePayments = payments.length > 0
+        ? payments.map(p => ({ method: p.payment_method, amount: parseFloat(p.amount || 0) }))
+        : [{ method: sale.payment_method || 'UNKNOWN', amount: gross }];
+      const accountAmount = effectivePayments.filter(p => p.method === ACCOUNT_PAYMENT_METHOD).reduce((s, p) => s + p.amount, 0);
+      const cashCardAmount = effectivePayments.filter(p => p.method !== ACCOUNT_PAYMENT_METHOD).reduce((s, p) => s + p.amount, 0);
+
+      return {
+        sale_id: sale.id,
+        customer_id: sale.customer_id,
+        sale_number: sale.sale_number || sale.receipt_number,
+        date: sale.created_at,
+        cashier: sale.users?.full_name || sale.users?.username || 'Unknown',
+        till: tillNameBySession[sale.till_session_id] || null,
+        payment_breakdown: effectivePayments,
+        gross,
+        refund,
+        net: Math.round((gross - refund) * 100) / 100,
+        status: sale.status,
+        account_amount: accountAmount,
+        cash_card_amount: cashCardAmount,
+      };
+    });
+
+    // ── Single-customer drill-down ──────────────────────────────────────────
+    if (customer_id) {
+      const isWalkin = customer_id === 'walkin';
+      const custMeta = isWalkin ? null : customersById[parseInt(customer_id)];
+      if (!isWalkin && !custMeta) return res.status(404).json({ error: 'Customer not found' });
+
+      const gross_sales = perSale.reduce((s, x) => s + x.gross, 0);
+      const returns_total = perSale.reduce((s, x) => s + x.refund, 0);
+      const net_sales = perSale.reduce((s, x) => s + x.net, 0);
+
+      return res.json({
+        customer: {
+          customer_id: isWalkin ? null : custMeta.id,
+          customer_name: isWalkin ? 'Walk-in / No Customer' : custMeta.name,
+          customer_code: isWalkin ? null : (custMeta.customer_number || null),
+          sales_count: perSale.length,
+          gross_sales: Math.round(gross_sales * 100) / 100,
+          returns_total: Math.round(returns_total * 100) / 100,
+          net_sales: Math.round(net_sales * 100) / 100,
+          average_sale: perSale.length > 0 ? Math.round((net_sales / perSale.length) * 100) / 100 : 0,
+          last_purchase_date: perSale.length > 0 ? perSale[0].date : null,
+          account_sales_total: Math.round(perSale.reduce((s, x) => s + x.account_amount, 0) * 100) / 100,
+          cash_card_sales_total: Math.round(perSale.reduce((s, x) => s + x.cash_card_amount, 0) * 100) / 100,
+        },
+        transactions: perSale,
+      });
+    }
+
+    // ── Summary grouped by customer ─────────────────────────────────────────
+    const groups = {};
+    perSale.forEach(row => {
+      const key = row.customer_id || 'walkin';
+      if (!groups[key]) {
+        const meta = row.customer_id ? customersById[row.customer_id] : null;
+        groups[key] = {
+          customer_id: row.customer_id || null,
+          customer_name: row.customer_id ? (meta ? meta.name : `Customer #${row.customer_id}`) : 'Walk-in / No Customer',
+          customer_code: row.customer_id && meta ? (meta.customer_number || null) : null,
+          sales: [],
+        };
+      }
+      groups[key].sales.push(row);
+    });
+
+    let rows = Object.values(groups).map(g => {
+      const gross_sales = g.sales.reduce((s, x) => s + x.gross, 0);
+      const returns_total = g.sales.reduce((s, x) => s + x.refund, 0);
+      const net_sales = g.sales.reduce((s, x) => s + x.net, 0);
+      return {
+        customer_id: g.customer_id,
+        customer_name: g.customer_name,
+        customer_code: g.customer_code,
+        sales_count: g.sales.length,
+        gross_sales: Math.round(gross_sales * 100) / 100,
+        returns_total: Math.round(returns_total * 100) / 100,
+        net_sales: Math.round(net_sales * 100) / 100,
+        average_sale: g.sales.length > 0 ? Math.round((net_sales / g.sales.length) * 100) / 100 : 0,
+        last_purchase_date: g.sales.reduce((max, x) => (!max || x.date > max) ? x.date : max, null),
+        account_sales_total: Math.round(g.sales.reduce((s, x) => s + x.account_amount, 0) * 100) / 100,
+        cash_card_sales_total: Math.round(g.sales.reduce((s, x) => s + x.cash_card_amount, 0) * 100) / 100,
+      };
+    });
+
+    if (searchTerm) {
+      rows = rows.filter(r =>
+        r.customer_name.toLowerCase().includes(searchTerm) ||
+        (r.customer_code || '').toLowerCase().includes(searchTerm)
+      );
+    }
+
+    rows.sort((a, b) => b.net_sales - a.net_sales);
+
+    res.json({
+      customers: rows,
+      summary: {
+        totalCustomers: rows.length,
+        totalGross: Math.round(rows.reduce((s, r) => s + r.gross_sales, 0) * 100) / 100,
+        totalReturns: Math.round(rows.reduce((s, r) => s + r.returns_total, 0) * 100) / 100,
+        totalNet: Math.round(rows.reduce((s, r) => s + r.net_sales, 0) * 100) / 100,
+      },
+    });
+  } catch (err) {
+    console.error('[reports] sales-by-customer:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/reports/customer-statement
+ * Company-scoped, REPORTS.VIEW-gated. customer_id is required.
+ *
+ * "POS Account Statement" — built entirely from POS-recorded data
+ * (customer_account_transactions + ACCOUNT-method sales + returns against
+ * them). This is NOT a full Accounting-app debtor statement and must not
+ * be presented as one; the frontend labels it explicitly.
+ *
+ * Balance math: replays every known ledger entry in chronological order
+ * from the earliest one on record (there is no separate "account opened"
+ * balance to seed from — the ledger IS the full history as far as POS has
+ * ever recorded). Opening balance for the requested period = the replayed
+ * balance immediately before startDate. The final replayed balance (as of
+ * the most recent entry) is cross-checked against customers.current_balance
+ * — if they disagree, the response says so explicitly rather than silently
+ * presenting a number that might not match reality (see Rule A5/A7 —
+ * documented uncertainty, not hidden).
+ */
+router.get('/customer-statement', reportsViewGate, async (req, res) => {
+  try {
+    const { customer_id, startDate, endDate, include_paid_sales } = req.query;
+    if (!customer_id) return res.status(400).json({ error: 'customer_id is required' });
+
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('id, name, customer_number, contact_number, phone, email, address_line_1, address_line_2, city, current_balance, credit_limit')
+      .eq('id', customer_id).eq('company_id', req.companyId).single();
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const now = new Date().toISOString();
+    const periodStart = startDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+    const periodEnd = endDate || now;
+
+    // 1) Full ledger history (all-time — needed to compute a correct opening balance)
+    const { data: ledgerRows } = await supabase
+      .from('customer_account_transactions')
+      .select('id, sale_id, type, amount, reference, notes, created_at')
+      .eq('company_id', req.companyId).eq('customer_id', customer_id)
+      .order('created_at', { ascending: true });
+
+    const ledgerSaleIds = new Set((ledgerRows || []).filter(r => r.sale_id).map(r => r.sale_id));
+
+    // 2) ACCOUNT-method sales, all-time — synthesize a charge line for any
+    // that the ledger doesn't already reference by sale_id (see file-header note)
+    const { data: accountSales } = await supabase
+      .from('sales')
+      .select('id, sale_number, receipt_number, total_amount, status, created_at')
+      .eq('company_id', req.companyId).eq('customer_id', customer_id)
+      .eq('payment_method', ACCOUNT_PAYMENT_METHOD).eq('status', 'completed')
+      .order('created_at', { ascending: true });
+
+    const synthesizedCharges = (accountSales || [])
+      .filter(s => !ledgerSaleIds.has(s.id))
+      .map(s => ({
+        id: `sale-${s.id}`, sale_id: s.id, type: 'charge', amount: parseFloat(s.total_amount || 0),
+        reference: s.sale_number || s.receipt_number, notes: 'Account sale', created_at: s.created_at, source: 'sales',
+      }));
+
+    // 3) Returns against this customer's ACCOUNT sales — credit lines
+    const accountSaleIds = (accountSales || []).map(s => s.id);
+    const returnsBySale = await fetchReturnsForSales(accountSaleIds);
+    const returnLines = Object.values(returnsBySale).flat().map(r => ({
+      id: `return-${r.id}`, sale_id: r.original_sale_id, type: 'return', amount: -parseFloat(r.refund_amount || 0),
+      reference: `Return on sale #${r.original_sale_id}`, notes: r.reason || 'Return/credit', created_at: r.created_at, source: 'pos_returns',
+    }));
+
+    const ledgerLines = (ledgerRows || []).map(r => ({
+      id: `ledger-${r.id}`, sale_id: r.sale_id, type: r.type, amount: parseFloat(r.amount || 0),
+      reference: r.reference || null, notes: r.notes || null, created_at: r.created_at, source: 'ledger',
+    }));
+
+    const allBalanceAffectingLines = [...ledgerLines, ...synthesizedCharges, ...returnLines]
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    // Replay from 0 — the ledger is the entire known history
+    let running = 0;
+    const replayed = allBalanceAffectingLines.map(line => {
+      running += line.amount;
+      return { ...line, running_balance: Math.round(running * 100) / 100 };
+    });
+
+    const noHistoryAtAll = replayed.length === 0;
+    const openingEntry = replayed.filter(l => new Date(l.created_at) < new Date(periodStart)).slice(-1)[0];
+    const opening_balance = openingEntry ? openingEntry.running_balance : 0;
+    const opening_balance_unavailable = noHistoryAtAll && Math.abs(parseFloat(customer.current_balance || 0)) > 0.01;
+
+    const periodLines = replayed.filter(l => new Date(l.created_at) >= new Date(periodStart) && new Date(l.created_at) <= new Date(periodEnd));
+    const closing_balance = periodLines.length > 0 ? periodLines[periodLines.length - 1].running_balance : opening_balance;
+
+    // Reconciliation: does our fully-replayed balance (as of the latest
+    // entry we know about) match the customer's live current_balance?
+    const finalReplayedBalance = replayed.length > 0 ? replayed[replayed.length - 1].running_balance : 0;
+    const liveBalance = parseFloat(customer.current_balance || 0);
+    const balance_mismatch = Math.abs(finalReplayedBalance - liveBalance) > 0.01;
+
+    // Reference-only "paid in full" sales — shown if requested, never affect the balance
+    let paidSaleLines = [];
+    if (include_paid_sales === 'true') {
+      const { data: paidSales } = await supabase
+        .from('sales')
+        .select('id, sale_number, receipt_number, total_amount, created_at')
+        .eq('company_id', req.companyId).eq('customer_id', customer_id)
+        .neq('payment_method', ACCOUNT_PAYMENT_METHOD).eq('status', 'completed')
+        .gte('created_at', periodStart).lte('created_at', periodEnd)
+        .order('created_at', { ascending: true });
+      paidSaleLines = (paidSales || []).map(s => ({
+        id: `paid-${s.id}`, sale_id: s.id, type: 'paid_sale',
+        debit: parseFloat(s.total_amount || 0), credit: parseFloat(s.total_amount || 0),
+        reference: s.sale_number || s.receipt_number, notes: 'Paid in full at time of sale — no effect on account balance',
+        created_at: s.created_at, running_balance: null,
+      }));
+    }
+
+    const transactionLines = [
+      ...periodLines.map(l => ({
+        ...l,
+        debit: l.amount > 0 ? l.amount : 0,
+        credit: l.amount < 0 ? -l.amount : 0,
+      })),
+      ...paidSaleLines,
+    ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    res.json({
+      statement_type: 'POS Account Statement',
+      accounting_boundary_note: 'This statement reflects Checkout Charlie POS account activity only. It is not a full Accounting-app debtor statement unless Accounting integration has been explicitly enabled for this company.',
+      customer: {
+        id: customer.id, name: customer.name, customer_code: customer.customer_number || null,
+        contact: customer.contact_number || customer.phone || null, email: customer.email || null,
+        address: [customer.address_line_1, customer.address_line_2, customer.city].filter(Boolean).join(', ') || null,
+        credit_limit: customer.credit_limit != null ? parseFloat(customer.credit_limit) : null,
+      },
+      period: { start: periodStart, end: periodEnd },
+      opening_balance,
+      opening_balance_unavailable,
+      closing_balance,
+      live_current_balance: liveBalance,
+      balance_mismatch,
+      transactions: transactionLines,
+      generated_at: now,
+    });
+  } catch (err) {
+    console.error('[reports] customer-statement:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

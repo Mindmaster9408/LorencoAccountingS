@@ -2757,6 +2757,10 @@
                     <div class="settings-menu-item" onclick="showReport('stock-takes', event)">Stock Takes</div>
                     <div class="settings-menu-item" onclick="showReport('stock-receives', event)">Supplier Receives</div>
                     <div class="settings-menu-item" onclick="showReport('stock-transfers', event)">Stock Transfers</div>
+
+                    <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Customers</h3>
+                    <div class="settings-menu-item" onclick="showReport('sales-by-customer', event)">Sales by Customer</div>
+                    <div class="settings-menu-item" onclick="showReport('customer-statement', event)">Customer Statement</div>
                 </div>
 
                 <div class="settings-content">
@@ -7777,6 +7781,14 @@
             }
             if (currentReport === 'stock-transfers') {
                 loadInventoryHistoryReport('stock-transfers', '/pos/inventory/transfers', container);
+                return;
+            }
+            if (currentReport === 'sales-by-customer') {
+                loadSalesByCustomerReport(container);
+                return;
+            }
+            if (currentReport === 'customer-statement') {
+                loadCustomerStatementReport(container);
                 return;
             }
 
@@ -14273,6 +14285,309 @@
             } catch (e) {
                 container.innerHTML = '<h2>Payment Methods Report</h2><div style="color:#dc3545;padding:20px;">Error loading payment data</div>';
             }
+        }
+
+        // ========== SALES BY CUSTOMER REPORT (Workstream 83) ==========
+
+        let salesByCustomerDrillDownId = null; // null = summary view; else customer_id or 'walkin'
+
+        async function loadSalesByCustomerReport(container) {
+            salesByCustomerDrillDownId = null;
+            container.innerHTML = '<div style="text-align:center;padding:40px;color:#667eea;">Loading filters...</div>';
+
+            const [customersRes, tillsRes, cashiersRes] = await Promise.all([
+                fetch(`${API_URL}/customers`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : { customers: [] }).catch(() => ({ customers: [] })),
+                fetch(`${API_URL}/pos/tills`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : { tills: [] }).catch(() => ({ tills: [] })),
+                fetch(`${API_URL}/pos/reports/cashier-performance`, { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.ok ? r.json() : { cashiers: [] }).catch(() => ({ cashiers: [] })),
+            ]);
+
+            const customerOptions = (customersRes.customers || []).map(c => `<option value="${c.id}">${c.name}${c.customer_number ? ' (' + c.customer_number + ')' : ''}</option>`).join('');
+            const tillOptions = (tillsRes.tills || []).map(t => `<option value="${t.id}">${t.till_name || t.till_number}</option>`).join('');
+            const cashierOptions = (cashiersRes.cashiers || []).map(c => `<option value="${c.user_id}">${c.cashier}</option>`).join('');
+
+            container.innerHTML = `
+                <h2 style="margin-bottom:16px;">Sales by Customer</h2>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px;padding:14px;background:#f5f7fa;border-radius:8px;">
+                    <div><label style="font-size:11px;color:#666;display:block;">Customer</label>
+                        <select id="sbcCustomer" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;"><option value="">All customers</option>${customerOptions}</select></div>
+                    <div><label style="font-size:11px;color:#666;display:block;">Cashier</label>
+                        <select id="sbcCashier" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;"><option value="">All cashiers</option>${cashierOptions}</select></div>
+                    <div><label style="font-size:11px;color:#666;display:block;">Till</label>
+                        <select id="sbcTill" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;"><option value="">All tills</option>${tillOptions}</select></div>
+                    <div><label style="font-size:11px;color:#666;display:block;">Payment Method</label>
+                        <select id="sbcPaymentMethod" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
+                            <option value="">All methods</option>
+                            <option value="CASH">Cash</option><option value="CARD">Card</option><option value="ACCOUNT">Account</option>
+                            <option value="EFT">EFT</option><option value="SNAPSCAN">SnapScan</option><option value="ZAPPER">Zapper</option><option value="GIFT_CARD">Gift Card</option>
+                        </select></div>
+                    <div><label style="font-size:11px;color:#666;display:block;">Search Name/Code</label>
+                        <input type="text" id="sbcSearch" placeholder="Search..." style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;"></div>
+                    <div style="display:flex;align-items:flex-end;gap:12px;">
+                        <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="sbcAccountOnly"> Account only</label>
+                        <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="sbcIncludeVoids"> Include voids</label>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="runSalesByCustomerReport()" style="margin-bottom:16px;">Apply Filters</button>
+                <div id="sbcResults"><div style="text-align:center;padding:40px;color:#999;">Choose filters and click Apply, or view all customers below.</div></div>
+            `;
+            runSalesByCustomerReport();
+        }
+
+        async function runSalesByCustomerReport() {
+            const resultsEl = document.getElementById('sbcResults');
+            resultsEl.innerHTML = '<div style="text-align:center;padding:40px;color:#667eea;">Loading...</div>';
+
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate = document.getElementById('reportEndDate').value;
+            const params = new URLSearchParams();
+            if (startDate) params.set('startDate', startDate);
+            if (endDate) params.set('endDate', endDate);
+            const customerSel = document.getElementById('sbcCustomer')?.value;
+            if (customerSel) params.set('customer_id', customerSel);
+            if (salesByCustomerDrillDownId) params.set('customer_id', salesByCustomerDrillDownId);
+            const cashierSel = document.getElementById('sbcCashier')?.value;
+            if (cashierSel) params.set('cashier_id', cashierSel);
+            const tillSel = document.getElementById('sbcTill')?.value;
+            if (tillSel) params.set('till_id', tillSel);
+            const pmSel = document.getElementById('sbcPaymentMethod')?.value;
+            if (pmSel) params.set('payment_method', pmSel);
+            if (document.getElementById('sbcAccountOnly')?.checked) params.set('account_only', 'true');
+            if (document.getElementById('sbcIncludeVoids')?.checked) params.set('include_voids', 'true');
+            const searchVal = document.getElementById('sbcSearch')?.value.trim();
+            if (searchVal) params.set('search', searchVal);
+
+            try {
+                const res = await fetch(`${API_URL}/pos/reports/sales-by-customer?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (!res.ok) { resultsEl.innerHTML = `<div style="color:#dc3545;padding:20px;">Error: ${data.error || 'Failed to load report'}</div>`; return; }
+
+                if (salesByCustomerDrillDownId) renderSalesByCustomerDrillDown(data, resultsEl);
+                else renderSalesByCustomerSummary(data, resultsEl);
+            } catch (e) {
+                resultsEl.innerHTML = '<div style="color:#dc3545;padding:20px;">Error loading report</div>';
+            }
+        }
+
+        function renderSalesByCustomerSummary(data, el) {
+            const rows = data.customers || [];
+            if (rows.length === 0) {
+                el.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">No sales found for the selected filters</div>';
+                return;
+            }
+            const s = data.summary || {};
+            el.innerHTML = `
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
+                    <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#667eea;">${s.totalCustomers || 0}</div><div style="font-size:11px;color:#666;">Customers</div></div>
+                    <div style="background:#e8f5e9;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#2e7d32;">R ${(s.totalGross || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Gross Sales</div></div>
+                    <div style="background:#fff3e0;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#e65100;">R ${(s.totalReturns || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Returns</div></div>
+                    <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#667eea;">R ${(s.totalNet || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Net Sales</div></div>
+                </div>
+                <table class="products-table">
+                    <thead><tr>
+                        <th>Customer</th><th>Code</th><th style="text-align:right;">Sales</th><th style="text-align:right;">Gross</th>
+                        <th style="text-align:right;">Returns</th><th style="text-align:right;">Net</th><th style="text-align:right;">Avg Sale</th>
+                        <th>Last Purchase</th><th style="text-align:right;">Account</th><th style="text-align:right;">Cash/Card</th><th></th>
+                    </tr></thead>
+                    <tbody>
+                        ${rows.map(r => `
+                            <tr>
+                                <td>${r.customer_name}</td>
+                                <td>${r.customer_code || '-'}</td>
+                                <td style="text-align:right;">${r.sales_count}</td>
+                                <td style="text-align:right;">R ${r.gross_sales.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${r.returns_total.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${r.net_sales.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${r.average_sale.toFixed(2)}</td>
+                                <td>${r.last_purchase_date ? new Date(r.last_purchase_date).toLocaleDateString() : '-'}</td>
+                                <td style="text-align:right;">R ${r.account_sales_total.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${r.cash_card_sales_total.toFixed(2)}</td>
+                                <td><button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="drillDownSalesByCustomer(${r.customer_id === null ? "'walkin'" : r.customer_id})">View</button></td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function drillDownSalesByCustomer(customerId) {
+            salesByCustomerDrillDownId = customerId;
+            runSalesByCustomerReport();
+        }
+
+        function renderSalesByCustomerDrillDown(data, el) {
+            const c = data.customer || {};
+            const txs = data.transactions || [];
+            el.innerHTML = `
+                <button class="btn btn-secondary" style="margin-bottom:12px;font-size:12px;" onclick="salesByCustomerDrillDownId = null; runSalesByCustomerReport();">&larr; Back to all customers</button>
+                <div style="background:#f5f7fa;border-radius:8px;padding:14px;margin-bottom:16px;">
+                    <h3 style="margin:0 0 8px;">${c.customer_name}${c.customer_code ? ' (' + c.customer_code + ')' : ''}</h3>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;font-size:13px;">
+                        <div>Sales: <strong>${c.sales_count}</strong></div>
+                        <div>Gross: <strong>R ${c.gross_sales.toFixed(2)}</strong></div>
+                        <div>Returns: <strong>R ${c.returns_total.toFixed(2)}</strong></div>
+                        <div>Net: <strong>R ${c.net_sales.toFixed(2)}</strong></div>
+                        <div>Avg Sale: <strong>R ${c.average_sale.toFixed(2)}</strong></div>
+                        <div>Account: <strong>R ${c.account_sales_total.toFixed(2)}</strong></div>
+                        <div>Cash/Card: <strong>R ${c.cash_card_sales_total.toFixed(2)}</strong></div>
+                    </div>
+                </div>
+                ${txs.length === 0 ? '<div style="text-align:center;padding:40px;color:#999;">No transactions in this period</div>' : `
+                <table class="products-table">
+                    <thead><tr>
+                        <th>Date</th><th>Sale #</th><th>Cashier</th><th>Till</th><th>Payment</th>
+                        <th style="text-align:right;">Gross</th><th style="text-align:right;">Refund</th><th style="text-align:right;">Net</th><th>Status</th>
+                    </tr></thead>
+                    <tbody>
+                        ${txs.map(t => `
+                            <tr>
+                                <td>${new Date(t.date).toLocaleString()}</td>
+                                <td>${t.sale_number}</td>
+                                <td>${t.cashier}</td>
+                                <td>${t.till || '-'}</td>
+                                <td>${(t.payment_breakdown || []).map(p => `${p.method}: R${p.amount.toFixed(2)}`).join(', ')}</td>
+                                <td style="text-align:right;">R ${t.gross.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${t.refund.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${t.net.toFixed(2)}</td>
+                                <td>${t.status === 'voided' ? '<span style="color:#dc3545;">Voided</span>' : 'Completed'}</td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>`}
+            `;
+        }
+
+        // ========== CUSTOMER STATEMENT REPORT (Workstream 83) ==========
+
+        async function loadCustomerStatementReport(container) {
+            container.innerHTML = '<div style="text-align:center;padding:40px;color:#667eea;">Loading customers...</div>';
+            let customers = [];
+            try {
+                const res = await fetch(`${API_URL}/customers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) customers = (await res.json()).customers || [];
+            } catch (e) { /* handled by empty options below */ }
+
+            const customerOptions = customers.map(c => `<option value="${c.id}">${c.name}${c.customer_number ? ' (' + c.customer_number + ')' : ''}</option>`).join('');
+
+            container.innerHTML = `
+                <h2 style="margin-bottom:16px;">Customer Statement</h2>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px;padding:14px;background:#f5f7fa;border-radius:8px;align-items:end;">
+                    <div><label style="font-size:11px;color:#666;display:block;">Customer *</label>
+                        <select id="csCustomer" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;"><option value="">Select a customer...</option>${customerOptions}</select></div>
+                    <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;padding-bottom:6px;"><input type="checkbox" id="csIncludePaidSales"> Include paid sales (reference only)</label>
+                    <button class="btn btn-primary" onclick="runCustomerStatementReport()">Generate Statement</button>
+                </div>
+                <div id="csResults"><div style="text-align:center;padding:40px;color:#999;">Select a customer to generate their statement.</div></div>
+            `;
+        }
+
+        let lastCustomerStatement = null;
+
+        async function runCustomerStatementReport() {
+            const resultsEl = document.getElementById('csResults');
+            const customerId = document.getElementById('csCustomer')?.value;
+            if (!customerId) { showNotification('Please select a customer', 'error'); return; }
+
+            resultsEl.innerHTML = '<div style="text-align:center;padding:40px;color:#667eea;">Loading statement...</div>';
+
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate = document.getElementById('reportEndDate').value;
+            const params = new URLSearchParams({ customer_id: customerId });
+            if (startDate) params.set('startDate', startDate);
+            if (endDate) params.set('endDate', endDate);
+            if (document.getElementById('csIncludePaidSales')?.checked) params.set('include_paid_sales', 'true');
+
+            try {
+                const res = await fetch(`${API_URL}/pos/reports/customer-statement?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (!res.ok) { resultsEl.innerHTML = `<div style="color:#dc3545;padding:20px;">Error: ${data.error || 'Failed to load statement'}</div>`; return; }
+                lastCustomerStatement = data;
+                renderCustomerStatement(data, resultsEl);
+            } catch (e) {
+                resultsEl.innerHTML = '<div style="color:#dc3545;padding:20px;">Error loading statement</div>';
+            }
+        }
+
+        function renderCustomerStatement(data, el) {
+            const txs = data.transactions || [];
+            el.innerHTML = `
+                <div style="background:#eff3ff;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#3949ab;">
+                    📋 <strong>${data.statement_type}</strong> — ${data.accounting_boundary_note}
+                </div>
+                <div style="border:1px solid #ddd;border-radius:8px;padding:20px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:16px;">
+                        <div>
+                            <h3 style="margin:0 0 4px;">${data.customer.name}</h3>
+                            ${data.customer.customer_code ? `<div style="font-size:12px;color:#666;">Account: ${data.customer.customer_code}</div>` : ''}
+                            ${data.customer.contact ? `<div style="font-size:12px;color:#666;">${data.customer.contact}</div>` : ''}
+                            ${data.customer.address ? `<div style="font-size:12px;color:#666;">${data.customer.address}</div>` : ''}
+                        </div>
+                        <div style="text-align:right;font-size:12px;color:#666;">
+                            <div>Period: ${new Date(data.period.start).toLocaleDateString()} – ${new Date(data.period.end).toLocaleDateString()}</div>
+                            <div>Generated: ${new Date(data.generated_at).toLocaleString()}</div>
+                            <div>By: ${currentUser?.fullName || currentUser?.username || 'Unknown'}</div>
+                        </div>
+                    </div>
+                    ${data.opening_balance_unavailable ? `
+                        <div style="background:#fff3e0;border-left:4px solid #ff9800;padding:10px 14px;margin-bottom:14px;font-size:13px;">
+                            ⚠️ Opening balance unavailable — no account transaction history found for this customer before the statement period. Current recorded balance: R ${data.live_current_balance.toFixed(2)}.
+                        </div>` : ''}
+                    ${data.balance_mismatch ? `
+                        <div style="background:#ffebee;border-left:4px solid #dc3545;padding:10px 14px;margin-bottom:14px;font-size:13px;">
+                            ⚠️ The transaction history below totals R ${data.closing_balance.toFixed(2)} as of the most recent recorded activity, which does not match this customer's live account balance of R ${data.live_current_balance.toFixed(2)}. This may indicate account activity that was not recorded through the standard POS flow — treat the closing balance below as indicative, not final, until reconciled.
+                        </div>` : ''}
+                    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:16px;">
+                        <div style="background:#f5f7fa;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:11px;color:#666;">Opening Balance</div><div style="font-size:20px;font-weight:bold;">R ${data.opening_balance.toFixed(2)}</div></div>
+                        <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:11px;color:#666;">Closing Balance</div><div style="font-size:20px;font-weight:bold;color:#667eea;">R ${data.closing_balance.toFixed(2)}</div></div>
+                    </div>
+                    <table class="products-table">
+                        <thead><tr><th>Date</th><th>Reference</th><th>Description</th><th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th><th style="text-align:right;">Balance</th></tr></thead>
+                        <tbody>
+                            ${txs.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No transactions in this period</td></tr>' : txs.map(t => `
+                                <tr${t.type === 'paid_sale' ? ' style="opacity:0.65;"' : ''}>
+                                    <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                                    <td>${t.reference || '-'}</td>
+                                    <td>${t.notes || t.type}</td>
+                                    <td style="text-align:right;">${t.debit ? 'R ' + t.debit.toFixed(2) : '-'}</td>
+                                    <td style="text-align:right;">${t.credit ? 'R ' + t.credit.toFixed(2) : '-'}</td>
+                                    <td style="text-align:right;">${t.running_balance != null ? 'R ' + t.running_balance.toFixed(2) : '(no effect)'}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <button class="btn btn-secondary" onclick="printCustomerStatement()">🖨️ Print Statement</button>
+            `;
+        }
+
+        function printCustomerStatement() {
+            if (!lastCustomerStatement) { showNotification('Generate a statement first', 'error'); return; }
+            const data = lastCustomerStatement;
+            const txs = data.transactions || [];
+            const rowsHtml = txs.map(t => `
+                <tr>
+                    <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                    <td>${t.reference || '-'}</td>
+                    <td>${t.notes || t.type}</td>
+                    <td style="text-align:right;">${t.debit ? t.debit.toFixed(2) : ''}</td>
+                    <td style="text-align:right;">${t.credit ? t.credit.toFixed(2) : ''}</td>
+                    <td style="text-align:right;">${t.running_balance != null ? t.running_balance.toFixed(2) : ''}</td>
+                </tr>`).join('');
+            document.getElementById('printReceiptArea').innerHTML = `
+                <div style="font-family:Arial,sans-serif;font-size:12px;color:#000;">
+                    <h2 style="margin:0 0 4px;">${data.statement_type}</h2>
+                    <p style="font-size:10px;color:#333;margin:0 0 12px;">${data.accounting_boundary_note}</p>
+                    <p style="margin:0;"><strong>${data.customer.name}</strong>${data.customer.customer_code ? ' (' + data.customer.customer_code + ')' : ''}</p>
+                    <p style="margin:0;">${data.customer.address || ''}</p>
+                    <p style="margin:8px 0;">Period: ${new Date(data.period.start).toLocaleDateString()} – ${new Date(data.period.end).toLocaleDateString()} | Generated: ${new Date(data.generated_at).toLocaleString()} by ${currentUser?.fullName || currentUser?.username || 'Unknown'}</p>
+                    <table style="width:100%;border-collapse:collapse;font-size:11px;" border="1" cellpadding="4">
+                        <thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead>
+                        <tbody>
+                            <tr><td colspan="5"><strong>Opening Balance</strong></td><td style="text-align:right;"><strong>${data.opening_balance.toFixed(2)}</strong></td></tr>
+                            ${rowsHtml}
+                            <tr><td colspan="5"><strong>Closing Balance</strong></td><td style="text-align:right;"><strong>${data.closing_balance.toFixed(2)}</strong></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            window.print();
+            setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
         }
 
         // ========== SUSPICIOUS ACTIVITY REPORT ==========
