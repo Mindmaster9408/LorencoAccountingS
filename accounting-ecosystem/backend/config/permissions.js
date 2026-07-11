@@ -135,6 +135,38 @@ const PERMISSIONS = {
     // Production — issue materials, manage batches
     PRODUCTION_MANAGE: [...MANAGEMENT_ROLES, 'assistant_manager'],
   },
+  // ===== INTER-STORE TRANSFERS (Codebox 85) =====
+  // Deliberately a separate namespace from INVENTORY.TRANSFER/TRANSFER_CREATE
+  // above, which gate the older, unrelated intra-store zone-movement feature
+  // (floor/backroom/wastage/spoilage — pos_stock_transfers). Reusing those
+  // here would silently couple two different features' access control the
+  // moment either one's role list is ever adjusted for its own reasons.
+  TRANSFERS: {
+    CREATE:           SUPERVISOR_ROLES,     // prepare a transfer, count items for dispatch
+    DISPATCH:         SUPERVISOR_ROLES,     // lock counted items and send
+    RECEIVE:          SUPERVISOR_ROLES,     // independently count and confirm received stock
+    APPROVE:          MANAGEMENT_ROLES,     // higher-level sign-off where required
+    // Stricter than CREATE/DISPATCH by design — the ticket's rule that a user
+    // should not normally both dispatch and resolve their own discrepancy is
+    // enforced by this being a management-only tier above supervisor.
+    RESOLVE_VARIANCE: MANAGEMENT_ROLES,
+    VIEW_REPORTS:     SUPERVISOR_ROLES,
+  },
+  // ===== PURCHASE ORDER + DELIVERY FULFILMENT ENGINE (Codebox 87) =====
+  // Deliberately a separate namespace from INVENTORY.PO_CREATE/PO_APPROVE
+  // above, which reserve that action pair for the future standalone
+  // Storehouse/Inventory module (Codebox 11) — an unrelated, unbuilt
+  // feature. Coupling the two the moment either role list changes for its
+  // own reasons would be a silent cross-feature regression, the same
+  // reasoning documented for TRANSFERS vs INVENTORY.TRANSFER above.
+  PURCHASE_ORDERS: {
+    CREATE:  SUPERVISOR_ROLES,   // customer side: draft + submit a PO
+    APPROVE: MANAGEMENT_ROLES,   // supplier side: accept/reject; customer side: cancel after acceptance
+    DISPATCH: SUPERVISOR_ROLES,  // supplier side: dispatch a delivery against an accepted PO
+    RECEIVE:  SUPERVISOR_ROLES,  // customer side: receive a delivery
+    CLOSE:    MANAGEMENT_ROLES,  // force-close a PO short of full quantity (accept partial as final)
+    VIEW:     SUPERVISOR_ROLES,
+  },
   TILLS: {
     VIEW: ALL_ROLES,
     OPEN: ALL_ROLES.filter(r => r !== 'trainee'),

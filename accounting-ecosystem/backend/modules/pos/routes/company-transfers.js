@@ -39,6 +39,11 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getStockPolicy } = require('../services/stockPolicyCache');
 const { supabaseSeanStore } = require('../../../sean/supabase-store');
+// Compare-and-swap stock adjustment — moved to a shared module in Workstream 87
+// so the Purchase Order delivery engine (purchase-orders.js) reuses the exact
+// same primitive instead of duplicating it. Behaviour is byte-identical to
+// the function this replaces.
+const { adjustStockCAS } = require('../services/stockCAS');
 
 const router = express.Router();
 
@@ -49,33 +54,6 @@ const RETURN_REASONS = new Set(['damaged', 'wrong_item', 'over_supplied', 'expir
 
 function generateTransferNumber() {
   return 'XFER-' + require('crypto').randomBytes(4).toString('hex').toUpperCase();
-}
-
-/**
- * Compare-and-swap stock adjustment. Returns { ok:true, oldQty, newQty, product }
- * or { ok:false, error, product?, oldQty? }.
- */
-async function adjustStockCAS(companyId, productId, delta, { allowNegative = false } = {}) {
-  const { data: product } = await supabase
-    .from('products').select('id, product_name, stock_quantity')
-    .eq('id', productId).eq('company_id', companyId).single();
-  if (!product) return { ok: false, error: 'Product not found' };
-
-  const oldQty = parseFloat(product.stock_quantity || 0);
-  const newQty = oldQty + delta;
-  if (delta < 0 && newQty < 0 && !allowNegative) {
-    return { ok: false, error: 'insufficient_stock', product, oldQty };
-  }
-
-  const { data: updated, error } = await supabase
-    .from('products')
-    .update({ stock_quantity: newQty, updated_at: new Date().toISOString() })
-    .eq('id', productId).eq('company_id', companyId).eq('stock_quantity', oldQty)
-    .select().maybeSingle();
-  if (error) return { ok: false, error: error.message };
-  if (!updated) return { ok: false, error: 'concurrent_update', product, oldQty };
-
-  return { ok: true, oldQty, newQty, product };
 }
 
 /**

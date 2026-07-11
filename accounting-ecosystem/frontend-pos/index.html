@@ -2036,6 +2036,8 @@
                         <button class="btn btn-secondary" onclick="showSupplierReturnModal()">Return to Supplier</button>
                         <button class="btn btn-secondary" onclick="showCompanySendModal()">Send to Company</button>
                         <button class="btn btn-secondary" onclick="showCompanyTransfersModal()">Company Transfers</button>
+                        <button class="btn btn-secondary" onclick="showStoreTransfersModal()">🔄 Inter-Store Transfers</button>
+                        <button class="btn btn-secondary" onclick="showPurchaseOrdersModal()">📦 Purchase Orders</button>
                         <button class="btn btn-secondary" onclick="showTransferModal()">Record Transfer</button>
                         <button class="btn btn-secondary" onclick="showStockAdjustModal()">Adjust Stock</button>
                     </div>
@@ -2361,6 +2363,10 @@
                                 <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
                                     <input type="checkbox" id="permPricingVisible" onchange="updateCompanyLinkPermission('pricing_visible', this.checked)"> Show them our cost/selling price on transfers
                                 </label>
+                                <p style="font-size:11px;color:#999;margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Purchase Orders (Workstream 87)</p>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                    <input type="checkbox" id="permPurchaseOrders" onchange="updateCompanyLinkPermission('purchase_orders', this.checked)"> Allow raising purchase orders against this company
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -2633,6 +2639,150 @@
                             <tbody id="ctDetailItemsBody"></tbody>
                         </table>
                         <div id="ctDetailActions" style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inter-Store Transfers Modal (Workstream 85) -->
+        <div id="storeTransfersModal" class="modal-overlay">
+            <div class="modal" style="max-width:1080px;max-height:92vh;">
+                <div class="modal-header">
+                    <h2>Inter-Store Transfers — Custody &amp; Shrinkage Control</h2>
+                    <button class="close-btn" onclick="closeStoreTransfersModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(92vh - 100px);overflow-y:auto;">
+                    <div class="tab-sub-nav">
+                        <button class="sub-tab active" onclick="showStoreTransferTab('create', event)">Create Transfer</button>
+                        <button class="sub-tab" onclick="showStoreTransferTab('outgoing', event)">Outgoing</button>
+                        <button class="sub-tab" onclick="showStoreTransferTab('incoming', event)">Incoming</button>
+                        <button class="sub-tab" onclick="showStoreTransferTab('in-transit', event)">In Transit</button>
+                        <button class="sub-tab" onclick="showStoreTransferTab('variances', event)">Variances / Investigations</button>
+                        <button class="sub-tab" onclick="showStoreTransferTab('history', event)">History</button>
+                    </div>
+
+                    <!-- Create Transfer -->
+                    <div id="stCreatePanel">
+                        <div id="stDraftBanner" style="display:none;background:#eff3ff;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#3949ab;">
+                            Draft <strong id="stDraftNumber"></strong> — add items below, then Dispatch when ready.
+                            <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;margin-left:10px;" onclick="startNewStoreTransferDraft()">Start a different draft</button>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                            <div class="form-group"><label>Source Location *</label>
+                                <select id="stSourceLocation" style="width:100%;"><option value="">Select...</option></select></div>
+                            <div class="form-group"><label>Destination Location *</label>
+                                <select id="stDestLocation" style="width:100%;"><option value="">Select...</option></select></div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                            <div class="form-group"><label>Reference (optional)</label><input type="text" id="stReference" style="width:100%;"></div>
+                            <div class="form-group"><label>Expected Receive Date (optional)</label><input type="date" id="stExpectedDate" style="width:100%;"></div>
+                            <div class="form-group"><label>Transported By (optional)</label><input type="text" id="stTransportedBy" placeholder="Driver / courier name" style="width:100%;"></div>
+                            <div class="form-group"><label>Vehicle / Transport Reference (optional)</label><input type="text" id="stTransportRef" style="width:100%;"></div>
+                        </div>
+                        <div class="form-group" style="margin-bottom:12px;"><label>Dispatch Notes (optional)</label><input type="text" id="stNotes" style="width:100%;"></div>
+                        <button class="btn btn-secondary" onclick="createStoreTransferDraft()" style="margin-bottom:14px;">Create Draft</button>
+
+                        <div id="stItemsSection" style="display:none;">
+                            <h4 style="margin:0 0 8px;font-size:14px;">Items to Send</h4>
+                            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                                <input type="text" id="stBarcodeInput" placeholder="Scan barcode or search product, then Enter" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addStoreTransferItemByBarcode();}">
+                                <button class="btn btn-secondary" onclick="addStoreTransferItemByBarcode()">Add</button>
+                            </div>
+                            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                                <thead><tr style="background:#667eea;color:white;">
+                                    <th style="padding:6px;text-align:left;">Product</th>
+                                    <th style="padding:6px;text-align:right;width:90px;">Stock at Source</th>
+                                    <th style="padding:6px;text-align:right;width:90px;">Qty to Send</th>
+                                    <th style="padding:6px;width:34px;"></th>
+                                </tr></thead>
+                                <tbody id="stItemsBody"></tbody>
+                            </table>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+                                <button class="btn btn-secondary" onclick="saveStoreTransferItems()">Save Items</button>
+                                <button class="btn btn-primary" onclick="dispatchStoreTransfer()">🚚 Dispatch Transfer</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- List panels -->
+                    <div id="stOutgoingPanel" style="display:none;"></div>
+                    <div id="stIncomingPanel" style="display:none;"></div>
+                    <div id="stInTransitPanel" style="display:none;"></div>
+                    <div id="stVariancesPanel" style="display:none;"></div>
+                    <div id="stHistoryPanel" style="display:none;"></div>
+
+                    <!-- Detail / receive / resolve panel -->
+                    <div id="stDetailPanel" style="display:none;">
+                        <button class="btn btn-secondary" style="margin-bottom:12px;font-size:12px;" onclick="closeStoreTransferDetail()">&larr; Back to list</button>
+                        <div id="stDetailContent"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Purchase Order + Delivery Fulfilment Modal (Workstream 87) -->
+        <div id="purchaseOrdersModal" class="modal-overlay">
+            <div class="modal" style="max-width:1120px;max-height:92vh;">
+                <div class="modal-header">
+                    <h2>Purchase Orders — Order &amp; Delivery Fulfilment</h2>
+                    <button class="close-btn" onclick="closePurchaseOrdersModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height:calc(92vh - 100px);overflow-y:auto;">
+                    <div class="tab-sub-nav">
+                        <button class="sub-tab active" onclick="showPoTab('create', event)">Create Order</button>
+                        <button class="sub-tab" onclick="showPoTab('my-orders', event)">My Orders</button>
+                        <button class="sub-tab" onclick="showPoTab('to-fulfill', event)">Orders to Fulfill</button>
+                        <button class="sub-tab" onclick="showPoTab('history', event)">History</button>
+                    </div>
+
+                    <!-- Create Order -->
+                    <div id="poCreatePanel">
+                        <div id="poDraftBanner" style="display:none;background:#eff3ff;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#3949ab;">
+                            Draft <strong id="poDraftNumber"></strong> — add items below, then Submit when ready.
+                            <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;margin-left:10px;" onclick="startNewPoDraft()">Start a different draft</button>
+                        </div>
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label>Supplier * <span style="font-weight:400;color:#999;font-size:11px;">(only suppliers linked to a company on the platform with Purchase Orders enabled)</span></label>
+                            <select id="poSupplierSelect" style="width:100%;"><option value="">Select...</option></select>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                            <div class="form-group"><label>Reference (optional)</label><input type="text" id="poReference" style="width:100%;"></div>
+                            <div class="form-group"><label>Expected Date (optional)</label><input type="date" id="poExpectedDate" style="width:100%;"></div>
+                        </div>
+                        <div class="form-group" style="margin-bottom:12px;"><label>Notes (optional)</label><input type="text" id="poNotes" style="width:100%;"></div>
+                        <button class="btn btn-secondary" onclick="createPoDraft()" style="margin-bottom:14px;">Create Draft</button>
+
+                        <div id="poItemsSection" style="display:none;">
+                            <h4 style="margin:0 0 8px;font-size:14px;">Items to Order</h4>
+                            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                                <input type="text" id="poBarcodeInput" placeholder="Scan barcode or search product, then Enter" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addPoItemByBarcode();}">
+                                <button class="btn btn-secondary" onclick="addPoItemByBarcode()">Add</button>
+                            </div>
+                            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                                <thead><tr style="background:#667eea;color:white;">
+                                    <th style="padding:6px;text-align:left;">Product</th>
+                                    <th style="padding:6px;text-align:right;width:90px;">Qty Ordered</th>
+                                    <th style="padding:6px;text-align:right;width:100px;">Unit Cost</th>
+                                    <th style="padding:6px;width:34px;"></th>
+                                </tr></thead>
+                                <tbody id="poItemsBody"></tbody>
+                            </table>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+                                <button class="btn btn-secondary" onclick="savePoItems()">Save Items</button>
+                                <button class="btn btn-primary" onclick="submitPurchaseOrder()">📤 Submit Order</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- List panels -->
+                    <div id="poMyOrdersPanel" style="display:none;"></div>
+                    <div id="poToFulfillPanel" style="display:none;"></div>
+                    <div id="poHistoryPanel" style="display:none;"></div>
+
+                    <!-- Detail panel -->
+                    <div id="poDetailPanel" style="display:none;">
+                        <button class="btn btn-secondary" style="margin-bottom:12px;font-size:12px;" onclick="closePoDetail()">&larr; Back to list</button>
+                        <div id="poDetailContent"></div>
                     </div>
                 </div>
             </div>
@@ -3202,6 +3352,14 @@
                             <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;" onclick="copyMyInvitationCode()">Copy</button>
                             <span style="font-size:12px;color:#888;">Share this with a trading partner so they can link you as a supplier.</span>
                         </div>
+                        <div style="background:#f5f7fa;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <label style="font-size:13px;color:#333;font-weight:600;">Purchase Order invoice timing:</label>
+                            <select id="poInvoiceTimingSelect" onchange="changePoInvoiceTiming()" style="padding:5px 8px;">
+                                <option value="after_final_delivery">Invoice only after final delivery (Option A)</option>
+                                <option value="immediate">Invoice immediately on supplier acceptance (Option B)</option>
+                            </select>
+                            <span style="font-size:12px;color:#888;">Applies to new purchase orders you raise — in-flight orders keep the setting from when they were created.</span>
+                        </div>
                         <div class="products-header">
                             <div class="search-box">
                                 <input type="text" id="supplierSearch" placeholder="Search suppliers..." oninput="loadSettingsSuppliers()">
@@ -3231,6 +3389,49 @@
                                 </thead>
                                 <tbody id="suppliersTableBody">
                                     <tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading suppliers...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Sites / Locations Section (Workstream 85) — repairs a pre-existing
+                         dead menu item: "Sites" had no section div and no showSettings()
+                         case (same class of bug the Suppliers section had before Workstream
+                         78). This is the prerequisite locations entity inter-store transfers
+                         are built on — see store-transfers.js / locations.js. -->
+                    <div id="sitesSection" style="display: none;">
+                        <div class="products-header">
+                            <h3 style="margin:0;">Sites / Locations</h3>
+                            <div class="header-actions">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                                    <input type="checkbox" id="blindTransferReceivingToggle" onchange="toggleBlindTransferReceiving()">
+                                    Blind receive for inter-store transfers
+                                </label>
+                                <button class="btn btn-primary" onclick="showNewSiteForm()">Add Site</button>
+                            </div>
+                        </div>
+                        <p style="color:#666;margin:0 0 14px;font-size:13px;">
+                            Sites/locations are used by Inter-Store Transfers (Stock → 🔄 Inter-Store Transfers) to track stock and custody
+                            independently per physical store. "Blind receive" hides the quantity sent from the receiving location until
+                            they submit their own physical count — this prevents copying the expected number instead of actually counting.
+                        </p>
+                        <div id="newSiteForm" style="display:none;background:#f5f7fa;border-radius:8px;padding:14px;margin-bottom:14px;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:10px;align-items:end;">
+                                <div class="form-group" style="margin:0;"><label>Name *</label><input type="text" id="newSiteName" style="width:100%;"></div>
+                                <div class="form-group" style="margin:0;"><label>Code (optional)</label><input type="text" id="newSiteCode" style="width:100%;"></div>
+                                <div class="form-group" style="margin:0;"><label>Address (optional)</label><input type="text" id="newSiteAddress" style="width:100%;"></div>
+                                <button class="btn btn-primary" onclick="createSite()">Save</button>
+                            </div>
+                        </div>
+                        <div class="products-container">
+                            <table class="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th><th>Code</th><th>Address</th><th>Status</th><th>Assigned Users</th><th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sitesTableBody">
+                                    <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading sites...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -3613,6 +3814,89 @@
                 <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
                     Once a linked company has stock transfer enabled, use Stock → Send to Company to
                     send stock, and Stock → Company Transfers to receive, reject, or return it.
+                </p>
+            </div>
+        </div>
+
+        <!-- Inter-Store Transfers — same-company, different locations (Workstream
+             85), distinct from the Company Links / Transfers section above
+             (different companies). Every count is real data from
+             /api/pos/reports/store-transfer-register scoped to this user's
+             assigned locations — never fabricated. -->
+        <div class="enterprise-section" id="dashboardStoreTransferSection">
+            <h3>🏬 Inter-Store Transfers</h3>
+            <div id="dashboardStoreTransferKPIs" class="dashboard-grid" style="display:none;margin-bottom:0;">
+                <div class="kpi-card">
+                    <div class="kpi-label">In Transit</div>
+                    <div class="kpi-value" id="kpiStoreInTransit">0</div>
+                    <div class="kpi-sub">between your locations</div>
+                </div>
+                <div class="kpi-card orange">
+                    <div class="kpi-label">Awaiting Receipt</div>
+                    <div class="kpi-value" id="kpiStoreAwaitingReceipt">0</div>
+                    <div class="kpi-sub">not yet counted at destination</div>
+                </div>
+                <div class="kpi-card red">
+                    <div class="kpi-label">Overdue</div>
+                    <div class="kpi-value" id="kpiStoreOverdue">0</div>
+                    <div class="kpi-sub">past expected receive date</div>
+                </div>
+                <div class="kpi-card red">
+                    <div class="kpi-label">With Variance</div>
+                    <div class="kpi-value" id="kpiStoreVariance">0</div>
+                    <div class="kpi-sub">shortage/overage detected</div>
+                </div>
+                <div class="kpi-card red">
+                    <div class="kpi-label">Investigations Required</div>
+                    <div class="kpi-value" id="kpiStoreInvestigations">0</div>
+                    <div class="kpi-sub">flagged for manager review</div>
+                </div>
+            </div>
+            <div id="dashboardStoreTransferEmptyState" class="empty-state">
+                <div class="icon">🏬</div>
+                <p>No inter-store transfers yet for this company.</p>
+                <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
+                    Set up sites in Settings → Sites / Locations, then use Stock → 🔄 Inter-Store Transfers
+                    to send and receive stock between your own locations with full custody tracking.
+                </p>
+            </div>
+        </div>
+
+        <!-- Purchase Order + Delivery Fulfilment Engine (Workstream 87) — inter-
+             company orders, distinct from Inter-Store Transfers above (same
+             company, different locations). Every count is real data from
+             /api/pos/reports/purchase-order-register — never fabricated. -->
+        <div class="enterprise-section" id="dashboardPurchaseOrderSection">
+            <h3>📦 Purchase Orders</h3>
+            <div id="dashboardPoKPIs" class="dashboard-grid" style="display:none;margin-bottom:0;">
+                <div class="kpi-card">
+                    <div class="kpi-label">Awaiting Delivery</div>
+                    <div class="kpi-value" id="kpiPoAwaitingDelivery">0</div>
+                    <div class="kpi-sub">accepted, not yet fully received</div>
+                </div>
+                <div class="kpi-card orange">
+                    <div class="kpi-label">Partially Fulfilled</div>
+                    <div class="kpi-value" id="kpiPoPartial">0</div>
+                    <div class="kpi-sub">some deliveries received, more due</div>
+                </div>
+                <div class="kpi-card orange">
+                    <div class="kpi-label">Outstanding Deliveries</div>
+                    <div class="kpi-value" id="kpiPoOutstandingQty">0</div>
+                    <div class="kpi-sub">units still owed across open orders</div>
+                </div>
+                <div class="kpi-card red">
+                    <div class="kpi-label">Late Deliveries</div>
+                    <div class="kpi-value" id="kpiPoLate">0</div>
+                    <div class="kpi-sub">past expected receive date</div>
+                </div>
+            </div>
+            <div id="dashboardPoSupplierPerf" style="display:none;margin-top:12px;"></div>
+            <div id="dashboardPoEmptyState" class="empty-state">
+                <div class="icon">📦</div>
+                <p>No purchase orders yet for this company.</p>
+                <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
+                    Once a linked supplier has Purchase Orders enabled, use Stock → 📦 Purchase Orders
+                    to raise an order that can be fulfilled over any number of deliveries.
                 </p>
             </div>
         </div>
@@ -8949,7 +9233,8 @@
                 if (section === 'general')    { loadGeneralSettings(); }
                 if (section === 'users')      { loadCompaniesForUserFilter(); }
                 if (section === 'customers')  { loadCustomers(); }
-                if (section === 'suppliers')  { loadSettingsSuppliers(); loadMyInvitationCode(); }
+                if (section === 'suppliers')  { loadSettingsSuppliers(); loadMyInvitationCode(); loadPoInvoiceTiming(); }
+                if (section === 'sites')      { loadSettingsSites(); }
                 if (section === 'tills')      { loadSettingsTills(); }
             }
         }
@@ -10509,7 +10794,7 @@
                 }
             }
 
-            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData, companyLinksData, transfersIncoming, transfersOutgoing] = await Promise.all([
+            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData, companyLinksData, transfersIncoming, transfersOutgoing, storeTransferReport, poRegisterReport, poSupplierPerf, poDeliveryReport] = await Promise.all([
                 safeFetchJson(`${API_URL}/reports/gross-profit?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/till-summary?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/negative-stock?${dateParams}`),
@@ -10521,6 +10806,10 @@
                 safeFetchJson(`${API_URL}/pos/company-links`),
                 safeFetchJson(`${API_URL}/pos/company-transfers/incoming`),
                 safeFetchJson(`${API_URL}/pos/company-transfers/outgoing`),
+                safeFetchJson(`${API_URL}/pos/reports/store-transfer-register`),
+                safeFetchJson(`${API_URL}/pos/reports/purchase-order-register`),
+                safeFetchJson(`${API_URL}/pos/reports/supplier-performance`),
+                safeFetchJson(`${API_URL}/pos/reports/delivery-register`),
             ]);
 
             // ── Sales / profit KPIs (real gross profit — the old hardcoded
@@ -10598,6 +10887,61 @@
             } else {
                 document.getElementById('dashboardTransferKPIs').style.display = 'none';
                 document.getElementById('dashboardTransferEmptyState').style.display = 'block';
+            }
+
+            // ── Inter-store transfers (Workstream 85) — real counts from
+            // /api/pos/reports/store-transfer-register, scoped server-side to
+            // this user's assigned locations. null if the user lacks
+            // TRANSFERS.VIEW_REPORTS (safeFetchJson already tolerates this) or
+            // if there are simply no inter-store transfers yet. ──────────────
+            const stSummary = storeTransferReport?.summary;
+            if (stSummary && stSummary.totalTransfers > 0) {
+                document.getElementById('kpiStoreInTransit').textContent = stSummary.inTransitCount || 0;
+                document.getElementById('kpiStoreAwaitingReceipt').textContent = stSummary.awaitingReceiptCount || 0;
+                document.getElementById('kpiStoreOverdue').textContent = stSummary.overdueCount || 0;
+                document.getElementById('kpiStoreVariance').textContent = stSummary.varianceCount || 0;
+                document.getElementById('kpiStoreInvestigations').textContent = stSummary.investigationCount || 0;
+                document.getElementById('dashboardStoreTransferKPIs').style.display = 'grid';
+                document.getElementById('dashboardStoreTransferEmptyState').style.display = 'none';
+            } else {
+                document.getElementById('dashboardStoreTransferKPIs').style.display = 'none';
+                document.getElementById('dashboardStoreTransferEmptyState').style.display = 'block';
+            }
+
+            // ── Purchase Order + Delivery Fulfilment (Workstream 87) — real
+            // counts from /api/pos/reports/purchase-order-register,
+            // /delivery-register, and /supplier-performance. null if the user
+            // lacks PURCHASE_ORDERS.VIEW or there is simply no PO activity yet. ──
+            const poOrders = poRegisterReport?.purchaseOrders || [];
+            const poSummary = poRegisterReport?.summary;
+            if (poSummary && poSummary.totalOrders > 0) {
+                const awaitingDeliveryCount = poOrders.filter(po => ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)).length;
+                document.getElementById('kpiPoAwaitingDelivery').textContent = awaitingDeliveryCount;
+                document.getElementById('kpiPoPartial').textContent = poSummary.partiallyFulfilledCount || 0;
+                document.getElementById('kpiPoOutstandingQty').textContent = poSummary.totalOutstandingQty || 0;
+                document.getElementById('kpiPoLate').textContent = poDeliveryReport?.summary?.lateCount || 0;
+                document.getElementById('dashboardPoKPIs').style.display = 'grid';
+                document.getElementById('dashboardPoEmptyState').style.display = 'none';
+
+                const suppliers = poSupplierPerf?.suppliers || [];
+                const perfDiv = document.getElementById('dashboardPoSupplierPerf');
+                if (suppliers.length > 0) {
+                    perfDiv.style.display = 'block';
+                    perfDiv.innerHTML = `
+                        <h4 style="margin:0 0 8px;font-size:13px;color:#666;">Supplier Delivery Performance</h4>
+                        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                            <thead><tr style="color:#999;text-align:left;"><th style="padding:4px;">Supplier</th><th style="padding:4px;text-align:right;">Orders</th><th style="padding:4px;text-align:right;">On-Time %</th><th style="padding:4px;text-align:right;">Damage %</th><th style="padding:4px;text-align:right;">Cancelled</th></tr></thead>
+                            <tbody>
+                                ${suppliers.map(s => `<tr><td style="padding:4px;">${s.supplier_company_name}</td><td style="padding:4px;text-align:right;">${s.order_count}</td><td style="padding:4px;text-align:right;">${s.on_time_pct != null ? s.on_time_pct + '%' : '-'}</td><td style="padding:4px;text-align:right;">${s.damage_pct}%</td><td style="padding:4px;text-align:right;">${s.cancelled_orders}</td></tr>`).join('')}
+                            </tbody>
+                        </table>`;
+                } else {
+                    perfDiv.style.display = 'none';
+                }
+            } else {
+                document.getElementById('dashboardPoKPIs').style.display = 'none';
+                document.getElementById('dashboardPoSupplierPerf').style.display = 'none';
+                document.getElementById('dashboardPoEmptyState').style.display = 'block';
             }
 
             // ── Operational Alerts — every entry below is a real, derived
@@ -10969,6 +11313,7 @@
                 const perms = rel ? (rel.permissions || {}) : {};
                 document.getElementById('permStockTransfer').checked = !!perms.stock_transfer;
                 document.getElementById('permReceiveTransfer').checked = !!perms.receive_transfer;
+                document.getElementById('permPurchaseOrders').checked = !!perms.purchase_orders;
                 document.getElementById('permReturnTransfer').checked = !!perms.return_transfer;
                 document.getElementById('permPricingVisible').checked = !!perms.pricing_visible;
             } catch (e) { console.log('Load company link permissions error:', e); }
@@ -11069,6 +11414,150 @@
                 () => showNotification('Invitation code copied', 'success'),
                 () => showNotification('Could not copy — please select and copy manually', 'error')
             );
+        }
+
+        // ── Sites / Locations (Workstream 85) ────────────────────────────────
+
+        let cachedSitesList = [];
+
+        async function loadSettingsSites() {
+            const tbody = document.getElementById('sitesTableBody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading sites...</td></tr>';
+            try {
+                const [sitesRes, settingsRes] = await Promise.all([
+                    fetch(`${API_URL}/pos/locations?include_inactive=true`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/pos/settings`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                ]);
+                const sitesData = await sitesRes.json();
+                const settingsData = await settingsRes.json();
+                cachedSitesList = sitesData.locations || [];
+
+                const blindToggle = document.getElementById('blindTransferReceivingToggle');
+                if (blindToggle) blindToggle.checked = !!(settingsData.settings && settingsData.settings.blind_transfer_receiving);
+
+                if (cachedSitesList.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No sites yet — add your first site above.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = await Promise.all(cachedSitesList.map(async s => {
+                    const usersRes = await fetch(`${API_URL}/pos/locations/${s.id}/users`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const usersData = usersRes.ok ? await usersRes.json() : { users: [] };
+                    const userNames = (usersData.users || []).map(u => u.full_name || u.username).join(', ') || '<span style="color:#999;">none assigned</span>';
+                    const statusBadge = s.is_active ? '<span class="status-badge active">Active</span>' : '<span class="status-badge closed">Archived</span>';
+                    return `
+                        <tr>
+                            <td>${s.location_name}</td>
+                            <td>${s.location_code || '-'}</td>
+                            <td>${s.address || '-'}</td>
+                            <td>${statusBadge}</td>
+                            <td style="font-size:12px;">${userNames}</td>
+                            <td style="white-space:nowrap;">
+                                <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="assignUserToSitePrompt(${s.id}, '${(s.location_name || '').replace(/'/g, "\\'")}')">Assign User</button>
+                                <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="toggleSiteActive(${s.id}, ${!s.is_active})">${s.is_active ? 'Archive' : 'Restore'}</button>
+                            </td>
+                        </tr>`;
+                })).then(rows => rows.join(''));
+            } catch (e) {
+                console.log('Sites load error:', e);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#c62828;padding:20px;">Error loading sites</td></tr>';
+            }
+        }
+
+        function showNewSiteForm() {
+            const form = document.getElementById('newSiteForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function createSite() {
+            const location_name = document.getElementById('newSiteName').value.trim();
+            if (!location_name) { showNotification('Site name is required', 'error'); return; }
+            const location_code = document.getElementById('newSiteCode').value.trim();
+            const address = document.getElementById('newSiteAddress').value.trim();
+            try {
+                const res = await fetch(`${API_URL}/pos/locations`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ location_name, location_code: location_code || undefined, address: address || undefined })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Site created', 'success');
+                    document.getElementById('newSiteName').value = '';
+                    document.getElementById('newSiteCode').value = '';
+                    document.getElementById('newSiteAddress').value = '';
+                    document.getElementById('newSiteForm').style.display = 'none';
+                    loadSettingsSites();
+                } else showNotification(result.error || 'Failed to create site', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function toggleSiteActive(siteId, makeActive) {
+            try {
+                const res = await fetch(`${API_URL}/pos/locations/${siteId}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ is_active: makeActive })
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification(makeActive ? 'Site restored' : 'Site archived', 'success'); loadSettingsSites(); }
+                else showNotification(result.error || 'Update failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function assignUserToSitePrompt(siteId, siteName) {
+            const username = prompt(`Assign a user to "${siteName}" — enter their username:`);
+            if (!username || !username.trim()) return;
+            try {
+                const usersRes = await fetch(`${API_URL}/auth/companies/${currentCompanyId}/users`, { headers: { 'Authorization': `Bearer ${token}` } });
+                let userId = null;
+                if (usersRes.ok) {
+                    const usersData = await usersRes.json();
+                    const match = (usersData.users || []).find(u => u.username === username.trim());
+                    if (match) userId = match.id;
+                }
+                if (!userId) { showNotification('User not found by username. Check the exact username in Settings → Users.', 'error'); return; }
+
+                const res = await fetch(`${API_URL}/pos/locations/${siteId}/users`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ user_id: userId })
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('User assigned to site', 'success'); loadSettingsSites(); }
+                else showNotification(result.error || 'Assign failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function toggleBlindTransferReceiving() {
+            const enabled = document.getElementById('blindTransferReceivingToggle').checked;
+            try {
+                const res = await fetch(`${API_URL}/pos/settings/blind-transfer-receiving`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ blind_transfer_receiving: enabled })
+                });
+                if (res.ok) showNotification(`Blind receive ${enabled ? 'enabled' : 'disabled'} for future inter-store transfers`, 'success');
+                else { const r = await res.json(); showNotification(r.error || 'Update failed', 'error'); document.getElementById('blindTransferReceivingToggle').checked = !enabled; }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function loadPoInvoiceTiming() {
+            const select = document.getElementById('poInvoiceTimingSelect');
+            if (!select) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/settings`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                select.value = (data.settings && data.settings.po_invoice_timing) || 'after_final_delivery';
+            } catch (e) { console.log('po invoice timing load error', e); }
+        }
+
+        async function changePoInvoiceTiming() {
+            const value = document.getElementById('poInvoiceTimingSelect').value;
+            try {
+                const res = await fetch(`${API_URL}/pos/settings/po-invoice-timing`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ po_invoice_timing: value })
+                });
+                if (res.ok) showNotification('Purchase order invoice timing updated', 'success');
+                else { const r = await res.json(); showNotification(r.error || 'Update failed', 'error'); }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 
         async function requestSupplierCompanyLink() {
@@ -11909,6 +12398,859 @@
                 } else {
                     showNotification(result.error || 'Confirm failed', 'error');
                 }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ========== INTER-STORE TRANSFERS + SHRINKAGE CONTROL (Workstream 85) ==========
+        // Custody/variance system for transfers between two LOCATIONS of the
+        // SAME company — distinct from "Company Transfers" above (Workstream
+        // 81, between two different companies). Backend reuses the same
+        // pos_company_transfers ledger via transfer_type, but the UI is kept
+        // separate since the flows (blind receive, discrepancy resolution,
+        // location assignment) are meaningfully different from the
+        // inter-company flow.
+
+        let stCurrentDraftId = null;
+        let stCurrentTransfer = null;
+
+        async function showStoreTransfersModal() {
+            document.getElementById('storeTransfersModal').style.display = 'flex';
+            await populateStoreTransferLocationSelects();
+            showStoreTransferTab('create', null);
+        }
+        function closeStoreTransfersModal() { document.getElementById('storeTransfersModal').style.display = 'none'; }
+
+        async function populateStoreTransferLocationSelects() {
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/transferable-locations`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const locations = data.locations || [];
+                const opts = '<option value="">Select...</option>' + locations.map(l => `<option value="${l.id}">${l.location_name}</option>`).join('');
+                document.getElementById('stSourceLocation').innerHTML = opts;
+                document.getElementById('stDestLocation').innerHTML = opts;
+                if (locations.length === 0) {
+                    showNotification('No locations are assigned to you yet. Ask a manager to set up locations in Settings and assign you to one.', 'info');
+                }
+            } catch (e) { console.log('locations load error', e); }
+        }
+
+        function showStoreTransferTab(tab, evt) {
+            document.querySelectorAll('#storeTransfersModal .sub-tab').forEach(t => t.classList.remove('active'));
+            if (evt && evt.target) evt.target.classList.add('active');
+            const idMap = { create: 'stCreatePanel', outgoing: 'stOutgoingPanel', incoming: 'stIncomingPanel', 'in-transit': 'stInTransitPanel', variances: 'stVariancesPanel', history: 'stHistoryPanel' };
+            Object.entries(idMap).forEach(([t, id]) => { document.getElementById(id).style.display = (t === tab) ? 'block' : 'none'; });
+            document.getElementById('stDetailPanel').style.display = 'none';
+            if (tab === 'outgoing') loadStoreTransferList('outgoing');
+            if (tab === 'incoming') loadStoreTransferList('incoming');
+            if (tab === 'in-transit') loadStoreTransferList('in-transit');
+            if (tab === 'variances') loadStoreTransferVariances();
+            if (tab === 'history') loadStoreTransferHistory();
+        }
+
+        function storeTransferStatusBadge(status) {
+            const labels = { draft: 'Draft', in_transit: 'In Transit', partially_received: 'Partially Received', received_complete: 'Received (Complete)', received_with_variance: 'Received (Variance)', resolved: 'Resolved', cancelled: 'Cancelled' };
+            const colors = { draft: '#999', in_transit: '#1976d2', partially_received: '#ff9800', received_complete: '#2e7d32', received_with_variance: '#c62828', resolved: '#667eea', cancelled: '#999' };
+            return `<span style="color:${colors[status] || '#333'};font-weight:600;">${labels[status] || status}</span>`;
+        }
+
+        // ── Create ────────────────────────────────────────────────────────────
+
+        async function createStoreTransferDraft() {
+            const source_location_id = document.getElementById('stSourceLocation').value;
+            const destination_location_id = document.getElementById('stDestLocation').value;
+            if (!source_location_id || !destination_location_id) { showNotification('Select source and destination locations', 'error'); return; }
+            if (source_location_id === destination_location_id) { showNotification('Source and destination must be different', 'error'); return; }
+
+            const body = {
+                source_location_id: parseInt(source_location_id), destination_location_id: parseInt(destination_location_id),
+                reference: document.getElementById('stReference').value.trim() || undefined,
+                expected_receive_date: document.getElementById('stExpectedDate').value || undefined,
+                transported_by: document.getElementById('stTransportedBy').value.trim() || undefined,
+                transport_reference: document.getElementById('stTransportRef').value.trim() || undefined,
+                notes: document.getElementById('stNotes').value.trim() || undefined,
+            };
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(body)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    stCurrentDraftId = result.transfer.id;
+                    document.getElementById('stDraftNumber').textContent = result.transfer.transfer_number;
+                    document.getElementById('stDraftBanner').style.display = 'block';
+                    document.getElementById('stItemsSection').style.display = 'block';
+                    document.getElementById('stItemsBody').innerHTML = '';
+                    showNotification(`Draft ${result.transfer.transfer_number} created — add items below`, 'success');
+                } else showNotification(result.error || 'Failed to create draft', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        function startNewStoreTransferDraft() {
+            stCurrentDraftId = null;
+            document.getElementById('stDraftBanner').style.display = 'none';
+            document.getElementById('stItemsSection').style.display = 'none';
+            document.getElementById('stItemsBody').innerHTML = '';
+            document.getElementById('stSourceLocation').value = '';
+            document.getElementById('stDestLocation').value = '';
+            document.getElementById('stReference').value = '';
+            document.getElementById('stExpectedDate').value = '';
+            document.getElementById('stTransportedBy').value = '';
+            document.getElementById('stTransportRef').value = '';
+            document.getElementById('stNotes').value = '';
+        }
+
+        function addStoreTransferItemByBarcode() {
+            if (!stCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            const input = document.getElementById('stBarcodeInput');
+            const term = input.value.trim();
+            if (!term) return;
+            const product = (products || []).find(p => p.barcode === term) || (products || []).find(p => p.product_code === term) || (products || []).find(p => (p.product_name || '').toLowerCase().includes(term.toLowerCase()));
+            if (!product) { showNotification('Product not found', 'error'); return; }
+            input.value = '';
+
+            const existingRow = document.querySelector(`#stItemsBody tr[data-product-id="${product.id}"]`);
+            if (existingRow) {
+                const qtyInput = existingRow.querySelector('.st-qty');
+                qtyInput.value = (parseInt(qtyInput.value) || 0) + 1;
+                return;
+            }
+
+            const tbody = document.getElementById('stItemsBody');
+            const tr = document.createElement('tr');
+            tr.dataset.productId = product.id;
+            tr.innerHTML = `
+                <td style="padding:5px;">${product.product_name}</td>
+                <td style="padding:5px;text-align:right;color:#999;font-size:11px;">checked at dispatch</td>
+                <td style="padding:5px;"><input type="number" min="1" value="1" class="st-qty" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"></td>
+                <td style="padding:5px;text-align:center;"><button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;">&times;</button></td>`;
+            tbody.appendChild(tr);
+        }
+
+        async function saveStoreTransferItems() {
+            if (!stCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            const items = [];
+            document.querySelectorAll('#stItemsBody tr').forEach(row => {
+                const qty = parseInt(row.querySelector('.st-qty')?.value) || 0;
+                if (qty > 0) items.push({ product_id: parseInt(row.dataset.productId), quantity: qty }); // zero-qty rows skipped
+            });
+            if (items.length === 0) { showNotification('Add at least one item with a quantity', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/${stCurrentDraftId}/items`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ items })
+                });
+                const result = await res.json();
+                if (res.ok) showNotification('Items saved', 'success');
+                else showNotification(result.error || 'Failed to save items', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function dispatchStoreTransfer() {
+            if (!stCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            await saveStoreTransferItems();
+            if (!confirm('Dispatch this transfer? Source stock will be reduced immediately and the transfer will be locked against edits.')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/${stCurrentDraftId}/dispatch`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({})
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Transfer ${result.transfer.transfer_number} dispatched`, 'success');
+                    loadProducts(); loadStock();
+                    startNewStoreTransferDraft();
+                    showStoreTransferTab('in-transit', null);
+                } else if (result.exceeding) {
+                    const lines = result.exceeding.map(e => `${e.description}: requested ${e.requested}, only ${e.current_stock} at source`).join('; ');
+                    showNotification(`${result.error}: ${lines}`, 'error');
+                } else {
+                    showNotification(result.error || 'Dispatch failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Lists ─────────────────────────────────────────────────────────────
+
+        async function loadStoreTransferList(tab) {
+            const panelId = { outgoing: 'stOutgoingPanel', incoming: 'stIncomingPanel', 'in-transit': 'stInTransitPanel' }[tab];
+            const panel = document.getElementById(panelId);
+            panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">Loading...</div>';
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/${tab}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const transfers = data.transfers || [];
+                if (transfers.length === 0) { panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">No transfers</div>'; return; }
+                panel.innerHTML = `
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead><tr style="background:#667eea;color:white;">
+                            <th style="padding:7px;text-align:left;">Transfer #</th><th style="padding:7px;text-align:left;">Source</th>
+                            <th style="padding:7px;text-align:left;">Destination</th><th style="padding:7px;text-align:left;">Status</th>
+                            <th style="padding:7px;text-align:right;">Sent</th><th style="padding:7px;text-align:right;">Received</th>
+                            <th style="padding:7px;width:70px;"></th>
+                        </tr></thead>
+                        <tbody>
+                            ${transfers.map(t => `
+                                <tr>
+                                    <td style="padding:6px;">${t.transfer_number}</td>
+                                    <td style="padding:6px;">${t.source_location_name || '-'}</td>
+                                    <td style="padding:6px;">${t.destination_location_name || '-'}</td>
+                                    <td style="padding:6px;">${storeTransferStatusBadge(t.status)}</td>
+                                    <td style="padding:6px;text-align:right;">${t.total_quantity_sent || 0}</td>
+                                    <td style="padding:6px;text-align:right;">${t.total_received || 0}</td>
+                                    <td style="padding:6px;"><button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openStoreTransferDetail(${t.id})">View</button></td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) { panel.innerHTML = '<div style="color:#c62828;padding:20px;">Error loading transfers</div>'; }
+        }
+
+        async function loadStoreTransferVariances() {
+            const panel = document.getElementById('stVariancesPanel');
+            panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">Loading...</div>';
+            try {
+                const res = await fetch(`${API_URL}/pos/reports/store-transfer-register?variance_only=true`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const transfers = data.transfers || [];
+                if (transfers.length === 0) { panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">No variances in the current period</div>'; return; }
+                panel.innerHTML = `
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead><tr style="background:#667eea;color:white;">
+                            <th style="padding:7px;text-align:left;">Transfer #</th><th style="padding:7px;text-align:left;">Source → Dest</th>
+                            <th style="padding:7px;text-align:right;">Variance</th><th style="padding:7px;text-align:left;">Status</th>
+                            <th style="padding:7px;text-align:center;">Investigation</th><th style="padding:7px;width:70px;"></th>
+                        </tr></thead>
+                        <tbody>
+                            ${transfers.map(t => `
+                                <tr>
+                                    <td style="padding:6px;">${t.transfer_number}</td>
+                                    <td style="padding:6px;">${t.source_location_name} → ${t.destination_location_name}</td>
+                                    <td style="padding:6px;text-align:right;color:${t.total_variance < 0 ? '#c62828' : '#2e7d32'};font-weight:600;">${t.total_variance > 0 ? '+' : ''}${t.total_variance}</td>
+                                    <td style="padding:6px;">${storeTransferStatusBadge(t.status)}</td>
+                                    <td style="padding:6px;text-align:center;">${t.investigation_required ? '🚩' : '-'}</td>
+                                    <td style="padding:6px;"><button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openStoreTransferDetail(${t.id})">Review</button></td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) { panel.innerHTML = '<div style="color:#c62828;padding:20px;">Error loading variances</div>'; }
+        }
+
+        async function loadStoreTransferHistory() {
+            const panel = document.getElementById('stHistoryPanel');
+            panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">Loading...</div>';
+            try {
+                const res = await fetch(`${API_URL}/pos/reports/store-transfer-register`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const transfers = (data.transfers || []).filter(t => ['received_complete', 'received_with_variance', 'resolved', 'cancelled'].includes(t.status));
+                if (transfers.length === 0) { panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">No completed transfers yet</div>'; return; }
+                panel.innerHTML = `
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead><tr style="background:#667eea;color:white;">
+                            <th style="padding:7px;text-align:left;">Transfer #</th><th style="padding:7px;text-align:left;">Source → Dest</th>
+                            <th style="padding:7px;text-align:left;">Status</th><th style="padding:7px;text-align:left;">Date</th><th style="padding:7px;width:70px;"></th>
+                        </tr></thead>
+                        <tbody>
+                            ${transfers.map(t => `
+                                <tr>
+                                    <td style="padding:6px;">${t.transfer_number}</td>
+                                    <td style="padding:6px;">${t.source_location_name} → ${t.destination_location_name}</td>
+                                    <td style="padding:6px;">${storeTransferStatusBadge(t.status)}</td>
+                                    <td style="padding:6px;">${new Date(t.created_at).toLocaleDateString()}</td>
+                                    <td style="padding:6px;"><button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openStoreTransferDetail(${t.id})">View</button></td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) { panel.innerHTML = '<div style="color:#c62828;padding:20px;">Error loading history</div>'; }
+        }
+
+        // ── Detail / Receive / Resolve ───────────────────────────────────────
+
+        async function openStoreTransferDetail(transferId) {
+            ['stCreatePanel', 'stOutgoingPanel', 'stIncomingPanel', 'stInTransitPanel', 'stVariancesPanel', 'stHistoryPanel'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+            document.getElementById('stDetailPanel').style.display = 'block';
+            document.getElementById('stDetailContent').innerHTML = '<div style="text-align:center;padding:30px;color:#999;">Loading...</div>';
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/${transferId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (!res.ok) { document.getElementById('stDetailContent').innerHTML = `<div style="color:#c62828;padding:20px;">${data.error}</div>`; return; }
+                stCurrentTransfer = data;
+                renderStoreTransferDetail();
+            } catch (e) { document.getElementById('stDetailContent').innerHTML = '<div style="color:#c62828;padding:20px;">Error loading transfer</div>'; }
+        }
+
+        function closeStoreTransferDetail() {
+            document.getElementById('stDetailPanel').style.display = 'none';
+            stCurrentTransfer = null;
+        }
+
+        const STORE_TRANSFER_RESOLUTION_REASONS = [
+            ['confirmed_shortage_in_transit', 'Confirmed shortage in transit'],
+            ['source_counting_error', 'Source counting error'],
+            ['destination_counting_error', 'Destination counting error'],
+            ['damaged_in_transit', 'Damaged in transit'],
+            ['returned_to_source', 'Returned to source'],
+            ['theft_suspected', 'Theft suspected'],
+            ['documentation_error', 'Documentation error'],
+            ['other', 'Other'],
+        ];
+
+        function renderStoreTransferDetail() {
+            const { transfer, items, discrepancies, blind_receive_active } = stCurrentTransfer;
+            const canReceive = ['in_transit', 'partially_received'].includes(transfer.status);
+
+            let html = `
+                <div style="background:#f5f7fa;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+                    <strong>${transfer.transfer_number}</strong> — ${storeTransferStatusBadge(transfer.status)}<br>
+                    <span style="color:#666;">${transfer.source_location_name || '-'} → ${transfer.destination_location_name || '-'}</span>
+                    ${transfer.transported_by ? `<div style="color:#666;margin-top:4px;">Transported by: ${transfer.transported_by}${transfer.transport_reference ? ' (' + transfer.transport_reference + ')' : ''}</div>` : ''}
+                    ${transfer.investigation_required ? '<div style="color:#c62828;font-weight:600;margin-top:6px;">🚩 Investigation Required</div>' : ''}
+                    ${blind_receive_active ? '<div style="color:#e65100;margin-top:6px;">🙈 Blind receive active — quantities sent are hidden until you submit your count.</div>' : ''}
+                </div>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead><tr style="background:#667eea;color:white;">
+                        <th style="padding:6px;text-align:left;">Product</th>
+                        <th style="padding:6px;text-align:right;">Sent</th>
+                        <th style="padding:6px;text-align:right;">Received</th>
+                        <th style="padding:6px;text-align:right;">Damaged</th>
+                        <th style="padding:6px;text-align:right;">Rejected</th>
+                        ${canReceive ? '<th style="padding:6px;text-align:right;width:80px;">Receive</th><th style="padding:6px;text-align:right;width:80px;">Damaged</th><th style="padding:6px;text-align:right;width:80px;">Rejected</th>' : ''}
+                    </tr></thead>
+                    <tbody>
+                        ${(items || []).map(i => `
+                            <tr data-item-id="${i.id}">
+                                <td style="padding:6px;">${i.description}</td>
+                                <td style="padding:6px;text-align:right;">${i.quantity_sent === null ? '🙈 hidden' : i.quantity_sent}</td>
+                                <td style="padding:6px;text-align:right;">${i.quantity_received}</td>
+                                <td style="padding:6px;text-align:right;">${i.quantity_damaged}</td>
+                                <td style="padding:6px;text-align:right;">${i.quantity_rejected}</td>
+                                ${canReceive ? `
+                                    <td style="padding:4px;"><input type="number" min="0" value="0" class="st-recv-received" style="width:100%;padding:3px;text-align:right;"></td>
+                                    <td style="padding:4px;"><input type="number" min="0" value="0" class="st-recv-damaged" style="width:100%;padding:3px;text-align:right;"></td>
+                                    <td style="padding:4px;"><input type="number" min="0" value="0" class="st-recv-rejected" style="width:100%;padding:3px;text-align:right;"></td>` : ''}
+                            </tr>`).join('')}
+                    </tbody>
+                </table>`;
+
+            if (canReceive) {
+                html += `<div style="margin-top:14px;"><button class="btn btn-primary" onclick="submitStoreTransferReceive()">✅ Submit Count &amp; Receive</button></div>`;
+            }
+            if (transfer.status === 'draft') {
+                html += `<div style="margin-top:14px;"><button class="btn btn-secondary" onclick="cancelStoreTransferDraft(${transfer.id})">Cancel Draft</button></div>`;
+            }
+
+            if (discrepancies && discrepancies.length > 0) {
+                const reasonOptions = STORE_TRANSFER_RESOLUTION_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+                html += `<h4 style="margin:20px 0 8px;font-size:14px;">Discrepancies</h4>`;
+                html += discrepancies.map(d => `
+                    <div style="background:${d.resolution_reason ? '#f5f7fa' : '#ffebee'};border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;">
+                        <strong>${d.discrepancy_type}</strong> — variance ${d.variance_quantity > 0 ? '+' : ''}${d.variance_quantity}
+                        ${d.resolution_reason ? `<div style="color:#2e7d32;margin-top:4px;">Resolved: ${d.resolution_reason.replace(/_/g, ' ')} — ${d.resolution_notes}</div>` : `
+                            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                <select id="stResolveReason-${d.id}" style="padding:5px;">${reasonOptions}</select>
+                                <input type="text" id="stResolveNotes-${d.id}" placeholder="Resolution notes (required)" style="flex:1;min-width:200px;padding:5px;">
+                                <button class="btn btn-primary" style="font-size:12px;" onclick="submitResolveVariance(${d.id})">Resolve</button>
+                            </div>`}
+                    </div>`).join('');
+            }
+
+            document.getElementById('stDetailContent').innerHTML = html;
+        }
+
+        async function submitStoreTransferReceive() {
+            if (!stCurrentTransfer) return;
+            const items = [];
+            document.querySelectorAll('#stDetailContent tr[data-item-id]').forEach(row => {
+                const itemId = parseInt(row.dataset.itemId);
+                const received = parseInt(row.querySelector('.st-recv-received')?.value) || 0;
+                const damaged = parseInt(row.querySelector('.st-recv-damaged')?.value) || 0;
+                const rejected = parseInt(row.querySelector('.st-recv-rejected')?.value) || 0;
+                if (received > 0 || damaged > 0 || rejected > 0) items.push({ item_id: itemId, quantity_received: received, quantity_damaged: damaged, quantity_rejected: rejected });
+            });
+            if (items.length === 0) { showNotification('Enter a received/damaged/rejected quantity for at least one item', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/${stCurrentTransfer.transfer.id}/receive`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ items })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Receive submitted', 'success');
+                    loadProducts(); loadStock();
+                    openStoreTransferDetail(stCurrentTransfer.transfer.id);
+                } else if (result.overClaims) {
+                    const lines = result.overClaims.map(o => `${o.description || o.item_id}: ${o.reason}`).join('; ');
+                    showNotification(`${result.error}: ${lines}`, 'error');
+                } else {
+                    showNotification(result.error || 'Receive failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function submitResolveVariance(discrepancyId) {
+            if (!stCurrentTransfer) return;
+            const reason = document.getElementById(`stResolveReason-${discrepancyId}`).value;
+            const notes = document.getElementById(`stResolveNotes-${discrepancyId}`).value.trim();
+            if (!notes) { showNotification('Resolution notes are required', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/${stCurrentTransfer.transfer.id}/resolve-variance`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ discrepancy_id: discrepancyId, resolution_reason: reason, resolution_notes: notes })
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Discrepancy resolved', 'success'); openStoreTransferDetail(stCurrentTransfer.transfer.id); }
+                else showNotification(result.error || 'Resolve failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function cancelStoreTransferDraft(transferId) {
+            if (!confirm('Cancel this draft transfer? Nothing was dispatched yet, so no stock will be affected.')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/store-transfers/${transferId}/cancel`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                if (res.ok) { showNotification('Draft cancelled', 'success'); closeStoreTransferDetail(); showStoreTransferTab('outgoing', null); }
+                else showNotification(result.error || 'Cancel failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Workstream 87: Purchase Order + Delivery Fulfilment Engine ──────────
+
+        let poCurrentDraftId = null;
+        let poCurrentDetail = null;
+
+        async function showPurchaseOrdersModal() {
+            document.getElementById('purchaseOrdersModal').style.display = 'flex';
+            await populatePoSupplierSelect();
+            showPoTab('create', null);
+        }
+        function closePurchaseOrdersModal() { document.getElementById('purchaseOrdersModal').style.display = 'none'; }
+
+        async function populatePoSupplierSelect() {
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/transferable-suppliers`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const suppliers = data.suppliers || [];
+                document.getElementById('poSupplierSelect').innerHTML = '<option value="">Select...</option>' +
+                    suppliers.map(s => `<option value="${s.supplier_id}">${s.supplier_name}</option>`).join('');
+                if (suppliers.length === 0) {
+                    showNotification('No suppliers have Purchase Orders enabled yet. Enable it under Settings → Suppliers → link permissions.', 'info');
+                }
+            } catch (e) { console.log('po suppliers load error', e); }
+        }
+
+        function showPoTab(tab, evt) {
+            document.querySelectorAll('#purchaseOrdersModal .sub-tab').forEach(t => t.classList.remove('active'));
+            if (evt && evt.target) evt.target.classList.add('active');
+            const idMap = { create: 'poCreatePanel', 'my-orders': 'poMyOrdersPanel', 'to-fulfill': 'poToFulfillPanel', history: 'poHistoryPanel' };
+            Object.entries(idMap).forEach(([t, id]) => { document.getElementById(id).style.display = (t === tab) ? 'block' : 'none'; });
+            document.getElementById('poDetailPanel').style.display = 'none';
+            if (tab === 'my-orders') loadPoList('my-orders');
+            if (tab === 'to-fulfill') loadPoList('to-fulfill');
+            if (tab === 'history') loadPoList('history');
+        }
+
+        function poStatusBadge(status) {
+            const labels = { draft: 'Draft', submitted: 'Submitted', accepted: 'Accepted', partially_fulfilled: 'Partially Fulfilled', awaiting_final_delivery: 'Awaiting Final Delivery', completed: 'Completed', rejected: 'Rejected', cancelled: 'Cancelled' };
+            const colors = { draft: '#999', submitted: '#1976d2', accepted: '#1976d2', partially_fulfilled: '#ff9800', awaiting_final_delivery: '#ff9800', completed: '#2e7d32', rejected: '#c62828', cancelled: '#999' };
+            return `<span style="color:${colors[status] || '#333'};font-weight:600;">${labels[status] || status}</span>`;
+        }
+
+        // ── Create ────────────────────────────────────────────────────────────
+
+        async function createPoDraft() {
+            const supplier_id = document.getElementById('poSupplierSelect').value;
+            if (!supplier_id) { showNotification('Select a supplier', 'error'); return; }
+
+            const body = {
+                supplier_id: parseInt(supplier_id),
+                reference: document.getElementById('poReference').value.trim() || undefined,
+                expected_date: document.getElementById('poExpectedDate').value || undefined,
+                notes: document.getElementById('poNotes').value.trim() || undefined,
+                items: [],
+            };
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(body)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    poCurrentDraftId = result.purchaseOrder.id;
+                    document.getElementById('poDraftNumber').textContent = result.purchaseOrder.po_number;
+                    document.getElementById('poDraftBanner').style.display = 'block';
+                    document.getElementById('poItemsSection').style.display = 'block';
+                    document.getElementById('poItemsBody').innerHTML = '';
+                    showNotification(`Draft ${result.purchaseOrder.po_number} created — add items below`, 'success');
+                } else showNotification(result.error || 'Failed to create draft', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        function startNewPoDraft() {
+            poCurrentDraftId = null;
+            document.getElementById('poDraftBanner').style.display = 'none';
+            document.getElementById('poItemsSection').style.display = 'none';
+            document.getElementById('poItemsBody').innerHTML = '';
+            document.getElementById('poSupplierSelect').value = '';
+            document.getElementById('poReference').value = '';
+            document.getElementById('poExpectedDate').value = '';
+            document.getElementById('poNotes').value = '';
+        }
+
+        function addPoItemByBarcode() {
+            if (!poCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            const input = document.getElementById('poBarcodeInput');
+            const term = input.value.trim();
+            if (!term) return;
+            const product = (products || []).find(p => p.barcode === term) || (products || []).find(p => p.product_code === term) || (products || []).find(p => (p.product_name || '').toLowerCase().includes(term.toLowerCase()));
+            if (!product) { showNotification('Product not found', 'error'); return; }
+            input.value = '';
+
+            const existingRow = document.querySelector(`#poItemsBody tr[data-product-id="${product.id}"]`);
+            if (existingRow) {
+                const qtyInput = existingRow.querySelector('.po-qty');
+                qtyInput.value = (parseInt(qtyInput.value) || 0) + 1;
+                return;
+            }
+
+            const tbody = document.getElementById('poItemsBody');
+            const tr = document.createElement('tr');
+            tr.dataset.productId = product.id;
+            tr.innerHTML = `
+                <td style="padding:5px;">${product.product_name}</td>
+                <td style="padding:5px;"><input type="number" min="1" value="1" class="po-qty" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"></td>
+                <td style="padding:5px;"><input type="number" min="0" step="0.01" value="${product.cost_price || 0}" class="po-cost" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"></td>
+                <td style="padding:5px;text-align:center;"><button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;">&times;</button></td>`;
+            tbody.appendChild(tr);
+        }
+
+        function collectPoItems() {
+            const items = [];
+            document.querySelectorAll('#poItemsBody tr').forEach(row => {
+                const qty = parseInt(row.querySelector('.po-qty')?.value) || 0;
+                const cost = parseFloat(row.querySelector('.po-cost')?.value);
+                if (qty > 0) items.push({ product_id: parseInt(row.dataset.productId), quantity: qty, unit_cost: isNaN(cost) ? undefined : cost });
+            });
+            return items;
+        }
+
+        async function savePoItems() {
+            if (!poCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            const items = collectPoItems();
+            if (items.length === 0) { showNotification('Add at least one item with a quantity', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poCurrentDraftId}/items`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ items })
+                });
+                const result = await res.json();
+                if (res.ok) showNotification('Items saved', 'success');
+                else showNotification(result.error || 'Failed to save items', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function submitPurchaseOrder() {
+            if (!poCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            await savePoItems();
+            if (!confirm('Submit this purchase order to the supplier?')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poCurrentDraftId}/submit`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Order ${result.purchaseOrder.po_number} submitted`, 'success');
+                    startNewPoDraft();
+                    showPoTab('my-orders', null);
+                } else showNotification(result.error || 'Submit failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Lists ─────────────────────────────────────────────────────────────
+
+        async function loadPoList(tab) {
+            const panelId = { 'my-orders': 'poMyOrdersPanel', 'to-fulfill': 'poToFulfillPanel', history: 'poHistoryPanel' }[tab];
+            const role = tab === 'to-fulfill' ? 'supplier' : 'customer';
+            const panel = document.getElementById(panelId);
+            panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">Loading...</div>';
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders?role=${role}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                let orders = data.purchaseOrders || [];
+                if (tab === 'my-orders') orders = orders.filter(po => !['completed', 'cancelled', 'rejected'].includes(po.status));
+                if (tab === 'to-fulfill') orders = orders.filter(po => !['completed', 'cancelled', 'rejected'].includes(po.status));
+                if (tab === 'history') orders = orders.filter(po => ['completed', 'cancelled', 'rejected'].includes(po.status));
+                if (orders.length === 0) { panel.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">No orders</div>'; return; }
+                panel.innerHTML = `
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead><tr style="background:#667eea;color:white;">
+                            <th style="padding:7px;text-align:left;">Order #</th><th style="padding:7px;text-align:left;">${tab === 'to-fulfill' ? 'Customer' : 'Supplier'}</th>
+                            <th style="padding:7px;text-align:left;">Status</th>
+                            <th style="padding:7px;text-align:right;">Ordered</th><th style="padding:7px;text-align:right;">Received</th><th style="padding:7px;text-align:right;">Outstanding</th>
+                            <th style="padding:7px;width:70px;"></th>
+                        </tr></thead>
+                        <tbody>
+                            ${orders.map(po => `
+                                <tr>
+                                    <td style="padding:6px;">${po.po_number}</td>
+                                    <td style="padding:6px;">${tab === 'to-fulfill' ? (po.customer_company_name || '-') : (po.supplier_company_name || '-')}</td>
+                                    <td style="padding:6px;">${poStatusBadge(po.status)}</td>
+                                    <td style="padding:6px;text-align:right;">${po.total_ordered_qty || 0}</td>
+                                    <td style="padding:6px;text-align:right;">${po.total_received_qty || 0}</td>
+                                    <td style="padding:6px;text-align:right;">${po.total_outstanding_qty || 0}</td>
+                                    <td style="padding:6px;"><button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openPoDetail(${po.id})">View</button></td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            } catch (e) { panel.innerHTML = '<div style="color:#c62828;padding:20px;">Error loading orders</div>'; }
+        }
+
+        // ── Detail / Accept / Reject / Cancel / Deliveries ───────────────────
+
+        async function openPoDetail(poId) {
+            ['poCreatePanel', 'poMyOrdersPanel', 'poToFulfillPanel', 'poHistoryPanel'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+            document.getElementById('poDetailPanel').style.display = 'block';
+            document.getElementById('poDetailContent').innerHTML = '<div style="text-align:center;padding:30px;color:#999;">Loading...</div>';
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (!res.ok) { document.getElementById('poDetailContent').innerHTML = `<div style="color:#c62828;padding:20px;">${data.error}</div>`; return; }
+                poCurrentDetail = data;
+                renderPoDetail();
+            } catch (e) { document.getElementById('poDetailContent').innerHTML = '<div style="color:#c62828;padding:20px;">Error loading order</div>'; }
+        }
+
+        function closePoDetail() {
+            document.getElementById('poDetailPanel').style.display = 'none';
+            poCurrentDetail = null;
+        }
+
+        function renderPoDetail() {
+            const { purchaseOrder: po, items, deliveries, invoice } = poCurrentDetail;
+            const isSupplier = po.is_supplier;
+
+            let html = `
+                <div style="background:#f5f7fa;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+                    <strong>${po.po_number}</strong> — ${poStatusBadge(po.status)}<br>
+                    <span style="color:#666;">${isSupplier ? 'Customer' : 'Supplier'}: ${po.other_company_name}</span>
+                    ${po.expected_date ? `<div style="color:#666;margin-top:4px;">Expected: ${new Date(po.expected_date).toLocaleDateString()}</div>` : ''}
+                    <div style="margin-top:4px;">Ordered ${po.total_ordered_qty} · Received ${po.total_received_qty} · Outstanding ${po.total_outstanding_qty}</div>
+                    ${invoice ? `<div style="color:#2e7d32;margin-top:6px;">🧾 Invoice ${invoice.invoiceNumber} — R${(invoice.total || 0).toFixed(2)} (${invoice.paymentStatus})</div>` : ''}
+                </div>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;">
+                    <thead><tr style="background:#667eea;color:white;">
+                        <th style="padding:6px;text-align:left;">Product</th><th style="padding:6px;text-align:right;">Ordered</th>
+                        <th style="padding:6px;text-align:right;">Received</th><th style="padding:6px;text-align:right;">Outstanding</th>
+                        ${isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status) ? '<th style="padding:6px;text-align:right;width:100px;">Dispatch Qty</th>' : ''}
+                    </tr></thead>
+                    <tbody>
+                        ${(items || []).map(i => `
+                            <tr data-po-item-id="${i.id}">
+                                <td style="padding:6px;">${i.description}</td>
+                                <td style="padding:6px;text-align:right;">${i.quantity_ordered}</td>
+                                <td style="padding:6px;text-align:right;">${i.quantity_received}</td>
+                                <td style="padding:6px;text-align:right;">${i.quantity_outstanding}</td>
+                                ${isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status) ? `<td style="padding:4px;"><input type="number" min="0" max="${i.quantity_outstanding}" value="0" class="po-dispatch-qty" style="width:100%;padding:3px;text-align:right;"></td>` : ''}
+                            </tr>`).join('')}
+                    </tbody>
+                </table>`;
+
+            // Actions
+            if (isSupplier && po.status === 'submitted') {
+                html += `<div style="margin-bottom:14px;display:flex;gap:8px;">
+                    <button class="btn btn-primary" onclick="acceptPo(${po.id})">✅ Accept Order</button>
+                    <button class="btn btn-secondary" onclick="rejectPo(${po.id})">Reject Order</button>
+                </div>`;
+            }
+            if (isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+                html += `
+                    <div style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+                        <h4 style="margin:0 0 8px;font-size:14px;">Dispatch a Delivery</h4>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                            <input type="text" id="poDeliveryTransportedBy" placeholder="Transported by (optional)" style="padding:6px;">
+                            <input type="text" id="poDeliveryTransportRef" placeholder="Vehicle / reference (optional)" style="padding:6px;">
+                        </div>
+                        <button class="btn btn-primary" onclick="submitDispatchDelivery(${po.id})">🚚 Dispatch Delivery</button>
+                    </div>`;
+            }
+            if (!isSupplier && ['draft', 'submitted', 'accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+                html += `<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="cancelPo(${po.id})">Cancel Order</button></div>`;
+            }
+            if (!isSupplier && ['partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+                html += `<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="closePoForce(${po.id})">Force-Close (accept as final)</button></div>`;
+            }
+
+            html += `<h4 style="margin:16px 0 8px;font-size:14px;">Deliveries</h4>`;
+            if (!deliveries || deliveries.length === 0) {
+                html += `<div style="color:#999;font-size:13px;">No deliveries dispatched yet</div>`;
+            } else {
+                html += deliveries.map(d => renderPoDeliveryBlock(d, po, isSupplier)).join('');
+            }
+
+            document.getElementById('poDetailContent').innerHTML = html;
+        }
+
+        const PO_RESOLUTION_REASONS = [
+            ['confirmed_shortage_in_transit', 'Confirmed shortage in transit'],
+            ['supplier_counting_error', 'Supplier counting error'],
+            ['customer_counting_error', 'Customer counting error'],
+            ['damaged_in_transit', 'Damaged in transit'],
+            ['documentation_error', 'Documentation error'],
+            ['other', 'Other'],
+        ];
+
+        function renderPoDeliveryBlock(d, po, isSupplier) {
+            const canReceive = !isSupplier && ['sent', 'partially_received'].includes(d.status);
+            let block = `
+                <div style="background:#f5f7fa;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;" data-delivery-id="${d.id}">
+                    <strong>Delivery #${d.delivery_number}</strong> — ${d.transfer_number} — ${poStatusBadge(d.status === 'sent' ? 'submitted' : d.status)}
+                    ${d.transported_by ? `<div style="color:#666;margin-top:4px;">Transported by: ${d.transported_by}</div>` : ''}
+                    <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+                        <thead><tr style="color:#666;"><th style="text-align:left;padding:3px;">Product</th><th style="text-align:right;padding:3px;">Sent</th><th style="text-align:right;padding:3px;">Received</th>
+                        ${canReceive ? '<th style="text-align:right;padding:3px;width:70px;">Receive</th><th style="text-align:right;padding:3px;width:70px;">Damaged</th><th style="text-align:right;padding:3px;width:70px;">Rejected</th>' : ''}
+                        </tr></thead>
+                        <tbody>
+                        ${(d.items || []).map(i => `
+                            <tr data-delivery-item-id="${i.id}">
+                                <td style="padding:3px;">${i.description}</td>
+                                <td style="padding:3px;text-align:right;">${i.quantity_sent}</td>
+                                <td style="padding:3px;text-align:right;">${i.quantity_received}</td>
+                                ${canReceive ? `
+                                    <td style="padding:3px;"><input type="number" min="0" value="0" class="po-recv-received" style="width:100%;padding:3px;text-align:right;"></td>
+                                    <td style="padding:3px;"><input type="number" min="0" value="0" class="po-recv-damaged" style="width:100%;padding:3px;text-align:right;"></td>
+                                    <td style="padding:3px;"><input type="number" min="0" value="0" class="po-recv-rejected" style="width:100%;padding:3px;text-align:right;"></td>` : ''}
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                    ${canReceive ? `<button class="btn btn-primary" style="margin-top:8px;font-size:12px;" onclick="submitReceiveDelivery(${po.id}, ${d.id})">✅ Receive Delivery</button>` : ''}
+                </div>`;
+
+            if (d.discrepancies && d.discrepancies.length > 0) {
+                const reasonOptions = PO_RESOLUTION_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+                block += d.discrepancies.map(disc => `
+                    <div style="background:${disc.resolution_reason ? '#f5f7fa' : '#ffebee'};border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;">
+                        <strong>${disc.discrepancy_type}</strong> — variance ${disc.variance_quantity > 0 ? '+' : ''}${disc.variance_quantity}
+                        ${disc.investigation_required ? ' 🚩' : ''}
+                        ${disc.resolution_reason ? `<div style="color:#2e7d32;margin-top:4px;">Resolved: ${disc.resolution_reason.replace(/_/g, ' ')} — ${disc.resolution_notes || ''}</div>` : (!isSupplier ? `
+                            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                <select id="poResolveReason-${disc.id}" style="padding:5px;">${reasonOptions}</select>
+                                <input type="text" id="poResolveNotes-${disc.id}" placeholder="Resolution notes (required)" style="flex:1;min-width:200px;padding:5px;">
+                                <button class="btn btn-primary" style="font-size:12px;" onclick="submitResolvePoVariance(${po.id}, ${d.id}, ${disc.id})">Resolve</button>
+                            </div>` : '')}
+                    </div>`).join('');
+            }
+            return block;
+        }
+
+        async function acceptPo(poId) {
+            if (!confirm('Accept this purchase order?')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/accept`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                if (res.ok) { showNotification('Order accepted', 'success'); openPoDetail(poId); }
+                else showNotification(result.error || 'Accept failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function rejectPo(poId) {
+            const reason = prompt('Reason for rejecting this order (optional):') || '';
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/reject`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ reason })
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Order rejected', 'success'); openPoDetail(poId); }
+                else showNotification(result.error || 'Reject failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function cancelPo(poId) {
+            if (!confirm('Cancel this purchase order?')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/cancel`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                if (res.ok) { showNotification('Order cancelled', 'success'); openPoDetail(poId); }
+                else showNotification(result.error || 'Cancel failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function closePoForce(poId) {
+            if (!confirm('Force-close this order? The remaining outstanding quantity will be written off as never delivered.')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/close`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                if (res.ok) { showNotification('Order closed', 'success'); openPoDetail(poId); }
+                else showNotification(result.error || 'Close failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function submitDispatchDelivery(poId) {
+            const items = [];
+            document.querySelectorAll('#poDetailContent tr[data-po-item-id]').forEach(row => {
+                const qty = parseInt(row.querySelector('.po-dispatch-qty')?.value) || 0;
+                if (qty > 0) items.push({ purchase_order_item_id: parseInt(row.dataset.poItemId), quantity: qty });
+            });
+            if (items.length === 0) { showNotification('Enter a dispatch quantity for at least one item', 'error'); return; }
+
+            const body = {
+                items,
+                transported_by: document.getElementById('poDeliveryTransportedBy')?.value.trim() || undefined,
+                transport_reference: document.getElementById('poDeliveryTransportRef')?.value.trim() || undefined,
+            };
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/deliveries`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(body)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Delivery dispatched', 'success');
+                    loadProducts(); loadStock();
+                    openPoDetail(poId);
+                } else if (result.exceeding) {
+                    const lines = result.exceeding.map(e => `item ${e.purchase_order_item_id}: requested ${e.requested}, only ${e.current_stock} in stock`).join('; ');
+                    showNotification(`${result.error}: ${lines}`, 'error');
+                } else {
+                    showNotification(result.error || 'Dispatch failed', 'error');
+                }
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function submitReceiveDelivery(poId, deliveryId) {
+            const items = [];
+            document.querySelectorAll(`[data-delivery-id="${deliveryId}"] tr[data-delivery-item-id]`).forEach(row => {
+                const itemId = parseInt(row.dataset.deliveryItemId);
+                const received = parseInt(row.querySelector('.po-recv-received')?.value) || 0;
+                const damaged = parseInt(row.querySelector('.po-recv-damaged')?.value) || 0;
+                const rejected = parseInt(row.querySelector('.po-recv-rejected')?.value) || 0;
+                if (received > 0 || damaged > 0 || rejected > 0) items.push({ item_id: itemId, quantity_received: received, quantity_damaged: damaged, quantity_rejected: rejected });
+            });
+            if (items.length === 0) { showNotification('Enter a received/damaged/rejected quantity for at least one item', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/deliveries/${deliveryId}/receive`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ items })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification('Delivery received', 'success');
+                    loadProducts(); loadStock();
+                    openPoDetail(poId);
+                } else showNotification(result.error || 'Receive failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        async function submitResolvePoVariance(poId, deliveryId, discrepancyId) {
+            const reason = document.getElementById(`poResolveReason-${discrepancyId}`).value;
+            const notes = document.getElementById(`poResolveNotes-${discrepancyId}`).value.trim();
+            if (!notes) { showNotification('Resolution notes are required', 'error'); return; }
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/deliveries/${deliveryId}/resolve-variance`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ discrepancy_id: discrepancyId, resolution_reason: reason, resolution_notes: notes })
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Discrepancy resolved', 'success'); openPoDetail(poId); }
+                else showNotification(result.error || 'Resolve failed', 'error');
             } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
 

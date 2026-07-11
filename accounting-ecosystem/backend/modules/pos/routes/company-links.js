@@ -207,15 +207,21 @@ router.post('/:id/revoke', requirePermission('INVENTORY.ADJUST'), async (req, re
  * here — accounting's send_invoices/receive_invoices/auto_match_payments
  * remain exclusively accounting's concern and are merged through untouched.
  *
- * Body: { stock_transfer?, receive_transfer?, return_transfer?, pricing_visible?, invoice_reference_visible? } — booleans
+ * Body: { stock_transfer?, receive_transfer?, return_transfer?, pricing_visible?, invoice_reference_visible?, purchase_orders? } — booleans
  *
  * Either party to an already-active relationship may toggle these flags —
  * the relationship itself already required mutual confirmation, so
  * enabling a transfer capability on top of it is not a new trust boundary.
  * Only an ACTIVE relationship's permissions can be changed (pending/revoked
  * relationships have nothing to transfer against yet).
+ *
+ * purchase_orders (Workstream 87) — gates whether this relationship's
+ * supplier side is even offered as a PO destination (see
+ * GET /purchase-orders/transferable-suppliers). Deliberately separate from
+ * stock_transfer: a company may allow ad-hoc stock transfers without opening
+ * itself up to formal purchase orders, or vice versa.
  */
-const POS_PERMISSION_KEYS = ['stock_transfer', 'receive_transfer', 'return_transfer', 'pricing_visible', 'invoice_reference_visible'];
+const POS_PERMISSION_KEYS = ['stock_transfer', 'receive_transfer', 'return_transfer', 'pricing_visible', 'invoice_reference_visible', 'purchase_orders'];
 
 router.patch('/:id/permissions', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
   try {

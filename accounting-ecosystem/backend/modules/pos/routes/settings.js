@@ -139,4 +139,70 @@ router.put('/stock-policy', requirePermission('SETTINGS.EDIT'), async (req, res)
   }
 });
 
+/**
+ * PUT /api/pos/settings/blind-transfer-receiving
+ * Toggle blind_transfer_receiving (Workstream 85) — when enabled, a new
+ * inter-store transfer's items hide quantity_sent from the receiver until
+ * they submit their own count (see store-transfers.js). Snapshotted onto
+ * each transfer at creation, so changing this setting never alters a
+ * transfer already in progress.
+ *
+ * Body: { blind_transfer_receiving: boolean }
+ */
+router.put('/blind-transfer-receiving', requirePermission('SETTINGS.EDIT'), async (req, res) => {
+  try {
+    const { blind_transfer_receiving } = req.body;
+    if (typeof blind_transfer_receiving !== 'boolean') {
+      return res.status(400).json({ error: 'blind_transfer_receiving must be a boolean' });
+    }
+
+    const { data, error } = await supabase
+      .from('company_settings')
+      .upsert(
+        { company_id: req.companyId, blind_transfer_receiving, updated_at: new Date().toISOString(), updated_by_user_id: req.user.userId },
+        { onConflict: 'company_id' }
+      )
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ settings: data });
+  } catch (err) {
+    console.error('[Settings] PUT blind-transfer-receiving error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/pos/settings/po-invoice-timing
+ * Toggle when a Purchase Order's invoice is generated (Workstream 87):
+ *   'immediate'            — Option B: invoice raised as soon as the supplier accepts
+ *   'after_final_delivery' — Option A: invoice raised only once the order is fully received
+ * Snapshotted onto purchase_orders.invoice_timing at PO creation, so changing
+ * this setting never alters an already-created order's behaviour.
+ *
+ * Body: { po_invoice_timing: 'immediate' | 'after_final_delivery' }
+ */
+router.put('/po-invoice-timing', requirePermission('SETTINGS.EDIT'), async (req, res) => {
+  try {
+    const { po_invoice_timing } = req.body;
+    if (!['immediate', 'after_final_delivery'].includes(po_invoice_timing)) {
+      return res.status(400).json({ error: "po_invoice_timing must be 'immediate' or 'after_final_delivery'" });
+    }
+
+    const { data, error } = await supabase
+      .from('company_settings')
+      .upsert(
+        { company_id: req.companyId, po_invoice_timing, updated_at: new Date().toISOString(), updated_by_user_id: req.user.userId },
+        { onConflict: 'company_id' }
+      )
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ settings: data });
+  } catch (err) {
+    console.error('[Settings] PUT po-invoice-timing error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

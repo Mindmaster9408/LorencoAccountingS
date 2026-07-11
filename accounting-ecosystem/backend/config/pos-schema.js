@@ -604,6 +604,235 @@ async function ensurePosSchema(pool) {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfer_items_transfer ON pos_company_transfer_items(transfer_id)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfer_items_company  ON pos_company_transfer_items(company_id)`);
 
+    // ── Inter-Store Transfers + Shrinkage Control (Workstream 85) ────────────
+    //
+    // AUDIT FINDING (before writing any of this): no locations/stores/branches
+    // entity exists anywhere in this schema, and products.stock_quantity is a
+    // single company-wide number, not location-scoped — confirmed live (a
+    // `locations` table query 404s) and confirmed the one place in the
+    // frontend that gestures at "multi-location" (#multiLocationInfo banner,
+    // GET /api/pos/products/:id/stock-by-location) is dead scaffolding: the
+    // banner is permanently display:none and the route's own comment reads
+    // "Multi-location is a future feature" — it fabricates a single fake
+    // "Main Store" row wrapping stock_quantity. Left untouched; fixing that
+    // pre-existing product-stock-editing stub is a different feature from
+    // inter-store TRANSFERS and out of scope here.
+    //
+    // This means genuine per-location stock is a real prerequisite this
+    // workstream must build, not something to assume already exists.
+    // product_location_stock below is deliberately NEW and ADDITIVE — it is
+    // not wired into checkout or any existing report, so products.stock_quantity
+    // (which checkout and every existing report depend on) is completely
+    // unaffected. See the Workstream 85 doc for the full reasoning and the
+    // documented limitation this implies.
+    //
+    // REUSE, NOT A PARALLEL ENGINE: pos_company_transfers/pos_company_transfer_items
+    // (Workstream 81) already implement almost exactly the header+items,
+    // status-lifecycle, sent/received-with-users-and-timestamps shape this
+    // ticket asks for. Extended in place via a transfer_type discriminator
+    // rather than duplicated — inter_company rows (existing, unaffected) keep
+    // receiver_company_id pointing at a different company; inter_store rows
+    // (new) set receiver_company_id = company_id (same company, different
+    // location) and populate source_location_id/destination_location_id.
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS locations (
+        id            SERIAL PRIMARY KEY,
+        company_id    INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        location_name VARCHAR(150) NOT NULL,
+        location_code VARCHAR(50),
+        address       TEXT,
+        is_active     BOOLEAN NOT NULL DEFAULT true,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_locations_company ON locations(company_id, is_active)`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS product_location_stock (
+        id          SERIAL PRIMARY KEY,
+        company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+        quantity    DECIMAL(12,3) NOT NULL DEFAULT 0,
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_product_location_stock_unique ON product_location_stock(company_id, product_id, location_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_product_location_stock_location ON product_location_stock(location_id)`);
+
+    // Which locations a user may act for — enforced server-side on every
+    // create/dispatch/receive call, not just hidden in the UI.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_locations (
+        id          SERIAL PRIMARY KEY,
+        company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_locations_unique ON user_locations(company_id, user_id, location_id)`);
+
+    // pos_company_transfers — extended for inter_store use (additive; every
+    // column below defaults to a value that leaves existing inter_company
+    // rows/behaviour completely unchanged).
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS transfer_type            VARCHAR(20) NOT NULL DEFAULT 'inter_company'`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS source_location_id       INTEGER REFERENCES locations(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS destination_location_id  INTEGER REFERENCES locations(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS counted_by_source        INTEGER REFERENCES users(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS approved_by_source       INTEGER REFERENCES users(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS dispatched_by            INTEGER REFERENCES users(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS dispatched_at            TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS transport_reference      VARCHAR(150)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS transported_by           VARCHAR(150)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS counted_by_destination   INTEGER REFERENCES users(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS approved_by_destination  INTEGER REFERENCES users(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS blind_receive            BOOLEAN NOT NULL DEFAULT false`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS total_received           INTEGER DEFAULT 0`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS total_damaged            INTEGER DEFAULT 0`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS total_rejected           INTEGER DEFAULT 0`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS total_variance           INTEGER DEFAULT 0`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS investigation_required   BOOLEAN NOT NULL DEFAULT false`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS resolved_by              INTEGER REFERENCES users(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS resolved_at              TIMESTAMPTZ`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfers_type ON pos_company_transfers(company_id, transfer_type, status)`);
+
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS quantity_damaged          INTEGER NOT NULL DEFAULT 0`);
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS quantity_rejected         INTEGER NOT NULL DEFAULT 0`);
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS source_stock_before       DECIMAL(12,3)`);
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS source_stock_after        DECIMAL(12,3)`);
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS destination_stock_before  DECIMAL(12,3)`);
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS destination_stock_after   DECIMAL(12,3)`);
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS sender_notes              TEXT`);
+    await client.query(`ALTER TABLE pos_company_transfer_items ADD COLUMN IF NOT EXISTS receiver_notes            TEXT`);
+
+    // Append-only discrepancy/investigation history — no update or delete
+    // route is ever built against this table (see store-transfers.js);
+    // "resolving" a discrepancy sets resolution fields once, never edits or
+    // removes the original flagged record.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_transfer_discrepancies (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        transfer_id           INTEGER NOT NULL REFERENCES pos_company_transfers(id) ON DELETE CASCADE,
+        item_id               INTEGER REFERENCES pos_company_transfer_items(id),
+        discrepancy_type      VARCHAR(30) NOT NULL,
+        variance_quantity     INTEGER NOT NULL DEFAULT 0,
+        flagged_by            INTEGER REFERENCES users(id),
+        flagged_at            TIMESTAMPTZ DEFAULT NOW(),
+        resolution_reason     VARCHAR(40),
+        resolution_notes      TEXT,
+        resolved_by           INTEGER REFERENCES users(id),
+        resolved_at           TIMESTAMPTZ,
+        investigation_required BOOLEAN NOT NULL DEFAULT false,
+        created_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transfer_discrepancies_transfer ON pos_transfer_discrepancies(transfer_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_transfer_discrepancies_company  ON pos_transfer_discrepancies(company_id, resolved_at)`);
+
+    // Company-level toggle: when true, the receiver's UI hides quantity_sent
+    // until their own physical count is submitted (see store-transfers.js).
+    await client.query(`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS blind_transfer_receiving BOOLEAN NOT NULL DEFAULT false`);
+
+    // ── Purchase Order + Delivery Fulfilment Engine (Workstream 87) ──────────
+    //
+    // DESIGN PRINCIPLE (per the ticket): the Commercial transaction (Purchase
+    // Order), the Logistics (Deliveries), and the Financial transaction
+    // (Invoice) are three separate objects, never merged.
+    //
+    // Commercial — purchase_orders/purchase_order_items (new, below). Ordered
+    // quantity NEVER changes after submission. Received quantity is a rollup
+    // maintained by the delivery engine.
+    //
+    // Logistics — REUSE, NOT A PARALLEL ENGINE: pos_company_transfers/
+    // pos_company_transfer_items/pos_transfer_discrepancies (Workstream 81,
+    // extended for inter-store in Workstream 85) already implement exactly
+    // the header+items, dispatch/receive/variance, CAS stock-adjustment shape
+    // a "delivery" needs. Extended here with a third transfer_type value,
+    // 'po_delivery', plus a purchase_order_id/delivery_number pair — existing
+    // inter_company and inter_store rows are completely unaffected (both
+    // columns are nullable and unused by those transfer types).
+    //
+    // Financial — REUSE, NOT A THIRD INVOICE SYSTEM: inter_company_invoices
+    // (accounting-ecosystem/backend/inter-company/invoice-sender.js +
+    // invoice-receiver.js) already implements a full SQL-backed invoice with
+    // sender/receiver status, VAT calculation, and payment tracking. Extended
+    // here with a purchase_order_id column so a generated invoice can be
+    // traced back to the PO that produced it — no new invoicing logic is
+    // written for this workstream, InvoiceSender.send() is called as-is.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id                  SERIAL PRIMARY KEY,
+        company_id          INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        supplier_id         INTEGER NOT NULL REFERENCES suppliers(id),
+        supplier_company_id INTEGER NOT NULL REFERENCES companies(id),
+        relationship_id     INTEGER,
+        po_number           VARCHAR(50) NOT NULL,
+        status              VARCHAR(30) NOT NULL DEFAULT 'draft',
+        reference           VARCHAR(100),
+        notes               TEXT,
+        expected_date       DATE,
+        invoice_timing      VARCHAR(20) NOT NULL DEFAULT 'after_final_delivery',
+        item_count          INTEGER DEFAULT 0,
+        total_ordered_qty   INTEGER DEFAULT 0,
+        total_received_qty  INTEGER DEFAULT 0,
+        invoice_id          INTEGER,
+        created_by          INTEGER REFERENCES users(id),
+        created_at          TIMESTAMPTZ DEFAULT NOW(),
+        submitted_by        INTEGER REFERENCES users(id),
+        submitted_at        TIMESTAMPTZ,
+        accepted_by         INTEGER REFERENCES users(id),
+        accepted_at         TIMESTAMPTZ,
+        rejected_by         INTEGER REFERENCES users(id),
+        rejected_at         TIMESTAMPTZ,
+        rejection_reason    TEXT,
+        cancelled_by        INTEGER REFERENCES users(id),
+        cancelled_at        TIMESTAMPTZ,
+        cancellation_reason TEXT,
+        completed_at        TIMESTAMPTZ,
+        updated_at          TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_customer ON purchase_orders(company_id, status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier ON purchase_orders(supplier_company_id, status)`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_orders_number ON purchase_orders(company_id, po_number)`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id                    SERIAL PRIMARY KEY,
+        purchase_order_id     INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        company_id            INTEGER NOT NULL REFERENCES companies(id),
+        product_id            INTEGER REFERENCES products(id),
+        supplier_product_id   INTEGER REFERENCES products(id),
+        product_code          VARCHAR(100),
+        barcode               VARCHAR(100),
+        description           VARCHAR(255) NOT NULL,
+        quantity_ordered      INTEGER NOT NULL,
+        quantity_received     INTEGER NOT NULL DEFAULT 0,
+        unit_cost             DECIMAL(10,2),
+        notes                 TEXT,
+        created_at            TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_po_items_po      ON purchase_order_items(purchase_order_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_po_items_company ON purchase_order_items(company_id)`);
+
+    // pos_company_transfers — extended for po_delivery use (additive; both
+    // columns are nullable and left untouched by inter_company/inter_store rows).
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES purchase_orders(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS delivery_number   INTEGER`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfers_po ON pos_company_transfers(purchase_order_id)`);
+
+    // Company-level default for new POs — snapshotted onto purchase_orders.invoice_timing
+    // at creation so a later settings change never alters an in-flight PO's behaviour.
+    await client.query(`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS po_invoice_timing VARCHAR(20) NOT NULL DEFAULT 'after_final_delivery'`);
+
+    // inter_company_invoices — trace an invoice back to the PO that generated it.
+    await client.query(`ALTER TABLE inter_company_invoices ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES purchase_orders(id)`);
+
     console.log('  ✅ POS schema ready.');
   } catch (err) {
     console.error('  ❌ POS schema migration error:', err.message);

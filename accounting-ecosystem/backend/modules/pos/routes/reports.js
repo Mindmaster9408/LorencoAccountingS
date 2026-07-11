@@ -48,6 +48,15 @@ router.use(requireCompany);
 // scope for this workstream.
 const reportsViewGate = requirePermission('REPORTS.VIEW');
 
+// TRANSFERS.VIEW_REPORTS (Codebox 85) — the inter-store transfer reports
+// below use this dedicated gate rather than REPORTS.VIEW, per the ticket's
+// explicit separate TRANSFERS.* permission namespace.
+const transfersViewGate = requirePermission('TRANSFERS.VIEW_REPORTS');
+
+// PURCHASE_ORDERS.VIEW (Codebox 87) — same reasoning as TRANSFERS.VIEW_REPORTS
+// above: the PO fulfilment reports get their own dedicated gate.
+const poReportsGate = requirePermission('PURCHASE_ORDERS.VIEW');
+
 /**
  * GET /api/reports/sales-summary
  * Daily/weekly/monthly sales summary
@@ -1708,6 +1717,373 @@ router.get('/customer-statement', reportsViewGate, async (req, res) => {
     });
   } catch (err) {
     console.error('[reports] customer-statement:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── Workstream 85: Inter-store transfer + shrinkage reports ─────────────────
+//
+// Ten named reports from the ticket, served by two flexible, parameterized
+// endpoints rather than ten separate handlers — each named report maps to a
+// specific filter/group_by combination, documented in doc 85:
+//   store-transfer-register  -> Register (no filters) / Variance Report
+//     (variance_only=true) / In-Transit Stock Report (status=in_transit) /
+//     Overdue Transfers (overdue_only=true)
+//   store-transfer-risk      -> Shortages by Source Store (group_by=source) /
+//     Shortages by Destination Store (group_by=destination) / Variances by
+//     Sender (group_by=sender) / Variances by Receiver (group_by=receiver) /
+//     Damage in Transit (damage_only=true) / Investigation-Theft Risk Report
+//     (investigation_only=true)
+
+router.get('/store-transfer-register', transfersViewGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+    const { source_location_id, destination_location_id, product_id, sender_id, receiver_id, status, variance_only, investigation_required, overdue_only } = req.query;
+
+    let query = supabase.from('pos_company_transfers').select('*')
+      .eq('company_id', req.companyId).eq('transfer_type', 'inter_store')
+      .gte('created_at', start).lte('created_at', end);
+
+    if (source_location_id) query = query.eq('source_location_id', parseInt(source_location_id));
+    if (destination_location_id) query = query.eq('destination_location_id', parseInt(destination_location_id));
+    if (sender_id) query = query.eq('dispatched_by', parseInt(sender_id));
+    if (receiver_id) query = query.eq('received_by', parseInt(receiver_id));
+    if (status) query = query.eq('status', status);
+    if (investigation_required === 'true') query = query.eq('investigation_required', true);
+    if (variance_only === 'true') query = query.neq('total_variance', 0);
+    if (overdue_only === 'true') {
+      query = query.in('status', ['in_transit', 'partially_received']).lt('expected_receive_date', new Date().toISOString());
+    }
+
+    if (product_id) {
+      const { data: matchingItems } = await supabase.from('pos_company_transfer_items').select('transfer_id').eq('company_id', req.companyId).eq('product_id', parseInt(product_id));
+      const ids = [...new Set((matchingItems || []).map(i => i.transfer_id))];
+      query = query.in('id', ids.length > 0 ? ids : [-1]);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const locIds = [...new Set((data || []).flatMap(t => [t.source_location_id, t.destination_location_id]))];
+    const userIds = [...new Set((data || []).flatMap(t => [t.dispatched_by, t.received_by]).filter(Boolean))];
+    const [{ data: locs }, { data: users }] = await Promise.all([
+      locIds.length ? supabase.from('locations').select('id, location_name').in('id', locIds) : { data: [] },
+      userIds.length ? supabase.from('users').select('id, username, full_name') : { data: [] },
+    ]);
+    const locNames = Object.fromEntries((locs || []).map(l => [l.id, l.location_name]));
+    const userNames = Object.fromEntries((users || []).filter(u => userIds.includes(u.id)).map(u => [u.id, u.full_name || u.username]));
+
+    const now = new Date();
+    const rows = (data || []).map(t => ({
+      ...t,
+      source_location_name: locNames[t.source_location_id],
+      destination_location_name: locNames[t.destination_location_id],
+      dispatched_by_name: t.dispatched_by ? userNames[t.dispatched_by] : null,
+      received_by_name: t.received_by ? userNames[t.received_by] : null,
+      is_overdue: ['in_transit', 'partially_received'].includes(t.status) && t.expected_receive_date && new Date(t.expected_receive_date) < now,
+    }));
+
+    res.json({
+      transfers: rows,
+      summary: {
+        totalTransfers: rows.length,
+        totalSent: rows.reduce((s, t) => s + (t.total_quantity_sent || 0), 0),
+        totalReceived: rows.reduce((s, t) => s + (t.total_received || 0), 0),
+        totalVariance: rows.reduce((s, t) => s + (t.total_variance || 0), 0),
+        inTransitCount: rows.filter(t => ['in_transit', 'partially_received'].includes(t.status)).length,
+        awaitingReceiptCount: rows.filter(t => t.status === 'in_transit').length,
+        overdueCount: rows.filter(t => t.is_overdue).length,
+        varianceCount: rows.filter(t => (t.total_variance || 0) !== 0).length,
+        investigationCount: rows.filter(t => t.investigation_required).length,
+      },
+    });
+  } catch (err) {
+    console.error('[reports] store-transfer-register:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/store-transfer-risk', transfersViewGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+    const groupBy = ['source', 'destination', 'sender', 'receiver', 'product'].includes(req.query.group_by) ? req.query.group_by : 'source';
+    const damageOnly = req.query.damage_only === 'true';
+    const investigationOnly = req.query.investigation_only === 'true';
+
+    let query = supabase.from('pos_company_transfers').select('*')
+      .eq('company_id', req.companyId).eq('transfer_type', 'inter_store')
+      .gte('created_at', start).lte('created_at', end)
+      .in('status', ['received_complete', 'received_with_variance', 'resolved']);
+    if (investigationOnly) query = query.eq('investigation_required', true);
+
+    const { data: transfers, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const transferIds = (transfers || []).map(t => t.id);
+    let items = [];
+    if (transferIds.length > 0) {
+      const { data: itemRows } = await supabase.from('pos_company_transfer_items').select('*').in('transfer_id', transferIds);
+      items = itemRows || [];
+    }
+    if (damageOnly) items = items.filter(i => i.quantity_damaged > 0);
+
+    const transfersById = Object.fromEntries((transfers || []).map(t => [t.id, t]));
+    const locIds = [...new Set((transfers || []).flatMap(t => [t.source_location_id, t.destination_location_id]))];
+    const userIds = [...new Set((transfers || []).flatMap(t => [t.dispatched_by, t.received_by]).filter(Boolean))];
+    const [{ data: locs }, { data: users }, { data: products }] = await Promise.all([
+      locIds.length ? supabase.from('locations').select('id, location_name').in('id', locIds) : { data: [] },
+      userIds.length ? supabase.from('users').select('id, username, full_name') : { data: [] },
+      supabase.from('products').select('id, product_name').eq('company_id', req.companyId),
+    ]);
+    const locNames = Object.fromEntries((locs || []).map(l => [l.id, l.location_name]));
+    const userNames = Object.fromEntries((users || []).filter(u => userIds.includes(u.id)).map(u => [u.id, u.full_name || u.username]));
+    const productNames = Object.fromEntries((products || []).map(p => [p.id, p.product_name]));
+
+    function groupKeyFor(item) {
+      const t = transfersById[item.transfer_id];
+      if (!t) return null;
+      switch (groupBy) {
+        case 'source': return { key: t.source_location_id, label: locNames[t.source_location_id] || `Location ${t.source_location_id}` };
+        case 'destination': return { key: t.destination_location_id, label: locNames[t.destination_location_id] || `Location ${t.destination_location_id}` };
+        case 'sender': return t.dispatched_by ? { key: t.dispatched_by, label: userNames[t.dispatched_by] || `User ${t.dispatched_by}` } : null;
+        case 'receiver': return t.received_by ? { key: t.received_by, label: userNames[t.received_by] || `User ${t.received_by}` } : null;
+        case 'product': return { key: item.product_id, label: productNames[item.product_id] || item.description };
+        default: return null;
+      }
+    }
+
+    const groups = {};
+    for (const item of items) {
+      const g = groupKeyFor(item);
+      if (!g) continue;
+      if (!groups[g.key]) groups[g.key] = { key: g.key, label: g.label, incidentTransferIds: new Set(), totalSent: 0, totalReceived: 0, totalDamaged: 0, totalRejected: 0, totalVariance: 0 };
+      const bucket = groups[g.key];
+      const t = transfersById[item.transfer_id];
+      const itemVariance = item.quantity_sent - item.quantity_received - item.quantity_damaged - item.quantity_rejected;
+      bucket.totalSent += item.quantity_sent;
+      bucket.totalReceived += item.quantity_received;
+      bucket.totalDamaged += item.quantity_damaged;
+      bucket.totalRejected += item.quantity_rejected;
+      bucket.totalVariance += itemVariance;
+      if (itemVariance !== 0 || item.quantity_damaged > 0) bucket.incidentTransferIds.add(t.id);
+    }
+
+    // Risk indicators only — never an accusation, just a threshold-based flag
+    // surfaced for a manager to look into (ticket: "Do not label someone as
+    // stealing automatically"). Thresholds are intentionally simple/fixed for
+    // v1, not yet company-configurable.
+    const INCIDENT_THRESHOLD = 3;
+    const VARIANCE_PCT_THRESHOLD = 10;
+
+    const rows = Object.values(groups).map(b => {
+      const incidentCount = b.incidentTransferIds.size;
+      const variancePct = b.totalSent > 0 ? Math.round((Math.abs(b.totalVariance) / b.totalSent) * 10000) / 100 : 0;
+      const riskFlags = [];
+      if (incidentCount >= INCIDENT_THRESHOLD) riskFlags.push(`${incidentCount} incidents in this period — repeated pattern, may warrant review`);
+      if (variancePct >= VARIANCE_PCT_THRESHOLD) riskFlags.push(`Variance is ${variancePct}% of quantity sent — above the ${VARIANCE_PCT_THRESHOLD}% review threshold`);
+      return {
+        group_by: groupBy, key: b.key, label: b.label,
+        incident_count: incidentCount,
+        total_sent: b.totalSent, total_received: b.totalReceived, total_damaged: b.totalDamaged, total_rejected: b.totalRejected, total_variance: b.totalVariance,
+        variance_pct: variancePct,
+        risk_flags: riskFlags,
+      };
+    }).sort((a, b) => Math.abs(b.total_variance) - Math.abs(a.total_variance));
+
+    res.json({ group_by: groupBy, rows, note: 'Risk indicators only — not an accusation. Always review full transfer history before drawing conclusions.' });
+  } catch (err) {
+    console.error('[reports] store-transfer-risk:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── Workstream 87: Purchase Order + Delivery Fulfilment reports ─────────────
+//
+// Named reports from the ticket, served by three flexible endpoints:
+//   purchase-order-register -> Purchase Order Register (no filters) / Open
+//     Purchase Orders (open_only=true) / Partially Fulfilled Orders
+//     (status=partially_fulfilled) / Outstanding Deliveries
+//     (outstanding_deliveries_only=true)
+//   delivery-register       -> Delivery Register (no filters) / Late
+//     Deliveries (late_only=true) — summary includes Average Fulfilment Time
+//   supplier-performance    -> Supplier Delivery Performance (Average Delivery
+//     Time, Average Partial Deliveries, Average Delay, On-Time %, Average
+//     Variance, Damage %, Cancelled Orders), grouped by supplier
+
+router.get('/purchase-order-register', poReportsGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+    const { role = 'customer', status, open_only, outstanding_deliveries_only } = req.query;
+
+    let query = supabase.from('purchase_orders').select('*').gte('created_at', start).lte('created_at', end);
+    query = role === 'supplier' ? query.eq('supplier_company_id', req.companyId) : query.eq('company_id', req.companyId);
+    if (status) query = query.eq('status', status);
+    if (open_only === 'true') query = query.not('status', 'in', '(completed,cancelled,rejected)');
+    if (outstanding_deliveries_only === 'true') query = query.in('status', ['accepted', 'partially_fulfilled', 'awaiting_final_delivery']);
+
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const otherIds = [...new Set((data || []).map(po => role === 'supplier' ? po.company_id : po.supplier_company_id))];
+    const { data: companies } = otherIds.length ? await supabase.from('companies').select('id, company_name, trading_name').in('id', otherIds) : { data: [] };
+    const namesById = Object.fromEntries((companies || []).map(c => [c.id, c.trading_name || c.company_name]));
+
+    const rows = (data || []).map(po => ({
+      ...po,
+      total_outstanding_qty: Math.max(0, po.total_ordered_qty - po.total_received_qty),
+      other_company_name: namesById[role === 'supplier' ? po.company_id : po.supplier_company_id],
+    }));
+
+    res.json({
+      purchaseOrders: rows,
+      summary: {
+        totalOrders: rows.length,
+        openCount: rows.filter(po => !['completed', 'cancelled', 'rejected'].includes(po.status)).length,
+        partiallyFulfilledCount: rows.filter(po => po.status === 'partially_fulfilled').length,
+        awaitingFinalDeliveryCount: rows.filter(po => po.status === 'awaiting_final_delivery').length,
+        completedCount: rows.filter(po => po.status === 'completed').length,
+        cancelledCount: rows.filter(po => ['cancelled', 'rejected'].includes(po.status)).length,
+        totalOrderedQty: rows.reduce((s, po) => s + (po.total_ordered_qty || 0), 0),
+        totalReceivedQty: rows.reduce((s, po) => s + (po.total_received_qty || 0), 0),
+        totalOutstandingQty: rows.reduce((s, po) => s + po.total_outstanding_qty, 0),
+      },
+    });
+  } catch (err) {
+    console.error('[reports] purchase-order-register:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/delivery-register', poReportsGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+    const { role = 'customer', late_only } = req.query;
+
+    let query = supabase.from('pos_company_transfers').select('*')
+      .eq('transfer_type', 'po_delivery').gte('created_at', start).lte('created_at', end);
+    query = role === 'supplier' ? query.eq('company_id', req.companyId) : query.eq('receiver_company_id', req.companyId);
+
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const now = new Date();
+    let rows = (data || []).map(d => ({
+      ...d,
+      is_late: ['sent', 'partially_received'].includes(d.status) && d.expected_receive_date && new Date(d.expected_receive_date) < now,
+      fulfilment_hours: d.received_at && d.dispatched_at ? Math.round((new Date(d.received_at) - new Date(d.dispatched_at)) / 36000) / 100 : null,
+    }));
+    if (late_only === 'true') rows = rows.filter(d => d.is_late);
+
+    const poIds = [...new Set(rows.map(d => d.purchase_order_id).filter(Boolean))];
+    const { data: pos } = poIds.length ? await supabase.from('purchase_orders').select('id, po_number').in('id', poIds) : { data: [] };
+    const poNumbers = Object.fromEntries((pos || []).map(po => [po.id, po.po_number]));
+    rows = rows.map(d => ({ ...d, po_number: poNumbers[d.purchase_order_id] }));
+
+    const fulfilmentTimes = rows.map(d => d.fulfilment_hours).filter(h => h != null);
+    const avgFulfilmentHours = fulfilmentTimes.length > 0 ? Math.round((fulfilmentTimes.reduce((s, h) => s + h, 0) / fulfilmentTimes.length) * 100) / 100 : null;
+
+    res.json({
+      deliveries: rows,
+      summary: {
+        totalDeliveries: rows.length,
+        inTransitCount: rows.filter(d => ['sent', 'partially_received'].includes(d.status)).length,
+        lateCount: rows.filter(d => d.is_late).length,
+        averageFulfilmentHours: avgFulfilmentHours,
+      },
+    });
+  } catch (err) {
+    console.error('[reports] delivery-register:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/supplier-performance', poReportsGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+
+    const { data: pos, error } = await supabase.from('purchase_orders').select('*')
+      .eq('company_id', req.companyId).gte('created_at', start).lte('created_at', end);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const poIds = (pos || []).map(po => po.id);
+    const { data: deliveries } = poIds.length
+      ? await supabase.from('pos_company_transfers').select('*').eq('transfer_type', 'po_delivery').in('purchase_order_id', poIds)
+      : { data: [] };
+    const deliveryIds = (deliveries || []).map(d => d.id);
+    const { data: discrepancies } = deliveryIds.length
+      ? await supabase.from('pos_transfer_discrepancies').select('*').in('transfer_id', deliveryIds)
+      : { data: [] };
+
+    const supplierIds = [...new Set((pos || []).map(po => po.supplier_company_id))];
+    const { data: companies } = supplierIds.length ? await supabase.from('companies').select('id, company_name, trading_name').in('id', supplierIds) : { data: [] };
+    const namesById = Object.fromEntries((companies || []).map(c => [c.id, c.trading_name || c.company_name]));
+
+    const groups = {};
+    for (const po of (pos || [])) {
+      if (!groups[po.supplier_company_id]) {
+        groups[po.supplier_company_id] = {
+          supplier_company_id: po.supplier_company_id, supplier_company_name: namesById[po.supplier_company_id] || `Company ${po.supplier_company_id}`,
+          orderCount: 0, cancelledCount: 0, onTimeCount: 0, lateCount: 0, delayHoursSum: 0, delayCount: 0, poDeliveryCounts: [],
+        };
+      }
+      const g = groups[po.supplier_company_id];
+      g.orderCount += 1;
+      if (po.status === 'cancelled') g.cancelledCount += 1;
+      const poDeliveries = (deliveries || []).filter(d => d.purchase_order_id === po.id);
+      g.poDeliveryCounts.push(poDeliveries.length);
+      if (po.status === 'completed' && po.expected_date) {
+        const onTime = po.completed_at && new Date(po.completed_at) <= new Date(po.expected_date);
+        if (onTime) g.onTimeCount += 1; else g.lateCount += 1;
+        if (po.completed_at) {
+          const delayHours = (new Date(po.completed_at) - new Date(po.expected_date)) / 3600000;
+          g.delayHoursSum += Math.max(0, delayHours);
+          g.delayCount += 1;
+        }
+      }
+    }
+
+    const deliveryFulfilmentBySupplier = {};
+    for (const d of (deliveries || [])) {
+      if (!d.received_at || !d.dispatched_at) continue;
+      const supplierId = d.company_id;
+      if (!deliveryFulfilmentBySupplier[supplierId]) deliveryFulfilmentBySupplier[supplierId] = [];
+      deliveryFulfilmentBySupplier[supplierId].push((new Date(d.received_at) - new Date(d.dispatched_at)) / 3600000);
+    }
+    const varianceBySupplier = {};
+    const damagedBySupplier = {};
+    const sentBySupplier = {};
+    for (const d of (deliveries || [])) {
+      sentBySupplier[d.company_id] = (sentBySupplier[d.company_id] || 0) + (d.total_quantity_sent || 0);
+      damagedBySupplier[d.company_id] = (damagedBySupplier[d.company_id] || 0) + (d.total_damaged || 0);
+    }
+    for (const disc of (discrepancies || [])) {
+      const delivery = (deliveries || []).find(d => d.id === disc.transfer_id);
+      if (!delivery) continue;
+      varianceBySupplier[delivery.company_id] = (varianceBySupplier[delivery.company_id] || 0) + Math.abs(disc.variance_quantity);
+    }
+
+    const rows = Object.values(groups).map(g => {
+      const times = deliveryFulfilmentBySupplier[g.supplier_company_id] || [];
+      const avgDeliveryHours = times.length > 0 ? Math.round((times.reduce((s, h) => s + h, 0) / times.length) * 100) / 100 : null;
+      const avgPartialDeliveries = g.poDeliveryCounts.length > 0 ? Math.round((g.poDeliveryCounts.reduce((s, c) => s + c, 0) / g.poDeliveryCounts.length) * 100) / 100 : 0;
+      const avgDelayHours = g.delayCount > 0 ? Math.round((g.delayHoursSum / g.delayCount) * 100) / 100 : null;
+      const onTimeTotal = g.onTimeCount + g.lateCount;
+      const onTimePct = onTimeTotal > 0 ? Math.round((g.onTimeCount / onTimeTotal) * 10000) / 100 : null;
+      const sent = sentBySupplier[g.supplier_company_id] || 0;
+      const damaged = damagedBySupplier[g.supplier_company_id] || 0;
+      const damagePct = sent > 0 ? Math.round((damaged / sent) * 10000) / 100 : 0;
+      return {
+        supplier_company_id: g.supplier_company_id, supplier_company_name: g.supplier_company_name,
+        order_count: g.orderCount, cancelled_orders: g.cancelledCount,
+        average_delivery_hours: avgDeliveryHours, average_partial_deliveries: avgPartialDeliveries,
+        average_delay_hours: avgDelayHours, on_time_pct: onTimePct,
+        average_variance: varianceBySupplier[g.supplier_company_id] || 0, damage_pct: damagePct,
+      };
+    }).sort((a, b) => (b.order_count || 0) - (a.order_count || 0));
+
+    res.json({ suppliers: rows });
+  } catch (err) {
+    console.error('[reports] supplier-performance:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
