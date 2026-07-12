@@ -1361,7 +1361,16 @@ router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
 //     against any ledger rows that DO reference the same sale_id — correct
 //     regardless of whether the RPC turns out to post there or not.
 
-const ACCOUNT_PAYMENT_METHOD = 'ACCOUNT';
+// BUG FIX (found live, Workstream 90): this was 'ACCOUNT' (uppercase) but
+// every real payment_method value in this system — sales.payment_method,
+// sale_payments.payment_method, the frontend's payment method selector — is
+// lowercase 'account'. The case mismatch meant every real account sale was
+// silently miscategorized as cash/card in Sales-by-Customer's account/
+// cash-card split, and the Customer Statement's own charge-synthesis and
+// "paid in full" queries both matched on the wrong case — confirmed live: a
+// real R1000 account sale produced account_amount: 0 in the report and an
+// empty transactions array with closing_balance: 0 on the statement.
+const ACCOUNT_PAYMENT_METHOD = 'account';
 
 async function fetchSalePaymentsForSales(saleIds) {
   if (saleIds.length === 0) return {};

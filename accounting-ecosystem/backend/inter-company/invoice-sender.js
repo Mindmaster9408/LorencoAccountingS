@@ -67,7 +67,18 @@ class InvoiceSender {
 
     // Validate relationship exists and is active
     if (this.store && this.store.findRelationship) {
-      const rel = this.store.findRelationship(senderCompanyId, receiverCompanyId);
+      // BUG FIX (found live, Workstream 89): findRelationship() is async — the
+      // missing await here meant `rel` was always the pending Promise object,
+      // never the resolved relationship row. `!rel` is false for a Promise
+      // (truthy) and `rel.status` is undefined on a Promise, so this check
+      // ALWAYS failed with "No active relationship", for every company, on
+      // every invoice, regardless of whether a real active relationship
+      // existed. This blocked 100% of inter-company invoice generation
+      // (Purchase Order invoices and any direct /invoices/send call) —
+      // unrelated to Workstream 87/89's own code, which calls this
+      // unmodified. Pre-existing bug, fixed here since it blocks the live
+      // scenario's invoice verification.
+      const rel = await this.store.findRelationship(senderCompanyId, receiverCompanyId);
       if (!rel || rel.status !== 'active') {
         return {
           success: false,
@@ -80,6 +91,16 @@ class InvoiceSender {
     const calculated = this.calculateTotals(lineItems, includesVAT);
 
     // Create the invoice
+    // BUG FIX (found live, Workstream 89): includes_vat and status were never
+    // columns on inter_company_invoices (see migration 001_sean_tables.sql —
+    // only sender_status/receiver_status/payment_status exist; no bare
+    // "status" or "includes_vat"). Every insert here failed with a schema-
+    // cache error, silently swallowed by addInterCompanyInvoice()'s catch
+    // block (returns {id: null, ...data} on error) — meaning this table has
+    // had zero successful rows in production since this file was written,
+    // for any inter-company invoice, not just Purchase Order ones. Removed
+    // the two non-existent fields; includesVAT is still used above to choose
+    // the VAT calculation method, it was just never meant to be persisted.
     const invoice = {
       sender_company_id: senderCompanyId,
       receiver_company_id: receiverCompanyId,
@@ -90,9 +111,7 @@ class InvoiceSender {
       subtotal: calculated.subtotal,
       vat_amount: calculated.vatAmount,
       total: calculated.total,
-      includes_vat: includesVAT,
       notes,
-      status: 'sent',
       sender_status: 'sent',         // Sender sees: sent → paid
       receiver_status: 'pending',     // Receiver sees: pending → approved → paid
       payment_status: 'unpaid',       // unpaid → partial → paid
@@ -101,9 +120,16 @@ class InvoiceSender {
     };
 
     // Store it
+    // BUG FIX (found live, Workstream 89): same missing-await class as the
+    // findRelationship fix above — addInterCompanyInvoice() is async, so
+    // without await, savedInvoice was the pending Promise object itself
+    // (serializes to {} — no id, no fields), never the actual inserted row.
+    // Every caller checking result.invoice.id (e.g. purchase-orders.js
+    // generatePoInvoice()) saw undefined and treated invoice creation as
+    // having failed, even after the schema fix above made the insert succeed.
     let savedInvoice = invoice;
     if (this.store && this.store.addInterCompanyInvoice) {
-      savedInvoice = this.store.addInterCompanyInvoice(invoice);
+      savedInvoice = await this.store.addInterCompanyInvoice(invoice);
     }
 
     return {

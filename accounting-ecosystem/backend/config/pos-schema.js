@@ -180,6 +180,18 @@ async function ensurePosSchema(pool) {
         ON customer_account_transactions(company_id, customer_id)
     `);
 
+    // Idempotency protection for account payments (Workstream 90 — found live:
+    // POST /:id/account/payment had no idempotency guard at all; a retried
+    // request created a second full-amount payment transaction and
+    // double-decremented the customer's balance). Nullable + a unique index
+    // scoped to non-null values only, so existing rows (all null) are
+    // unaffected and only payments that supply a key are deduplicated.
+    await client.query(`ALTER TABLE customer_account_transactions ADD COLUMN IF NOT EXISTS idempotency_key UUID`);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_acct_tx_idempotency
+        ON customer_account_transactions(company_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+    `);
+
     // ── pos_stock_takes ───────────────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS pos_stock_takes (

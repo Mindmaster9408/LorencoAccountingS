@@ -8,6 +8,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
 
@@ -176,11 +177,30 @@ router.get('/:id/account', requirePermission('CUSTOMERS.VIEW'), async (req, res)
  * POST /api/pos/customers/:id/account/payment
  * Record a payment against a customer's outstanding account balance.
  *
- * Body: { amount, payment_method, reference, notes }
+ * Body: { amount, payment_method, reference, notes, idempotency_key }
+ *
+ * BUG FIX (found live, Workstream 90): this endpoint previously had no
+ * idempotency protection at all — a retried request (network retry,
+ * double-tap) created a second full-amount payment row and decremented the
+ * balance twice. Confirmed live: two identical retry requests produced two
+ * separate transaction rows. Two changes:
+ *   1. idempotency_key (optional but recommended) — if a transaction with
+ *      the same company_id + idempotency_key already exists, that existing
+ *      transaction is returned unchanged rather than processing again.
+ *   2. Order flipped: the ledger row is now inserted BEFORE the balance
+ *      update (previously balance-then-ledger). If the insert fails, no
+ *      balance was touched — the safe failure direction. If the update
+ *      fails after a successful insert, the ledger still has undeniable,
+ *      reconcilable evidence of the payment, which is recoverable; a wrong
+ *      balance with zero ledger trail (the old order's failure mode) is not.
+ *      The balance update itself uses compare-and-swap (matching the
+ *      pattern in sales.js's postAccountCharge) so a concurrent charge/
+ *      payment against the same customer cannot silently overwrite this one.
  */
 router.post('/:id/account/payment', requirePermission('SALES.CREATE'), async (req, res) => {
   try {
-    const { amount, payment_method, reference, notes } = req.body;
+    const { amount, payment_method, reference, notes, idempotency_key: idempotencyKey } = req.body;
+    const customerId = req.params.id;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'amount must be a positive number' });
@@ -189,50 +209,94 @@ router.post('/:id/account/payment', requirePermission('SALES.CREATE'), async (re
     const { data: customer, error: custErr } = await supabase
       .from('customers')
       .select('id, name, current_balance')
-      .eq('id', req.params.id)
+      .eq('id', customerId)
       .eq('company_id', req.companyId)
       .single();
 
     if (custErr || !customer) return res.status(404).json({ error: 'Customer not found' });
 
+    if (idempotencyKey) {
+      const { data: existing } = await supabase
+        .from('customer_account_transactions')
+        .select('*')
+        .eq('company_id', req.companyId)
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+      if (existing) {
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_PAYMENT_REPLAYED, {
+          metadata: { customer_id: customerId, transaction_id: existing.id, idempotency_key: idempotencyKey },
+        });
+        return res.status(200).json({
+          transaction: existing, was_duplicate: true,
+          old_balance: null, new_balance: existing.balance_after,
+        });
+      }
+    }
+
     const currentBalance = customer.current_balance || 0;
-    const newBalance     = Math.max(0, currentBalance - amount);
 
-    // Update customer balance
-    await supabase
-      .from('customers')
-      .update({ current_balance: newBalance, updated_at: new Date().toISOString() })
-      .eq('id', req.params.id)
-      .eq('company_id', req.companyId);
-
-    // Record account transaction
+    // Insert the ledger row first — a failure here touches nothing.
     const { data: tx, error: txErr } = await supabase
       .from('customer_account_transactions')
       .insert({
-        company_id:    req.companyId,
-        customer_id:   parseInt(req.params.id),
-        sale_id:       null,
-        type:          'payment',
-        amount:        -amount,           // negative = money coming in (reduces balance)
-        balance_after: newBalance,
-        reference:     reference || null,
-        notes:         notes || `Payment via ${payment_method || 'cash'}`,
-        created_by:    req.user.userId,
+        company_id:      req.companyId,
+        customer_id:     parseInt(customerId),
+        sale_id:         null,
+        type:            'payment',
+        amount:          -amount,           // negative = money coming in (reduces balance)
+        balance_after:   null,              // filled in once the CAS balance update below succeeds
+        reference:       reference || null,
+        notes:           notes || `Payment via ${payment_method || 'cash'}`,
+        created_by:      req.user.userId,
+        idempotency_key: idempotencyKey || null,
       })
       .select()
       .single();
 
-    if (txErr) return res.status(500).json({ error: txErr.message });
+    if (txErr) {
+      // Unique-index race: a concurrent request with the same idempotency_key
+      // won first. Return that row rather than a 500.
+      if (idempotencyKey && txErr.code === '23505') {
+        const { data: winner } = await supabase
+          .from('customer_account_transactions')
+          .select('*').eq('company_id', req.companyId).eq('idempotency_key', idempotencyKey).maybeSingle();
+        if (winner) return res.status(200).json({ transaction: winner, was_duplicate: true, old_balance: null, new_balance: winner.balance_after });
+      }
+      return res.status(500).json({ error: txErr.message });
+    }
 
-    await auditFromReq(req, 'UPDATE', 'customer_account', req.params.id, {
+    // Compare-and-swap balance update — bounded retries against a lost race.
+    let newBalance = null;
+    for (let attempt = 1; attempt <= 5 && newBalance === null; attempt++) {
+      const { data: fresh } = await supabase.from('customers').select('current_balance').eq('id', customerId).eq('company_id', req.companyId).single();
+      const oldVal = fresh ? (fresh.current_balance || 0) : currentBalance;
+      const candidate = Math.max(0, Math.round((oldVal - amount) * 100) / 100);
+      const { data: updated } = await supabase
+        .from('customers')
+        .update({ current_balance: candidate, updated_at: new Date().toISOString() })
+        .eq('id', customerId).eq('company_id', req.companyId).eq('current_balance', oldVal)
+        .select().maybeSingle();
+      if (updated) newBalance = candidate;
+    }
+    if (newBalance === null) {
+      console.error('[Customers] CRITICAL: payment ledger row created but balance CAS update lost every retry:', tx.id);
+      return res.status(500).json({ error: 'Payment recorded but balance update failed — contact support for reconciliation', transaction: tx });
+    }
+
+    await supabase.from('customer_account_transactions').update({ balance_after: newBalance }).eq('id', tx.id);
+
+    await auditFromReq(req, 'UPDATE', 'customer_account', customerId, {
       module:   'pos',
       oldValue: currentBalance,
       newValue: newBalance,
       metadata: { payment_amount: amount, payment_method, reference },
     });
+    posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_PAYMENT_RECORDED, {
+      metadata: { customer_id: customerId, amount, payment_method, reference, transaction_id: tx.id, new_balance: newBalance },
+    });
 
     res.status(201).json({
-      transaction:  tx,
+      transaction:  { ...tx, balance_after: newBalance },
       old_balance:  currentBalance,
       new_balance:  newBalance,
     });

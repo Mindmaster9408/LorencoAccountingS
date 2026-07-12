@@ -33,6 +33,12 @@ const POS_EVENTS = {
     SALE_STOCK_FAILED:      'SALE_STOCK_FAILED',    // pre-check stock insufficient
     SALE_RPC_FAILED:        'SALE_RPC_FAILED',       // atomic RPC / server error
 
+    // Customer account charge/payment events (Workstream 90)
+    CUSTOMER_ACCOUNT_CHARGE_POSTED: 'CUSTOMER_ACCOUNT_CHARGE_POSTED', // account-tender sale charge posted to ledger + balance
+    CUSTOMER_ACCOUNT_CHARGE_FAILED: 'CUSTOMER_ACCOUNT_CHARGE_FAILED', // CRITICAL: sale completed but ledger/balance post failed — needs manual reconciliation
+    CUSTOMER_ACCOUNT_PAYMENT_RECORDED: 'CUSTOMER_ACCOUNT_PAYMENT_RECORDED',
+    CUSTOMER_ACCOUNT_PAYMENT_REPLAYED: 'CUSTOMER_ACCOUNT_PAYMENT_REPLAYED', // idempotency gate returned existing payment
+
     // Offline sync events
     OFFLINE_SYNC_RECEIVED:  'OFFLINE_SYNC_RECEIVED', // backend received offline sync POST
     OFFLINE_CONFLICT:       'OFFLINE_CONFLICT',       // 422 stock conflict on sync replay
@@ -188,6 +194,10 @@ const EVENT_CATEGORY = {
     SALE_RETURNED:          'sale',
     SALE_STOCK_FAILED:      'sale',
     SALE_RPC_FAILED:        'sale',
+    CUSTOMER_ACCOUNT_CHARGE_POSTED:     'customer_account',
+    CUSTOMER_ACCOUNT_CHARGE_FAILED:     'customer_account',
+    CUSTOMER_ACCOUNT_PAYMENT_RECORDED:  'customer_account',
+    CUSTOMER_ACCOUNT_PAYMENT_REPLAYED:  'customer_account',
     OFFLINE_SYNC_RECEIVED:  'sync',
     OFFLINE_CONFLICT:       'sync',
     TILL_OPENED:            'session',

@@ -38,6 +38,70 @@ function generateSaleNumber() {
   return `SAL-${Date.now()}-${rand}`;
 }
 
+/**
+ * Post an account-tender charge to the customer's ledger + live balance.
+ *
+ * BUG FIX (found live, Workstream 90): create_sale_atomic (the opaque RPC —
+ * source not in this repo, never modified) does NOT post anything to
+ * customer_account_transactions or customers.current_balance for an ACCOUNT
+ * sale — confirmed empirically: a real R1000 account sale left both
+ * unchanged. This means the sale succeeds, stock moves, but the customer's
+ * account charge is simply never attempted — the exact critical defect this
+ * function exists to close.
+ *
+ * True same-transaction atomicity with create_sale_atomic isn't achievable
+ * without changing that RPC (explicitly out of scope — its source isn't
+ * available and the ticket that found this forbids touching it without
+ * proof, which doesn't extend to rewriting an opaque function). This is the
+ * smallest safe fix reachable from the application layer: called
+ * immediately after the RPC succeeds, before the HTTP response is sent, so
+ * the charge lands in the same request as the sale in the overwhelming
+ * majority of cases. The balance update uses compare-and-swap (read, then
+ * UPDATE ... WHERE current_balance = <value read>) with a bounded retry
+ * loop — the same pattern already established for stock in stockCAS.js —
+ * so a concurrent payment/charge against the same customer cannot silently
+ * overwrite this one. If every retry loses the race, or the DB write fails
+ * outright, this returns { ok:false } rather than throwing — the sale has
+ * already been returned to the client and must not be rolled back for a
+ * ledger-side failure; the caller logs a CRITICAL audit event instead so
+ * the gap is loudly discoverable, never silent.
+ *
+ * @returns {Promise<{ok:true, transaction, newBalance}|{ok:false, error}>}
+ */
+async function postAccountCharge({ companyId, customerId, saleId, saleNumber, amount, userId }) {
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const { data: customer, error: custErr } = await supabase
+      .from('customers').select('id, current_balance')
+      .eq('id', customerId).eq('company_id', companyId).eq('is_active', true).single();
+    if (custErr || !customer) return { ok: false, error: custErr ? custErr.message : 'Customer not found' };
+
+    const oldBalance = parseFloat(customer.current_balance || 0);
+    const newBalance = Math.round((oldBalance + amount) * 100) / 100;
+
+    const { data: updated, error: updErr } = await supabase
+      .from('customers')
+      .update({ current_balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('id', customerId).eq('company_id', companyId).eq('current_balance', oldBalance)
+      .select().maybeSingle();
+    if (updErr) return { ok: false, error: updErr.message };
+    if (!updated) continue; // lost the race — another write changed current_balance; retry
+
+    const { data: tx, error: txErr } = await supabase
+      .from('customer_account_transactions')
+      .insert({
+        company_id: companyId, customer_id: customerId, sale_id: saleId, type: 'charge',
+        amount, balance_after: newBalance, reference: saleNumber,
+        notes: 'Account sale charge', created_by: userId,
+      })
+      .select().single();
+    if (txErr) return { ok: false, error: txErr.message };
+
+    return { ok: true, transaction: tx, newBalance };
+  }
+  return { ok: false, error: `Balance update lost the compare-and-swap race ${MAX_ATTEMPTS} times in a row` };
+}
+
 /** Normalise camelCase or snake_case field names from the request body. */
 function normaliseSaleBody(body) {
   return {
@@ -382,6 +446,37 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
             sale_number:   saleNumber,
           },
         });
+      }
+
+      // Post the account-tender portion (if any) to the customer's ledger +
+      // live balance. Only the ACCOUNT-tender amount is charged — a split
+      // payment with cash+account only charges the account leg. Gated on
+      // !was_duplicate so a retried/replayed sale never double-charges.
+      const accountAmount = Math.round(payments
+        .filter(p => p.payment_method === 'account')
+        .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0) * 100) / 100;
+
+      if (accountAmount > 0 && customer_id) {
+        const chargeResult = await postAccountCharge({
+          companyId: req.companyId, customerId: customer_id, saleId: rpcResult.sale_id,
+          saleNumber, amount: accountAmount, userId: req.user.userId,
+        });
+        if (chargeResult.ok) {
+          posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_POSTED, {
+            saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
+            afterSnapshot: { customer_id, amount: accountAmount, new_balance: chargeResult.newBalance },
+            metadata: { sale_number: saleNumber, transaction_id: chargeResult.transaction.id },
+          });
+        } else {
+          // CRITICAL: the sale already succeeded and stock already moved —
+          // this must never throw and roll back a completed sale. Logged
+          // loudly instead of silently, per the ticket's atomicity requirement.
+          console.error('[Sales] CRITICAL: account charge posting failed after sale succeeded:', rpcResult.sale_id, chargeResult.error);
+          posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_FAILED, {
+            saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
+            metadata: { sale_number: saleNumber, customer_id, amount: accountAmount, error: chargeResult.error },
+          });
+        }
       }
     }
 
