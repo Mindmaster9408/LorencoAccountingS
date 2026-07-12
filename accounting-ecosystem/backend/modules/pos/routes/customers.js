@@ -234,6 +234,11 @@ router.post('/:id/account/payment', requirePermission('SALES.CREATE'), async (re
     }
 
     const currentBalance = customer.current_balance || 0;
+    // balance_after is NOT NULL on this table, so the ledger row must carry a
+    // best-effort computed value at insert time — computed here from the
+    // balance already read above, then corrected below if a concurrent
+    // write means the CAS loop has to recompute against a fresher value.
+    const initialCandidate = Math.max(0, Math.round((currentBalance - amount) * 100) / 100);
 
     // Insert the ledger row first — a failure here touches nothing.
     const { data: tx, error: txErr } = await supabase
@@ -244,7 +249,7 @@ router.post('/:id/account/payment', requirePermission('SALES.CREATE'), async (re
         sale_id:         null,
         type:            'payment',
         amount:          -amount,           // negative = money coming in (reduces balance)
-        balance_after:   null,              // filled in once the CAS balance update below succeeds
+        balance_after:   initialCandidate,  // corrected below if the CAS loop recomputes against a fresher balance
         reference:       reference || null,
         notes:           notes || `Payment via ${payment_method || 'cash'}`,
         created_by:      req.user.userId,
@@ -283,7 +288,9 @@ router.post('/:id/account/payment', requirePermission('SALES.CREATE'), async (re
       return res.status(500).json({ error: 'Payment recorded but balance update failed — contact support for reconciliation', transaction: tx });
     }
 
-    await supabase.from('customer_account_transactions').update({ balance_after: newBalance }).eq('id', tx.id);
+    if (newBalance !== initialCandidate) {
+      await supabase.from('customer_account_transactions').update({ balance_after: newBalance }).eq('id', tx.id);
+    }
 
     await auditFromReq(req, 'UPDATE', 'customer_account', customerId, {
       module:   'pos',
