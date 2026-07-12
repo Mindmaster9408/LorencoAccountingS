@@ -39,6 +39,19 @@ const POS_EVENTS = {
     CUSTOMER_ACCOUNT_PAYMENT_RECORDED: 'CUSTOMER_ACCOUNT_PAYMENT_RECORDED',
     CUSTOMER_ACCOUNT_PAYMENT_REPLAYED: 'CUSTOMER_ACCOUNT_PAYMENT_REPLAYED', // idempotency gate returned existing payment
 
+    // Account sale void/reversal events (Workstream 91)
+    CUSTOMER_ACCOUNT_CHARGE_REVERSED:      'CUSTOMER_ACCOUNT_CHARGE_REVERSED',      // void of an account sale reversed its ledger charge + balance
+    CUSTOMER_ACCOUNT_REVERSAL_FAILED:      'CUSTOMER_ACCOUNT_REVERSAL_FAILED',      // CRITICAL: sale voided but reversal post failed — needs manual reconciliation
+    CUSTOMER_ACCOUNT_REVERSAL_REPLAYED:    'CUSTOMER_ACCOUNT_REVERSAL_REPLAYED',    // idempotency gate returned existing reversal (double-void / retry)
+    CUSTOMER_ACCOUNT_REVERSAL_MANAGER_APPROVED: 'CUSTOMER_ACCOUNT_REVERSAL_MANAGER_APPROVED', // manager-tier permission check passed for a financial reversal
+
+    // Partial return / account reversal events (Workstream 93)
+    CUSTOMER_ACCOUNT_RETURN_REVERSED:          'CUSTOMER_ACCOUNT_RETURN_REVERSED',          // partial/full return reversed its account-funded portion
+    CUSTOMER_ACCOUNT_RETURN_REVERSAL_FAILED:   'CUSTOMER_ACCOUNT_RETURN_REVERSAL_FAILED',   // CRITICAL: return recorded but reversal post failed — needs manual reconciliation
+    CUSTOMER_ACCOUNT_RETURN_REVERSAL_REPLAYED: 'CUSTOMER_ACCOUNT_RETURN_REVERSAL_REPLAYED', // idempotency gate returned existing return-reversal (retry)
+    CUSTOMER_ACCOUNT_RETURN_MANAGER_APPROVED:  'CUSTOMER_ACCOUNT_RETURN_MANAGER_APPROVED',  // manager-tier permission check passed for a return that reverses account balance
+    RETURN_REPLAYED:                           'RETURN_REPLAYED',                           // idempotency gate returned an existing pos_returns row instead of creating a duplicate
+
     // Offline sync events
     OFFLINE_SYNC_RECEIVED:  'OFFLINE_SYNC_RECEIVED', // backend received offline sync POST
     OFFLINE_CONFLICT:       'OFFLINE_CONFLICT',       // 422 stock conflict on sync replay
@@ -198,6 +211,15 @@ const EVENT_CATEGORY = {
     CUSTOMER_ACCOUNT_CHARGE_FAILED:     'customer_account',
     CUSTOMER_ACCOUNT_PAYMENT_RECORDED:  'customer_account',
     CUSTOMER_ACCOUNT_PAYMENT_REPLAYED:  'customer_account',
+    CUSTOMER_ACCOUNT_CHARGE_REVERSED:      'customer_account',
+    CUSTOMER_ACCOUNT_REVERSAL_FAILED:      'customer_account',
+    CUSTOMER_ACCOUNT_REVERSAL_REPLAYED:    'customer_account',
+    CUSTOMER_ACCOUNT_REVERSAL_MANAGER_APPROVED: 'customer_account',
+    CUSTOMER_ACCOUNT_RETURN_REVERSED:          'customer_account',
+    CUSTOMER_ACCOUNT_RETURN_REVERSAL_FAILED:   'customer_account',
+    CUSTOMER_ACCOUNT_RETURN_REVERSAL_REPLAYED: 'customer_account',
+    CUSTOMER_ACCOUNT_RETURN_MANAGER_APPROVED:  'customer_account',
+    RETURN_REPLAYED:                           'sale',
     OFFLINE_SYNC_RECEIVED:  'sync',
     OFFLINE_CONFLICT:       'sync',
     TILL_OPENED:            'session',

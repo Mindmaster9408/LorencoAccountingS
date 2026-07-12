@@ -109,6 +109,18 @@ async function ensurePosSchema(pool) {
       CREATE INDEX IF NOT EXISTS idx_pos_returns_company
         ON pos_returns(company_id)
     `);
+    // Idempotency protection for returns (Workstream 93 — found live via the
+    // same pattern as Workstream 90's account-payment fix: /return had no
+    // idempotency guard at all, so a retried request would create a second
+    // pos_returns row, double-restore stock, and double-reverse the
+    // customer's account balance). Nullable + unique index scoped to
+    // non-null values, so existing rows are unaffected.
+    await client.query(`ALTER TABLE pos_returns ADD COLUMN IF NOT EXISTS idempotency_key UUID`);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_returns_idempotency
+        ON pos_returns(company_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+    `);
+
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_pos_returns_sale
         ON pos_returns(original_sale_id)

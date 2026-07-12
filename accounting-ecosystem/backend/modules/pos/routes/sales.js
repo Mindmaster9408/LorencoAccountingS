@@ -24,6 +24,7 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getStockPolicy } = require('../services/stockPolicyCache');
+const { hasPermission } = require('../../../config/permissions');
 
 const router = express.Router();
 
@@ -39,36 +40,46 @@ function generateSaleNumber() {
 }
 
 /**
- * Post an account-tender charge to the customer's ledger + live balance.
+ * Apply a signed delta to a customer's live balance + append one ledger row.
+ * Shared core for every customer-account write (charge, reversal, and —
+ * potential future callers — manual adjustments) so the CAS balance-update
+ * pattern exists in exactly one place.
  *
  * BUG FIX (found live, Workstream 90): create_sale_atomic (the opaque RPC —
  * source not in this repo, never modified) does NOT post anything to
  * customer_account_transactions or customers.current_balance for an ACCOUNT
- * sale — confirmed empirically: a real R1000 account sale left both
- * unchanged. This means the sale succeeds, stock moves, but the customer's
- * account charge is simply never attempted — the exact critical defect this
- * function exists to close.
+ * sale — confirmed empirically. This function is the fix: called immediately
+ * after the RPC succeeds, before the HTTP response is sent.
  *
  * True same-transaction atomicity with create_sale_atomic isn't achievable
- * without changing that RPC (explicitly out of scope — its source isn't
- * available and the ticket that found this forbids touching it without
- * proof, which doesn't extend to rewriting an opaque function). This is the
- * smallest safe fix reachable from the application layer: called
- * immediately after the RPC succeeds, before the HTTP response is sent, so
- * the charge lands in the same request as the sale in the overwhelming
- * majority of cases. The balance update uses compare-and-swap (read, then
- * UPDATE ... WHERE current_balance = <value read>) with a bounded retry
- * loop — the same pattern already established for stock in stockCAS.js —
- * so a concurrent payment/charge against the same customer cannot silently
- * overwrite this one. If every retry loses the race, or the DB write fails
- * outright, this returns { ok:false } rather than throwing — the sale has
- * already been returned to the client and must not be rolled back for a
- * ledger-side failure; the caller logs a CRITICAL audit event instead so
- * the gap is loudly discoverable, never silent.
+ * without changing that RPC (out of scope). The balance update instead uses
+ * compare-and-swap (read, then UPDATE ... WHERE current_balance = <value
+ * read>) with a bounded retry loop — the same pattern established for stock
+ * in stockCAS.js — so a concurrent charge/payment/reversal against the same
+ * customer cannot silently overwrite another. If every retry loses the
+ * race, or the write fails outright, this returns { ok:false } rather than
+ * throwing — callers must not roll back an already-completed sale/void for
+ * a ledger-side failure; they log a CRITICAL audit event instead so the gap
+ * is loudly discoverable, never silent.
  *
- * @returns {Promise<{ok:true, transaction, newBalance}|{ok:false, error}>}
+ * idempotencyGuard (optional): a set of exact-match column/value pairs
+ * (e.g. { sale_id, type } for a full-sale reversal, keyed on the whole sale
+ * — Workstream 91; or { reference } for a partial-return reversal, keyed on
+ * the specific pos_returns row — Workstream 93, since a single sale can
+ * have many returns and each needs its own independent reversal row). If a
+ * ledger row already matches every provided pair, it is returned unchanged
+ * (wasDuplicate: true) instead of applying the delta again.
+ *
+ * @returns {Promise<{ok:true, transaction, newBalance, wasDuplicate?:boolean}|{ok:false, error}>}
  */
-async function postAccountCharge({ companyId, customerId, saleId, saleNumber, amount, userId }) {
+async function adjustCustomerAccountLedger({ companyId, customerId, saleId, amount, type, reference, notes, userId, idempotencyGuard }) {
+  if (idempotencyGuard) {
+    let guardQuery = supabase.from('customer_account_transactions').select('*').eq('company_id', companyId);
+    for (const [col, val] of Object.entries(idempotencyGuard)) guardQuery = guardQuery.eq(col, val);
+    const { data: existing } = await guardQuery.maybeSingle();
+    if (existing) return { ok: true, transaction: existing, newBalance: existing.balance_after, wasDuplicate: true };
+  }
+
   const MAX_ATTEMPTS = 5;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const { data: customer, error: custErr } = await supabase
@@ -90,9 +101,9 @@ async function postAccountCharge({ companyId, customerId, saleId, saleNumber, am
     const { data: tx, error: txErr } = await supabase
       .from('customer_account_transactions')
       .insert({
-        company_id: companyId, customer_id: customerId, sale_id: saleId, type: 'charge',
-        amount, balance_after: newBalance, reference: saleNumber,
-        notes: 'Account sale charge', created_by: userId,
+        company_id: companyId, customer_id: customerId, sale_id: saleId, type,
+        amount, balance_after: newBalance, reference,
+        notes, created_by: userId,
       })
       .select().single();
     if (txErr) return { ok: false, error: txErr.message };
@@ -100,6 +111,58 @@ async function postAccountCharge({ companyId, customerId, saleId, saleNumber, am
     return { ok: true, transaction: tx, newBalance };
   }
   return { ok: false, error: `Balance update lost the compare-and-swap race ${MAX_ATTEMPTS} times in a row` };
+}
+
+/** Thin wrapper — posts a 'charge' row for a new account-tender sale. */
+async function postAccountCharge({ companyId, customerId, saleId, saleNumber, amount, userId }) {
+  return adjustCustomerAccountLedger({
+    companyId, customerId, saleId, amount, type: 'charge',
+    reference: saleNumber, notes: 'Account sale charge', userId,
+  });
+}
+
+/**
+ * Reverse a previously-posted account charge when its sale is voided
+ * (Workstream 91). Never edits the original 'charge' row — appends an
+ * offsetting 'charge_reversal' row instead, so financial history is never
+ * rewritten, only added to. idempotencyGuard on { saleId, type:
+ * 'charge_reversal' } means voiding an already-voided sale, or retrying the
+ * same void request, can never reverse the same charge twice — the second
+ * call finds the reversal row already there and returns it unchanged.
+ */
+async function reverseAccountCharge({ companyId, customerId, saleId, saleNumber, amount, reason, userId }) {
+  return adjustCustomerAccountLedger({
+    companyId, customerId, saleId, amount: -amount, type: 'charge_reversal',
+    reference: `Reversal of charge for voided sale ${saleNumber}`,
+    notes: reason || 'Account sale voided',
+    userId,
+    idempotencyGuard: { sale_id: saleId, type: 'charge_reversal' },
+  });
+}
+
+/**
+ * Reverse the account-funded portion of a partial (or full-value) return
+ * against an account-tender sale (Workstream 93). Unlike a full-sale void
+ * reversal, a single sale can have MANY returns over time (Scenario C: 1000
+ * -> return 200 -> return 300 -> balance 500) — so this is keyed on the
+ * specific pos_returns row via `reference`, not on the sale as a whole, and
+ * a second call for the SAME return (retry, or an accidental duplicate
+ * request) finds that exact reversal already posted and returns it
+ * unchanged rather than reversing the same return twice.
+ *
+ * amount here must already be the ACCOUNT-funded share of the refund, not
+ * the full refund amount — split-payment allocation happens in the caller
+ * (POST /:id/return), proportional to that sale's cash-vs-account tender
+ * mix, so a cash-funded return never touches the customer's balance.
+ */
+async function reverseAccountChargeForReturn({ companyId, customerId, saleId, returnId, saleNumber, amount, reason, userId }) {
+  return adjustCustomerAccountLedger({
+    companyId, customerId, saleId, amount: -amount, type: 'return_reversal',
+    reference: `RETURN-${returnId}`,
+    notes: reason || `Partial return against sale ${saleNumber}`,
+    userId,
+    idempotencyGuard: { reference: `RETURN-${returnId}` },
+  });
 }
 
 /** Normalise camelCase or snake_case field names from the request body. */
@@ -506,6 +569,34 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
 /**
  * POST /api/pos/sales/:id/void
  * Void a sale — CRITICAL audit event.
+ *
+ * BUG FIX (found + closed live, Workstream 91): voiding an account sale
+ * previously only flipped sales.status — the customer's ledger and live
+ * balance were never touched, confirmed live in Workstream 90 (balance
+ * unchanged before/after voiding a sale that had charged it). This route
+ * now reverses the account-tender portion of the sale (split payments only
+ * reverse their ACCOUNT leg — the cash/card legs are untouched, matching
+ * the ticket's explicit split-payment rule) via reverseAccountCharge(),
+ * which appends an offsetting 'charge_reversal' ledger row rather than
+ * editing the original 'charge' row — financial history is only ever
+ * added to, never rewritten.
+ *
+ * Manager-tier gate: voiding a plain cash/card sale still only requires
+ * SALES.VOID (supervisor), unchanged. Voiding a sale that has a real
+ * account-tender component to reverse additionally requires SALES.REFUND
+ * (management) — reusing the existing permission tier rather than adding a
+ * new one, since reversing money owed by a customer is exactly what that
+ * tier already gates. If the caller only has SALES.VOID, the request is
+ * rejected before anything is written, rather than voiding the sale and
+ * silently skipping the reversal (which would recreate the exact bug this
+ * workstream closes).
+ *
+ * Double-void / retry safety: the status update itself is CAS-guarded
+ * (WHERE status = <value just read>), so two concurrent void requests can
+ * never both succeed. reverseAccountCharge()'s own idempotency guard
+ * (existing 'charge_reversal' row for this sale_id) is a second, independent
+ * safety net — even if the CAS window is somehow crossed, or the same void
+ * request is retried after a network hiccup, the reversal is applied once.
  */
 router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
   try {
@@ -514,7 +605,7 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
 
     const { data: old } = await supabase
       .from('sales')
-      .select('*')
+      .select('*, sale_payments(*)')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
@@ -522,6 +613,22 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
     if (!old) return res.status(404).json({ error: 'Sale not found' });
     if (old.status === 'voided') return res.status(400).json({ error: 'Sale is already voided' });
 
+    const accountAmount = Math.round((old.sale_payments || [])
+      .filter(p => p.payment_method === 'account')
+      .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0) * 100) / 100;
+
+    // Manager-tier gate — checked BEFORE any write, so a supervisor-only
+    // caller cannot partially void (sale flips to voided, reversal skipped).
+    if (accountAmount > 0 && !hasPermission(req.user.role, 'SALES', 'REFUND')) {
+      return res.status(403).json({
+        error: 'Voiding an account sale reverses a customer\'s owed balance and requires management approval (SALES.REFUND)',
+      });
+    }
+
+    // CAS-guarded status update — a concurrent second void request finds
+    // zero rows updated (old.status has already changed underneath it) and
+    // is told the sale is already voided, rather than both requests racing
+    // into the reversal logic below.
     const { data, error } = await supabase
       .from('sales')
       .update({
@@ -532,10 +639,12 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
       })
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
+      .eq('status', old.status)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(400).json({ error: 'Sale is already voided' });
 
     await auditFromReq(req, 'VOID', 'sale', req.params.id, {
       module:   'pos',
@@ -555,7 +664,37 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
       metadata:       { reason },
     });
 
-    res.json({ sale: data });
+    let reversal = null;
+    if (accountAmount > 0 && old.customer_id) {
+      posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_REVERSAL_MANAGER_APPROVED, {
+        saleId: req.params.id,
+        metadata: { customer_id: old.customer_id, amount: accountAmount, approved_by_role: req.user.role },
+      });
+
+      const reversalResult = await reverseAccountCharge({
+        companyId: req.companyId, customerId: old.customer_id, saleId: parseInt(req.params.id),
+        saleNumber: old.sale_number, amount: accountAmount, reason, userId: req.user.userId,
+      });
+
+      if (reversalResult.ok) {
+        reversal = reversalResult.transaction;
+        posAuditFromReq(req, reversalResult.wasDuplicate ? POS_EVENTS.CUSTOMER_ACCOUNT_REVERSAL_REPLAYED : POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_REVERSED, {
+          saleId: req.params.id,
+          afterSnapshot: { customer_id: old.customer_id, amount: accountAmount, new_balance: reversalResult.newBalance },
+          metadata: { sale_number: old.sale_number, transaction_id: reversalResult.transaction.id, reason },
+        });
+      } else {
+        // CRITICAL: the sale is already voided — this must never throw and
+        // roll that back. Logged loudly, per the same rule as postAccountCharge.
+        console.error('[Sales] CRITICAL: account charge reversal failed after void succeeded:', req.params.id, reversalResult.error);
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_REVERSAL_FAILED, {
+          saleId: req.params.id,
+          metadata: { sale_number: old.sale_number, customer_id: old.customer_id, amount: accountAmount, error: reversalResult.error },
+        });
+      }
+    }
+
+    res.json({ sale: data, reversal });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -565,16 +704,59 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
  * POST /api/pos/sales/:id/return
  * Process a return/refund for a completed sale.
  * Reverses stock for returned items and records in pos_returns.
+ *
+ * BUG FIX (found + closed live, Workstream 93): a partial (or full-value)
+ * return against an account-tender sale previously never touched the
+ * customer's ledger or live balance at all — confirmed live in Workstream
+ * 91's investigation (`refund_method` defaulted to 'cash' regardless of the
+ * original sale's payment method, and `sale.customer_id` was never read).
+ * This route now reverses the ACCOUNT-FUNDED SHARE of the refund only —
+ * for a split-payment sale (e.g. cash 300 + account 700), the reversal is
+ * `refundAmount * (accountTenderTotal / saleTotal)`, proportional
+ * allocation being the only fair rule available without per-item tender
+ * tracking (which does not exist in this schema and is out of scope to
+ * add — "do not redesign returns"). A 100%-account sale's returns are
+ * simply `refundAmount * 1.0`, the ticket's primary worked example.
+ *
+ * Multiple partial returns against the same sale are each reversed
+ * independently (Scenario C: 1000 -> return 200 -> return 300 -> balance
+ * 500) — the idempotency key for reverseAccountChargeForReturn is the
+ * specific pos_returns row, not the sale, so a second, third, Nth return
+ * against one sale each get their own ledger entry, while retrying the
+ * SAME return request is still blocked (see idempotency_key below).
+ *
+ * Manager-tier gate: mirrors Workstream 91 exactly — a return with no
+ * account-funded portion (pure cash/card sale) still only requires
+ * SALES.VOID (supervisor), unchanged. A return that reverses a real amount
+ * off a customer's balance additionally requires SALES.REFUND (management),
+ * checked before any write.
+ *
+ * idempotency_key (optional): protects the whole operation — retrying the
+ * same request returns the original pos_returns row unchanged rather than
+ * creating a second return (which would double-restore stock and
+ * double-reverse the ledger).
  */
 router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => {
   try {
-    const { reason, refund_method, items: returnItems } = req.body;
+    const { reason, refund_method, items: returnItems, idempotency_key: idempotencyKey } = req.body;
 
     if (!reason) return res.status(400).json({ error: 'Return reason is required' });
 
+    if (idempotencyKey) {
+      const { data: existingReturn } = await supabase
+        .from('pos_returns').select('*')
+        .eq('company_id', req.companyId).eq('idempotency_key', idempotencyKey).maybeSingle();
+      if (existingReturn) {
+        posAuditFromReq(req, POS_EVENTS.RETURN_REPLAYED, {
+          saleId: req.params.id, metadata: { return_id: existingReturn.id, idempotency_key: idempotencyKey },
+        });
+        return res.status(200).json({ return: existingReturn, wasDuplicate: true, reversal: null });
+      }
+    }
+
     const { data: sale } = await supabase
       .from('sales')
-      .select('*, sale_items(*)')
+      .select('*, sale_items(*), sale_payments(*)')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
@@ -593,6 +775,21 @@ router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => 
       return sum + (orig.unit_price * ri.quantity);
     }, 0);
 
+    // Proportional account-share allocation — see fix note above.
+    const saleTotal = parseFloat(sale.total_amount || 0);
+    const accountTenderTotal = (sale.sale_payments || [])
+      .filter(p => p.payment_method === 'account')
+      .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    const accountShareRatio = saleTotal > 0 ? (accountTenderTotal / saleTotal) : 0;
+    const accountPortionOfReturn = Math.round(refundAmount * accountShareRatio * 100) / 100;
+
+    // Manager-tier gate — checked BEFORE any write, same rule as Workstream 91's void gate.
+    if (accountPortionOfReturn > 0 && !hasPermission(req.user.role, 'SALES', 'REFUND')) {
+      return res.status(403).json({
+        error: 'This return reverses a customer\'s owed balance and requires management approval (SALES.REFUND)',
+      });
+    }
+
     // Record in pos_returns
     const { data: ret, error: retErr } = await supabase
       .from('pos_returns')
@@ -605,11 +802,18 @@ router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => 
         items_json:       itemsToReturn,
         status:           'completed',
         processed_by:     req.user.userId,
+        idempotency_key:  idempotencyKey || null,
       })
       .select()
       .single();
 
-    if (retErr) return res.status(500).json({ error: retErr.message });
+    if (retErr) {
+      if (idempotencyKey && retErr.code === '23505') {
+        const { data: winner } = await supabase.from('pos_returns').select('*').eq('company_id', req.companyId).eq('idempotency_key', idempotencyKey).maybeSingle();
+        if (winner) return res.status(200).json({ return: winner, wasDuplicate: true, reversal: null });
+      }
+      return res.status(500).json({ error: retErr.message });
+    }
 
     // Reverse stock for returned items — atomic per-item UPDATE via RPC.
     // restore_stock_for_return uses stock_quantity = stock_quantity + qty at DB level:
@@ -640,7 +844,38 @@ router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => 
       metadata:       { reason, return_id: ret.id },
     });
 
-    res.status(201).json({ return: ret });
+    let reversal = null;
+    if (accountPortionOfReturn > 0 && sale.customer_id) {
+      posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_RETURN_MANAGER_APPROVED, {
+        saleId: sale.id,
+        metadata: { customer_id: sale.customer_id, amount: accountPortionOfReturn, return_id: ret.id, approved_by_role: req.user.role },
+      });
+
+      const reversalResult = await reverseAccountChargeForReturn({
+        companyId: req.companyId, customerId: sale.customer_id, saleId: sale.id, returnId: ret.id,
+        saleNumber: sale.sale_number, amount: accountPortionOfReturn, reason, userId: req.user.userId,
+      });
+
+      if (reversalResult.ok) {
+        reversal = reversalResult.transaction;
+        posAuditFromReq(req, reversalResult.wasDuplicate ? POS_EVENTS.CUSTOMER_ACCOUNT_RETURN_REVERSAL_REPLAYED : POS_EVENTS.CUSTOMER_ACCOUNT_RETURN_REVERSED, {
+          saleId: sale.id,
+          afterSnapshot: { customer_id: sale.customer_id, amount: accountPortionOfReturn, new_balance: reversalResult.newBalance },
+          metadata: { return_id: ret.id, transaction_id: reversalResult.transaction.id, reason },
+        });
+      } else {
+        // CRITICAL: the return is already recorded and stock already restored —
+        // this must never throw and roll that back. Logged loudly, matching
+        // the same rule as postAccountCharge / reverseAccountCharge.
+        console.error('[Sales] CRITICAL: return account-reversal failed after return succeeded:', ret.id, reversalResult.error);
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_RETURN_REVERSAL_FAILED, {
+          saleId: sale.id,
+          metadata: { return_id: ret.id, customer_id: sale.customer_id, amount: accountPortionOfReturn, error: reversalResult.error },
+        });
+      }
+    }
+
+    res.status(201).json({ return: ret, reversal });
   } catch (err) {
     console.error('[Sales] Return error:', err);
     res.status(500).json({ error: 'Server error' });
