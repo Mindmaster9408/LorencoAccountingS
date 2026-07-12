@@ -7,8 +7,13 @@
  * next week — Pennygrow raises ONE order, gets ONE invoice, THREE deliveries).
  *
  * Three deliberately separate concepts (never merged into one object):
- *   Commercial — purchase_orders / purchase_order_items (this file). Ordered
- *                quantity never changes after submission.
+ *   Commercial — pos_purchase_orders / pos_purchase_order_items (this file).
+ *                Named with the pos_ prefix because a DIFFERENT, already-
+ *                shipped purchase_orders table already exists (Accounting/
+ *                Inventory module, accounting-schema.js "23c") — caught live
+ *                in Workstream 89's verification pass before any data was
+ *                written; see docs/checkout-charlie-production/89_*.md.
+ *                Ordered quantity never changes after submission.
  *   Logistics  — REUSED, not duplicated: pos_company_transfers /
  *                pos_company_transfer_items / pos_transfer_discrepancies
  *                (Workstream 81/85) with transfer_type='po_delivery'. Every
@@ -87,7 +92,7 @@ async function getAuthorizedRelationship(companyId, otherCompanyId, permissionKe
 
 /** Fetch a PO the caller is authorized for (either the customer or the supplier side). Returns {po, isSupplier} or null. */
 async function getAuthorizedPO(poId, companyId) {
-  const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).maybeSingle();
+  const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).maybeSingle();
   if (!po) return null;
   if (po.company_id !== companyId && po.supplier_company_id !== companyId) return null;
   return { po, isSupplier: po.supplier_company_id === companyId };
@@ -153,7 +158,7 @@ router.post('/', requirePermission('PURCHASE_ORDERS.CREATE'), async (req, res) =
 
     const totalOrdered = lines.reduce((sum, l) => sum + l.quantity, 0);
     const { data: po, error: poErr } = await supabase
-      .from('purchase_orders')
+      .from('pos_purchase_orders')
       .insert({
         company_id: req.companyId, supplier_id: supplierId, supplier_company_id: supplier.linked_company_id,
         relationship_id: relationship.id, po_number: generatePoNumber(), status: 'draft',
@@ -167,7 +172,7 @@ router.post('/', requirePermission('PURCHASE_ORDERS.CREATE'), async (req, res) =
     const byId = new Map(dbProducts.map(p => [p.id, p]));
     for (const line of lines) {
       const product = byId.get(line.product_id);
-      await supabase.from('purchase_order_items').insert({
+      await supabase.from('pos_purchase_order_items').insert({
         purchase_order_id: po.id, company_id: req.companyId, product_id: line.product_id,
         product_code: product.product_code || null, barcode: product.barcode || null, description: product.product_name,
         quantity_ordered: line.quantity, unit_cost: line.unit_cost != null ? line.unit_cost : product.cost_price, notes: line.notes,
@@ -193,7 +198,7 @@ router.put('/:id/items', requirePermission('PURCHASE_ORDERS.CREATE'), async (req
     const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array is required' });
 
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
     if (po.status !== 'draft') return res.status(400).json({ error: `Items can only be changed while the order is in draft (current status: ${po.status})` });
 
@@ -211,10 +216,10 @@ router.put('/:id/items', requirePermission('PURCHASE_ORDERS.CREATE'), async (req
     const missing = productIds.filter(id => !byId.has(id));
     if (missing.length > 0) return res.status(400).json({ error: `Product IDs not found for this company: ${missing.join(', ')}` });
 
-    await supabase.from('purchase_order_items').delete().eq('purchase_order_id', poId);
+    await supabase.from('pos_purchase_order_items').delete().eq('purchase_order_id', poId);
     for (const line of lines) {
       const product = byId.get(line.product_id);
-      await supabase.from('purchase_order_items').insert({
+      await supabase.from('pos_purchase_order_items').insert({
         purchase_order_id: poId, company_id: req.companyId, product_id: line.product_id,
         product_code: product.product_code || null, barcode: product.barcode || null, description: product.product_name,
         quantity_ordered: line.quantity, unit_cost: line.unit_cost != null ? line.unit_cost : product.cost_price, notes: line.notes,
@@ -222,7 +227,7 @@ router.put('/:id/items', requirePermission('PURCHASE_ORDERS.CREATE'), async (req
     }
 
     const totalOrdered = lines.reduce((sum, l) => sum + l.quantity, 0);
-    const { data: updated } = await supabase.from('purchase_orders')
+    const { data: updated } = await supabase.from('pos_purchase_orders')
       .update({ item_count: lines.length, total_ordered_qty: totalOrdered, updated_at: new Date().toISOString() })
       .eq('id', poId).select().single();
 
@@ -237,12 +242,12 @@ router.put('/:id/items', requirePermission('PURCHASE_ORDERS.CREATE'), async (req
 router.post('/:id/submit', requirePermission('PURCHASE_ORDERS.CREATE'), async (req, res) => {
   try {
     const poId = parseInt(req.params.id);
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
     if (po.status !== 'draft') return res.status(400).json({ error: `Only a draft order can be submitted (current status: ${po.status})` });
     if (po.item_count === 0) return res.status(400).json({ error: 'Add at least one item before submitting' });
 
-    const { data: updated } = await supabase.from('purchase_orders')
+    const { data: updated } = await supabase.from('pos_purchase_orders')
       .update({ status: 'submitted', submitted_by: req.user.userId, submitted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', poId).select().single();
 
@@ -257,7 +262,7 @@ router.post('/:id/submit', requirePermission('PURCHASE_ORDERS.CREATE'), async (r
 
 /** Build InvoiceSender line items from purchase_order_items, billing `quantity` per line (ordered vs delivered chosen by caller). */
 async function buildInvoiceLineItems(poId, useField) {
-  const { data: items } = await supabase.from('purchase_order_items').select('*').eq('purchase_order_id', poId);
+  const { data: items } = await supabase.from('pos_purchase_order_items').select('*').eq('purchase_order_id', poId);
   return (items || []).map(i => ({
     description: i.description,
     quantity: useField === 'received' ? i.quantity_received : i.quantity_ordered,
@@ -281,7 +286,7 @@ async function generatePoInvoice(po, useField, req) {
   if (!result.success || !result.invoice || !result.invoice.id) return null;
 
   await supabase.from('inter_company_invoices').update({ purchase_order_id: po.id }).eq('id', result.invoice.id);
-  await supabase.from('purchase_orders').update({ invoice_id: result.invoice.id }).eq('id', po.id);
+  await supabase.from('pos_purchase_orders').update({ invoice_id: result.invoice.id }).eq('id', po.id);
 
   posAuditFromReq(req, POS_EVENTS.PO_INVOICE_GENERATED, {
     entityType: 'purchase_order', entityId: po.id,
@@ -295,11 +300,11 @@ async function generatePoInvoice(po, useField, req) {
 router.post('/:id/accept', requirePermission('PURCHASE_ORDERS.APPROVE'), async (req, res) => {
   try {
     const poId = parseInt(req.params.id);
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('supplier_company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('supplier_company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
     if (po.status !== 'submitted') return res.status(400).json({ error: `Only a submitted order can be accepted (current status: ${po.status})` });
 
-    const { data: updated } = await supabase.from('purchase_orders')
+    const { data: updated } = await supabase.from('pos_purchase_orders')
       .update({ status: 'accepted', accepted_by: req.user.userId, accepted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', poId).select().single();
 
@@ -322,11 +327,11 @@ router.post('/:id/reject', requirePermission('PURCHASE_ORDERS.APPROVE'), async (
   try {
     const poId = parseInt(req.params.id);
     const reason = (req.body.reason || '').trim();
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('supplier_company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('supplier_company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
     if (po.status !== 'submitted') return res.status(400).json({ error: `Only a submitted order can be rejected (current status: ${po.status})` });
 
-    const { data: updated } = await supabase.from('purchase_orders')
+    const { data: updated } = await supabase.from('pos_purchase_orders')
       .update({ status: 'rejected', rejected_by: req.user.userId, rejected_at: new Date().toISOString(), rejection_reason: reason || null, updated_at: new Date().toISOString() })
       .eq('id', poId).select().single();
 
@@ -365,7 +370,7 @@ router.post('/:id/cancel', async (req, res) => {
       }
     }
 
-    const { data: updated } = await supabase.from('purchase_orders')
+    const { data: updated } = await supabase.from('pos_purchase_orders')
       .update({ status: 'cancelled', cancelled_by: req.user.userId, cancelled_at: new Date().toISOString(), cancellation_reason: (req.body.reason || '').trim() || null, updated_at: new Date().toISOString() })
       .eq('id', poId).select().single();
 
@@ -382,13 +387,13 @@ router.post('/:id/cancel', async (req, res) => {
 router.post('/:id/close', requirePermission('PURCHASE_ORDERS.CLOSE'), async (req, res) => {
   try {
     const poId = parseInt(req.params.id);
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
     if (!['partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
       return res.status(400).json({ error: `Only a partially fulfilled order can be force-closed (current status: ${po.status})` });
     }
 
-    const { data: updated } = await supabase.from('purchase_orders')
+    const { data: updated } = await supabase.from('pos_purchase_orders')
       .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', poId).select().single();
 
@@ -410,7 +415,7 @@ router.post('/:id/close', requirePermission('PURCHASE_ORDERS.CLOSE'), async (req
 router.get('/', requirePermission('PURCHASE_ORDERS.VIEW'), async (req, res) => {
   try {
     const { role = 'all', status } = req.query;
-    let query = supabase.from('purchase_orders').select('*');
+    let query = supabase.from('pos_purchase_orders').select('*');
     if (role === 'customer') query = query.eq('company_id', req.companyId);
     else if (role === 'supplier') query = query.eq('supplier_company_id', req.companyId);
     else query = query.or(`company_id.eq.${req.companyId},supplier_company_id.eq.${req.companyId}`);
@@ -446,7 +451,7 @@ router.get('/:id', requirePermission('PURCHASE_ORDERS.VIEW'), async (req, res) =
     if (!auth) return res.status(404).json({ error: 'Purchase order not found' });
     const { po, isSupplier } = auth;
 
-    const { data: items } = await supabase.from('purchase_order_items').select('*').eq('purchase_order_id', poId).order('id');
+    const { data: items } = await supabase.from('pos_purchase_order_items').select('*').eq('purchase_order_id', poId).order('id');
     const shapedItems = (items || []).map(i => ({ ...i, quantity_outstanding: Math.max(0, i.quantity_ordered - i.quantity_received) }));
 
     const { data: deliveries } = await supabase.from('pos_company_transfers').select('*').eq('purchase_order_id', poId).order('delivery_number');
@@ -495,13 +500,13 @@ router.post('/:id/deliveries', requirePermission('PURCHASE_ORDERS.DISPATCH'), as
     const { items, transported_by, transport_reference, notes, expected_receive_date } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array is required' });
 
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('supplier_company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('supplier_company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
     if (!['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
       return res.status(400).json({ error: `Deliveries can only be dispatched against an accepted order (current status: ${po.status})` });
     }
 
-    const { data: poItems } = await supabase.from('purchase_order_items').select('*').eq('purchase_order_id', poId);
+    const { data: poItems } = await supabase.from('pos_purchase_order_items').select('*').eq('purchase_order_id', poId);
     const poItemsById = new Map((poItems || []).map(i => [i.id, i]));
 
     const lines = items
@@ -572,7 +577,7 @@ router.post('/:id/deliveries', requirePermission('PURCHASE_ORDERS.DISPATCH'), as
       });
 
       if (!line.poItem.supplier_product_id) {
-        await supabase.from('purchase_order_items').update({ supplier_product_id: line.resolvedProductId }).eq('id', line.purchase_order_item_id);
+        await supabase.from('pos_purchase_order_items').update({ supplier_product_id: line.resolvedProductId }).eq('id', line.purchase_order_item_id);
       }
 
       if (result.ok) {
@@ -588,12 +593,12 @@ router.post('/:id/deliveries', requirePermission('PURCHASE_ORDERS.DISPATCH'), as
 
     // If this delivery, once fully received, would clear all remaining outstanding
     // quantity, flag the order as awaiting its final delivery.
-    const { data: refreshedItems } = await supabase.from('purchase_order_items').select('quantity_ordered, quantity_received').eq('purchase_order_id', poId);
+    const { data: refreshedItems } = await supabase.from('pos_purchase_order_items').select('quantity_ordered, quantity_received').eq('purchase_order_id', poId);
     const totalOutstandingBeforeThis = (refreshedItems || []).reduce((sum, i) => sum + Math.max(0, i.quantity_ordered - i.quantity_received), 0);
     let newPoStatus = po.status;
     if (totalOutstandingBeforeThis - totalQty <= 0) newPoStatus = 'awaiting_final_delivery';
     if (newPoStatus !== po.status) {
-      await supabase.from('purchase_orders').update({ status: newPoStatus, updated_at: new Date().toISOString() }).eq('id', poId);
+      await supabase.from('pos_purchase_orders').update({ status: newPoStatus, updated_at: new Date().toISOString() }).eq('id', poId);
     }
 
     posAuditFromReq(req, POS_EVENTS.PO_DELIVERY_DISPATCHED, { entityType: 'purchase_order', entityId: poId, metadata: { po_number: po.po_number, delivery_id: delivery.id, delivery_number: deliveryNumber, item_count: lines.length, total_quantity: totalQty } });
@@ -613,7 +618,7 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
     const { items, notes } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array is required' });
 
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
 
     const { data: delivery } = await supabase.from('pos_company_transfers').select('*').eq('id', deliveryId).eq('purchase_order_id', poId).maybeSingle();
@@ -681,9 +686,9 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
     for (const line of lines) {
       const item = itemsById.get(line.item_id);
       if (line.quantity_received <= 0) continue;
-      const { data: poItem } = await supabase.from('purchase_order_items').select('*').eq('purchase_order_id', poId).eq('product_id', item.receiver_product_id).maybeSingle();
+      const { data: poItem } = await supabase.from('pos_purchase_order_items').select('*').eq('purchase_order_id', poId).eq('product_id', item.receiver_product_id).maybeSingle();
       if (poItem) {
-        await supabase.from('purchase_order_items').update({ quantity_received: poItem.quantity_received + line.quantity_received }).eq('id', poItem.id);
+        await supabase.from('pos_purchase_order_items').update({ quantity_received: poItem.quantity_received + line.quantity_received }).eq('id', poItem.id);
       }
     }
 
@@ -699,14 +704,14 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
       updated_at: new Date().toISOString(),
     }).eq('id', deliveryId);
 
-    const { data: refreshedPoItems } = await supabase.from('purchase_order_items').select('quantity_ordered, quantity_received').eq('purchase_order_id', poId);
+    const { data: refreshedPoItems } = await supabase.from('pos_purchase_order_items').select('quantity_ordered, quantity_received').eq('purchase_order_id', poId);
     const totalReceived = (refreshedPoItems || []).reduce((sum, i) => sum + i.quantity_received, 0);
     const totalOrdered = (refreshedPoItems || []).reduce((sum, i) => sum + i.quantity_ordered, 0);
     const outstanding = Math.max(0, totalOrdered - totalReceived);
     const poCompleted = outstanding === 0;
     const newPoStatus = poCompleted ? 'completed' : 'partially_fulfilled';
 
-    const { data: updatedPo } = await supabase.from('purchase_orders').update({
+    const { data: updatedPo } = await supabase.from('pos_purchase_orders').update({
       total_received_qty: totalReceived, status: newPoStatus,
       completed_at: poCompleted ? new Date().toISOString() : po.completed_at, updated_at: new Date().toISOString(),
     }).eq('id', poId).select().single();
@@ -741,7 +746,7 @@ router.post('/:id/deliveries/:deliveryId/resolve-variance', requirePermission('P
     const { discrepancy_id, resolution_reason, resolution_notes } = req.body;
     if (!discrepancy_id || !resolution_reason) return res.status(400).json({ error: 'discrepancy_id and resolution_reason are required' });
 
-    const { data: po } = await supabase.from('purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
+    const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
 
     const { data: disc } = await supabase.from('pos_transfer_discrepancies').select('*').eq('id', discrepancy_id).eq('transfer_id', deliveryId).maybeSingle();

@@ -743,9 +743,18 @@ async function ensurePosSchema(pool) {
     // Order), the Logistics (Deliveries), and the Financial transaction
     // (Invoice) are three separate objects, never merged.
     //
-    // Commercial — purchase_orders/purchase_order_items (new, below). Ordered
-    // quantity NEVER changes after submission. Received quantity is a rollup
-    // maintained by the delivery engine.
+    // Commercial — pos_purchase_orders/pos_purchase_order_items (new, below).
+    // Named with the pos_ prefix (not plain purchase_orders/purchase_order_items)
+    // because a DIFFERENT, already-shipped, already-populated purchase_orders
+    // table already exists — accounting-schema.js "23c. Purchase Orders", a
+    // single-company/local-supplier/VAT-invoice-style PO feature belonging to
+    // the Accounting/Inventory module (modules/inventory/routes/purchase-orders.js).
+    // CREATE TABLE IF NOT EXISTS purchase_orders would have silently no-op'd
+    // against that pre-existing table forever — caught live in Workstream 89's
+    // verification pass before any data was written. Every other Workstream 87/85
+    // table already used the pos_ prefix for exactly this reason; these two were
+    // the accidental exceptions. Ordered quantity NEVER changes after submission.
+    // Received quantity is a rollup maintained by the delivery engine.
     //
     // Logistics — REUSE, NOT A PARALLEL ENGINE: pos_company_transfers/
     // pos_company_transfer_items/pos_transfer_discrepancies (Workstream 81,
@@ -764,7 +773,7 @@ async function ensurePosSchema(pool) {
     // traced back to the PO that produced it — no new invoicing logic is
     // written for this workstream, InvoiceSender.send() is called as-is.
     await client.query(`
-      CREATE TABLE IF NOT EXISTS purchase_orders (
+      CREATE TABLE IF NOT EXISTS pos_purchase_orders (
         id                  SERIAL PRIMARY KEY,
         company_id          INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
         supplier_id         INTEGER NOT NULL REFERENCES suppliers(id),
@@ -796,14 +805,14 @@ async function ensurePosSchema(pool) {
         updated_at          TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_customer ON purchase_orders(company_id, status)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier ON purchase_orders(supplier_company_id, status)`);
-    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_orders_number ON purchase_orders(company_id, po_number)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_purchase_orders_customer ON pos_purchase_orders(company_id, status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_purchase_orders_supplier ON pos_purchase_orders(supplier_company_id, status)`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_purchase_orders_number ON pos_purchase_orders(company_id, po_number)`);
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS purchase_order_items (
+      CREATE TABLE IF NOT EXISTS pos_purchase_order_items (
         id                    SERIAL PRIMARY KEY,
-        purchase_order_id     INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        purchase_order_id     INTEGER NOT NULL REFERENCES pos_purchase_orders(id) ON DELETE CASCADE,
         company_id            INTEGER NOT NULL REFERENCES companies(id),
         product_id            INTEGER REFERENCES products(id),
         supplier_product_id   INTEGER REFERENCES products(id),
@@ -817,21 +826,21 @@ async function ensurePosSchema(pool) {
         created_at            TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_po_items_po      ON purchase_order_items(purchase_order_id)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_po_items_company ON purchase_order_items(company_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_po_items_po      ON pos_purchase_order_items(purchase_order_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_po_items_company ON pos_purchase_order_items(company_id)`);
 
     // pos_company_transfers — extended for po_delivery use (additive; both
     // columns are nullable and left untouched by inter_company/inter_store rows).
-    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES purchase_orders(id)`);
+    await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES pos_purchase_orders(id)`);
     await client.query(`ALTER TABLE pos_company_transfers ADD COLUMN IF NOT EXISTS delivery_number   INTEGER`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_company_transfers_po ON pos_company_transfers(purchase_order_id)`);
 
-    // Company-level default for new POs — snapshotted onto purchase_orders.invoice_timing
+    // Company-level default for new POs — snapshotted onto pos_purchase_orders.invoice_timing
     // at creation so a later settings change never alters an in-flight PO's behaviour.
     await client.query(`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS po_invoice_timing VARCHAR(20) NOT NULL DEFAULT 'after_final_delivery'`);
 
     // inter_company_invoices — trace an invoice back to the PO that generated it.
-    await client.query(`ALTER TABLE inter_company_invoices ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES purchase_orders(id)`);
+    await client.query(`ALTER TABLE inter_company_invoices ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES pos_purchase_orders(id)`);
 
     console.log('  ✅ POS schema ready.');
   } catch (err) {

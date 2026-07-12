@@ -1915,7 +1915,7 @@ router.get('/purchase-order-register', poReportsGate, async (req, res) => {
     const { start, end } = dateRangeFromQuery(req.query);
     const { role = 'customer', status, open_only, outstanding_deliveries_only } = req.query;
 
-    let query = supabase.from('purchase_orders').select('*').gte('created_at', start).lte('created_at', end);
+    let query = supabase.from('pos_purchase_orders').select('*').gte('created_at', start).lte('created_at', end);
     query = role === 'supplier' ? query.eq('supplier_company_id', req.companyId) : query.eq('company_id', req.companyId);
     if (status) query = query.eq('status', status);
     if (open_only === 'true') query = query.not('status', 'in', '(completed,cancelled,rejected)');
@@ -1975,7 +1975,7 @@ router.get('/delivery-register', poReportsGate, async (req, res) => {
     if (late_only === 'true') rows = rows.filter(d => d.is_late);
 
     const poIds = [...new Set(rows.map(d => d.purchase_order_id).filter(Boolean))];
-    const { data: pos } = poIds.length ? await supabase.from('purchase_orders').select('id, po_number').in('id', poIds) : { data: [] };
+    const { data: pos } = poIds.length ? await supabase.from('pos_purchase_orders').select('id, po_number').in('id', poIds) : { data: [] };
     const poNumbers = Object.fromEntries((pos || []).map(po => [po.id, po.po_number]));
     rows = rows.map(d => ({ ...d, po_number: poNumbers[d.purchase_order_id] }));
 
@@ -2001,7 +2001,7 @@ router.get('/supplier-performance', poReportsGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
 
-    const { data: pos, error } = await supabase.from('purchase_orders').select('*')
+    const { data: pos, error } = await supabase.from('pos_purchase_orders').select('*')
       .eq('company_id', req.companyId).gte('created_at', start).lte('created_at', end);
     if (error) return res.status(500).json({ error: error.message });
 
