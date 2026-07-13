@@ -12,6 +12,7 @@ const { requireCompany, requirePermission } = require('../../../middleware/auth'
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { createReconSnapshot } = require('../services/posReconService');
+const { hasPermission } = require('../../../config/permissions');
 
 const router = express.Router();
 
@@ -66,16 +67,30 @@ router.get('/current', async (req, res) => {
 
 /**
  * GET /api/pos/sessions/pending-cashup
- * Get sessions that need cash-up
+ * Get sessions that need cash-up — cross-cashier visibility, so this is
+ * management-tier only (TILLS.MANAGE). A regular cashier's own cashup
+ * screen still calls this unconditionally; a 403 here is handled
+ * gracefully by the frontend (the section simply stays hidden), which is
+ * also the correct behaviour — a cashier should not see other cashiers'
+ * pending till figures.
  */
-router.get('/pending-cashup', async (req, res) => {
+router.get('/pending-cashup', requirePermission('TILLS.MANAGE'), async (req, res) => {
   try {
+    // BUG FIX (found live, Workstream 97): this previously filtered on
+    // closing_balance IS NULL, but /close accepts an optional closing_balance
+    // and the self-service "close till" UI always sends one (a cashier's own
+    // rough estimate) — meaning almost every real session would have a
+    // non-null closing_balance the instant it's closed, and would then never
+    // appear here at all, regardless of whether it had actually been
+    // reconciled. status is the real state machine: 'open' -> 'closed' ->
+    // 'cashed_up' (only /complete-cashup sets 'cashed_up'), so "needs
+    // cash-up" correctly means status = 'closed', independent of whatever
+    // closing_balance value (if any) was recorded at close time.
     const { data, error } = await supabase
       .from('till_sessions')
       .select('*, tills(till_name, till_number), users:user_id(username, full_name)')
       .eq('company_id', req.companyId)
       .eq('status', 'closed')
-      .is('closing_balance', null)
       .order('closed_at', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
@@ -188,6 +203,15 @@ router.post('/:id/close', async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Session not found' });
     if (session.status !== 'open') return res.status(400).json({ error: 'Session is not open' });
 
+    // Closing your own session is unrestricted (existing self-service
+    // behaviour, unchanged). Closing someone else's session — found live
+    // to have NO permission check at all before this fix, meaning any
+    // authenticated user, including a trainee, could close any other
+    // cashier's till — now requires management-tier TILLS.MANAGE.
+    if (session.user_id !== req.user.userId && !hasPermission(req.user.role, 'TILLS', 'MANAGE')) {
+      return res.status(403).json({ error: 'Only a manager can close another cashier\'s till session' });
+    }
+
     // Calculate expected balance from sales
     const { data: sales } = await supabase
       .from('sales')
@@ -255,6 +279,15 @@ router.post('/:id/complete-cashup', async (req, res) => {
       .single();
 
     if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    // Same rule as /close: completing your own cashup is unrestricted;
+    // completing someone else's requires management-tier TILLS.MANAGE.
+    // This is the specific capability requested — a store manager finalising
+    // the day's cashups on behalf of their cashiers — found live to have no
+    // permission gate at all before this fix.
+    if (session.user_id !== req.user.userId && !hasPermission(req.user.role, 'TILLS', 'MANAGE')) {
+      return res.status(403).json({ error: 'Only a manager can complete another cashier\'s cashup' });
+    }
 
     const totalCounted = (counted_cash || 0) + (counted_card || 0) + (counted_other || 0);
     const variance = totalCounted - (session.expected_balance || 0);

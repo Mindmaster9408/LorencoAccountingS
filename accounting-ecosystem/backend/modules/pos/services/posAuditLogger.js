@@ -52,6 +52,12 @@ const POS_EVENTS = {
     CUSTOMER_ACCOUNT_RETURN_MANAGER_APPROVED:  'CUSTOMER_ACCOUNT_RETURN_MANAGER_APPROVED',  // manager-tier permission check passed for a return that reverses account balance
     RETURN_REPLAYED:                           'RETURN_REPLAYED',                           // idempotency gate returned an existing pos_returns row instead of creating a duplicate
 
+    // Customer orders — pay-later pickup (Workstream 96)
+    ORDER_CREATED:          'ORDER_CREATED',          // order placed, stock reserved, deposit (if any) charged
+    ORDER_FULFILLED:        'ORDER_FULFILLED',        // customer collected the order, remaining balance settled
+    ORDER_CANCELLED:        'ORDER_CANCELLED',        // order cancelled before pickup, stock restored, deposit reversed if applicable
+    ORDER_REPLAYED:         'ORDER_REPLAYED',         // idempotency gate returned an existing order instead of creating a duplicate
+
     // Offline sync events
     OFFLINE_SYNC_RECEIVED:  'OFFLINE_SYNC_RECEIVED', // backend received offline sync POST
     OFFLINE_CONFLICT:       'OFFLINE_CONFLICT',       // 422 stock conflict on sync replay
@@ -220,6 +226,10 @@ const EVENT_CATEGORY = {
     CUSTOMER_ACCOUNT_RETURN_REVERSAL_REPLAYED: 'customer_account',
     CUSTOMER_ACCOUNT_RETURN_MANAGER_APPROVED:  'customer_account',
     RETURN_REPLAYED:                           'sale',
+    ORDER_CREATED:          'sale',
+    ORDER_FULFILLED:        'sale',
+    ORDER_CANCELLED:        'sale',
+    ORDER_REPLAYED:         'sale',
     OFFLINE_SYNC_RECEIVED:  'sync',
     OFFLINE_CONFLICT:       'sync',
     TILL_OPENED:            'session',

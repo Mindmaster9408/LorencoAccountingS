@@ -1889,6 +1889,7 @@
                 <span class="session-badge" id="sessionStatus">No Session</span>
                 <button id="pwaInstallBtn" class="manage-till-btn" onclick="installPWA()" style="display:none; background:rgba(59,130,246,0.2); border-color:#3b82f6;">⬇ Install App</button>
                 <button class="manage-till-btn" onclick="showSwitchStoreModal()">Switch Store</button>
+                <button class="manage-till-btn" onclick="showOrdersModal()">📦 Orders</button>
                 <button class="manage-till-btn" onclick="manageSession()">Manage Till</button>
                 <button class="manage-till-btn" onclick="logout()" style="background: rgba(220,53,69,0.2); border-color: #dc3545;">Logout</button>
             </div>
@@ -2010,6 +2011,7 @@
                         </div>
 
                         <button class="checkout-btn" id="checkoutBtn" onclick="checkout()" disabled>Complete Sale</button>
+                        <button class="btn btn-secondary" id="placeOrderBtn" style="width:100%;margin-top:8px;" onclick="showPlaceOrderModal()">📦 Place as Order (Pickup Later)</button>
                         <button class="clear-cart-btn" onclick="clearCart()">Clear Cart</button>
                         <button class="btn btn-secondary" style="width: 100%; margin-top: 10px;" onclick="openSaleSearch()">🔍 Search Sale / Reprint</button>
                     </div>
@@ -6202,24 +6204,35 @@
 
                 if (result.sessions && result.sessions.length > 0) {
                     section.style.display = 'block';
-                    list.innerHTML = result.sessions.map(session => `
-                        <div style="background: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    list.innerHTML = result.sessions.map(session => {
+                        // BUG FIX (found live, Workstream 97): the query returns nested
+                        // join objects (tills / users), not flat till_name / user_name —
+                        // this card has always rendered "undefined - undefined" for the
+                        // till and cashier name, and a NaN "sales" figure the backend
+                        // never actually computes. Fixed to read the real nested fields
+                        // and drop the fabricated sales-count line (the accurate
+                        // per-payment-method breakdown is shown once you open the
+                        // Complete Cashup modal, sourced from the reconciliation API).
+                        const tillName = session.tills?.till_name || session.tills?.till_number || `Till #${session.till_id}`;
+                        const userName = session.users?.full_name || session.users?.username || 'Unknown cashier';
+                        return `
+                        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <div style="font-weight: bold; color: #333;">
-                                    ${session.till_name} - ${session.user_name}
+                                <div style="font-weight: bold; color: var(--text);">
+                                    ${tillName} - ${userName}
                                 </div>
-                                <div style="font-size: 13px; color: #666; margin-top: 5px;">
+                                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">
                                     Opened: ${new Date(session.opened_at).toLocaleString()} |
-                                    Sales: R ${parseFloat(session.total_sales || 0).toFixed(2)} (${session.sale_count} transactions) |
                                     Expected: R ${parseFloat(session.expected_balance || 0).toFixed(2)}
                                 </div>
                             </div>
-                            <button onclick="showPendingCashupModal(${session.id}, ${session.expected_balance || 0})"
+                            <button onclick="showPendingCashupModal(${session.id}, ${session.expected_balance || 0}, '${tillName.replace(/'/g, "\\'")}', '${userName.replace(/'/g, "\\'")}')"
                                     style="background: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
                                 Complete Cashup
                             </button>
                         </div>
-                    `).join('');
+                    `;
+                    }).join('');
                 } else {
                     section.style.display = 'none';
                     list.innerHTML = '';
@@ -6229,31 +6242,97 @@
             }
         }
 
-        function showPendingCashupModal(sessionId, expectedBalance) {
-            const countedAmount = prompt(
-                `Complete Cashup for Session #${sessionId}\n\n` +
-                `Expected Amount: R ${parseFloat(expectedBalance).toFixed(2)}\n\n` +
-                `Enter the actual cash counted:`
-            );
+        // Store-manager cashup-on-behalf-of flow: shows the same authoritative
+        // per-payment-method reconciliation breakdown the cashier's own cashup
+        // screen uses (loadCashUpSession() above), instead of the previous
+        // single prompt() that only ever asked for a lump cash figure and
+        // silently zeroed out card/EFT/account tender when reconciling
+        // someone else's till. Backend enforces TILLS.MANAGE for anyone
+        // completing a session that isn't their own — this UI is reachable by
+        // management-tier users only in practice, since /pending-cashup itself
+        // now requires TILLS.MANAGE to list other cashiers' sessions at all.
+        async function showPendingCashupModal(sessionId, expectedBalance, tillName, userName) {
+            let recon = null;
+            try {
+                const reconRes = await fetch(`${API_URL}/pos/sessions/${sessionId}/reconciliation`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (reconRes.ok) recon = await reconRes.json();
+            } catch (e) { /* fall back to expectedBalance only, handled below */ }
 
-            if (countedAmount === null) return;
-
-            const counted = parseFloat(countedAmount);
-            if (isNaN(counted)) {
-                showNotification('Please enter a valid number', 'error');
-                return;
+            let modal = document.getElementById('pendingCashupModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'pendingCashupModal';
+                modal.className = 'modal-overlay';
+                document.body.appendChild(modal);
             }
 
-            const variance = counted - expectedBalance;
-            const notes = prompt(
-                `Variance: R ${variance.toFixed(2)} (${variance >= 0 ? 'Over' : 'Short'})\n\n` +
-                `Add any notes (optional):`
-            ) || '';
+            const payments = recon?.payments || {};
+            const refunds = recon?.refunds || {};
+            const expectedCash = recon?.cash_reconciliation?.expected_cash_in_drawer ?? expectedBalance;
 
-            completePendingCashup(sessionId, counted, notes);
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 480px;">
+                    <div class="modal-header">
+                        <h2>Complete Cashup — ${tillName || ''} · ${userName || ''}</h2>
+                        <button class="close-btn" onclick="closePendingCashupModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px;">
+                        ${recon ? `
+                            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:15px;font-size:13px;color:var(--text-secondary);">
+                                <div style="display:flex;justify-content:space-between;"><span>Gross sales (${recon.totals.sale_count} txn${recon.totals.void_count > 0 ? `, ${recon.totals.void_count} voided` : ''})</span><span style="color:var(--text);">R ${parseFloat(recon.totals.gross_sales).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>Cash sales</span><span style="color:var(--text);">R ${parseFloat(payments.cash || 0).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>Card sales</span><span style="color:var(--text);">R ${parseFloat(payments.card || 0).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>EFT sales</span><span style="color:var(--text);">R ${parseFloat(payments.eft || 0).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>Account sales</span><span style="color:var(--text);">R ${parseFloat(payments.account || 0).toFixed(2)}</span></div>
+                                ${refunds.cash > 0 ? `<div style="display:flex;justify-content:space-between;"><span>Cash refunds</span><span style="color:var(--text);">&minus;R ${parseFloat(refunds.cash).toFixed(2)}</span></div>` : ''}
+                                <div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-weight:600;"><span>Expected cash in drawer</span><span style="color:var(--text);">R ${parseFloat(expectedCash).toFixed(2)}</span></div>
+                            </div>
+                        ` : `
+                            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:15px;font-size:13px;color:var(--text-secondary);">
+                                Expected balance: <strong style="color:var(--text);">R ${parseFloat(expectedBalance).toFixed(2)}</strong> (detailed breakdown unavailable)
+                            </div>
+                        `}
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                            <div>
+                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Cash</label>
+                                <input type="number" id="pcCountedCash" step="0.01" value="0" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Card</label>
+                                <input type="number" id="pcCountedCard" step="0.01" value="${parseFloat(payments.card || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                            </div>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Other (EFT / SnapScan / etc.)</label>
+                            <input type="number" id="pcCountedOther" step="0.01" value="${parseFloat(payments.eft || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                        </div>
+                        <div>
+                            <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Notes (optional)</label>
+                            <textarea id="pcNotes" rows="2" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="padding:15px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;">
+                        <button class="btn btn-secondary" onclick="closePendingCashupModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="completePendingCashup(${sessionId})">Complete Cashup</button>
+                    </div>
+                </div>
+            `;
+            modal.style.display = 'flex';
         }
 
-        async function completePendingCashup(sessionId, closingBalance, notes) {
+        function closePendingCashupModal() {
+            const modal = document.getElementById('pendingCashupModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function completePendingCashup(sessionId) {
+            const counted_cash  = parseFloat(document.getElementById('pcCountedCash').value)  || 0;
+            const counted_card  = parseFloat(document.getElementById('pcCountedCard').value)  || 0;
+            const counted_other = parseFloat(document.getElementById('pcCountedOther').value) || 0;
+            const notes = document.getElementById('pcNotes').value || '';
+
             try {
                 const response = await fetch(`${API_URL}/pos/sessions/${sessionId}/complete-cashup`, {
                     method: 'POST',
@@ -6261,13 +6340,7 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({
-                        // Backend reads counted_cash/counted_card/counted_other, not closing_balance
-                        counted_cash:  closingBalance,
-                        counted_card:  0,
-                        counted_other: 0,
-                        notes: notes
-                    })
+                    body: JSON.stringify({ counted_cash, counted_card, counted_other, notes })
                 });
 
                 const result = await response.json();
@@ -6276,6 +6349,7 @@
                 if (result.session) {
                     const variance = parseFloat(result.session.variance || 0);
                     showNotification(`Cashup completed. Variance: R ${variance.toFixed(2)}`, 'success');
+                    closePendingCashupModal();
                     await loadPendingCashups();
                 } else {
                     showNotification(result.error || 'Failed to complete cashup', 'error');
@@ -15425,6 +15499,209 @@
         function closeSwitchStoreModal() {
             const modal = document.getElementById('switchStoreModal');
             if (modal) modal.style.display = 'none';
+        }
+
+        // ========== ORDERS (pay-later pickup) ==========
+
+        function showPlaceOrderModal() {
+            if (cart.length === 0 || !currentSession) {
+                showNotification('Cart is empty or no session open', 'error');
+                return;
+            }
+            if (selectedPayment === 'ACCOUNT' && !selectedAccountCustomerId) {
+                showNotification('Please select an account customer first', 'error');
+                return;
+            }
+
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const total = subtotal * 1.15;
+
+            let modal = document.getElementById('placeOrderModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'placeOrderModal';
+                modal.className = 'modal-overlay';
+                modal.innerHTML = `
+                    <div class="modal" style="max-width: 420px;">
+                        <div class="modal-header">
+                            <h2>Place as Order</h2>
+                            <button class="close-btn" onclick="closePlaceOrderModal()">&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding: 20px;">
+                            <p style="color: var(--text-secondary); font-size: 13px; margin: 0 0 15px;">
+                                Stock is reserved immediately. The customer can pay the rest and collect later via the Orders list.
+                            </p>
+                            <div style="margin-bottom: 12px;">
+                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Order Total</label>
+                                <div id="placeOrderTotal" style="padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-weight:600;"></div>
+                            </div>
+                            <div>
+                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Deposit Amount (optional)</label>
+                                <input type="number" id="placeOrderDeposit" min="0" step="0.01" value="0" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                            </div>
+                        </div>
+                        <div class="modal-footer" style="padding:15px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;">
+                            <button class="btn btn-secondary" onclick="closePlaceOrderModal()">Cancel</button>
+                            <button class="btn btn-primary" onclick="confirmPlaceOrder()">Place Order</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+            document.getElementById('placeOrderTotal').textContent = `R ${total.toFixed(2)}`;
+            document.getElementById('placeOrderDeposit').value = 0;
+            document.getElementById('placeOrderDeposit').max = total.toFixed(2);
+            modal.style.display = 'flex';
+        }
+
+        function closePlaceOrderModal() {
+            const modal = document.getElementById('placeOrderModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function confirmPlaceOrder() {
+            const depositAmount = parseFloat(document.getElementById('placeOrderDeposit').value) || 0;
+
+            try {
+                const res = await fetch(`${API_URL}/pos/sales/orders`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tillSessionId: currentSession.id,
+                        items: cart.map(item => ({ productId: item.productId, quantity: item.quantity })),
+                        paymentMethod: selectedPayment,
+                        customerId: selectedAccountCustomerId || undefined,
+                        deposit_amount: depositAmount,
+                        idempotencyKey: crypto.randomUUID(),
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showNotification(`Order ${data.order.sale_number} placed — stock reserved, collect later from Orders.`, 'success');
+                    closePlaceOrderModal();
+                    cart = [];
+                    updateCart();
+                    loadProducts();
+                } else {
+                    showNotification(data.error || 'Failed to place order', 'error');
+                }
+            } catch (e) {
+                showNotification('Error placing order', 'error');
+            }
+        }
+
+        async function showOrdersModal() {
+            try {
+                const res = await fetch(`${API_URL}/pos/sales?status=on_order&limit=100`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) { showNotification('Failed to load orders', 'error'); return; }
+                const data = await res.json();
+                const orders = data.sales || [];
+
+                let modal = document.getElementById('ordersModal');
+                if (!modal) {
+                    modal = document.createElement('div');
+                    modal.id = 'ordersModal';
+                    modal.className = 'modal-overlay';
+                    modal.innerHTML = `
+                        <div class="modal" style="max-width: 600px;">
+                            <div class="modal-header">
+                                <h2>Open Orders — Awaiting Pickup</h2>
+                                <button class="close-btn" onclick="closeOrdersModal()">&times;</button>
+                            </div>
+                            <div class="modal-body" style="padding: 20px; max-height: 60vh; overflow-y: auto;" id="ordersList"></div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                }
+
+                const listDiv = document.getElementById('ordersList');
+                if (orders.length === 0) {
+                    listDiv.innerHTML = `<p style="color:var(--text-muted);text-align:center;padding:20px 0;">No open orders awaiting pickup.</p>`;
+                } else {
+                    listDiv.innerHTML = orders.map(o => {
+                        const paid = (o.sale_payments || []).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                        const owed = Math.round((parseFloat(o.total_amount || 0) - paid) * 100) / 100;
+                        return `
+                            <div style="padding: 15px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; background: var(--surface);">
+                                <div style="display:flex;justify-content:space-between;">
+                                    <div style="font-weight:600;color:var(--text);">${o.sale_number}</div>
+                                    <div style="color:var(--text);">R ${parseFloat(o.total_amount).toFixed(2)}</div>
+                                </div>
+                                <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">
+                                    ${owed > 0.01 ? `Balance owing: R ${owed.toFixed(2)}` : 'Paid in full'}
+                                </div>
+                                <div style="display:flex;gap:8px;margin-top:10px;">
+                                    <button class="btn btn-primary" style="flex:1;" onclick="fulfillOrderPrompt(${o.id}, ${owed})">Fulfil (Collect)</button>
+                                    <button class="btn btn-secondary" style="flex:1;" onclick="cancelOrderPrompt(${o.id})">Cancel Order</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                modal.style.display = 'flex';
+            } catch (e) {
+                showNotification('Error loading orders', 'error');
+            }
+        }
+
+        function closeOrdersModal() {
+            const modal = document.getElementById('ordersModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function fulfillOrderPrompt(saleId, amountOwed) {
+            let paymentMethod;
+            if (amountOwed > 0.01) {
+                paymentMethod = prompt(`Collect R ${amountOwed.toFixed(2)} — payment method (cash / card / account):`, 'cash');
+                if (!paymentMethod) return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/sales/${saleId}/fulfill`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payment_method: paymentMethod })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showNotification('Order fulfilled — customer has collected their items.', 'success');
+                    showOrdersModal();
+                } else {
+                    showNotification(data.error || 'Failed to fulfil order', 'error');
+                }
+            } catch (e) {
+                showNotification('Error fulfilling order', 'error');
+            }
+        }
+
+        async function cancelOrderPrompt(saleId) {
+            const reason = prompt('Reason for cancelling this order:');
+            if (!reason || !reason.trim()) {
+                showNotification('Cancellation reason is required', 'error');
+                return;
+            }
+            if (!confirm('Cancel this order? Reserved stock will be restored.')) return;
+
+            try {
+                const res = await fetch(`${API_URL}/pos/sales/${saleId}/cancel-order`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason.trim() })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showNotification('Order cancelled — stock restored.', 'success');
+                    showOrdersModal();
+                    loadProducts();
+                } else {
+                    showNotification(data.error || 'Failed to cancel order', 'error');
+                }
+            } catch (e) {
+                showNotification('Error cancelling order', 'error');
+            }
         }
 
         async function switchToCompany(companyId) {

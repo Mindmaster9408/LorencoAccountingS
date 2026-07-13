@@ -167,6 +167,21 @@ async function reverseAccountChargeForReturn({ companyId, customerId, saleId, re
 
 /** Normalise camelCase or snake_case field names from the request body. */
 function normaliseSaleBody(body) {
+  // CRITICAL FIX (found live, Workstream 96): the real POS checkout UI sends
+  // payment method names in UPPERCASE ('CASH', 'CARD', 'ACCOUNT', 'EFT',
+  // 'SNAPSCAN', 'ZAPPER' — see selectPayment() button onclick handlers in
+  // frontend-pos/index.html), but every account-charge detection check in
+  // this file, and reports.js's ACCOUNT_PAYMENT_METHOD constant, compare
+  // against lowercase 'account'. 'ACCOUNT' === 'account' is false in
+  // JavaScript, so a real cashier selecting Account payment in the browser
+  // has never posted a ledger charge or balance update — the Workstream
+  // 90/91/93 fixes are correct but were only ever live-verified via direct
+  // API calls using lowercase, never through the actual checkout screen.
+  // Normalised once, here, at the single choke point both the regular sale
+  // route and the /orders route parse their body through — the safe,
+  // defensive place, since client-supplied casing should never be trusted.
+  const rawMethod = body.payment_method ?? body.paymentMethod ?? 'cash';
+  const rawPayments = body.payments ?? null;
   return {
     items:           body.items || [],
     // Accept either camelCase (frontend) or snake_case
@@ -176,8 +191,15 @@ function normaliseSaleBody(body) {
     discount_percent:body.discount_percent?? body.discountPercent?? 0,
     notes:           body.notes           ?? null,
     // Frontend sends a single string paymentMethod; also accept payments array
-    payment_method:  body.payment_method  ?? body.paymentMethod  ?? 'cash',
-    payments:        body.payments        ?? null,
+    payment_method:  typeof rawMethod === 'string' ? rawMethod.toLowerCase() : rawMethod,
+    payments:        Array.isArray(rawPayments)
+      ? rawPayments.map(p => ({
+          ...p,
+          payment_method: typeof (p.payment_method ?? p.method) === 'string'
+            ? (p.payment_method ?? p.method).toLowerCase()
+            : (p.payment_method ?? p.method),
+        }))
+      : rawPayments,
     // Accept camelCase (frontend) or snake_case; fallback generated server-side
     idempotency_key: body.idempotency_key ?? body.idempotencyKey ?? null,
     // 'offline_sync' when sent by syncOfflineSales(); 'online' for real-time checkout
@@ -567,6 +589,221 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
 });
 
 /**
+ * POST /api/pos/sales/orders
+ * Place an ORDER — a customer buys now, collects later. Stock is reserved
+ * immediately (decremented via the same create_sale_atomic RPC as a normal
+ * sale, so a reserved item cannot be sold to someone else while the
+ * customer waits) but the sale is NOT marked 'completed' — it sits in a new
+ * 'on_order' status until POST /:id/fulfill (pickup) or
+ * POST /:id/cancel-order (never collected) resolves it.
+ *
+ * Deliberately a SEPARATE endpoint rather than a flag on POST / (create
+ * sale): the regular sale path is a heavily-audited, live-verified, correct
+ * flow (Workstreams 89-93) — branching new "maybe-partial-payment,
+ * maybe-different-terminal-status" logic into it risks regressing a proven
+ * path. Reusing create_sale_atomic + postAccountCharge unchanged keeps all
+ * the proven stock/idempotency machinery; only what happens to the
+ * resulting row after the RPC returns is new.
+ *
+ * Body: same shape as POST / (items, till_session_id, customer_id, notes,
+ * idempotency_key), plus:
+ *   deposit_amount — optional, defaults to 0. 0 <= deposit_amount <= total.
+ *   payment_method — how the deposit (if any) was paid ('cash'|'card'|'account').
+ */
+router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
+  try {
+    const {
+      items, till_session_id, customer_id, discount_amount: discountAmt, discount_percent,
+      notes, payment_method, idempotency_key: clientIdempotencyKey, source,
+    } = normaliseSaleBody(req.body);
+    const depositAmount = Math.round((parseFloat(req.body.deposit_amount ?? req.body.depositAmount ?? 0) || 0) * 100) / 100;
+
+    const idempotencyKey = clientIdempotencyKey || randomUUID();
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'At least one item is required' });
+    }
+    if (depositAmount < 0) {
+      return res.status(400).json({ error: 'deposit_amount cannot be negative' });
+    }
+
+    const normItems = items.map(item => ({
+      product_id: item.product_id ?? item.productId,
+      quantity:   item.quantity,
+    }));
+
+    const productIds = [...new Set(normItems.map(i => i.product_id).filter(Boolean))];
+    if (productIds.length === 0) {
+      return res.status(400).json({ error: 'Items must include valid product IDs' });
+    }
+
+    const { data: productRows, error: prodErr } = await supabase
+      .from('products')
+      .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity')
+      .in('id', productIds)
+      .eq('company_id', req.companyId)
+      .eq('is_active', true);
+
+    if (prodErr) return res.status(500).json({ error: prodErr.message });
+
+    const productMap = {};
+    for (const p of (productRows || [])) productMap[p.id] = p;
+
+    const allowNegativeStock = await getStockPolicy(req.companyId, supabase);
+
+    const stockErrors = [];
+    for (const item of normItems) {
+      const prod = productMap[item.product_id];
+      if (!prod) {
+        stockErrors.push(`Product ${item.product_id} not found`);
+      } else if (prod.stock_quantity < item.quantity && !allowNegativeStock) {
+        stockErrors.push(`Insufficient stock for "${prod.product_name}": have ${prod.stock_quantity}, need ${item.quantity}`);
+      }
+    }
+    if (stockErrors.length > 0) {
+      return res.status(422).json({ error: 'Stock check failed', details: stockErrors });
+    }
+
+    let subtotal = 0;
+    let vat_total = 0;
+    const enrichedItems = normItems.map(item => {
+      const prod = productMap[item.product_id];
+      const linePrice = prod.unit_price * item.quantity;
+      subtotal += linePrice;
+      if (prod.requires_vat && prod.vat_rate) {
+        vat_total += linePrice * (prod.vat_rate / (100 + prod.vat_rate));
+      }
+      return { ...item, product: prod, line_total: linePrice };
+    });
+
+    const discount = discountAmt || (discount_percent ? subtotal * discount_percent / 100 : 0);
+    const total_amount = Math.max(0, subtotal - discount);
+
+    if (depositAmount > total_amount + 0.01) {
+      return res.status(400).json({ error: 'deposit_amount cannot exceed the order total', total_amount, depositAmount });
+    }
+
+    const saleNumber = generateSaleNumber();
+    const receiptNumber = saleNumber.replace('SAL-', 'ORD-');
+
+    // Same atomic RPC as a normal sale — reserves stock the identical way.
+    // A zero-amount payment leg is passed when there's no deposit, rather
+    // than omitting p_payments, since the RPC's existing fallback behaviour
+    // (used by the regular sale path) is only proven for a non-empty array.
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('create_sale_atomic', {
+      p_company_id:           req.companyId,
+      p_user_id:              req.user.userId,
+      p_sale_number:          saleNumber,
+      p_receipt_number:       receiptNumber,
+      p_till_session_id:      till_session_id || null,
+      p_customer_id:          customer_id || null,
+      p_payment_method:       payment_method || 'cash',
+      p_notes:                notes || null,
+      p_subtotal:             subtotal,
+      p_discount_amount:      discount,
+      p_vat_amount:           vat_total,
+      p_total_amount:         total_amount,
+      p_idempotency_key:      idempotencyKey,
+      p_allow_negative_stock: allowNegativeStock,
+      p_items: enrichedItems.map(item => ({
+        product_id:      item.product_id,
+        product_name:    item.product.product_name,
+        quantity:        item.quantity,
+        unit_price:      item.product.unit_price,
+        vat_rate:        item.product.vat_rate || 15,
+        line_total:      item.line_total,
+        discount_amount: 0,
+      })),
+      p_payments: [{ payment_method: payment_method || 'cash', amount: depositAmount, reference: null }],
+    });
+
+    if (rpcError) {
+      const msg = (rpcError.message || '').toLowerCase();
+      if (msg.includes('insufficient stock')) {
+        return res.status(422).json({ error: 'Stock check failed', details: [rpcError.message] });
+      }
+      console.error('[Sales] create_sale_atomic (order) failed:', rpcError);
+      return res.status(500).json({ error: 'Order creation failed', details: rpcError.message });
+    }
+
+    if (rpcResult.was_duplicate) {
+      const { data: existingOrder } = await supabase.from('sales').select('*, sale_items(*), sale_payments(*)').eq('id', rpcResult.sale_id).single();
+      posAuditFromReq(req, POS_EVENTS.ORDER_REPLAYED, {
+        saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
+        metadata: { idempotency_key: idempotencyKey },
+      });
+      return res.status(200).json({ order: existingOrder, wasDuplicate: true });
+    }
+
+    // The RPC always creates the row as status='completed' (its own internal
+    // default — its source is not in this repo and is never modified, per
+    // the postAccountCharge note above). Immediately flip it to 'on_order'
+    // before anything else can observe it as a finished sale.
+    const paymentStatus = depositAmount <= 0 ? 'unpaid' : (depositAmount >= total_amount - 0.01 ? 'completed' : 'partial');
+    const { data: orderRow, error: statusErr } = await supabase
+      .from('sales')
+      .update({ status: 'on_order', payment_status: paymentStatus })
+      .eq('id', rpcResult.sale_id)
+      .eq('company_id', req.companyId)
+      .select('*, sale_items(*), sale_payments(*)')
+      .single();
+
+    if (statusErr) {
+      // CRITICAL: stock is already reserved and the row exists as
+      // 'completed' — logged loudly rather than silently left wrong,
+      // matching the existing postAccountCharge/reverseAccountCharge
+      // failure-handling convention in this file.
+      console.error('[Sales] CRITICAL: order created but status flip to on_order failed:', rpcResult.sale_id, statusErr.message);
+    }
+
+    await auditFromReq(req, 'CREATE', 'sale', rpcResult.sale_id, {
+      module: 'pos',
+      newValue: { saleNumber, total_amount, deposit_amount: depositAmount, status: 'on_order' },
+    });
+    posAuditFromReq(req, POS_EVENTS.ORDER_CREATED, {
+      saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
+      afterSnapshot: {
+        sale_id: rpcResult.sale_id, sale_number: saleNumber, receipt_number: receiptNumber,
+        total_amount, deposit_amount: depositAmount, payment_status: paymentStatus,
+      },
+    });
+
+    // Deposit paid on account — charge the customer's ledger for exactly
+    // the deposit amount, same function used by regular account sales.
+    if (depositAmount > 0 && (payment_method || 'cash') === 'account' && customer_id) {
+      const chargeResult = await postAccountCharge({
+        companyId: req.companyId, customerId: customer_id, saleId: rpcResult.sale_id,
+        saleNumber, amount: depositAmount, userId: req.user.userId,
+      });
+      if (chargeResult.ok) {
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_POSTED, {
+          saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
+          afterSnapshot: { customer_id, amount: depositAmount, new_balance: chargeResult.newBalance },
+          metadata: { sale_number: saleNumber, transaction_id: chargeResult.transaction.id, order_deposit: true },
+        });
+      } else {
+        console.error('[Sales] CRITICAL: order deposit account charge failed after order created:', rpcResult.sale_id, chargeResult.error);
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_FAILED, {
+          saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
+          metadata: { sale_number: saleNumber, customer_id, amount: depositAmount, error: chargeResult.error },
+        });
+      }
+    }
+
+    res.status(201).json({
+      order: orderRow || {
+        id: rpcResult.sale_id, sale_number: saleNumber, receipt_number: receiptNumber,
+        total_amount, deposit_amount: depositAmount, status: 'on_order', payment_status: paymentStatus,
+      },
+      wasDuplicate: false,
+    });
+  } catch (err) {
+    console.error('[Sales] Create order error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * POST /api/pos/sales/:id/void
  * Void a sale — CRITICAL audit event.
  *
@@ -878,6 +1115,227 @@ router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => 
     res.status(201).json({ return: ret, reversal });
   } catch (err) {
     console.error('[Sales] Return error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/pos/sales/:id/fulfill
+ * Customer collects an order (status 'on_order') and settles whatever
+ * balance is still owed.
+ *
+ * CAS-guarded: the status UPDATE only succeeds `WHERE status = 'on_order'`,
+ * so a retried/double-tapped fulfill request finds zero rows updated on
+ * the second attempt and gets a clean "not an open order" response instead
+ * of double-charging the remaining balance — the same protection pattern
+ * as /void's double-void guard, no separate idempotency_key needed because
+ * (unlike returns) fulfillment is a one-time terminal transition per order.
+ *
+ * Body: { payment_method } — required only if a balance remains; ignored
+ * (no-op) if the order was already paid in full at order time.
+ */
+router.post('/:id/fulfill', requirePermission('SALES.CREATE'), async (req, res) => {
+  try {
+    const { payment_method } = req.body;
+
+    const { data: order } = await supabase
+      .from('sales')
+      .select('*, sale_payments(*)')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'on_order') {
+      return res.status(400).json({ error: `This sale is not an open order (status: ${order.status})` });
+    }
+
+    const amountPaid = (order.sale_payments || []).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    const amountOwed = Math.round((parseFloat(order.total_amount || 0) - amountPaid) * 100) / 100;
+
+    if (amountOwed > 0.01 && !payment_method) {
+      return res.status(400).json({ error: 'payment_method is required to settle the remaining balance', amount_owed: amountOwed });
+    }
+
+    let finalPayment = null;
+    if (amountOwed > 0.01) {
+      const { data: paymentRow, error: paymentErr } = await supabase
+        .from('sale_payments')
+        .insert({
+          company_id: req.companyId, sale_id: order.id, payment_method,
+          amount: amountOwed, status: 'completed', processed_by: req.user.userId,
+          processed_at: new Date().toISOString(),
+        })
+        .select().single();
+      if (paymentErr) return res.status(500).json({ error: paymentErr.message });
+      finalPayment = paymentRow;
+    }
+
+    // CAS-guarded — see doc comment above.
+    const { data: fulfilled, error: fulfillErr } = await supabase
+      .from('sales')
+      .update({ status: 'completed', payment_status: 'completed' })
+      .eq('id', order.id)
+      .eq('company_id', req.companyId)
+      .eq('status', 'on_order')
+      .select('*, sale_items(*), sale_payments(*)')
+      .maybeSingle();
+
+    if (fulfillErr) return res.status(500).json({ error: fulfillErr.message });
+    if (!fulfilled) return res.status(400).json({ error: 'This order was already fulfilled or cancelled' });
+
+    await auditFromReq(req, 'UPDATE', 'sale', order.id, {
+      module: 'pos',
+      oldValue: { status: 'on_order' },
+      newValue: { status: 'completed', amount_settled: amountOwed },
+    });
+    posAuditFromReq(req, POS_EVENTS.ORDER_FULFILLED, {
+      saleId: order.id, tillSessionId: order.till_session_id || null,
+      beforeSnapshot: { status: 'on_order', amount_paid: amountPaid },
+      afterSnapshot: { status: 'completed', amount_settled: amountOwed },
+      metadata: { sale_number: order.sale_number },
+    });
+
+    let reversal = null;
+    if (amountOwed > 0.01 && payment_method === 'account' && order.customer_id) {
+      const chargeResult = await postAccountCharge({
+        companyId: req.companyId, customerId: order.customer_id, saleId: order.id,
+        saleNumber: order.sale_number, amount: amountOwed, userId: req.user.userId,
+      });
+      if (chargeResult.ok) {
+        reversal = chargeResult.transaction;
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_POSTED, {
+          saleId: order.id, tillSessionId: order.till_session_id || null,
+          afterSnapshot: { customer_id: order.customer_id, amount: amountOwed, new_balance: chargeResult.newBalance },
+          metadata: { sale_number: order.sale_number, transaction_id: chargeResult.transaction.id, order_final_settlement: true },
+        });
+      } else {
+        console.error('[Sales] CRITICAL: order final-settlement account charge failed after fulfill succeeded:', order.id, chargeResult.error);
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_FAILED, {
+          saleId: order.id, tillSessionId: order.till_session_id || null,
+          metadata: { sale_number: order.sale_number, customer_id: order.customer_id, amount: amountOwed, error: chargeResult.error },
+        });
+      }
+    }
+
+    res.json({ sale: fulfilled, final_payment: finalPayment, reversal });
+  } catch (err) {
+    console.error('[Sales] Fulfill order error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/pos/sales/:id/cancel-order
+ * Order never collected — restore the reserved stock and reverse any
+ * deposit paid on account. Reuses the exact same building blocks as
+ * /void (account-reversal, manager-tier gate) and /return (stock
+ * restoration via restore_stock_for_return), rather than duplicating
+ * either. Terminal status is 'voided' — the same status a regular void
+ * uses — so every existing report/query that already distinguishes
+ * completed vs voided sales handles a cancelled order correctly with zero
+ * additional changes.
+ *
+ * Manager-tier gate mirrors /void exactly: only escalates to SALES.REFUND
+ * when there's a real account-funded deposit to reverse.
+ */
+router.post('/:id/cancel-order', requirePermission('SALES.VOID'), async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason) return res.status(400).json({ error: 'Cancellation reason is required' });
+
+    const { data: order } = await supabase
+      .from('sales')
+      .select('*, sale_items(*), sale_payments(*)')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'on_order') {
+      return res.status(400).json({ error: `This sale is not an open order (status: ${order.status})` });
+    }
+
+    const depositAccountAmount = Math.round((order.sale_payments || [])
+      .filter(p => p.payment_method === 'account')
+      .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0) * 100) / 100;
+
+    if (depositAccountAmount > 0 && !hasPermission(req.user.role, 'SALES', 'REFUND')) {
+      return res.status(403).json({
+        error: 'Cancelling this order reverses a customer\'s owed balance and requires management approval (SALES.REFUND)',
+      });
+    }
+
+    // CAS-guarded status update — same double-cancel protection as /void.
+    const { data: cancelled, error: cancelErr } = await supabase
+      .from('sales')
+      .update({ status: 'voided', void_reason: reason, voided_by: req.user.userId, voided_at: new Date().toISOString() })
+      .eq('id', order.id)
+      .eq('company_id', req.companyId)
+      .eq('status', 'on_order')
+      .select()
+      .maybeSingle();
+
+    if (cancelErr) return res.status(500).json({ error: cancelErr.message });
+    if (!cancelled) return res.status(400).json({ error: 'This order was already fulfilled or cancelled' });
+
+    // Restore stock for every reserved item — same RPC /return uses.
+    for (const item of (order.sale_items || [])) {
+      if (!item.product_id || !item.quantity) continue;
+      const { error: stockErr } = await supabase.rpc('restore_stock_for_return', {
+        p_product_id: item.product_id,
+        p_quantity:   item.quantity,
+        p_company_id: req.companyId,
+      });
+      if (stockErr) {
+        console.warn('[Sales] restore_stock_for_return (cancel-order) non-fatal error:', stockErr.message, '| product_id:', item.product_id);
+      }
+    }
+
+    await auditFromReq(req, 'VOID', 'sale', order.id, {
+      module: 'pos',
+      oldValue: { status: 'on_order' },
+      newValue: { status: 'voided', void_reason: reason },
+      metadata: { sale_number: order.sale_number, reason },
+    });
+    posAuditFromReq(req, POS_EVENTS.ORDER_CANCELLED, {
+      saleId: order.id, tillSessionId: order.till_session_id || null,
+      beforeSnapshot: { status: 'on_order' },
+      afterSnapshot: { status: 'voided', void_reason: reason },
+      metadata: { reason, items_restored: (order.sale_items || []).length },
+    });
+
+    let reversal = null;
+    if (depositAccountAmount > 0 && order.customer_id) {
+      posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_REVERSAL_MANAGER_APPROVED, {
+        saleId: order.id,
+        metadata: { customer_id: order.customer_id, amount: depositAccountAmount, approved_by_role: req.user.role },
+      });
+
+      const reversalResult = await reverseAccountCharge({
+        companyId: req.companyId, customerId: order.customer_id, saleId: order.id,
+        saleNumber: order.sale_number, amount: depositAccountAmount, reason, userId: req.user.userId,
+      });
+
+      if (reversalResult.ok) {
+        reversal = reversalResult.transaction;
+        posAuditFromReq(req, reversalResult.wasDuplicate ? POS_EVENTS.CUSTOMER_ACCOUNT_REVERSAL_REPLAYED : POS_EVENTS.CUSTOMER_ACCOUNT_CHARGE_REVERSED, {
+          saleId: order.id,
+          afterSnapshot: { customer_id: order.customer_id, amount: depositAccountAmount, new_balance: reversalResult.newBalance },
+          metadata: { sale_number: order.sale_number, transaction_id: reversalResult.transaction.id, reason },
+        });
+      } else {
+        console.error('[Sales] CRITICAL: order deposit reversal failed after cancel-order succeeded:', order.id, reversalResult.error);
+        posAuditFromReq(req, POS_EVENTS.CUSTOMER_ACCOUNT_REVERSAL_FAILED, {
+          saleId: order.id,
+          metadata: { sale_number: order.sale_number, customer_id: order.customer_id, amount: depositAccountAmount, error: reversalResult.error },
+        });
+      }
+    }
+
+    res.json({ sale: cancelled, reversal });
+  } catch (err) {
+    console.error('[Sales] Cancel order error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
