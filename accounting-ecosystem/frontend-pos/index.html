@@ -15407,11 +15407,11 @@
 
                     const listDiv = document.getElementById('switchStoreList');
                     listDiv.innerHTML = companies.map(c => `
-                        <div onclick="switchToCompany(${c.id})" style="padding: 15px; border: 2px solid ${c.id === currentCompanyId ? '#667eea' : '#e0e0e0'}; border-radius: 8px; margin-bottom: 10px; cursor: pointer; background: ${c.id === currentCompanyId ? '#f5f7ff' : 'white'};">
-                            <div style="font-weight: 600; color: #333;">${c.company_name}</div>
-                            ${c.trading_name ? `<div style="font-size: 13px; color: #666;">${c.trading_name}</div>` : ''}
-                            <div style="font-size: 12px; color: #999; margin-top: 5px;">Role: ${(c.role || 'user').replace(/_/g, ' ')}</div>
-                            ${c.id === currentCompanyId ? '<div style="color: #667eea; font-size: 12px; margin-top: 5px;">✓ Currently selected</div>' : ''}
+                        <div onclick="switchToCompany(${c.id})" style="padding: 15px; border: 2px solid ${c.id === currentCompanyId ? 'var(--accent)' : 'var(--border)'}; border-radius: 8px; margin-bottom: 10px; cursor: pointer; background: ${c.id === currentCompanyId ? 'var(--accent-subtle)' : 'var(--surface)'};">
+                            <div style="font-weight: 600; color: var(--text);">${c.company_name}</div>
+                            ${c.trading_name ? `<div style="font-size: 13px; color: var(--text-secondary);">${c.trading_name}</div>` : ''}
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 5px;">Role: ${(c.role || 'user').replace(/_/g, ' ')}</div>
+                            ${c.id === currentCompanyId ? '<div style="color: var(--accent-light); font-size: 12px; margin-top: 5px;">✓ Currently selected</div>' : ''}
                         </div>
                     `).join('');
 
