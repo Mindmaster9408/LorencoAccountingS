@@ -3279,10 +3279,11 @@
                                 <select id="userCompanyFilter" style="display:none;"></select>
                             </div>
                             <div class="header-actions">
+                                <button class="btn btn-secondary" onclick="showLinkExistingUserModal()">🔗 Link Existing User</button>
                                 <button class="btn btn-primary" onclick="showAddUserModal()">+ Add User</button>
                             </div>
                         </div>
-                        <p style="color: #666; margin: 10px 0 20px; font-size: 13px;">Manage users for the active company. Each user has a role specific to this company.</p>
+                        <p style="color: #666; margin: 10px 0 20px; font-size: 13px;">Manage users for the active company. Each user has a role specific to this company. Use "Link Existing User" to give someone who already has an account (e.g. an accountant or business owner at another store) access to this company too — they'll be able to switch between all their companies from the Switch Store button.</p>
                         <div class="products-container">
                             <table class="products-table">
                                 <thead>
@@ -4539,6 +4540,70 @@
             <div class="modal-footer" style="padding:15px 20px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;">
                 <button class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="saveUser()">Create User</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Link Existing User Modal -->
+    <div id="linkExistingUserModal" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header">
+                <h2>Link Existing User to Company</h2>
+                <button class="close-btn" onclick="closeLinkExistingUserModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <div style="display:grid;gap:15px;">
+                    <div>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Company</label>
+                        <div id="linkUserCompanyDisplay" style="padding:10px;border:1px solid #e0e0e0;border-radius:6px;background:#f8f9fa;color:#555;font-size:14px;"></div>
+                    </div>
+                    <div>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Existing Username or Email *</label>
+                        <input type="text" id="linkUserIdentifier" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;" placeholder="e.g. jsmith or jsmith@example.com">
+                    </div>
+                    <div>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Role at This Company *</label>
+                        <select id="linkUserRole" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;">
+                            <option value="">Select role...</option>
+                            <optgroup label="Corporate">
+                                <option value="corporate_admin">Corporate Admin</option>
+                                <option value="corporate_finance">Corporate Finance</option>
+                                <option value="corporate_ops">Corporate Operations</option>
+                            </optgroup>
+                            <optgroup label="Regional">
+                                <option value="regional_manager">Regional Manager</option>
+                                <option value="regional_analyst">Regional Analyst</option>
+                            </optgroup>
+                            <optgroup label="District">
+                                <option value="district_manager">District Manager</option>
+                                <option value="district_trainer">District Trainer</option>
+                            </optgroup>
+                            <optgroup label="Store">
+                                <option value="store_manager">Store Manager</option>
+                                <option value="assistant_manager">Assistant Manager</option>
+                                <option value="shift_supervisor">Shift Supervisor</option>
+                                <option value="senior_cashier">Senior Cashier</option>
+                                <option value="cashier">Cashier</option>
+                                <option value="trainee">Trainee</option>
+                            </optgroup>
+                            <optgroup label="Special">
+                                <option value="business_owner">Business Owner</option>
+                                <option value="accountant">Accountant</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Employee ID</label>
+                        <input type="text" id="linkUserEmployeeId" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;" placeholder="Optional - e.g. EMP-001">
+                    </div>
+                </div>
+                <div style="margin-top:15px;padding:12px;background:#e3f2fd;border-radius:8px;font-size:13px;color:#1565c0;">
+                    This links the user's EXISTING account to this company — their password does not change. They'll see this company in their "Switch Store" list alongside any other companies they already have access to.
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:15px 20px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;">
+                <button class="btn btn-secondary" onclick="closeLinkExistingUserModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveLinkExistingUser()">Link User</button>
             </div>
         </div>
     </div>
@@ -14047,6 +14112,51 @@
                 }
             } catch (e) {
                 showNotification('Failed to create user', 'error');
+            }
+        }
+
+        function showLinkExistingUserModal() {
+            document.getElementById('linkUserIdentifier').value = '';
+            document.getElementById('linkUserRole').value = '';
+            document.getElementById('linkUserEmployeeId').value = '';
+            document.getElementById('linkUserCompanyDisplay').textContent = currentCompanyName || 'Active Company';
+            document.getElementById('linkExistingUserModal').style.display = 'flex';
+        }
+
+        function closeLinkExistingUserModal() {
+            document.getElementById('linkExistingUserModal').style.display = 'none';
+        }
+
+        async function saveLinkExistingUser() {
+            const identifier = document.getElementById('linkUserIdentifier').value.trim();
+            const role = document.getElementById('linkUserRole').value;
+            const employeeId = document.getElementById('linkUserEmployeeId').value.trim();
+
+            if (!identifier) { showNotification('Enter the existing user\'s username or email', 'error'); return; }
+            if (!role) { showNotification('Please select a role', 'error'); return; }
+            if (!currentCompanyId) { showNotification('No active company context', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/auth/companies/${currentCompanyId}/users/link-existing`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ identifier, role, employee_id: employeeId || null })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    showNotification(`"${data.user.full_name || data.user.username}" now has ${role.replace('_', ' ')} access to this company`, 'success');
+                    closeLinkExistingUserModal();
+                    loadCompanyUsers();
+                } else {
+                    const err = await res.json();
+                    showNotification(err.error || 'Failed to link user', 'error');
+                }
+            } catch (e) {
+                showNotification('Failed to link user', 'error');
             }
         }
 

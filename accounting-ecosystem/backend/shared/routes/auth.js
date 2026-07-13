@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const { supabase } = require('../../config/database');
 const { authenticateToken, JWT_SECRET } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
-const { getRolePermissions } = require('../../config/permissions');
+const { getRolePermissions, canManageRole } = require('../../config/permissions');
 const { logPosEvent, POS_EVENTS } = require('../../modules/pos/services/posAuditLogger');
 
 const router = express.Router();
@@ -1316,6 +1316,131 @@ router.post('/companies/:companyId/users', authenticateToken, async (req, res) =
     res.status(201).json({ user: newUser });
   } catch (err) {
     console.error('POST /auth/companies/:id/users error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/auth/companies/:companyId/users/link-existing
+ * Grant an EXISTING user (identified by username or email) access to an
+ * additional company, with a role scoped to that company.
+ *
+ * This closes a real gap: the create-user endpoint above only ever creates
+ * brand-new users and rejects a duplicate username/email with 409 — there
+ * was previously no way for an accountant/business owner (or any user) to
+ * be linked to more than one company without a direct DB write. This is
+ * the self-service equivalent of what Workstream test-data setup scripts
+ * did manually via Supabase all session — now a real, reusable admin action.
+ *
+ * Does not touch the user's password or any other company's access row —
+ * purely additive. Reactivates a previously-removed link instead of
+ * inserting a duplicate, since user_company_access has a UNIQUE(user_id,
+ * company_id) constraint (migration 004).
+ */
+router.post('/companies/:companyId/users/link-existing', authenticateToken, async (req, res) => {
+  try {
+    const companyId = parseInt(req.params.companyId);
+    if (!companyId) return res.status(400).json({ error: 'companyId is required' });
+
+    const { data: myAccess } = await supabase
+      .from('user_company_access')
+      .select('company_id, is_active')
+      .eq('user_id', req.user.userId);
+
+    if (!canManageCompanyUsers(req, companyId, myAccess)) {
+      return res.status(403).json({ error: 'Access denied to this company' });
+    }
+
+    const { identifier, role, employee_id } = req.body;
+    if (!identifier || !role) {
+      return res.status(400).json({ error: 'identifier (username or email) and role are required' });
+    }
+
+    if (!canManageRole(req.user.role, role)) {
+      return res.status(403).json({ error: 'You cannot assign this role level' });
+    }
+
+    // Verify company exists
+    const { data: company } = await supabase
+      .from('companies')
+      .select('id')
+      .eq('id', companyId)
+      .single();
+    if (!company) return res.status(404).json({ error: 'Company not found' });
+
+    // Find the existing user by username or email — same lookup pattern as /login
+    const trimmedId = identifier.toLowerCase().trim();
+    const { data: existingUser, error: findErr } = await supabase
+      .from('users')
+      .select('id, username, email, full_name, is_active')
+      .or(`username.eq.${trimmedId},email.eq.${trimmedId}`)
+      .maybeSingle();
+
+    if (findErr || !existingUser) {
+      return res.status(404).json({ error: 'No user found with that username or email' });
+    }
+    if (!existingUser.is_active) {
+      return res.status(400).json({ error: 'This user account is deactivated and cannot be linked' });
+    }
+
+    // Check for an existing link (active or previously removed) to this company
+    const { data: existingLink } = await supabase
+      .from('user_company_access')
+      .select('id, is_active')
+      .eq('user_id', existingUser.id)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (existingLink && existingLink.is_active) {
+      return res.status(409).json({ error: 'This user already has access to this company' });
+    }
+
+    let linkErr;
+    if (existingLink) {
+      // Reactivate a previously-removed link rather than inserting a duplicate
+      ({ error: linkErr } = await supabase
+        .from('user_company_access')
+        .update({
+          role,
+          employee_id: employee_id || null,
+          is_active: true,
+          granted_at: new Date().toISOString(),
+        })
+        .eq('id', existingLink.id));
+    } else {
+      ({ error: linkErr } = await supabase
+        .from('user_company_access')
+        .insert({
+          user_id: existingUser.id,
+          company_id: companyId,
+          role,
+          employee_id: employee_id || null,
+          is_active: true,
+          is_primary: false, // an additional company, not their first/primary one
+          granted_at: new Date().toISOString(),
+        }));
+    }
+
+    if (linkErr) return res.status(500).json({ error: linkErr.message });
+
+    await auditFromReq(req, 'CREATE', 'user_company_access', existingUser.id, {
+      action: 'link_existing_user',
+      companyId,
+      username: existingUser.username,
+      role,
+    });
+
+    res.status(201).json({
+      user: {
+        id: existingUser.id,
+        username: existingUser.username,
+        email: existingUser.email,
+        full_name: existingUser.full_name,
+        role,
+      },
+    });
+  } catch (err) {
+    console.error('POST /auth/companies/:id/users/link-existing error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
