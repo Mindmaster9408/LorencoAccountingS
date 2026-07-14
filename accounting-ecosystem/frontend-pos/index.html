@@ -6123,7 +6123,7 @@
 
                 // ── Session header ────────────────────────────────────────────
                 document.getElementById('cashUpSessionId').textContent = `Till ${currentSessionData.till_id}`;
-                document.getElementById('cashUpUser').textContent = currentUser;
+                document.getElementById('cashUpUser').textContent = currentUser?.fullName || currentUser?.username || 'Unknown';
                 document.getElementById('cashUpOpeningBalance').textContent =
                     `R ${parseFloat(currentSessionData.opening_balance).toFixed(2)}`;
                 document.getElementById('cashUpOpenedAt').textContent =
@@ -6254,6 +6254,95 @@
         // completing a session that isn't their own — this UI is reachable by
         // management-tier users only in practice, since /pending-cashup itself
         // now requires TILLS.MANAGE to list other cashiers' sessions at all.
+        // ── Print Cashup (requested: "ons moet die cashup kan print as ons
+        // klaar is") — reuses the same hidden #printReceiptArea + window.print()
+        // pattern as printReceipt()/printCustomerStatement() elsewhere in this
+        // file. Works for both the cashier's own self-close (completeCashUp())
+        // and a manager's on-behalf completion (completePendingCashup()).
+        let lastCashupPrintData = null;
+
+        function buildCashupPrintHtml(d) {
+            const countedTotal = (d.countedCash || 0) + (d.countedCard || 0) + (d.countedOther || 0);
+            const varianceLabel = d.variance > 0 ? 'Over' : d.variance < 0 ? 'Short' : 'Balanced';
+            return `
+                <div style="font-family:Arial,sans-serif;font-size:12px;color:#000;width:280px;">
+                    <h2 style="margin:0 0 2px;text-align:center;">${currentCompanyName || ''}</h2>
+                    <p style="text-align:center;margin:0 0 10px;font-size:13px;"><strong>Cashup Summary</strong></p>
+                    <p style="margin:0;">Till: ${d.tillName}</p>
+                    <p style="margin:0;">Cashier: ${d.userName}</p>
+                    ${d.openedAt ? `<p style="margin:0;">Opened: ${new Date(d.openedAt).toLocaleString()}</p>` : ''}
+                    <p style="margin:0 0 8px;">Closed: ${new Date().toLocaleString()}</p>
+                    <table style="width:100%;border-collapse:collapse;font-size:11px;" cellpadding="3">
+                        <tr><td>Opening Balance</td><td style="text-align:right;">R ${(d.openingBalance || 0).toFixed(2)}</td></tr>
+                        <tr><td colspan="2" style="padding-top:6px;"><strong>Sales${d.saleCount != null ? ` (${d.saleCount} txn)` : ''}</strong></td></tr>
+                        <tr><td>Cash</td><td style="text-align:right;">R ${(d.cashSales || 0).toFixed(2)}</td></tr>
+                        <tr><td>Card</td><td style="text-align:right;">R ${(d.cardSales || 0).toFixed(2)}</td></tr>
+                        <tr><td>EFT</td><td style="text-align:right;">R ${(d.eftSales || 0).toFixed(2)}</td></tr>
+                        <tr><td>Account</td><td style="text-align:right;">R ${(d.accountSales || 0).toFixed(2)}</td></tr>
+                        ${d.cashRefunds > 0 ? `<tr><td>Cash Refunds</td><td style="text-align:right;">&minus;R ${d.cashRefunds.toFixed(2)}</td></tr>` : ''}
+                        <tr style="border-top:1px solid #000;"><td><strong>Expected Cash</strong></td><td style="text-align:right;"><strong>R ${(d.expectedCash || 0).toFixed(2)}</strong></td></tr>
+                        <tr><td colspan="2" style="padding-top:6px;"><strong>Counted</strong></td></tr>
+                        <tr><td>Cash</td><td style="text-align:right;">R ${(d.countedCash || 0).toFixed(2)}</td></tr>
+                        ${d.countedCard != null ? `<tr><td>Card</td><td style="text-align:right;">R ${d.countedCard.toFixed(2)}</td></tr>` : ''}
+                        ${d.countedOther != null ? `<tr><td>Other</td><td style="text-align:right;">R ${d.countedOther.toFixed(2)}</td></tr>` : ''}
+                        ${(d.countedCard != null || d.countedOther != null) ? `<tr><td>Total Counted</td><td style="text-align:right;">R ${countedTotal.toFixed(2)}</td></tr>` : ''}
+                        <tr style="border-top:1px solid #000;"><td><strong>Variance</strong></td><td style="text-align:right;"><strong>${d.variance >= 0 ? '+' : ''}R ${d.variance.toFixed(2)} (${varianceLabel})</strong></td></tr>
+                    </table>
+                    ${d.notes ? `<p style="margin:10px 0 0;font-size:11px;">Notes: ${d.notes}</p>` : ''}
+                    <p style="margin-top:14px;font-size:10px;text-align:center;color:#333;">Printed ${new Date().toLocaleString()} by ${currentUser?.fullName || currentUser?.username || 'Unknown'}</p>
+                </div>
+            `;
+        }
+
+        function printCashupSlip() {
+            if (!lastCashupPrintData) { showNotification('No cashup data to print', 'error'); return; }
+            document.getElementById('printReceiptArea').innerHTML = buildCashupPrintHtml(lastCashupPrintData);
+            window.print();
+            setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
+        }
+
+        function showCashupCompleteModal(d) {
+            lastCashupPrintData = d;
+            const varianceLabel = d.variance > 0 ? 'Over' : d.variance < 0 ? 'Short' : 'Balanced';
+
+            let modal = document.getElementById('cashupCompleteModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'cashupCompleteModal';
+                modal.className = 'modal-overlay';
+                document.body.appendChild(modal);
+            }
+
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <h2>Cashup Complete</h2>
+                        <button class="close-btn" onclick="closeCashupCompleteModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px;">
+                        <p style="margin:0 0 6px;color:var(--text);">${d.tillName} — ${d.userName}</p>
+                        <p style="margin:0 0 6px;color:var(--text-secondary);">Expected: R ${(d.expectedCash || 0).toFixed(2)}</p>
+                        <p style="margin:0;font-weight:600;color:var(--text);">Variance: ${d.variance >= 0 ? '+' : ''}R ${d.variance.toFixed(2)} (${varianceLabel})</p>
+                    </div>
+                    <div class="modal-footer" style="padding:15px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;">
+                        <button class="btn btn-secondary" onclick="closeCashupCompleteModal()">Close</button>
+                        <button class="btn btn-primary" onclick="printCashupSlip()">🖨️ Print Cashup</button>
+                    </div>
+                </div>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function closeCashupCompleteModal() {
+            const modal = document.getElementById('cashupCompleteModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        // Holds the tillName/userName/recon captured when the manager opens the
+        // Complete Cashup modal, so completePendingCashup() (which only receives
+        // sessionId) can still build an accurate print slip afterwards.
+        let _pendingCashupContext = null;
+
         async function showPendingCashupModal(sessionId, expectedBalance, tillName, userName) {
             let recon = null;
             try {
@@ -6262,6 +6351,8 @@
                 });
                 if (reconRes.ok) recon = await reconRes.json();
             } catch (e) { /* fall back to expectedBalance only, handled below */ }
+
+            _pendingCashupContext = { sessionId, tillName, userName, expectedBalance, recon };
 
             let modal = document.getElementById('pendingCashupModal');
             if (!modal) {
@@ -6353,6 +6444,27 @@
                     const variance = parseFloat(result.session.variance || 0);
                     showNotification(`Cashup completed. Variance: R ${variance.toFixed(2)}`, 'success');
                     closePendingCashupModal();
+
+                    const ctx = _pendingCashupContext || {};
+                    const payments = ctx.recon?.payments || {};
+                    const refunds = ctx.recon?.refunds || {};
+                    showCashupCompleteModal({
+                        tillName: ctx.tillName || '',
+                        userName: ctx.userName || '',
+                        saleCount: ctx.recon?.totals?.sale_count ?? null,
+                        cashSales: parseFloat(payments.cash || 0),
+                        cardSales: parseFloat(payments.card || 0),
+                        eftSales: parseFloat(payments.eft || 0),
+                        accountSales: parseFloat(payments.account || 0),
+                        cashRefunds: parseFloat(refunds.cash || 0),
+                        expectedCash: parseFloat(result.session.expected_balance ?? ctx.expectedBalance ?? 0),
+                        countedCash: counted_cash,
+                        countedCard: counted_card,
+                        countedOther: counted_other,
+                        variance,
+                        notes,
+                    });
+
                     await loadPendingCashups();
                 } else {
                     showNotification(result.error || 'Failed to complete cashup', 'error');
@@ -6506,6 +6618,34 @@
                     }).catch(err => console.warn('[CashUp] complete-cashup snapshot call failed (non-blocking):', err.message));
 
                     showNotification('Till session closed successfully', 'success');
+
+                    // Read the reconciliation breakdown already rendered on-screen by
+                    // loadCashUpSession() — the session is closing, so this is our
+                    // last chance to capture it before the tab switches away.
+                    const parseRand = (id) => parseFloat((document.getElementById(id)?.textContent || '').replace(/[R\s]/g, '')) || 0;
+                    const saleCountText = document.getElementById('cashUpSalesCount')?.textContent || '';
+                    const saleCountMatch = saleCountText.match(/\d+/);
+                    const tillName = currentSessionData.tills?.till_name || currentSessionData.tills?.till_number || `Till ${currentSessionData.till_id}`;
+
+                    showCashupCompleteModal({
+                        tillName,
+                        userName: currentUser?.fullName || currentUser?.username || 'Unknown',
+                        openedAt: currentSessionData.opened_at,
+                        openingBalance: parseFloat(currentSessionData.opening_balance) || 0,
+                        saleCount: saleCountMatch ? parseInt(saleCountMatch[0]) : null,
+                        cashSales: parseRand('cashSales'),
+                        cardSales: parseRand('cardSales'),
+                        eftSales: parseRand('eftSales'),
+                        accountSales: parseRand('accountSales'),
+                        cashRefunds: document.getElementById('cashRefundsRow')?.style.display !== 'none' ? Math.abs(parseRand('cashRefunds')) : 0,
+                        expectedCash,
+                        countedCash: totalCounted,
+                        countedCard: null,
+                        countedOther: null,
+                        variance,
+                        notes,
+                    });
+
                     currentSessionData = null;
                     showTab('till');
                 } else {
