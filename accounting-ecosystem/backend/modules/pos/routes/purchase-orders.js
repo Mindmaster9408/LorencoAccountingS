@@ -767,3 +767,8 @@ router.post('/:id/deliveries/:deliveryId/resolve-variance', requirePermission('P
 });
 
 module.exports = router;
+// Additive named export alongside the router — reused by
+// services/accountSaleToPOSync.js (Workstream 99) so an auto-completed
+// cross-company PO generates its invoice via the exact same, already-proven
+// code path a manually-completed PO uses. Zero change to router behaviour.
+module.exports.generatePoInvoice = generatePoInvoice;

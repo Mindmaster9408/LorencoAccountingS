@@ -25,6 +25,7 @@ const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getStockPolicy } = require('../services/stockPolicyCache');
 const { hasPermission } = require('../../../config/permissions');
+const { syncAccountSaleToLinkedBuyerPO } = require('../services/accountSaleToPOSync');
 
 const router = express.Router();
 
@@ -552,6 +553,21 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
             afterSnapshot: { customer_id, amount: accountAmount, new_balance: chargeResult.newBalance },
             metadata: { sale_number: saleNumber, transaction_id: chargeResult.transaction.id },
           });
+
+          // Workstream 99: if this customer record is linked to another
+          // platform company, sync the sale onto that company's Purchase
+          // Order (attach as a delivery, or auto-create one). Best-effort —
+          // awaited so the response reflects final state, but a failure here
+          // never rolls back or fails the already-completed sale.
+          try {
+            await syncAccountSaleToLinkedBuyerPO({
+              companyId: req.companyId, customerId: customer_id, saleId: rpcResult.sale_id, saleNumber,
+              saleItems: enrichedItems.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+              userId: req.user.userId,
+            });
+          } catch (syncErr) {
+            console.error('[Sales] syncAccountSaleToLinkedBuyerPO threw:', syncErr.message);
+          }
         } else {
           // CRITICAL: the sale already succeeded and stock already moved —
           // this must never throw and roll back a completed sale. Logged
@@ -1215,6 +1231,24 @@ router.post('/:id/fulfill', requirePermission('SALES.CREATE'), async (req, res) 
           saleId: order.id, tillSessionId: order.till_session_id || null,
           metadata: { sale_number: order.sale_number, customer_id: order.customer_id, amount: amountOwed, error: chargeResult.error },
         });
+      }
+    }
+
+    // Workstream 99: fulfillment is the real "goods received" moment for an
+    // Order (not order-creation/deposit time, when nothing has actually been
+    // picked up yet) — sync here, using the account tender across BOTH the
+    // deposit and the final settlement (either leg qualifies), not just this
+    // request's own payment_method.
+    const anyAccountTender = (fulfilled.sale_payments || []).some(p => p.payment_method === 'account');
+    if (anyAccountTender && order.customer_id) {
+      try {
+        await syncAccountSaleToLinkedBuyerPO({
+          companyId: req.companyId, customerId: order.customer_id, saleId: order.id, saleNumber: order.sale_number,
+          saleItems: (fulfilled.sale_items || []).map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+          userId: req.user.userId,
+        });
+      } catch (syncErr) {
+        console.error('[Sales] syncAccountSaleToLinkedBuyerPO threw (fulfill):', syncErr.message);
       }
     }
 

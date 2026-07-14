@@ -332,4 +332,91 @@ router.delete('/:id', requirePermission('CUSTOMERS.DELETE'), async (req, res) =>
   }
 });
 
+/**
+ * POST /api/pos/customers/:id/link-company
+ * Link this customer record to another company on the platform by invitation
+ * code — the customer-side mirror of suppliers.js's existing link-company
+ * (Workstream 80). Needed for Workstream 99: an account sale to a customer
+ * whose record is linked this way can auto-sync to that company's Purchase
+ * Order (attach as a delivery, or auto-create one) — the customer record is
+ * how the seller knows "this local customer IS that platform company."
+ *
+ * Unlike suppliers.js's version, this gracefully reuses an existing
+ * relationship between the two companies (e.g. one already established via
+ * a Supplier record) rather than erroring — the underlying relationship is
+ * a single, symmetric row per company pair; a customer and a supplier record
+ * can legitimately point at the very same one.
+ */
+// Same permission tier as suppliers.js's link-company (INVENTORY.ADJUST,
+// management-only) — establishing any cross-company relationship is the
+// same class of sensitive action regardless of which local record anchors it.
+router.post('/:id/link-company', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
+  try {
+    const customerId = parseInt(req.params.id);
+    if (!customerId) return res.status(400).json({ error: 'Invalid customer id' });
+    const invitationCode = (req.body.invitationCode || '').trim();
+    if (!invitationCode) return res.status(400).json({ error: 'invitationCode is required' });
+
+    const { data: customer } = await supabase
+      .from('customers').select('*').eq('id', customerId).eq('company_id', req.companyId).single();
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+    if (customer.link_status === 'active' || customer.link_status === 'pending') {
+      return res.status(400).json({ error: `This customer already has a ${customer.link_status} company link. Revoke it first.` });
+    }
+
+    const InterCompanyNetwork = require('../../../inter-company/network');
+    const { supabaseSeanStore } = require('../../../sean/supabase-store');
+    const network = new InterCompanyNetwork(supabaseSeanStore);
+
+    const matches = await network.findCompanies({ invitationCode }, req.companyId);
+    const match = matches.find(m => m.matchType === 'invitation_code');
+    if (!match) return res.status(404).json({ error: 'No company found for that invitation code' });
+
+    let relationship;
+    const created = await network.createRelationship(req.companyId, match.companyId, req.companyId, {
+      stock_transfer: false, receive_transfer: false, return_transfer: false,
+      pricing_visible: false, invoice_reference_visible: false,
+    });
+    if (created.success) {
+      relationship = created.relationship;
+    } else if (created.relationship) {
+      // Relationship already exists (e.g. linked via a Supplier record already) —
+      // reuse it rather than failing; that's exactly the same relationship this
+      // customer record should point at.
+      relationship = created.relationship;
+    } else {
+      return res.status(400).json(created);
+    }
+
+    const { data: updatedCustomer, error: updErr } = await supabase
+      .from('customers')
+      .update({
+        linked_company_id:      match.companyId,
+        linked_relationship_id: relationship.id,
+        link_status:            relationship.status === 'active' ? 'active' : 'pending',
+        updated_at:              new Date().toISOString(),
+      })
+      .eq('id', customerId).eq('company_id', req.companyId)
+      .select().single();
+    if (updErr) return res.status(500).json({ error: updErr.message });
+
+    posAuditFromReq(req, POS_EVENTS.COMPANY_RELATIONSHIP_REQUESTED, {
+      entityType: 'customer', entityId: customerId,
+      metadata: { relationship_id: relationship.id, target_company_name: match.companyName, reused_existing: !created.success },
+    });
+
+    res.json({
+      customer: updatedCustomer,
+      linked_company: { id: match.companyId, name: match.companyName },
+      relationship_status: updatedCustomer.link_status,
+      message: created.success
+        ? 'Link request sent. The other company must approve before any data is shared.'
+        : 'Linked to the existing relationship with this company.',
+    });
+  } catch (err) {
+    console.error('[customers] link-company:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

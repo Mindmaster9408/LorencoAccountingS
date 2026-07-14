@@ -118,6 +118,8 @@ const POS_EVENTS = {
     COMPANY_RELATIONSHIP_REQUESTED:   'COMPANY_RELATIONSHIP_REQUESTED',
     COMPANY_RELATIONSHIP_APPROVED:    'COMPANY_RELATIONSHIP_APPROVED',
     COMPANY_RELATIONSHIP_REVOKED:     'COMPANY_RELATIONSHIP_REVOKED',
+    // Auto-mirroring on relationship activation (Workstream 100)
+    COMPANY_LINK_MIRROR_RECORD_CREATED: 'COMPANY_LINK_MIRROR_RECORD_CREATED',
 
     // Inter-company stock transfer events (Workstream 81)
     COMPANY_TRANSFER_CREATED:            'COMPANY_TRANSFER_CREATED',
@@ -269,6 +271,7 @@ const EVENT_CATEGORY = {
     COMPANY_RELATIONSHIP_REQUESTED:   'company_link',
     COMPANY_RELATIONSHIP_APPROVED:    'company_link',
     COMPANY_RELATIONSHIP_REVOKED:     'company_link',
+    COMPANY_LINK_MIRROR_RECORD_CREATED: 'company_link',
     COMPANY_TRANSFER_CREATED:            'company_transfer',
     COMPANY_TRANSFER_SENT:               'company_transfer',
     COMPANY_TRANSFER_RECEIVED:           'company_transfer',
