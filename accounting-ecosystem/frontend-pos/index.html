@@ -1587,7 +1587,11 @@
                 <div id="pinCompanyDisplay" style="margin-bottom:12px;padding:8px 12px;background:#eff3ff;border-radius:6px;font-size:13px;color:#3949ab;display:none;">
                     Logging in to: <strong id="pinCompanyName"></strong>
                 </div>
-                <div style="margin-bottom:14px;">
+                <!-- Hidden once the device is locked (Workstream 101) — a locked
+                     device already knows the company, and PIN-only login (no
+                     identifier sent) resolves the employee purely by PIN match,
+                     so typing an employee code is no longer required there. -->
+                <div id="pinUsernameRow" style="margin-bottom:14px;">
                     <label style="display:block;margin-bottom:5px;font-weight:600;font-size:13px;color:#444;">Username or Employee Code</label>
                     <input type="text" id="pinUsername" placeholder="e.g. jsmith or EMP-001" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;" autocomplete="username">
                 </div>
@@ -4704,6 +4708,12 @@
                     <span id="pinModalRole" style="font-size:13px;font-weight:600;color:#333;text-transform:capitalize;"></span>
                     <span id="pinModalStatus" style="margin-left:auto;"></span>
                 </div>
+                <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:14px;" onclick="generatePinForUser()">🎲 Generate PIN automatically</button>
+                <div id="pinModalGeneratedBox" style="display:none;margin-bottom:14px;padding:14px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;text-align:center;">
+                    <div style="font-size:12px;color:#2e7d32;margin-bottom:4px;">New PIN — write it down now, it will not be shown again:</div>
+                    <div id="pinModalGeneratedValue" style="font-size:26px;font-weight:700;letter-spacing:8px;color:#1b5e20;"></div>
+                </div>
+                <div style="text-align:center;color:#999;font-size:12px;margin-bottom:14px;">— or set one manually —</div>
                 <div style="display:grid;gap:14px;">
                     <div>
                         <label style="font-weight:600;display:block;margin-bottom:5px;font-size:13px;">New PIN <span style="color:#999;font-weight:400;">(4–6 digits)</span></label>
@@ -4716,7 +4726,8 @@
                 </div>
                 <div style="margin-top:12px;padding:10px;background:#e3f2fd;border-radius:6px;font-size:12px;color:#1565c0;">
                     PIN allows this user to log in quickly at the till without entering a password.
-                    Weak PINs (1234, 0000, etc.) are rejected.
+                    Weak PINs (1234, 0000, etc.) are rejected, and a PIN already used by another
+                    employee in this company will be rejected too — PINs must be unique per company.
                 </div>
             </div>
             <div class="modal-footer" style="padding:15px 20px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
@@ -5599,8 +5610,14 @@
         }
 
         async function loginWithPin() {
+            // Workstream 101 — on a locked device the username/employee-code row
+            // is hidden (see applyDeviceLock()); the employee is resolved purely
+            // by which PIN matches, scoped to that device's company. On an
+            // unlocked device the row is still shown, so the identifier is still
+            // required there.
+            const usernameRowVisible = document.getElementById('pinUsernameRow')?.style.display !== 'none';
             const username = (document.getElementById('pinUsername')?.value || '').trim();
-            if (!username) {
+            if (usernameRowVisible && !username) {
                 showNotification('Please enter your username or employee code', 'error');
                 return;
             }
@@ -5621,7 +5638,8 @@
                 showNotification('This device is not activated. Please ask a manager to log in and activate it first.', 'error');
                 return;
             }
-            const body = { user_identifier: username, pin: pinToSend, device_token: deviceToken };
+            const body = { pin: pinToSend, device_token: deviceToken };
+            if (usernameRowVisible && username) body.user_identifier = username;
 
             try {
                 const res    = await fetch(`${API_URL}/auth/pos/pin-login`, {
@@ -5666,6 +5684,8 @@
         async function showPinModal(userId, companyId) {
             _pinModalUserId    = userId;
             _pinModalCompanyId = companyId;
+            document.getElementById('pinModalGeneratedBox').style.display = 'none';
+            document.getElementById('pinModalGeneratedValue').textContent = '';
             try {
                 const res = await fetch(`${API_URL}/pos/users/${userId}/pin-status`, {
                     headers: { 'Authorization': `Bearer ${token}` },
@@ -5713,6 +5733,30 @@
                 else        { showNotification(data.error || 'Failed to set PIN', 'error'); }
             } catch (e) {
                 showNotification('Failed to set PIN', 'error');
+            }
+        }
+
+        async function generatePinForUser() {
+            try {
+                const res  = await fetch(`${API_URL}/pos/users/${_pinModalUserId}/pin/generate`, {
+                    method:  'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('pinModalGeneratedValue').textContent = data.pin;
+                    document.getElementById('pinModalGeneratedBox').style.display = 'block';
+                    // Clear the manual fields so there's no ambiguity about which PIN was actually saved.
+                    document.getElementById('pinModalNewPin').value     = '';
+                    document.getElementById('pinModalConfirmPin').value = '';
+                    document.getElementById('pinModalStatus').innerHTML = '<span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;">● Active</span>';
+                    document.getElementById('pinModalRemoveBtn').style.display = 'inline-block';
+                    showNotification('PIN generated and saved', 'success');
+                } else {
+                    showNotification(data.error || 'Failed to generate PIN', 'error');
+                }
+            } catch (e) {
+                showNotification('Failed to generate PIN', 'error');
             }
         }
 
@@ -6887,17 +6931,39 @@
             const barcodeInput = document.getElementById('barcodeInput');
             if (barcodeInput) {
                 let barcodeTimeout = null;
+                let lastBarcodeKeyTime = 0;
 
                 barcodeInput.addEventListener('input', function(e) {
                     const raw        = e.target.value;
                     const normalized = normalizeBarcode(raw);
 
+                    // refocusScanner() keeps this field focused essentially all the
+                    // time (see initScannerAutoRefocus() below), so in practice every
+                    // physical scan lands HERE, not in initGlobalScanCapture()'s
+                    // buffer — that logic explicitly defers to this listener
+                    // (isTypingContext() skips id==='barcodeInput'). This listener
+                    // must therefore recognise a fast scanner burst itself, using the
+                    // same inter-keystroke-speed heuristic as initGlobalScanCapture
+                    // (MAX_AVG_INTERVAL_MS = 50ms there) — otherwise every real scan
+                    // was waiting out the full human-typing debounce below (300ms)
+                    // AFTER the scanner had already finished, which is the "takes
+                    // long to pick up" delay: pure added latency, not real work.
+                    const now = Date.now();
+                    const gapMs = now - lastBarcodeKeyTime;
+                    lastBarcodeKeyTime = now;
+                    const isFastBurst = gapMs < 60;
+
                     clearTimeout(barcodeTimeout);
 
-                    if (/^\d{6,}$/.test(normalized)) {
+                    // Threshold lowered from 6 to 4 digits to match MIN_BARCODE_LENGTH
+                    // in initGlobalScanCapture() — shorter numeric barcodes/product
+                    // codes were previously falling into the searchByName() grid-
+                    // filter branch below instead of being looked up and added
+                    // directly, which reads exactly like "scanning didn't do anything".
+                    if (/^\d{4,}$/.test(normalized)) {
                         // Pure numeric barcode (EAN-8/13, UPC, etc.)
                         // Pass raw so searchByBarcode can show the original if not found
-                        barcodeTimeout = setTimeout(() => searchByBarcode(raw), 300);
+                        barcodeTimeout = setTimeout(() => searchByBarcode(raw), isFastBurst ? 30 : 300);
                     } else if (raw.length >= 2) {
                         barcodeTimeout = setTimeout(() => searchByName(raw), 300);
                     }
@@ -8110,12 +8176,18 @@
                 if (result.success || result.product) {
                     showNotification(editingProductId ? 'Product updated successfully' : 'Product created successfully', 'success');
 
-                    // Teach Sean AI about this product
+                    // Teach Sean AI about this product — fire-and-forget. Previously
+                    // awaited here, which meant the new/updated product wasn't
+                    // scannable at the till until this secondary AI call finished —
+                    // if it was slow, the cashier had to manually refresh to actually
+                    // use the product they'd just added. The reload below (which
+                    // rebuilds the barcode lookup map) must never wait on this.
                     if (barcode) {
-                        await teachSean(barcode, productData);
+                        teachSean(barcode, productData).catch(err => console.warn('[Product] teachSean failed (non-blocking):', err.message));
                     }
 
-                    // Reload products
+                    // Reload products — this is what makes the new/updated product
+                    // immediately scannable (rebuilds barcodeMap at the end).
                     await loadProducts();
                     closeProductModal();
                 } else {
@@ -8148,8 +8220,57 @@
             }
         }
 
-        function exportProducts() {
-            alert('Export Products - To be implemented');
+        async function exportProducts() {
+            try {
+                showNotification('Preparing export...', 'info');
+
+                // active_only=false: export the FULL catalog (active + inactive),
+                // not just what happens to be loaded in the current filtered view.
+                const response = await fetch(`${API_URL}/pos/products?active_only=false`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!response.ok) throw new Error(`Server returned ${response.status}`);
+                const result = await response.json();
+                const list = result.products || [];
+
+                if (list.length === 0) {
+                    showNotification('No products to export', 'error');
+                    return;
+                }
+
+                const headers = [
+                    'Stockcode', 'SKU', 'Naam', 'Beskrywing', 'Kategorie', 'Brand',
+                    'Eenheid', 'Kosprys', 'Verkoopprys', 'BTW %', 'Streepkode',
+                    'Voorraad', 'Aktief'
+                ];
+                const escapeCsv = (val) => {
+                    const s = (val === null || val === undefined) ? '' : String(val);
+                    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+                };
+                const rows = list.map(p => [
+                    p.product_code, p.sku, p.product_name, p.description, p.category,
+                    p.brand, p.unit, p.cost_price, p.unit_price, p.vat_rate, p.barcode,
+                    p.stock_quantity, p.is_active ? 1 : 0
+                ].map(escapeCsv).join(','));
+
+                // Leading BOM so Excel opens the UTF-8 CSV without mangling accents.
+                const csv = '﻿' + headers.join(',') + '\n' + rows.join('\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                const stamp = new Date().toISOString().slice(0, 10);
+                link.href = url;
+                link.download = `products-export-${stamp}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+                showNotification(`Exported ${list.length} products`, 'success');
+            } catch (error) {
+                console.error('Error exporting products:', error);
+                showNotification('Export failed: ' + error.message, 'error');
+            }
         }
 
         function importProducts() {
@@ -15065,6 +15186,13 @@
 
             const pinCompanyRow = document.getElementById('pinCompanyRow');
             if (pinCompanyRow) pinCompanyRow.style.display = 'none';
+
+            // Workstream 101 — locked device: no employee code needed either,
+            // just the PIN. loginWithPin() only sends user_identifier if this
+            // field is visible (and filled in), so hiding it switches to the
+            // server's PIN-only lookup automatically.
+            const pinUsernameRow = document.getElementById('pinUsernameRow');
+            if (pinUsernameRow) pinUsernameRow.style.display = 'none';
         }
 
         // ── Activate Device modal (Flow 1 second step — after manager login) ────

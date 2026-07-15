@@ -38,29 +38,42 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
   try {
     const { category_id, search, active_only } = req.query;
 
-    let query = supabase
-      .from('products')
-      .select('*, categories(name)')
-      .eq('company_id', req.companyId);
+    const buildQuery = () => {
+      let query = supabase
+        .from('products')
+        .select('*, categories(name)')
+        .eq('company_id', req.companyId);
 
-    if (active_only !== 'false') query = query.eq('is_active', true);
-    if (category_id) query = query.eq('category_id', category_id);
-    if (search) {
-      query = query.or(
-        `product_name.ilike.%${search}%,barcode.ilike.%${search}%,product_code.ilike.%${search}%`
-      );
+      if (active_only !== 'false') query = query.eq('is_active', true);
+      if (category_id) query = query.eq('category_id', category_id);
+      if (search) {
+        query = query.or(
+          `product_name.ilike.%${search}%,barcode.ilike.%${search}%,product_code.ilike.%${search}%`
+        );
+      }
+
+      return query.order('product_name');
+    };
+
+    // PostgREST caps unranged queries at its configured max-rows (1000 by
+    // default). A company can have more products than that, so page through
+    // with .range() until a batch comes back short of the page size.
+    const PAGE_SIZE = 1000;
+    let data = [];
+    let from = 0;
+    while (true) {
+      const { data: page, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+      if (error) return res.status(500).json({ error: error.message });
+      data = data.concat(page || []);
+      if (!page || page.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
     }
-
-    query = query.order('product_name');
-
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
 
     // Private cache: browser may serve the product list for up to 60 s without
     // re-fetching, then revalidate in the background for 30 s more.
     // Applies to GET only — POST/PUT/DELETE are not cached.
     res.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=30');
-    res.json({ products: data || [] });
+    res.json({ products: data });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

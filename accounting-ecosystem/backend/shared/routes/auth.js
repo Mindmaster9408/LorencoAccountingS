@@ -1494,13 +1494,23 @@ const _PIN_TIMING_DUMMY = bcrypt.hashSync('__cc_pin_timing_dummy__', 10);
  * PIN-based login for cashier-level POS users. Returns the same token shape as
  * POST /api/auth/select-company so the POS frontend can use the same completeLogin() flow.
  *
- * Body: { device_token, user_identifier, pin }
+ * Body: { device_token, user_identifier?, pin }
  *   device_token   — required (Workstream 82). Identifies a registered, active
  *                    Checkout Charlie device. Company is ALWAYS derived from
  *                    the device record, never from client-supplied company_id/
  *                    company_name — a device can only ever log employees into
  *                    the one company it was activated for.
- *   user_identifier — username, email, or employee_id
+ *   user_identifier — OPTIONAL (Workstream 101). username, email, or employee_id.
+ *                    When provided, behaves exactly as before: looks up that
+ *                    one specific user and verifies the PIN against them.
+ *                    When OMITTED — the normal path on a locked/trusted
+ *                    device, which already knows the company from
+ *                    device_token — every PIN-eligible-role user in this
+ *                    company with an active PIN is scanned for a bcrypt
+ *                    match. This exists so a cashier only ever has to tap
+ *                    their PIN, not also type their employee code every
+ *                    time. Requires PINs to be unique per company (enforced
+ *                    at set-time — see pin.js findPinCollision()).
  *   pin             — 4–6 digit string (never stored, compared via bcrypt only)
  *
  * Security:
@@ -1509,10 +1519,17 @@ const _PIN_TIMING_DUMMY = bcrypt.hashSync('__cc_pin_timing_dummy__', 10);
  *   - PIN never returned in any response or log
  *   - Timing-safe: bcrypt.compare runs even when user/PIN not found
  *   - Two independent lockouts, both server-side only:
- *       user-level:   ≥5 failures for this user in 15 min
+ *       user-level:   ≥5 failures for this user in 15 min (only applies once
+ *                      a specific user is identified — see note below for
+ *                      the pin-only path)
  *       device-level: ≥5 failures on this device (any user) since the later
  *                      of 15 min ago or the device's last manager unlock —
- *                      "Device lock. Not only user lock." (Workstream 82)
+ *                      "Device lock. Not only user lock." (Workstream 82).
+ *                      This was already role/user-blind by design, so it is
+ *                      the PRIMARY brute-force defense for pin-only login:
+ *                      a failed pin-only attempt can't be attributed to one
+ *                      user in advance, but the device still locks after 5
+ *                      failures regardless of who they were "aimed at".
  *   - Company isolation enforced: lookups scoped to the device's company_id
  *   - Only PIN-eligible roles allowed: cashier, senior_cashier, shift_supervisor, assistant_manager
  */
@@ -1520,8 +1537,8 @@ router.post('/pos/pin-login', async (req, res) => {
   try {
     const { device_token, user_identifier, pin } = req.body;
 
-    if (!user_identifier || !pin) {
-      return res.status(400).json({ error: 'user_identifier and pin are required' });
+    if (!pin) {
+      return res.status(400).json({ error: 'pin is required' });
     }
     if (!/^\d{4,6}$/.test(String(pin))) {
       return res.status(400).json({ error: 'Invalid PIN format' });
@@ -1590,44 +1607,83 @@ router.post('/pos/pin-login', async (req, res) => {
 
     const PIN_ELIGIBLE_ROLES = ['cashier', 'senior_cashier', 'shift_supervisor', 'assistant_manager'];
 
-    // ── Resolve user (try username → email → employee_id) ────────────────────
     let userData = null;
-    {
-      const { data: u1 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('username', String(user_identifier)).eq('is_active', true).maybeSingle();
-      userData = u1;
-    }
-    if (!userData) {
-      const { data: u2 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('email', String(user_identifier)).eq('is_active', true).maybeSingle();
-      userData = u2;
-    }
-    if (!userData) {
-      const { data: u3 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('employee_id', String(user_identifier)).eq('is_active', true).maybeSingle();
-      userData = u3;
-    }
-
-    // ── Resolve company access and role ──────────────────────────────────────
     let userRole = null;
-    if (userData) {
-      const { data: access } = await supabase
-        .from('user_company_access')
-        .select('role, is_active')
-        .eq('company_id', company.id)
-        .eq('user_id', userData.id)
-        .eq('is_active', true)
-        .maybeSingle();
-      if (access) userRole = access.role;
-    }
-
-    // ── Fetch PIN hash (only if we have a real user+role) ────────────────────
     let pinRecord = null;
-    if (userData && userRole) {
-      const { data: pr } = await supabase
-        .from('user_pos_pins')
-        .select('pin_hash, is_active')
-        .eq('company_id', company.id)
-        .eq('user_id', userData.id)
-        .maybeSingle();
-      pinRecord = pr;
+
+    if (user_identifier) {
+      // ── Original path: identifier supplied — resolve one specific user ──────
+      // (try username → email → employee_id)
+      {
+        const { data: u1 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('username', String(user_identifier)).eq('is_active', true).maybeSingle();
+        userData = u1;
+      }
+      if (!userData) {
+        const { data: u2 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('email', String(user_identifier)).eq('is_active', true).maybeSingle();
+        userData = u2;
+      }
+      if (!userData) {
+        const { data: u3 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('employee_id', String(user_identifier)).eq('is_active', true).maybeSingle();
+        userData = u3;
+      }
+
+      if (userData) {
+        const { data: access } = await supabase
+          .from('user_company_access')
+          .select('role, is_active')
+          .eq('company_id', company.id)
+          .eq('user_id', userData.id)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (access) userRole = access.role;
+      }
+
+      if (userData && userRole) {
+        const { data: pr } = await supabase
+          .from('user_pos_pins')
+          .select('pin_hash, is_active')
+          .eq('company_id', company.id)
+          .eq('user_id', userData.id)
+          .maybeSingle();
+        pinRecord = pr;
+      }
+    } else {
+      // ── PIN-only path (Workstream 101): no identifier supplied — scan every
+      // PIN-eligible-role user in this company with an active PIN, bcrypt-
+      // comparing until one matches. Relies on PINs being unique per company
+      // (enforced at set-time by pin.js findPinCollision()) — otherwise which
+      // of two colliding users gets matched would be arbitrary.
+      //
+      // Two separate queries, not one embedded select: user_pos_pins has no
+      // foreign key to user_company_access (both merely share company_id/
+      // user_id columns pointing at companies/users), so PostgREST can't
+      // embed one under the other — each is joined to `users` independently.
+      const [{ data: pinRows }, { data: accessRows }] = await Promise.all([
+        supabase.from('user_pos_pins')
+          .select('user_id, pin_hash, users:user_id(id, username, email, full_name, is_active)')
+          .eq('company_id', company.id)
+          .eq('is_active', true),
+        supabase.from('user_company_access')
+          .select('user_id, role')
+          .eq('company_id', company.id)
+          .eq('is_active', true)
+          .in('role', PIN_ELIGIBLE_ROLES),
+      ]);
+
+      const roleByUserId = new Map((accessRows || []).map(r => [r.user_id, r.role]));
+
+      for (const row of (pinRows || [])) {
+        const role = roleByUserId.get(row.user_id);
+        if (!role) continue; // not an active PIN-eligible-role user in this company
+        if (!row.users || !row.users.is_active) continue;
+        if (!row.pin_hash) continue;
+        if (await bcrypt.compare(String(pin), row.pin_hash)) {
+          userData  = row.users;
+          userRole  = role;
+          pinRecord = { pin_hash: row.pin_hash, is_active: true };
+          break; // first match — see file header for why an exhaustive scan isn't required here
+        }
+      }
     }
 
     // ── Timing-safe compare — always runs ────────────────────────────────────
