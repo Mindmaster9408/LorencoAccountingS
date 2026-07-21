@@ -5888,9 +5888,10 @@
 
         function applyRoleBasedVisibility() {
             // Get all nav tabs
-            const reportsTab  = document.querySelector('.nav-tab[onclick*="reports"]');
-            const settingsTab = document.querySelector('.nav-tab[onclick*="settings"]');
-            const recoveryTab = document.querySelector('.nav-tab[onclick*="recovery"]');
+            const reportsTab   = document.querySelector('.nav-tab[onclick*="reports"]');
+            const settingsTab  = document.querySelector('.nav-tab[onclick*="settings"]');
+            const recoveryTab  = document.querySelector('.nav-tab[onclick*="recovery"]');
+            const dashboardTab = document.querySelector('.nav-tab[onclick*="dashboard"]');
 
             // Hide reports for admin and cashier (they can't see profit/sales/VAT reports)
             if (userRole === 'admin' || userRole === 'cashier') {
@@ -5913,6 +5914,25 @@
             ];
             if (!RECOVERY_ALLOWED_ROLES.includes(userRole)) {
                 if (recoveryTab) recoveryTab.classList.add('role-hidden');
+            }
+
+            // Hide dashboard for roles without backend REPORTS.VIEW / INVENTORY.VIEW access.
+            // Must match SUPERVISOR_ROLES in backend/config/permissions.js exactly — every
+            // loadDashboard() widget (gross-profit, till-summary, negative-stock, cashier
+            // performance, tills, receives, company-links/transfers, PO register, etc.) is
+            // gated behind one of REPORTS.VIEW/INVENTORY.VIEW/TRANSFERS.VIEW_REPORTS/
+            // PURCHASE_ORDERS.VIEW, which are all === SUPERVISOR_ROLES. senior_cashier,
+            // cashier and trainee are NOT in that list, so without this they saw the tab,
+            // opened it, got a 403 from nearly every widget (silently swallowed to null by
+            // safeFetchJson), and the dashboard rendered as almost entirely blank/zeroed
+            // with no indication why.
+            const DASHBOARD_ALLOWED_ROLES = [
+                'super_admin', 'business_owner', 'practice_manager', 'administrator',
+                'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
+                'leave_admin', 'assistant_manager', 'shift_supervisor',
+            ];
+            if (!DASHBOARD_ALLOWED_ROLES.includes(userRole)) {
+                if (dashboardTab) dashboardTab.classList.add('role-hidden');
             }
         }
 
@@ -7250,6 +7270,13 @@
                     productId: product.id,
                     name: product.product_name,
                     price: product.unit_price,
+                    // vatRate/requiresVat: needed so cart totals can extract VAT correctly.
+                    // product.unit_price is VAT-INCLUSIVE (see "Inclusive Price" label on
+                    // the Add/Edit Product form) — VAT must be EXTRACTED from it, never
+                    // added on top. See calcCartTotals() below, which every on-screen total
+                    // and split-payment check must go through (do not reimplement inline).
+                    vatRate: product.vat_rate,
+                    requiresVat: product.requires_vat !== 0 && product.requires_vat !== false,
                     quantity: 1,
                     // In negative-stock-allowed mode there is no frontend cap — the backend
                     // enforces the actual decrement. Use a very large number rather than
@@ -7261,6 +7288,27 @@
 
             updateCart();
             setTimeout(refocusScanner, 100);
+        }
+
+        // Single source of truth for cart totals. unit_price is VAT-INCLUSIVE, so VAT is
+        // EXTRACTED from the line price (never added on top) — mirrors the authoritative
+        // backend calculation in backend/modules/pos/routes/sales.js exactly. Every screen
+        // that shows a cart/order total must call this rather than recomputing inline —
+        // six independent reimplementations of this formula (all wrongly doing
+        // `subtotal * 1.15`) is exactly how this bug shipped in the first place.
+        function calcCartTotals(items) {
+            let subtotal = 0;
+            let vat = 0;
+            (items || []).forEach(item => {
+                const linePrice = item.price * item.quantity;
+                subtotal += linePrice;
+                if (item.requiresVat && item.vatRate) {
+                    vat += linePrice * (item.vatRate / (100 + item.vatRate));
+                }
+            });
+            // total === subtotal: VAT is already included in unit_price, so it is never
+            // added again. `vat` is informational only (shown as "VAT incl.").
+            return { subtotal, vat, total: subtotal };
         }
 
         function updateCart() {
@@ -7303,9 +7351,7 @@
             }
 
             // Update totals
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const vat = subtotal * 0.15;
-            const total = subtotal + vat;
+            const { subtotal, vat, total } = calcCartTotals(cart);
 
             document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
             document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
@@ -7468,9 +7514,7 @@
             }
 
             // Calculate totals for offline mode
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const vatAmount = subtotal * 0.15;
-            const totalAmount = subtotal + vatAmount;
+            const { subtotal, vat: vatAmount, total: totalAmount } = calcCartTotals(cart);
 
             const saleData = {
                 // Generated once per checkout attempt. Persists with the
@@ -9942,7 +9986,7 @@
         }
 
         function updateSplitRemaining() {
-            const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.15;
+            const { total } = calcCartTotals(cart);
             let allocated = 0;
             document.querySelectorAll('.split-amount').forEach(input => {
                 allocated += parseFloat(input.value) || 0;
@@ -10711,9 +10755,7 @@
         }
 
         function updateTotals() {
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const vat = subtotal * 0.15;
-            const total = subtotal + vat;
+            const { subtotal, vat, total } = calcCartTotals(cart);
 
             document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
             document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
@@ -10750,7 +10792,7 @@
                     }
                 });
 
-                const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.15;
+                const { total } = calcCartTotals(cart);
                 const allocated = payments.reduce((sum, p) => sum + p.amount, 0);
 
                 if (Math.abs(allocated - total) > 0.01) {
@@ -15977,8 +16019,7 @@
                 return;
             }
 
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const total = subtotal * 1.15;
+            const { subtotal, total } = calcCartTotals(cart);
 
             let modal = document.getElementById('placeOrderModal');
             if (!modal) {
