@@ -11,7 +11,7 @@ const { supabase } = require('../../../config/database');
 const { requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
-const { createReconSnapshot } = require('../services/posReconService');
+const { createReconSnapshot, computeSessionRecon } = require('../services/posReconService');
 const { hasPermission } = require('../../../config/permissions');
 
 const router = express.Router();
@@ -212,16 +212,21 @@ router.post('/:id/close', async (req, res) => {
       return res.status(403).json({ error: 'Only a manager can close another cashier\'s till session' });
     }
 
-    // Calculate expected balance from sales
-    const { data: sales } = await supabase
-      .from('sales')
-      .select('total_amount, status')
-      .eq('till_session_id', session.id)
-      .eq('status', 'completed');
-
-    const salesTotal = (sales || []).reduce((sum, s) => sum + parseFloat(s.total_amount || 0), 0);
-    const expected = parseFloat(session.opening_balance) + salesTotal;
-    const variance = closing_balance !== undefined ? closing_balance - expected : null;
+    // Expected balance: cash-only (opening + cash payments − cash refunds), via
+    // the same computeSessionRecon() used by the reconciliation endpoint and
+    // shown to the cashier on-screen as "Expected cash in drawer". This used to
+    // be reimplemented here as opening + ALL completed sales regardless of
+    // payment method (card/EFT/account included), which persisted a false
+    // "cash" expectation into till_sessions.expected_balance/variance for any
+    // session with non-cash sales — the authoritative record disagreed with
+    // what the cashier was shown. Sharing the one formula instead of
+    // reimplementing it is the same fix as calcCartTotals() in the POS
+    // frontend (six divergent VAT reimplementations, one bug).
+    const recon    = await computeSessionRecon(session.id, req.companyId);
+    const expected = recon.expectedCashInDrawer;
+    const variance = closing_balance !== undefined
+      ? Math.round((closing_balance - expected) * 100) / 100
+      : null;
 
     const { data, error } = await supabase
       .from('till_sessions')
@@ -280,6 +285,16 @@ router.post('/:id/complete-cashup', async (req, res) => {
 
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
+    // The state machine is open -> closed -> cashed_up (see /pending-cashup
+    // above). The UI only ever offers this action for status='closed'
+    // sessions, but that was never enforced server-side — a stray or future
+    // call landing on a still-open session would compute variance against a
+    // null expected_balance (since only /close sets it) and skip the
+    // 'closed' state entirely.
+    if (session.status !== 'closed') {
+      return res.status(400).json({ error: `Session must be closed before completing cashup (current status: ${session.status})` });
+    }
+
     // Same rule as /close: completing your own cashup is unrestricted;
     // completing someone else's requires management-tier TILLS.MANAGE.
     // This is the specific capability requested — a store manager finalising
@@ -290,7 +305,15 @@ router.post('/:id/complete-cashup', async (req, res) => {
     }
 
     const totalCounted = (counted_cash || 0) + (counted_card || 0) + (counted_other || 0);
-    const variance = totalCounted - (session.expected_balance || 0);
+    // Variance is a CASH-drawer figure: counted cash vs expected cash-in-drawer
+    // (now cash-only — see /close above). Comparing totalCounted (which folds
+    // in counted_card/counted_other) against a cash-only expected_balance would
+    // reintroduce the same mismatch this fix removes elsewhere, and would also
+    // show a phantom shortfall on any session with account/pay-later sales
+    // (no counted field exists for those at all). closing_balance below still
+    // stores totalCounted — that "total tendered across all methods" figure is
+    // unchanged and used elsewhere (till-summary reports) independently of variance.
+    const variance = Math.round(((counted_cash || 0) - (session.expected_balance || 0)) * 100) / 100;
 
     const { data, error } = await supabase
       .from('till_sessions')

@@ -35,6 +35,31 @@ async function attachUserNames(events) {
   return events.map(e => ({ ...e, users: byId[e.user_id] || null }));
 }
 
+// ── Pagination helper ─────────────────────────────────────────────────────────
+// Supabase/PostgREST caps an unranged .select() at 1000 rows and truncates
+// SILENTLY — no error, just fewer rows than actually match. Every report
+// below aggregates sales/sale_items/sale_payments/pos_returns/products, so a
+// company with more than 1000 rows in the queried range would understate
+// revenue, VAT, profit and rankings with nothing surfaced to say so — the
+// same class of bug already found and fixed once in products.js's product
+// list. `buildQuery` must return a FRESH query builder on every call (a
+// Supabase builder is single-use) with every filter already applied except
+// the trailing .range(), which this function supplies itself and loops on
+// until a page comes back short of a full page.
+const REPORT_PAGE_SIZE = 1000;
+async function fetchAllRows(buildQuery) {
+  let rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + REPORT_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    rows = rows.concat(data || []);
+    if (!data || data.length < REPORT_PAGE_SIZE) break;
+    from += REPORT_PAGE_SIZE;
+  }
+  return rows;
+}
+
 router.use(requireCompany);
 
 // REPORTS.VIEW = SUPERVISOR_ROLES (config/permissions.js) — excludes cashier/
@@ -68,14 +93,17 @@ router.get('/sales-summary', async (req, res) => {
     const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const endDate = to || now.toISOString();
 
-    const { data: sales, error } = await supabase
-      .from('sales')
-      .select('total_amount, vat_amount, discount_amount, status, created_at, payment_method')
-      .eq('company_id', req.companyId)
-      .gte('created_at', startDate)
-      .lte('created_at', endDate);
-
-    if (error) return res.status(500).json({ error: error.message });
+    let sales;
+    try {
+      sales = await fetchAllRows(() => supabase
+        .from('sales')
+        .select('total_amount, vat_amount, discount_amount, status, created_at, payment_method')
+        .eq('company_id', req.companyId)
+        .gte('created_at', startDate)
+        .lte('created_at', endDate));
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
 
     const completed = (sales || []).filter(s => s.status === 'completed');
     const voided = (sales || []).filter(s => s.status === 'voided');
@@ -113,17 +141,21 @@ router.get('/top-products', async (req, res) => {
     const now = new Date();
     const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-    let query = supabase
-      .from('sale_items')
-      .select('product_id, product_name, quantity, unit_price, line_total, sales!inner(company_id, status, created_at)')
-      .eq('sales.company_id', req.companyId)
-      .eq('sales.status', 'completed');
-
-    if (from) query = query.gte('sales.created_at', startDate);
-    if (to) query = query.lte('sales.created_at', to);
-
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    let data;
+    try {
+      data = await fetchAllRows(() => {
+        let query = supabase
+          .from('sale_items')
+          .select('product_id, product_name, quantity, unit_price, line_total, sales!inner(company_id, status, created_at)')
+          .eq('sales.company_id', req.companyId)
+          .eq('sales.status', 'completed');
+        if (from) query = query.gte('sales.created_at', startDate);
+        if (to) query = query.lte('sales.created_at', to);
+        return query;
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
 
     // Aggregate by product
     const productMap = {};
@@ -157,35 +189,38 @@ router.get('/cashier-performance', reportsViewGate, async (req, res) => {
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const end = endDate || to || now.toISOString();
 
-    const [salesResult, auditResult, sessionsResult] = await Promise.all([
-      supabase
-        .from('sales')
-        .select('user_id, total_amount, status, users:user_id(username, full_name)')
-        .eq('company_id', req.companyId)
-        .gte('created_at', start)
-        .lte('created_at', end),
-      supabase
-        .from('pos_audit_events')
-        .select('user_id, action_type')
-        .eq('company_id', req.companyId)
-        .in('action_type', [
-          'SALE_RETURNED', 'NEGATIVE_STOCK_SALE_ALLOWED',
-          'MANAGER_OVERRIDE', 'SUPERVISOR_OVERRIDE_GRANTED', 'RECOVERY_RETRY_TRIGGERED'
-        ])
-        .gte('created_at', start)
-        .lte('created_at', end),
-      supabase
-        .from('till_sessions')
-        .select('user_id')
-        .eq('company_id', req.companyId)
-        .gte('opened_at', start)
-        .lte('opened_at', end)
-    ]);
-
-    if (salesResult.error) return res.status(500).json({ error: salesResult.error.message });
+    let salesData, auditData, sessionsData;
+    try {
+      [salesData, auditData, sessionsData] = await Promise.all([
+        fetchAllRows(() => supabase
+          .from('sales')
+          .select('user_id, total_amount, status, users:user_id(username, full_name)')
+          .eq('company_id', req.companyId)
+          .gte('created_at', start)
+          .lte('created_at', end)),
+        fetchAllRows(() => supabase
+          .from('pos_audit_events')
+          .select('user_id, action_type')
+          .eq('company_id', req.companyId)
+          .in('action_type', [
+            'SALE_RETURNED', 'NEGATIVE_STOCK_SALE_ALLOWED',
+            'MANAGER_OVERRIDE', 'SUPERVISOR_OVERRIDE_GRANTED', 'RECOVERY_RETRY_TRIGGERED'
+          ])
+          .gte('created_at', start)
+          .lte('created_at', end)),
+        fetchAllRows(() => supabase
+          .from('till_sessions')
+          .select('user_id')
+          .eq('company_id', req.companyId)
+          .gte('opened_at', start)
+          .lte('opened_at', end)),
+      ]);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
 
     const cashierMap = {};
-    (salesResult.data || []).forEach(sale => {
+    (salesData || []).forEach(sale => {
       const key = sale.user_id;
       if (!cashierMap[key]) {
         cashierMap[key] = {
@@ -206,7 +241,7 @@ router.get('/cashier-performance', reportsViewGate, async (req, res) => {
       }
     });
 
-    (auditResult.data || []).forEach(ev => {
+    (auditData || []).forEach(ev => {
       const c = cashierMap[ev.user_id];
       if (!c) return;
       if (ev.action_type === 'SALE_RETURNED') c.refunds_processed++;
@@ -215,7 +250,7 @@ router.get('/cashier-performance', reportsViewGate, async (req, res) => {
       else if (ev.action_type === 'RECOVERY_RETRY_TRIGGERED') c.recovery_events++;
     });
 
-    (sessionsResult.data || []).forEach(sess => {
+    (sessionsData || []).forEach(sess => {
       if (cashierMap[sess.user_id]) cashierMap[sess.user_id].sessions_worked++;
     });
 
@@ -730,37 +765,33 @@ router.get('/audit-activity', reportsViewGate, async (req, res) => {
 // cost prices (see note above). Reused by gross-profit, gross-profit-by-*,
 // and daily-summary so the same profit calculation isn't duplicated 4 times.
 async function fetchSalesWithProfit(companyId, start, end) {
-  const { data: sales, error: salesErr } = await supabase
+  const sales = await fetchAllRows(() => supabase
     .from('sales')
     .select('id, sale_number, receipt_number, user_id, subtotal, vat_amount, total_amount, discount_amount, status, created_at, users:user_id(username, full_name)')
     .eq('company_id', companyId)
     .eq('status', 'completed')
     .gte('created_at', start)
     .lte('created_at', end)
-    .order('created_at', { ascending: false });
-  if (salesErr) throw new Error(salesErr.message);
+    .order('created_at', { ascending: false }));
 
   const saleIds = (sales || []).map(s => s.id);
   let items = [];
   if (saleIds.length > 0) {
-    const { data: itemsData, error: itemsErr } = await supabase
+    items = await fetchAllRows(() => supabase
       .from('sale_items')
       .select('sale_id, product_id, product_name, quantity, unit_price, vat_rate, line_total')
-      .in('sale_id', saleIds);
-    if (itemsErr) throw new Error(itemsErr.message);
-    items = itemsData || [];
+      .in('sale_id', saleIds));
   }
 
   const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))];
   let costById = {};
   let productMeta = {};
   if (productIds.length > 0) {
-    const { data: products, error: prodErr } = await supabase
+    const products = await fetchAllRows(() => supabase
       .from('products')
       .select('id, product_code, product_name, category, cost_price')
       .eq('company_id', companyId)
-      .in('id', productIds);
-    if (prodErr) throw new Error(prodErr.message);
+      .in('id', productIds));
     (products || []).forEach(p => {
       costById[p.id] = parseFloat(p.cost_price || 0);
       productMeta[p.id] = p;
@@ -1005,21 +1036,21 @@ router.get('/audit-trail', reportsViewGate, async (req, res) => {
     const { start, end } = dateRangeFromQuery(req.query);
     const { sales } = await fetchSalesWithProfit(req.companyId, start, end);
 
-    const { data: sData } = await supabase
+    const sData = await fetchAllRows(() => supabase
       .from('sales')
       .select('id, sale_number, receipt_number')
       .eq('company_id', req.companyId)
       .eq('status', 'completed')
       .gte('created_at', start)
-      .lte('created_at', end);
+      .lte('created_at', end));
     const saleIds = (sData || []).map(s => s.id);
 
     let paymentsBySale = {};
     if (saleIds.length > 0) {
-      const { data: payments } = await supabase
+      const payments = await fetchAllRows(() => supabase
         .from('sale_payments')
         .select('sale_id, payment_method')
-        .in('sale_id', saleIds);
+        .in('sale_id', saleIds));
       (payments || []).forEach(p => {
         if (!paymentsBySale[p.sale_id]) paymentsBySale[p.sale_id] = [];
         paymentsBySale[p.sale_id].push(p.payment_method);
@@ -1071,14 +1102,18 @@ router.get('/audit-trail', reportsViewGate, async (req, res) => {
 router.get('/vat-detail', reportsViewGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
-    const { data: sales, error } = await supabase
-      .from('sales')
-      .select('id, sale_number, receipt_number, created_at, users:user_id(username, full_name), sale_items(product_id, product_name, quantity, unit_price, vat_rate, line_total)')
-      .eq('company_id', req.companyId)
-      .eq('status', 'completed')
-      .gte('created_at', start)
-      .lte('created_at', end);
-    if (error) return res.status(500).json({ error: error.message });
+    let sales;
+    try {
+      sales = await fetchAllRows(() => supabase
+        .from('sales')
+        .select('id, sale_number, receipt_number, created_at, users:user_id(username, full_name), sale_items(product_id, product_name, quantity, unit_price, vat_rate, line_total)')
+        .eq('company_id', req.companyId)
+        .eq('status', 'completed')
+        .gte('created_at', start)
+        .lte('created_at', end));
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
 
     const items = [];
     let vatableItems = 0, exemptItems = 0;
@@ -1124,14 +1159,18 @@ router.get('/vat-detail', reportsViewGate, async (req, res) => {
 router.get('/vat-summary', reportsViewGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
-    const { data: sales, error } = await supabase
-      .from('sales')
-      .select('id, created_at, sale_items(vat_rate, line_total)')
-      .eq('company_id', req.companyId)
-      .eq('status', 'completed')
-      .gte('created_at', start)
-      .lte('created_at', end);
-    if (error) return res.status(500).json({ error: error.message });
+    let sales;
+    try {
+      sales = await fetchAllRows(() => supabase
+        .from('sales')
+        .select('id, created_at, sale_items(vat_rate, line_total)')
+        .eq('company_id', req.companyId)
+        .eq('status', 'completed')
+        .gte('created_at', start)
+        .lte('created_at', end));
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
 
     const byDay = {};
     (sales || []).forEach(sale => {
@@ -1191,24 +1230,25 @@ router.get('/vat-summary', reportsViewGate, async (req, res) => {
 router.get('/payment-methods', reportsViewGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
-    const { data: sales, error: salesErr } = await supabase
-      .from('sales')
-      .select('id')
-      .eq('company_id', req.companyId)
-      .eq('status', 'completed')
-      .gte('created_at', start)
-      .lte('created_at', end);
-    if (salesErr) return res.status(500).json({ error: salesErr.message });
+    let sales, payments = [];
+    try {
+      sales = await fetchAllRows(() => supabase
+        .from('sales')
+        .select('id')
+        .eq('company_id', req.companyId)
+        .eq('status', 'completed')
+        .gte('created_at', start)
+        .lte('created_at', end));
 
-    const saleIds = (sales || []).map(s => s.id);
-    let payments = [];
-    if (saleIds.length > 0) {
-      const { data, error } = await supabase
-        .from('sale_payments')
-        .select('payment_method, amount')
-        .in('sale_id', saleIds);
-      if (error) return res.status(500).json({ error: error.message });
-      payments = data || [];
+      const saleIds = (sales || []).map(s => s.id);
+      if (saleIds.length > 0) {
+        payments = await fetchAllRows(() => supabase
+          .from('sale_payments')
+          .select('payment_method, amount')
+          .in('sale_id', saleIds));
+      }
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
     }
 
     const byMethod = {};
@@ -1374,10 +1414,10 @@ const ACCOUNT_PAYMENT_METHOD = 'account';
 
 async function fetchSalePaymentsForSales(saleIds) {
   if (saleIds.length === 0) return {};
-  const { data } = await supabase
+  const data = await fetchAllRows(() => supabase
     .from('sale_payments')
     .select('sale_id, payment_method, amount, reference, processed_at')
-    .in('sale_id', saleIds);
+    .in('sale_id', saleIds));
   const bySale = {};
   (data || []).forEach(p => {
     if (!bySale[p.sale_id]) bySale[p.sale_id] = [];
@@ -1388,10 +1428,10 @@ async function fetchSalePaymentsForSales(saleIds) {
 
 async function fetchReturnsForSales(saleIds) {
   if (saleIds.length === 0) return {};
-  const { data } = await supabase
+  const data = await fetchAllRows(() => supabase
     .from('pos_returns')
     .select('id, original_sale_id, refund_amount, refund_method, reason, status, created_at')
-    .in('original_sale_id', saleIds);
+    .in('original_sale_id', saleIds));
   const bySale = {};
   (data || []).forEach(r => {
     if (r.status === 'cancelled') return; // a cancelled return never happened
@@ -1414,31 +1454,40 @@ router.get('/sales-by-customer', reportsViewGate, async (req, res) => {
     const { start, end } = dateRangeFromQuery(req.query);
     const { customer_id, cashier_id, till_id, payment_method, account_only, include_voids, search } = req.query;
 
-    let query = supabase
-      .from('sales')
-      .select('id, sale_number, receipt_number, customer_id, user_id, till_session_id, subtotal, vat_amount, total_amount, payment_method, status, created_at, users:user_id(username, full_name)')
-      .eq('company_id', req.companyId)
-      .gte('created_at', start)
-      .lte('created_at', end);
-
-    if (include_voids !== 'true') query = query.eq('status', 'completed');
-    if (cashier_id) query = query.eq('user_id', parseInt(cashier_id));
-    if (payment_method) query = query.eq('payment_method', payment_method);
-    if (account_only === 'true') query = query.eq('payment_method', ACCOUNT_PAYMENT_METHOD);
-
-    if (customer_id) {
-      if (customer_id === 'walkin') query = query.is('customer_id', null);
-      else query = query.eq('customer_id', parseInt(customer_id));
-    }
-
+    // Resolved once, up front — buildQuery below runs once per page and must
+    // stay a plain synchronous filter chain.
+    let tillSessionIds = null;
     if (till_id) {
       const { data: sessions } = await supabase.from('till_sessions').select('id').eq('company_id', req.companyId).eq('till_id', parseInt(till_id));
-      const sessionIds = (sessions || []).map(s => s.id);
-      query = query.in('till_session_id', sessionIds.length > 0 ? sessionIds : [-1]);
+      tillSessionIds = (sessions || []).map(s => s.id);
+      if (tillSessionIds.length === 0) tillSessionIds = [-1];
     }
 
-    const { data: sales, error } = await query.order('created_at', { ascending: false });
-    if (error) return res.status(500).json({ error: error.message });
+    let sales;
+    try {
+      sales = await fetchAllRows(() => {
+        let query = supabase
+          .from('sales')
+          .select('id, sale_number, receipt_number, customer_id, user_id, till_session_id, subtotal, vat_amount, total_amount, payment_method, status, created_at, users:user_id(username, full_name)')
+          .eq('company_id', req.companyId)
+          .gte('created_at', start)
+          .lte('created_at', end);
+
+        if (include_voids !== 'true') query = query.eq('status', 'completed');
+        if (cashier_id) query = query.eq('user_id', parseInt(cashier_id));
+        if (payment_method) query = query.eq('payment_method', payment_method);
+        if (account_only === 'true') query = query.eq('payment_method', ACCOUNT_PAYMENT_METHOD);
+        if (customer_id) {
+          if (customer_id === 'walkin') query = query.is('customer_id', null);
+          else query = query.eq('customer_id', parseInt(customer_id));
+        }
+        if (tillSessionIds) query = query.in('till_session_id', tillSessionIds);
+
+        return query.order('created_at', { ascending: false });
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
 
     const saleIds = (sales || []).map(s => s.id);
     const [paymentsBySale, returnsBySale] = await Promise.all([

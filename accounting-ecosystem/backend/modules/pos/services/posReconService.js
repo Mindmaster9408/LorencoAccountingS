@@ -361,11 +361,18 @@ async function createReconSnapshot(
 
     const session = recon.session;
 
-    // Cash variance: total_counted vs forensically correct cash expectation
+    // Cash variance: counted CASH vs forensically correct cash expectation.
+    // Deliberately counted_cash, not total_counted — total_counted folds in
+    // counted_card/counted_other, which would compare an all-methods figure
+    // against a cash-only expectation (the same mismatch this whole service
+    // exists to correct). Falls back to a caller-supplied variance (e.g. the
+    // manual re-snapshot trigger in reconciliation.js, which only has the
+    // session's already-computed variance, not a fresh counted_cash) so a
+    // re-snapshot never fabricates a number that was never actually counted.
     const totalCounted  = n(cashupData.total_counted);
-    const cashVariance  = cashupData.total_counted != null
-      ? round2(totalCounted - recon.expectedCashInDrawer)
-      : null;
+    const cashVariance  = cashupData.counted_cash != null
+      ? round2(n(cashupData.counted_cash) - recon.expectedCashInDrawer)
+      : (cashupData.variance != null ? round2(cashupData.variance) : null);
 
     const { data, error } = await supabase
       .from('pos_recon_snapshots')

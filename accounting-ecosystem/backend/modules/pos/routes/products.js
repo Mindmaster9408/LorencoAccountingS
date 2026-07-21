@@ -69,6 +69,40 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
       from += PAGE_SIZE;
     }
 
+    // Attach today's active daily discount (if any) to each matching product.
+    // This is the ONLY thing that makes a discount created via POST
+    // /api/pos/discounts actually affect what the till charges — until this,
+    // discounts.js could save a discount row but nothing ever read it back
+    // into a price a cashier would see or charge. Same is_active/valid_from/
+    // valid_until predicate as discounts.js's default GET (must stay in sync
+    // with that route — there is no shared date-window helper for this single
+    // three-condition predicate, but if either changes, check the other).
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const { data: activeDiscounts } = await supabase
+      .from('pos_daily_discounts')
+      .select('product_id, discount_type, discount_value, valid_until, reason')
+      .eq('company_id', req.companyId)
+      .eq('is_active', true)
+      .or(`valid_from.is.null,valid_from.lte.${today}`)
+      .or(`valid_until.is.null,valid_until.gte.${today}`);
+
+    if (activeDiscounts && activeDiscounts.length > 0) {
+      const discountByProduct = new Map(activeDiscounts.map(d => [d.product_id, d]));
+      data = data.map(p => {
+        const d = discountByProduct.get(p.id);
+        if (!d) return p;
+        const original = parseFloat(p.unit_price) || 0;
+        const discounted = d.discount_type === 'percent'
+          ? original * (1 - parseFloat(d.discount_value) / 100)
+          : original - parseFloat(d.discount_value);
+        return {
+          ...p,
+          discount_price: Math.max(0, Math.round(discounted * 100) / 100),
+          active_discount: { type: d.discount_type, value: parseFloat(d.discount_value), valid_until: d.valid_until, reason: d.reason },
+        };
+      });
+    }
+
     // Private cache: browser may serve the product list for up to 60 s without
     // re-fetching, then revalidate in the background for 30 s more.
     // Applies to GET only — POST/PUT/DELETE are not cached.

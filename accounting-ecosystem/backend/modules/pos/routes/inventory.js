@@ -18,6 +18,7 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getStockPolicy } = require('../services/stockPolicyCache');
+const { adjustStockCAS } = require('../services/stockCAS');
 
 const RETURN_REASONS = new Set(['damaged', 'expired', 'wrong_item', 'over_supplied', 'credit_requested', 'supplier_collection', 'other']);
 
@@ -69,7 +70,13 @@ router.post('/adjust', requirePermission('INVENTORY.ADJUST'), async (req, res) =
       return res.status(400).json({ error: 'reason is required for stock adjustments' });
     }
 
-    // Get current stock — must belong to this company
+    // Get current stock — must belong to this company. Only used to compute
+    // the clamped delta below; the actual write is guarded by adjustStockCAS
+    // so a concurrent change between this read and that write (e.g. this
+    // adjustment racing a sale, or another manual adjustment on the same
+    // product) fails the write cleanly instead of silently dropping one of
+    // the two changes — the same primitive already used by
+    // company-transfers.js/purchase-orders.js for this exact reason.
     const { data: product } = await supabase
       .from('products')
       .select('stock_quantity, product_name')
@@ -79,17 +86,19 @@ router.post('/adjust', requirePermission('INVENTORY.ADJUST'), async (req, res) =
 
     if (!product) return res.status(404).json({ error: 'Product not found' });
 
-    const oldQty = product.stock_quantity;
-    const newQty = Math.max(0, oldQty + quantity_change);
+    // This route's contract is "clamp to zero, never reject" — compute the
+    // clamped delta up front so adjustStockCAS is asked to make exactly the
+    // change this route has always promised, not a raw negative overshoot.
+    const currentQty = parseFloat(product.stock_quantity || 0);
+    const clampedChange = Math.max(-currentQty, quantity_change);
 
-    // Update stock
-    const { error: updateErr } = await supabase
-      .from('products')
-      .update({ stock_quantity: newQty, updated_at: new Date().toISOString() })
-      .eq('id', product_id)
-      .eq('company_id', req.companyId);
+    const result = await adjustStockCAS(req.companyId, product_id, clampedChange, { allowNegative: true });
+    if (!result.ok) {
+      return res.status(409).json({ error: 'Stock changed concurrently — please retry', detail: result.error });
+    }
 
-    if (updateErr) return res.status(500).json({ error: updateErr.message });
+    const oldQty = result.oldQty;
+    const newQty = result.newQty;
 
     // Record adjustment in inventory_adjustments
     // (table created by pos-schema.js migration)
@@ -240,12 +249,25 @@ router.post('/return', requirePermission('INVENTORY.ADJUST'), async (req, res) =
 
     for (const line of lines) {
       const product = byId.get(line.product_id);
-      const oldQty  = parseFloat(product.stock_quantity || 0);
-      const newQty  = bypassGuard ? (oldQty - line.quantity) : Math.max(0, oldQty - line.quantity);
+      // Clamp computed from the pre-loop snapshot (line 192) — same
+      // upfront-validation UX as before. The actual write below is guarded by
+      // adjustStockCAS so a concurrent change (a sale, another adjustment)
+      // between that snapshot and this write fails cleanly instead of
+      // silently dropping one of the two changes.
+      const snapshotQty   = parseFloat(product.stock_quantity || 0);
+      const clampedChange = bypassGuard ? -line.quantity : -Math.min(line.quantity, snapshotQty);
 
-      await supabase.from('products')
-        .update({ stock_quantity: newQty, updated_at: new Date().toISOString() })
-        .eq('id', line.product_id).eq('company_id', req.companyId);
+      const result = await adjustStockCAS(req.companyId, line.product_id, clampedChange, { allowNegative: true });
+      if (!result.ok) {
+        // Rare mid-request race on one line — log and fall back to the
+        // pre-loop snapshot so the rest of this return can still be recorded
+        // truthfully rather than aborting a return that's already partially
+        // applied (matches the "best effort" pattern used for multi-line
+        // stock moves in company-transfers.js/purchase-orders.js).
+        console.error('[inventory] return: stock decrement failed for product', line.product_id, result.error);
+      }
+      const oldQty = result.ok ? result.oldQty : snapshotQty;
+      const newQty = result.ok ? result.newQty : snapshotQty + clampedChange;
 
       await supabase.from('pos_supplier_return_items').insert({
         return_id: ret.id, company_id: req.companyId, product_id: line.product_id,
@@ -340,9 +362,19 @@ router.post('/stock-take', requirePermission('INVENTORY.ADJUST'), async (req, re
 
       if (variance !== 0) {
         varianceCount++;
-        await supabase.from('products')
+        // A stock-take sets an ABSOLUTE counted value, not a relative delta,
+        // so adjustStockCAS's delta-based guard doesn't fit here — same
+        // compare-and-swap idea applied directly: only write if stock_quantity
+        // still matches the value just read above, so a concurrent sale or
+        // adjustment landing mid-request fails this write cleanly instead of
+        // silently overwriting it with a stale count.
+        const { data: casUpdated } = await supabase.from('products')
           .update({ stock_quantity: countedQty, updated_at: new Date().toISOString() })
-          .eq('id', pid).eq('company_id', req.companyId);
+          .eq('id', pid).eq('company_id', req.companyId).eq('stock_quantity', systemQty)
+          .select().maybeSingle();
+        if (!casUpdated) {
+          console.error('[inventory] stock-take: concurrent stock change for product', pid, '— variance recorded against a stale system_qty');
+        }
 
         await supabase.from('inventory_adjustments').insert({
           company_id: req.companyId, product_id: pid, adjusted_by: req.user.userId,
@@ -427,18 +459,24 @@ router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) 
       const qty = parseInt(item.quantity);
       if (!pid || !qty || qty <= 0) continue;
 
-      const { data: product } = await supabase
-        .from('products').select('stock_quantity, product_name')
-        .eq('id', pid).eq('company_id', req.companyId).single();
-      if (!product) continue;
-
-      const oldQty   = parseFloat(product.stock_quantity || 0);
-      const newQty   = oldQty + qty;
       const costPrice = item.cost_price ? parseFloat(item.cost_price) : null;
 
-      await supabase.from('products')
-        .update({ stock_quantity: newQty, ...(costPrice !== null && { cost_price: costPrice }), updated_at: new Date().toISOString() })
-        .eq('id', pid).eq('company_id', req.companyId);
+      // Compare-and-swap stock increment — a receive can legitimately land at
+      // the same time as a sale decrementing the same product, and a naive
+      // read-then-write here would silently drop whichever write lands
+      // second. Same primitive as company-transfers.js/purchase-orders.js.
+      const result = await adjustStockCAS(req.companyId, pid, qty, {});
+      if (!result.ok) {
+        console.error('[inventory] receive: stock increment failed for product', pid, result.error);
+        continue;
+      }
+      const { product, oldQty, newQty } = result;
+
+      if (costPrice !== null) {
+        await supabase.from('products')
+          .update({ cost_price: costPrice, updated_at: new Date().toISOString() })
+          .eq('id', pid).eq('company_id', req.companyId);
+      }
 
       await supabase.from('pos_supplier_receive_items').insert({
         receive_id: receive.id, company_id: req.companyId, product_id: pid,
@@ -550,19 +588,24 @@ router.post('/transfer', requirePermission('INVENTORY.TRANSFER'), async (req, re
       const qty = parseInt(item.quantity);
       if (!pid || !qty || qty <= 0) continue;
 
-      const { data: product } = await supabase
-        .from('products').select('stock_quantity, product_name')
-        .eq('id', pid).eq('company_id', req.companyId).single();
-      if (!product) continue;
-
-      const oldQty = parseFloat(product.stock_quantity || 0);
-      let newQty = oldQty;
+      let product, oldQty, newQty;
 
       if (affectsStock) {
-        newQty = Math.max(0, oldQty - qty);
-        await supabase.from('products')
-          .update({ stock_quantity: newQty, updated_at: new Date().toISOString() })
-          .eq('id', pid).eq('company_id', req.companyId);
+        // Compare-and-swap — a floor/backroom-to-wastage/spoilage transfer can
+        // land at the same time as a sale on the same product; a naive
+        // read-then-write here would silently drop whichever write lands
+        // second. Same primitive as company-transfers.js/purchase-orders.js.
+        const { data: dbProduct } = await supabase
+          .from('products').select('stock_quantity').eq('id', pid).eq('company_id', req.companyId).single();
+        if (!dbProduct) continue;
+        const clampedChange = -Math.min(qty, parseFloat(dbProduct.stock_quantity || 0));
+
+        const result = await adjustStockCAS(req.companyId, pid, clampedChange, { allowNegative: true });
+        if (!result.ok) {
+          console.error('[inventory] transfer: stock decrement failed for product', pid, result.error);
+          continue;
+        }
+        ({ product, oldQty, newQty } = result);
 
         await supabase.from('inventory_adjustments').insert({
           company_id: req.companyId, product_id: pid, adjusted_by: req.user.userId,
@@ -576,6 +619,12 @@ router.post('/transfer', requirePermission('INVENTORY.TRANSFER'), async (req, re
           afterSnapshot:  { stock_quantity: newQty },
           metadata: { product_name: product.product_name, quantity_change: -qty, reason: to_location, transfer_id: transfer.id },
         });
+      } else {
+        const { data: dbProduct } = await supabase
+          .from('products').select('stock_quantity, product_name').eq('id', pid).eq('company_id', req.companyId).single();
+        if (!dbProduct) continue;
+        product = dbProduct;
+        oldQty = newQty = parseFloat(dbProduct.stock_quantity || 0);
       }
 
       await supabase.from('pos_stock_transfer_items').insert({

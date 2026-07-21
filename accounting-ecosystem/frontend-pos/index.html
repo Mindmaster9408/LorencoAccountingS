@@ -4830,6 +4830,22 @@
 
         // Initialize IndexedDB
         async function initIndexedDB() {
+            // Best-effort request that the browser treat this origin's storage as
+            // "persistent" — without this, offlineSales (till-terminal cash
+            // register receipts sitting only in the browser until they sync) can
+            // be silently evicted by the browser under disk-space pressure like
+            // any other evictable site data, with no warning to the cashier and
+            // no way for this app to know it happened. Requesting persistence
+            // does not guarantee the browser grants it (and does nothing at all
+            // against a wiped/reimaged device), but it removes the single most
+            // common silent-loss path at effectively no cost — safe to call even
+            // where the API doesn't exist or the browser declines.
+            if (navigator.storage && navigator.storage.persist) {
+                navigator.storage.persist().then(granted => {
+                    console.log('[IndexedDB] Persistent storage', granted ? 'granted' : 'not granted (best-effort only)');
+                }).catch(() => {});
+            }
+
             return new Promise((resolve, reject) => {
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -5894,8 +5910,24 @@
             const recoveryTab  = document.querySelector('.nav-tab[onclick*="recovery"]');
             const dashboardTab = document.querySelector('.nav-tab[onclick*="dashboard"]');
 
-            // Hide reports for admin and cashier (they can't see profit/sales/VAT reports)
-            if (userRole === 'admin' || userRole === 'cashier') {
+            // Roles with backend REPORTS.VIEW / INVENTORY.VIEW / TRANSFERS.VIEW_REPORTS /
+            // PURCHASE_ORDERS.VIEW access — all four permission categories resolve to the
+            // exact same SUPERVISOR_ROLES array in backend/config/permissions.js. Reports
+            // AND Dashboard both depend on this same set of endpoints, so they share one
+            // allow-list here rather than each hand-listing roles and risking the two
+            // silently drifting apart again (that drift is exactly how Reports still had
+            // the gap below until this fix, even after Dashboard was corrected).
+            const SUPERVISOR_TIER_ROLES = [
+                'super_admin', 'business_owner', 'practice_manager', 'administrator',
+                'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
+                'leave_admin', 'assistant_manager', 'shift_supervisor',
+            ];
+
+            // Hide Reports for anyone outside that list — was previously only hidden for
+            // 'admin'/'cashier', leaving senior_cashier and trainee able to open a tab whose
+            // every endpoint 403s for them, rendering blank with no visible reason (the
+            // same failure mode the Dashboard tab had).
+            if (!SUPERVISOR_TIER_ROLES.includes(userRole)) {
                 if (reportsTab) reportsTab.classList.add('role-hidden');
             }
 
@@ -5917,22 +5949,8 @@
                 if (recoveryTab) recoveryTab.classList.add('role-hidden');
             }
 
-            // Hide dashboard for roles without backend REPORTS.VIEW / INVENTORY.VIEW access.
-            // Must match SUPERVISOR_ROLES in backend/config/permissions.js exactly — every
-            // loadDashboard() widget (gross-profit, till-summary, negative-stock, cashier
-            // performance, tills, receives, company-links/transfers, PO register, etc.) is
-            // gated behind one of REPORTS.VIEW/INVENTORY.VIEW/TRANSFERS.VIEW_REPORTS/
-            // PURCHASE_ORDERS.VIEW, which are all === SUPERVISOR_ROLES. senior_cashier,
-            // cashier and trainee are NOT in that list, so without this they saw the tab,
-            // opened it, got a 403 from nearly every widget (silently swallowed to null by
-            // safeFetchJson), and the dashboard rendered as almost entirely blank/zeroed
-            // with no indication why.
-            const DASHBOARD_ALLOWED_ROLES = [
-                'super_admin', 'business_owner', 'practice_manager', 'administrator',
-                'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
-                'leave_admin', 'assistant_manager', 'shift_supervisor',
-            ];
-            if (!DASHBOARD_ALLOWED_ROLES.includes(userRole)) {
+            // Hide dashboard for the same reason and the same role list as Reports above.
+            if (!SUPERVISOR_TIER_ROLES.includes(userRole)) {
                 if (dashboardTab) dashboardTab.classList.add('role-hidden');
             }
         }
@@ -6858,12 +6876,22 @@
                     }
                 }
                 const isStarred = shortcutIds.has(product.id);
+                // discount_price is attached server-side (GET /api/pos/products) only
+                // while a Daily Discount is active for today — show both prices so the
+                // cashier sees the same discounted amount addToCart() is about to charge,
+                // rather than a price that silently changes between the tile and the cart.
+                const priceHtml = product.discount_price != null
+                    ? `<div class="product-price">
+                           <span style="text-decoration:line-through;opacity:0.6;font-size:0.85em;">R ${parseFloat(product.unit_price).toFixed(2)}</span>
+                           <span style="color:#e65100;font-weight:700;">R ${parseFloat(product.discount_price).toFixed(2)}</span>
+                       </div>`
+                    : `<div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>`;
                 return `<div class="product-tile" data-product-id="${product.id}">
                     <button class="shortcut-star${isStarred ? ' starred' : ''}"
                             data-shortcut-btn="${product.id}"
                             onclick="event.stopPropagation(); toggleShortcut(${product.id}, this)">★</button>
                     <div class="product-name">${product.product_name}</div>
-                    <div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>
+                    ${priceHtml}
                     ${stockHtml}
                 </div>`;
             }).join('');
@@ -7288,7 +7316,12 @@
                 cart.push({
                     productId: product.id,
                     name: product.product_name,
-                    price: product.unit_price,
+                    // discount_price (attached by GET /api/pos/products when an active
+                    // pos_daily_discounts row exists for today) takes priority over the
+                    // normal price — this is the ONLY place that actually charges a
+                    // daily discount; setting one up in the Daily Discounts modal used
+                    // to save a database row that nothing ever read back into a price.
+                    price: product.discount_price ?? product.unit_price,
                     // vatRate/requiresVat: needed so cart totals can extract VAT correctly.
                     // product.unit_price is VAT-INCLUSIVE (see "Inclusive Price" label on
                     // the Add/Edit Product form) — VAT must be EXTRACTED from it, never
@@ -7660,6 +7693,15 @@
                     cart = [];
                     updateCart();
                     showNotification('Sale saved offline - will sync when online', 'info');
+                    // A paper receipt is the one backup for this sale that survives
+                    // even if the device's IndexedDB is later wiped before it syncs —
+                    // the "already offline" checkout path above already does this;
+                    // this network-error fallback (started as an ONLINE attempt) had
+                    // silently skipped it, leaving no physical record for this route
+                    // into the same queue.
+                    if (autoPrintEnabled) {
+                        printOfflineReceipt(offlineSale);
+                    }
                 } catch (offlineError) {
                     showNotification('Checkout failed: ' + error.message, 'error');
                 }
@@ -10585,8 +10627,25 @@
                 return;
             }
 
+            // This feature was completely broken end-to-end: it posted to a
+            // non-existent path (/pos/daily-discounts — the real route is
+            // /pos/discounts) with a payload shape (discount_price/end_date)
+            // the backend has never accepted. The real endpoint models a
+            // discount as discount_type ('fixed'|'percent') + discount_value,
+            // not a flat new price, so the entered "discounted price" is
+            // converted to a fixed-amount-off value here using the same
+            // product.unit_price already shown as "Original Price" above.
+            const product = products.find(p => p.id == productId);
+            const originalPrice = product ? parseFloat(product.unit_price) : 0;
+            const newPrice = parseFloat(discountPrice);
+            if (newPrice >= originalPrice) {
+                showNotification('Discount price must be lower than the original price', 'error');
+                return;
+            }
+            const discountValue = Math.round((originalPrice - newPrice) * 100) / 100;
+
             try {
-                const response = await fetch(`${API_URL}/pos/daily-discounts`, {
+                const response = await fetch(`${API_URL}/pos/discounts`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -10594,16 +10653,17 @@
                     },
                     body: JSON.stringify({
                         product_id: parseInt(productId),
-                        discount_price: parseFloat(discountPrice),
-                        reason: reason,
-                        end_date: endDate || null
+                        discount_type: 'fixed',
+                        discount_value: discountValue,
+                        valid_until: endDate || null,
+                        reason: reason
                     })
                 });
 
                 const result = await response.json();
 
-                if (result.success) {
-                    showNotification(`Daily discount applied: ${result.product_name} now R ${result.discount_price}`, 'success');
+                if (response.ok && result.discount) {
+                    showNotification(`Daily discount applied: ${product ? product.product_name : 'Product'} now R ${newPrice.toFixed(2)}`, 'success');
                     closeDailyDiscount();
                     loadProducts();
                 } else {
