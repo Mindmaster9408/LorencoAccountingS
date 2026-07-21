@@ -1913,6 +1913,7 @@
                                 placeholder="Scan barcode or search product..."
                                 autofocus
                                 autocomplete="off"
+                                inputmode="none"
                             >
                             <span class="scan-icon">📷</span>
                         </div>
@@ -6998,6 +6999,24 @@
                             searchByBarcode(raw);
                         }
                     }
+                });
+
+                // Touch-screen keyboard suppression — #barcodeInput stays focused
+                // essentially all the time (initScannerAutoRefocus() below), which on
+                // touch-screen till PCs makes the OS on-screen keyboard pop up on every
+                // refocus, not just when the cashier actually wants to type. A physical
+                // (HID) barcode scanner sends real keydown events regardless of
+                // inputmode, so it keeps working either way — only the software
+                // keyboard is affected. Default inputmode="none" (set on the element
+                // above) suppresses it; switch to "text" only on a genuine pointerdown
+                // (a real tap/click, never a script-driven .focus()) so manual search
+                // still brings up the keyboard, then revert to "none" on blur so the
+                // next scanner-driven refocus stays keyboard-free.
+                barcodeInput.addEventListener('pointerdown', function() {
+                    barcodeInput.setAttribute('inputmode', 'text');
+                });
+                barcodeInput.addEventListener('blur', function() {
+                    barcodeInput.setAttribute('inputmode', 'none');
                 });
             }
 
