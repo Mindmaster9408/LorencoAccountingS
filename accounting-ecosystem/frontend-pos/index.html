@@ -3911,6 +3911,58 @@
                 </p>
             </div>
         </div>
+
+        <!-- Daily Discounts — the only place a discount created via
+             Till → Daily Discounts can actually be reviewed after the fact.
+             Every figure comes from GET /api/pos/discounts/performance,
+             which replays real sale_items against each discount's own
+             active window — never fabricated. -->
+        <div class="enterprise-section" id="dashboardDiscountSection">
+            <h3>🏷️ Daily Discounts</h3>
+            <div id="dashboardDiscountKPIs" class="dashboard-grid" style="display:none;margin-bottom:14px;">
+                <div class="kpi-card">
+                    <div class="kpi-label">Active Discounts</div>
+                    <div class="kpi-value" id="kpiDiscountActive">0</div>
+                    <div class="kpi-sub" id="kpiDiscountTotalSub">of 0 on record</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Units Sold at Discount</div>
+                    <div class="kpi-value" id="kpiDiscountUnitsSold">0</div>
+                    <div class="kpi-sub">while each discount was active</div>
+                </div>
+                <div class="kpi-card" id="kpiDiscountProfitCard">
+                    <div class="kpi-label">Profit Made</div>
+                    <div class="kpi-value" id="kpiDiscountProfit">R 0.00</div>
+                    <div class="kpi-sub" id="kpiDiscountProfitSub">—</div>
+                </div>
+            </div>
+            <div id="dashboardDiscountTableWrap" style="display:none;overflow-x:auto;">
+                <table class="enterprise-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Discount</th>
+                            <th>Price</th>
+                            <th>Valid Until</th>
+                            <th>Status</th>
+                            <th style="text-align:right;">Units Sold</th>
+                            <th style="text-align:right;">Revenue</th>
+                            <th style="text-align:right;">Cost</th>
+                            <th style="text-align:right;">Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboardDiscountBody"></tbody>
+                </table>
+            </div>
+            <div id="dashboardDiscountEmptyState" class="empty-state">
+                <div class="icon">🏷️</div>
+                <p>No daily discounts on record yet for this company.</p>
+                <p style="font-size:12px;color:#999;max-width:480px;margin:6px auto 0;">
+                    Use Till → Daily Discounts to put a product on a temporary discounted price.
+                    Its sales performance will appear here once it's had at least one sale.
+                </p>
+            </div>
+        </div>
     </div>
 
     <!-- Loyalty Layout -->
@@ -11318,7 +11370,7 @@
                 }
             }
 
-            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData, companyLinksData, transfersIncoming, transfersOutgoing, storeTransferReport, poRegisterReport, poSupplierPerf, poDeliveryReport] = await Promise.all([
+            const [grossProfit, tillSummary, negativeStock, recoverySync, cashierPerf, auditActivity, receivesData, tillsData, companyLinksData, transfersIncoming, transfersOutgoing, storeTransferReport, poRegisterReport, poSupplierPerf, poDeliveryReport, discountPerf] = await Promise.all([
                 safeFetchJson(`${API_URL}/reports/gross-profit?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/till-summary?${dateParams}`),
                 safeFetchJson(`${API_URL}/reports/negative-stock?${dateParams}`),
@@ -11334,6 +11386,7 @@
                 safeFetchJson(`${API_URL}/pos/reports/purchase-order-register`),
                 safeFetchJson(`${API_URL}/pos/reports/supplier-performance`),
                 safeFetchJson(`${API_URL}/pos/reports/delivery-register`),
+                safeFetchJson(`${API_URL}/pos/discounts/performance`),
             ]);
 
             // ── Sales / profit KPIs (real gross profit — the old hardcoded
@@ -11473,6 +11526,51 @@
                 document.getElementById('dashboardPoKPIs').style.display = 'none';
                 document.getElementById('dashboardPoSupplierPerf').style.display = 'none';
                 document.getElementById('dashboardPoEmptyState').style.display = 'block';
+            }
+
+            // ── Daily Discounts — real performance from
+            // /api/pos/discounts/performance: units actually sold, revenue,
+            // cost, and profit while each discount was in effect. Answers
+            // "did this discount actually make money" rather than just
+            // confirming the discount exists. ──────────────────────────────
+            const discRows    = discountPerf?.discounts || [];
+            const discSummary = discountPerf?.summary;
+            if (discSummary && discSummary.totalDiscounts > 0) {
+                document.getElementById('kpiDiscountActive').textContent = discSummary.activeCount;
+                document.getElementById('kpiDiscountTotalSub').textContent = `of ${discSummary.totalDiscounts} on record`;
+                document.getElementById('kpiDiscountUnitsSold').textContent = discSummary.totalUnitsSold;
+
+                const profitCard = document.getElementById('kpiDiscountProfitCard');
+                const profitVal  = document.getElementById('kpiDiscountProfit');
+                profitVal.textContent = `R ${discSummary.totalProfit.toFixed(2)}`;
+                // Re-use the same green/red kpi-card classes as every other
+                // KPI on this dashboard rather than inventing a new color rule.
+                profitCard.classList.remove('green', 'red');
+                profitCard.classList.add(discSummary.totalProfit >= 0 ? 'green' : 'red');
+                document.getElementById('kpiDiscountProfitSub').textContent =
+                    discSummary.isProfitable ? 'Yes — profitable' : (discSummary.totalProfit < 0 ? 'No — a loss overall' : 'No sales yet');
+
+                document.getElementById('dashboardDiscountKPIs').style.display = 'grid';
+                document.getElementById('dashboardDiscountTableWrap').style.display = 'block';
+                document.getElementById('dashboardDiscountEmptyState').style.display = 'none';
+
+                document.getElementById('dashboardDiscountBody').innerHTML = discRows.map(d => `
+                    <tr>
+                        <td>${d.product_name}${d.product_code ? ` <span style="color:#999;">(${d.product_code})</span>` : ''}</td>
+                        <td>${d.discount_type === 'percent' ? d.discount_value + '% off' : 'R' + d.discount_value.toFixed(2) + ' off'}</td>
+                        <td><span style="text-decoration:line-through;color:#999;">R${d.original_price.toFixed(2)}</span> R${d.discounted_price.toFixed(2)}</td>
+                        <td>${d.valid_until || 'Today only'}</td>
+                        <td><span class="status-badge ${d.is_active ? 'active' : 'pending'}">${d.is_active ? 'Active' : 'Expired'}</span></td>
+                        <td style="text-align:right;">${d.units_sold}</td>
+                        <td style="text-align:right;">R${d.revenue.toFixed(2)}</td>
+                        <td style="text-align:right;">R${d.cost.toFixed(2)}</td>
+                        <td style="text-align:right;color:${d.profit >= 0 ? '#2e7d32' : '#c62828'};font-weight:600;">R${d.profit.toFixed(2)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                document.getElementById('dashboardDiscountKPIs').style.display = 'none';
+                document.getElementById('dashboardDiscountTableWrap').style.display = 'none';
+                document.getElementById('dashboardDiscountEmptyState').style.display = 'block';
             }
 
             // ── Operational Alerts — every entry below is a real, derived
