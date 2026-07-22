@@ -218,9 +218,13 @@ router.get('/', requirePermission('SALES.VIEW'), async (req, res) => {
     const { from, to, status, cashier_id, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
+    // customers(name) join — needed so the Orders (pickup) list can show
+    // whose order it is for a registered account customer, alongside the
+    // free-text "Customer: <name>" convention stored in `notes` for walk-in
+    // customers placed via POST /orders without an account.
     let query = supabase
       .from('sales')
-      .select('*, sale_items(*), sale_payments(*)', { count: 'exact' })
+      .select('*, sale_items(*), sale_payments(*), customers:customer_id(name)', { count: 'exact' })
       .eq('company_id', req.companyId)
       .order('created_at', { ascending: false })
       .range(offset, offset + parseInt(limit) - 1);
