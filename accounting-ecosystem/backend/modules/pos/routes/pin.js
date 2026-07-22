@@ -295,4 +295,14 @@ router.delete('/:userId/pin', requirePermission('SETTINGS.EDIT'), async (req, re
     }
 });
 
+// Exported so every other place that needs to know which roles may hold a
+// PIN uses this exact same list — see shared/routes/auth.js's pos/pin-login,
+// which used to hardcode its own, much narrower copy (only 4 roles) for the
+// PIN-only (no employee code typed) login path. That drift meant a manager
+// could successfully set a PIN here for e.g. a store_manager, but that same
+// user could never actually log in with just their PIN — the login route
+// silently skipped them before ever attempting a PIN comparison, no matter
+// how many times the PIN was reset. Found live: two store_managers with
+// correctly-set, active PINs, both permanently locked out of PIN-only login.
 module.exports = router;
+module.exports.PIN_ELIGIBLE_ROLES = PIN_ELIGIBLE_ROLES;

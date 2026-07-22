@@ -16,6 +16,7 @@ const { authenticateToken, JWT_SECRET } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { getRolePermissions, canManageRole } = require('../../config/permissions');
 const { logPosEvent, POS_EVENTS } = require('../../modules/pos/services/posAuditLogger');
+const { PIN_ELIGIBLE_ROLES: PIN_ELIGIBLE_ROLES_SET } = require('../../modules/pos/routes/pin');
 
 const router = express.Router();
 
@@ -1531,7 +1532,10 @@ const _PIN_TIMING_DUMMY = bcrypt.hashSync('__cc_pin_timing_dummy__', 10);
  *                      user in advance, but the device still locks after 5
  *                      failures regardless of who they were "aimed at".
  *   - Company isolation enforced: lookups scoped to the device's company_id
- *   - Only PIN-eligible roles allowed: cashier, senior_cashier, shift_supervisor, assistant_manager
+ *   - PIN-eligible roles: whatever pin.js's PIN_ELIGIBLE_ROLES currently is
+ *     (imported from there, not duplicated here — see that file, all roles
+ *     as of this writing) — the PIN-only scan below only needs this list to
+ *     narrow which users it bcrypt-compares against.
  */
 router.post('/pos/pin-login', async (req, res) => {
   try {
@@ -1605,7 +1609,13 @@ router.post('/pos/pin-login', async (req, res) => {
       return res.status(403).json({ error: 'POS module is not enabled for this company' });
     }
 
-    const PIN_ELIGIBLE_ROLES = ['cashier', 'senior_cashier', 'shift_supervisor', 'assistant_manager'];
+    // Was hardcoded here to only 4 roles, independent of pin.js's own,
+    // much broader PIN_ELIGIBLE_ROLES (all roles) — a manager could set a
+    // PIN for e.g. a store_manager, but that user could never log in with
+    // it via the PIN-only (no employee code) path below, because they were
+    // silently filtered out here before any PIN was even compared. Now
+    // imported from the one place PIN eligibility is actually decided.
+    const PIN_ELIGIBLE_ROLES = [...PIN_ELIGIBLE_ROLES_SET];
 
     let userData = null;
     let userRole = null;

@@ -434,12 +434,18 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       return res.status(400).json({ error: 'Items must include valid product IDs' });
     }
 
+    // Deliberately NOT filtered by is_active here — a deactivated product
+    // must still be distinguishable from one that was never found at all.
+    // Found live (2026-07-22): a product got deactivated by an unrelated
+    // price edit, and every checkout attempt against it came back as
+    // "Product 5051 not found" bucketed under "Stock check failed" — cashier
+    // and manager both read that as a stock problem (with 5000 units showing
+    // in the UI) when the real, fixable cause was "this product is inactive".
     const { data: productRows, error: prodErr } = await supabase
       .from('products')
-      .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity')
+      .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity, is_active')
       .in('id', productIds)
-      .eq('company_id', req.companyId)
-      .eq('is_active', true);
+      .eq('company_id', req.companyId);
 
     if (prodErr) return res.status(500).json({ error: prodErr.message });
 
@@ -462,6 +468,8 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       const prod = productMap[item.product_id];
       if (!prod) {
         stockErrors.push(`Product ${item.product_id} not found`);
+      } else if (!prod.is_active) {
+        stockErrors.push(`"${prod.product_name}" is inactive and cannot be sold — reactivate it in Stock Management first`);
       } else if (prod.stock_quantity < item.quantity) {
         if (!allowNegativeStock) {
           stockErrors.push(
@@ -774,12 +782,13 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
       return res.status(400).json({ error: 'Items must include valid product IDs' });
     }
 
+    // Not filtered by is_active — see the identical comment in POST / above;
+    // same "inactive read as a stock error" incident applies to placed orders too.
     const { data: productRows, error: prodErr } = await supabase
       .from('products')
-      .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity')
+      .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity, is_active')
       .in('id', productIds)
-      .eq('company_id', req.companyId)
-      .eq('is_active', true);
+      .eq('company_id', req.companyId);
 
     if (prodErr) return res.status(500).json({ error: prodErr.message });
 
@@ -793,6 +802,8 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
       const prod = productMap[item.product_id];
       if (!prod) {
         stockErrors.push(`Product ${item.product_id} not found`);
+      } else if (!prod.is_active) {
+        stockErrors.push(`"${prod.product_name}" is inactive and cannot be sold — reactivate it in Stock Management first`);
       } else if (prod.stock_quantity < item.quantity && !allowNegativeStock) {
         stockErrors.push(`Insufficient stock for "${prod.product_name}": have ${prod.stock_quantity}, need ${item.quantity}`);
       }

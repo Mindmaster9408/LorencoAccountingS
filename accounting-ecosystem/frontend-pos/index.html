@@ -4893,6 +4893,7 @@
         let syncDebounceTimer = null; // Debounce: network flap fires online event repeatedly
         let syncProgress = { current: 0, total: 0 }; // Progress counter for banner display
         let barcodeMap = new Map();   // O(1) barcode/product_code → product lookup; rebuilt after every products load
+        let productRefreshInterval = null; // Periodic live-refresh timer — see startProductAutoRefresh() below
 
         // Initialize IndexedDB
         async function initIndexedDB() {
@@ -5959,6 +5960,7 @@
 
             await loadShortcuts();  // populate shortcutIds before first product render
             loadProducts();
+            startProductAutoRefresh();
             checkSession();
             showTab('till');
 
@@ -6033,6 +6035,7 @@
         }
 
         function logout() {
+            if (productRefreshInterval) { clearInterval(productRefreshInterval); productRefreshInterval = null; }
             token = null;
             localStorage.removeItem('token');
             currentUser = null;
@@ -6224,6 +6227,24 @@
                     console.error('Error loading cached products:', cacheError);
                 }
             }
+        }
+
+        // Keeps product prices/stock live on a till that's sitting open and in
+        // use — found live (2026-07-22): a manager edited a product's price on
+        // one device, and the till actively serving a customer at another
+        // device kept showing the old price/stock indefinitely, since
+        // loadProducts() previously only ran at login, after this device's own
+        // actions, or a manual tab switch. Every OTHER device's edits are now
+        // visible here within one interval, without needing a logout/login.
+        // Skips silently while offline (loadProducts() already falls back to
+        // the IndexedDB cache in that case — no point re-running that here).
+        const PRODUCT_REFRESH_INTERVAL_MS = 90 * 1000;
+        function startProductAutoRefresh() {
+            if (productRefreshInterval) clearInterval(productRefreshInterval);
+            productRefreshInterval = setInterval(() => {
+                if (!isOnline) return;
+                loadProducts();
+            }, PRODUCT_REFRESH_INTERVAL_MS);
         }
 
         // Cash Up Functions
@@ -7075,8 +7096,14 @@
                     // codes were previously falling into the searchByName() grid-
                     // filter branch below instead of being looked up and added
                     // directly, which reads exactly like "scanning didn't do anything".
-                    if (/^\d{4,}$/.test(normalized)) {
-                        // Pure numeric barcode (EAN-8/13, UPC, etc.)
+                    // Allows an optional 1-2 letter prefix before the digits (found
+                    // live — 2026-07-22, a scanner at Pennygrow sends "F"/"FF" before
+                    // an otherwise-correct barcode) so those scans reach
+                    // searchByBarcode()'s own stray-letter-prefix fallback instead of
+                    // being misrouted into a name search that can never match.
+                    if (/^[A-Za-z]{0,2}\d{4,}$/.test(normalized)) {
+                        // Pure numeric barcode (EAN-8/13, UPC, etc.), optionally with
+                        // a stray scanner-prefix letter.
                         // Pass raw so searchByBarcode can show the original if not found
                         barcodeTimeout = setTimeout(() => searchByBarcode(raw), isFastBurst ? 30 : 300);
                     } else if (raw.length >= 2) {
@@ -7088,7 +7115,7 @@
                     if (e.key === 'Enter') {
                         const raw        = e.target.value;
                         const normalized = normalizeBarcode(raw);
-                        if (/^\d{6,}$/.test(normalized)) {
+                        if (/^[A-Za-z]{0,2}\d{6,}$/.test(normalized)) {
                             clearTimeout(barcodeTimeout);
                             searchByBarcode(raw);
                         }
@@ -7320,7 +7347,21 @@
             // second, third... scans were actually failing to match anything at all).
             const input = document.getElementById('barcodeInput');
             if (input) input.value = '';
-            const product = barcodeMap.get(barcode);
+            let product = barcodeMap.get(barcode);
+            // Fallback for scanners that prepend a stray letter (found live —
+            // 2026-07-22, a Pennygrow till scanner sent "F"/"FF" before an
+            // otherwise-correct EAN/UPC barcode). Only applied when the exact
+            // scan fails to match anything AND stripping leading letters
+            // leaves a plausible barcode length (8-14 digits) that DOES match
+            // a real product — never silently reinterprets a scan that was
+            // simply wrong, and never touches genuine alphanumeric product
+            // codes (which normalizeBarcode() already indexes as-is).
+            if (!product) {
+                const strippedOfLetters = barcode.replace(/^[A-Za-z]+/, '');
+                if (strippedOfLetters !== barcode && /^\d{8,14}$/.test(strippedOfLetters)) {
+                    product = barcodeMap.get(strippedOfLetters);
+                }
+            }
             if (product) {
                 // Check existing BEFORE addToCart mutates the quantity
                 const existing = cart.find(item => item.productId === product.id);
@@ -8196,6 +8237,7 @@
 
         async function showAddProduct() {
             editingProductId = null;
+            editingProductWasActive = null; // new product — no deactivation-warning applicable
             document.getElementById('modalTitle').textContent = 'Add Product';
             document.getElementById('productCodePrefix').value = 'PRO';
             document.getElementById('productCode').value = '';
@@ -8246,8 +8288,21 @@
             }
         }
 
+        // Tracks whether the product being edited was active when the modal
+        // opened, so saveProduct() can warn before silently deactivating it —
+        // found live (2026-07-22): a price-only edit on Pennygrow's "TERT DEEG"
+        // also flipped is_active true->false in the same save (the Active
+        // checkbox sits directly under the price field), which made a fully-
+        // in-stock product vanish from the till entirely. The checkout error
+        // that followed ("stock error" with 5000 showing) was actually the
+        // server correctly refusing to sell a now-inactive product — a
+        // confirmation here stops that from happening silently again,
+        // whatever causes the checkbox to end up unchecked.
+        let editingProductWasActive = null;
+
         function editProduct(product) {
             editingProductId = product.id;
+            editingProductWasActive = product.is_active == 1;
             document.getElementById('modalTitle').textContent = 'Edit Product';
             // Extract prefix from existing code (first 3 chars)
             const existingCode = product.product_code || '';
@@ -8305,6 +8360,17 @@
 
             if (hasError) return;
 
+            const nowActive = document.getElementById('productActive').checked;
+
+            // Deactivating a product removes it from sale entirely — confirm
+            // this was deliberate rather than an incidental side effect of an
+            // unrelated edit (e.g. a price change). See editingProductWasActive
+            // comment above for the live incident this was found from.
+            if (editingProductWasActive === true && !nowActive) {
+                const confirmed = confirm(`This will make "${description}" INACTIVE — it will no longer be sellable at the till.\n\nWas that intended? Click Cancel if you only meant to change the price/other details.`);
+                if (!confirmed) return;
+            }
+
             // Collect all product data
             const productData = {
                 product_code: code,
@@ -8312,7 +8378,7 @@
                 category: document.getElementById('productCategory').value,
                 unit_price: parseFloat(document.getElementById('productPrice').value),
                 cost_price: parseFloat(document.getElementById('productCost').value),
-                is_active: document.getElementById('productActive').checked ? 1 : 0,
+                is_active: nowActive ? 1 : 0,
                 barcode: barcode,
                 requires_vat: document.getElementById('productRequiresVat').checked ? 1 : 0,
                 vat_rate: parseFloat(document.getElementById('productTaxRate').value)
