@@ -7936,11 +7936,18 @@
                 const companyName = s(r.company?.trading_name || r.company?.company_name || 'Checkout Charlie');
                 const headerHtml = r.header ? `<div style="text-align:center;font-size:12px;font-weight:700;margin-bottom:4px;">${s(r.header)}</div>` : '';
                 const footerHtml = r.footer ? `<div style="margin-top:6px;">${s(r.footer)}</div>` : '';
+                // Company registration details — shown at the top of every slip,
+                // same "Company Settings" fields (registration_number/vat_number/
+                // address) already captured under Settings → Company Details.
+                const addressLine = r.company?.address ? `<div style="text-align:center;font-size:11px;font-weight:700;">${s(r.company.address)}</div>` : '';
                 const vatLine = r.company?.vat_number ? `<div style="text-align:center;font-size:11px;font-weight:700;">VAT Reg: ${s(r.company.vat_number)}</div>` : '';
+                const regLine = r.company?.registration_number ? `<div style="text-align:center;font-size:11px;font-weight:700;">Reg No: ${s(r.company.registration_number)}</div>` : '';
 
                 const html = `
                     <div style="text-align:center;margin-bottom:6px;">
                         <div style="font-size:18px;font-weight:900;">${companyName}</div>
+                        ${addressLine}
+                        ${regLine}
                         ${vatLine}
                         ${headerHtml}
                     </div>

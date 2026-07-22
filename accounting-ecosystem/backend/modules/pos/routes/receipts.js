@@ -33,7 +33,7 @@ router.get('/preview/:saleId', async (req, res) => {
     // Get company info for receipt header
     const { data: company } = await supabase
       .from('companies')
-      .select('company_name, trading_name, vat_number, contact_phone, address')
+      .select('company_name, trading_name, vat_number, registration_number, contact_phone, address')
       .eq('id', req.companyId)
       .single();
 
@@ -97,7 +97,7 @@ router.post('/print/:saleId', async (req, res) => {
 
     const { data: company } = await supabase
       .from('companies')
-      .select('company_name, trading_name, vat_number, contact_phone, address')
+      .select('company_name, trading_name, vat_number, registration_number, contact_phone, address')
       .eq('id', req.companyId)
       .single();
 
