@@ -245,6 +245,123 @@ router.get('/', requirePermission('SALES.VIEW'), async (req, res) => {
 });
 
 /**
+ * GET /api/pos/sales/search
+ * Till-screen "Search Sale / Reprint" lookup — used when a customer has
+ * lost their slip. MUST be registered before GET /:id below, or Express
+ * would treat "search" as an :id value and this route would never match.
+ *
+ * This endpoint did not exist at all until now — the frontend button, modal,
+ * and searchSales()/viewSaleDetail()/reprintReceipt() functions were fully
+ * built (frontend-pos/index.html) calling a URL with no matching backend
+ * route, so every click of "Search" 404'd. Same class of bug as the Daily
+ * Discounts feature found earlier in this ecosystem's audit — a completed-
+ * looking feature that was never actually connected end to end.
+ *
+ * Query params (all optional, but at least one is required):
+ *   query          — matches sale_number, receipt_number (partial), exact
+ *                    total_amount if numeric, or customer name (partial)
+ *   date           — single day (YYYY-MM-DD) — convenience for the till's
+ *                    date picker; equivalent to date_from = date_to = date
+ *   date_from/to   — explicit range, takes priority over `date` if both given
+ *   cashier        — partial match against the cashier's username/full_name
+ *   payment_method — exact match (cash/card/eft/account/snapscan/split)
+ *   min_amount/max_amount — total_amount range
+ *
+ * Returns both completed AND voided sales (voided ones are visually flagged
+ * by the existing viewSaleDetail() using sale.voided_at) — a cashier must be
+ * able to find a voided sale too, not just successfully-completed ones.
+ *
+ * Capped at 200 results rather than paginated — this is an interactive
+ * till-side lookup, not a report export; a search that wide should be
+ * narrowed, not paged through one till-screen result card at a time.
+ */
+router.get('/search', requirePermission('SALES.VIEW'), async (req, res) => {
+  try {
+    const { query, date, date_from, date_to, cashier, payment_method, min_amount, max_amount } = req.query;
+
+    const from = date_from || date;
+    const to   = date_to   || date;
+
+    if (!query && !from && !cashier && !payment_method && !min_amount && !max_amount) {
+      return res.status(400).json({ error: 'At least one search field is required' });
+    }
+
+    // Free-text query against customer name is resolved first — sales has no
+    // customer name column itself, only customer_id — same pattern used by
+    // reports.js's sales-by-customer search.
+    let matchingCustomerIds = null;
+    if (query) {
+      const { data: customers } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('company_id', req.companyId)
+        .ilike('name', `%${query}%`);
+      matchingCustomerIds = (customers || []).map(c => c.id);
+    }
+
+    let sqlQuery = supabase
+      .from('sales')
+      .select('id, sale_number, receipt_number, created_at, total_amount, payment_method, status, voided_at, user_id, customer_id, users:user_id(username, full_name), customers:customer_id(name)')
+      .eq('company_id', req.companyId)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (from) sqlQuery = sqlQuery.gte('created_at', `${from}T00:00:00.000Z`);
+    if (to)   sqlQuery = sqlQuery.lte('created_at', `${to}T23:59:59.999Z`);
+    if (payment_method) sqlQuery = sqlQuery.eq('payment_method', payment_method);
+    if (min_amount) sqlQuery = sqlQuery.gte('total_amount', parseFloat(min_amount));
+    if (max_amount) sqlQuery = sqlQuery.lte('total_amount', parseFloat(max_amount));
+
+    if (query) {
+      const isNumeric = /^\d+(\.\d+)?$/.test(query.trim());
+      const orParts = [
+        `sale_number.ilike.%${query}%`,
+        `receipt_number.ilike.%${query}%`,
+      ];
+      if (isNumeric) orParts.push(`total_amount.eq.${parseFloat(query)}`);
+      if (matchingCustomerIds && matchingCustomerIds.length > 0) {
+        orParts.push(`customer_id.in.(${matchingCustomerIds.join(',')})`);
+      }
+      sqlQuery = sqlQuery.or(orParts.join(','));
+    }
+
+    const { data, error } = await sqlQuery;
+    if (error) return res.status(500).json({ error: error.message });
+
+    let results = data || [];
+
+    // Cashier name filter applied in JS (post-join) — PostgREST can't easily
+    // ilike-filter on a joined column's field in the same query builder call
+    // used above alongside the OR block.
+    if (cashier) {
+      const term = cashier.toLowerCase();
+      results = results.filter(s =>
+        (s.users?.full_name || '').toLowerCase().includes(term) ||
+        (s.users?.username || '').toLowerCase().includes(term)
+      );
+    }
+
+    res.json({
+      sales: results.map(s => ({
+        id: s.id,
+        sale_number: s.sale_number,
+        receipt_number: s.receipt_number,
+        created_at: s.created_at,
+        total_amount: s.total_amount,
+        payment_method: s.payment_method,
+        status: s.status,
+        voided_at: s.voided_at,
+        cashier_name: s.users?.full_name || s.users?.username || 'Unknown',
+        customer_name: s.customers?.name || null,
+      })),
+    });
+  } catch (err) {
+    console.error('[sales] search:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * GET /api/pos/sales/:id
  */
 router.get('/:id', requirePermission('SALES.VIEW'), async (req, res) => {

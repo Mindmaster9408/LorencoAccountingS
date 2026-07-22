@@ -2077,10 +2077,24 @@
                     <button class="close-btn" onclick="closeSaleSearch()">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; margin-bottom: 10px;">
                         <input type="text" id="saleSearchQuery" placeholder="Sale number, customer, or amount..." onkeyup="debounceSearchSales()">
                         <input type="date" id="saleSearchDate">
                         <button class="btn btn-primary" onclick="searchSales()">Search</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                        <input type="text" id="saleSearchCashier" placeholder="Cashier name..." onkeyup="debounceSearchSales()">
+                        <select id="saleSearchPaymentMethod" onchange="searchSales()">
+                            <option value="">Any payment method</option>
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="eft">EFT</option>
+                            <option value="account">Account</option>
+                            <option value="snapscan">SnapScan</option>
+                            <option value="split">Split</option>
+                        </select>
+                        <input type="number" id="saleSearchMinAmount" placeholder="Min R" step="0.01" min="0" onkeyup="debounceSearchSales()">
+                        <input type="number" id="saleSearchMaxAmount" placeholder="Max R" step="0.01" min="0" onkeyup="debounceSearchSales()">
                     </div>
                     <div id="saleSearchResults" style="max-height: 400px; overflow-y: auto;">
                         <p style="text-align: center; color: #999;">Enter search criteria and click Search</p>
@@ -10461,6 +10475,12 @@
         function closeSaleSearch() {
             document.getElementById('saleSearchModal').style.display = 'none';
             document.getElementById('saleSearchResults').innerHTML = '<p style="text-align: center; color: #999;">Enter search criteria and click Search</p>';
+            document.getElementById('saleSearchQuery').value = '';
+            document.getElementById('saleSearchDate').value = '';
+            document.getElementById('saleSearchCashier').value = '';
+            document.getElementById('saleSearchPaymentMethod').value = '';
+            document.getElementById('saleSearchMinAmount').value = '';
+            document.getElementById('saleSearchMaxAmount').value = '';
         }
 
         function debounceSearchSales() {
@@ -10469,10 +10489,14 @@
         }
 
         async function searchSales() {
-            const query = document.getElementById('saleSearchQuery').value;
-            const date = document.getElementById('saleSearchDate').value;
+            const query          = document.getElementById('saleSearchQuery').value;
+            const date            = document.getElementById('saleSearchDate').value;
+            const cashier         = document.getElementById('saleSearchCashier').value;
+            const paymentMethod   = document.getElementById('saleSearchPaymentMethod').value;
+            const minAmount       = document.getElementById('saleSearchMinAmount').value;
+            const maxAmount       = document.getElementById('saleSearchMaxAmount').value;
 
-            if (!query && !date) {
+            if (!query && !date && !cashier && !paymentMethod && !minAmount && !maxAmount) {
                 showNotification('Please enter search criteria', 'error');
                 return;
             }
@@ -10481,24 +10505,33 @@
             resultsDiv.innerHTML = '<p style="text-align: center; color: #999;">Searching...</p>';
 
             try {
-                let url = `${API_URL}/pos/sales/search?`;
-                if (query) url += `query=${encodeURIComponent(query)}&`;
-                if (date) url += `date_from=${date}&date_to=${date}`;
+                const params = new URLSearchParams();
+                if (query)         params.set('query', query);
+                if (date)        { params.set('date_from', date); params.set('date_to', date); }
+                if (cashier)       params.set('cashier', cashier);
+                if (paymentMethod) params.set('payment_method', paymentMethod);
+                if (minAmount)     params.set('min_amount', minAmount);
+                if (maxAmount)     params.set('max_amount', maxAmount);
 
-                const response = await fetch(url, {
+                const response = await fetch(`${API_URL}/pos/sales/search?${params.toString()}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
                 const result = await response.json();
 
+                if (!response.ok) {
+                    resultsDiv.innerHTML = `<p style="color: red; text-align: center;">${result.error || 'Search failed'}</p>`;
+                    return;
+                }
+
                 if (result.sales && result.sales.length > 0) {
                     resultsDiv.innerHTML = result.sales.map(sale => `
-                        <div class="sale-result-card" onclick="viewSaleDetail(${sale.id})">
+                        <div class="sale-result-card" onclick="viewSaleDetail(${sale.id})" style="${sale.voided_at ? 'opacity:0.6;' : ''}">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div>
-                                    <strong>${sale.sale_number}</strong>
+                                    <strong>${sale.sale_number}</strong>${sale.voided_at ? ' <span style="color:#c62828;font-size:11px;font-weight:600;">VOIDED</span>' : ''}
                                     <div style="font-size: 12px; color: #666;">
-                                        ${new Date(sale.created_at).toLocaleString()} | ${sale.cashier_name || 'Unknown'}
+                                        ${new Date(sale.created_at).toLocaleString()} | ${sale.cashier_name || 'Unknown'}${sale.customer_name ? ' | ' + sale.customer_name : ''}
                                     </div>
                                 </div>
                                 <div style="text-align: right;">
