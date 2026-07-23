@@ -660,6 +660,12 @@
             justify-content: space-between;
             align-items: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            /* Stays visible while scrolling the product list — .settings-content
+               (the scrolling ancestor) has overflow-y:auto, so sticky positions
+               relative to that, not the whole page. */
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         .search-box {
             position: relative;
@@ -3207,6 +3213,7 @@
                                     <tr>
                                         <th>Code</th>
                                         <th>Description</th>
+                                        <th>VAT</th>
                                         <th>Category</th>
                                         <th>Price</th>
                                         <th>Stock</th>
@@ -3217,6 +3224,14 @@
                                     <!-- Products will be loaded here -->
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- Sticky "Save All" bar — appears once any row's VAT/Price quick-edit
+                             fields have been touched, so a save is always reachable without
+                             scrolling back up through however many products are listed. -->
+                        <div id="productsQuickSaveBar" style="display:none; position:sticky; bottom:0; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 20px; margin-top:10px; align-items:center; justify-content:flex-end; gap:12px; z-index:10; box-shadow:0 -2px 8px rgba(0,0,0,0.15);">
+                            <span id="productsQuickSaveCount" style="color:var(--text-secondary); font-size:13px;"></span>
+                            <button class="btn btn-primary" onclick="saveAllProductQuickEdits()">💾 Save All Changes</button>
                         </div>
                     </div>
 
@@ -4929,6 +4944,7 @@
         let barcodeMap = new Map();   // O(1) barcode/product_code → product lookup; rebuilt after every products load
         let productRefreshInterval = null; // Periodic live-refresh timer — see startProductAutoRefresh() below
         let lastProductSyncAt = null; // Server clock cursor for refreshProductsDelta() — set from server_time on every successful full or delta products fetch, never the till's own clock (avoids clock-skew gaps)
+        let pendingProductEdits = new Map(); // Settings > Products quick-edit (VAT/Price) — productId -> { unit_price?, requires_vat?, vat_rate? }, see markProductRowDirty()
 
         // Initialize IndexedDB
         async function initIndexedDB() {
@@ -5203,6 +5219,7 @@
                                 paymentMethod: sale.paymentMethod,
                                 offlineCreatedAt: sale.createdAt,
                                 idempotencyKey: sale.idempotencyKey,
+                                cashTendered: sale.cashTendered,
                                 source: 'offline_sync'
                             })
                         });
@@ -7120,18 +7137,48 @@
         // Builds a single table row's markup. Extracted from displayProductsTable
         // for the same reason as buildProductTileHtml above — lets
         // refreshProductsDelta() patch one row in place.
+        //
+        // VAT dropdown + Price input are inline "quick edit" fields (Workstream:
+        // asked for on Settings → Products so a VAT/price fix doesn't require
+        // opening the full Add/Edit Product modal). They read/write the same
+        // requires_vat/vat_rate/unit_price fields as that modal — same PUT
+        // /api/pos/products/:id route, just triggered per-row instead of via a
+        // form. See markProductRowDirty()/saveProductQuickEdit() below.
         function buildProductTableRowHtml(product) {
             const safeJson = JSON.stringify(product).replace(/"/g, '&quot;');
-            return `<tr data-product-id="${product.id}">
+            // Prefer an in-progress unsaved edit (if any) over the server value, so
+            // a table re-render (search, delta refresh) never silently discards
+            // what the user has typed but not yet clicked Save on.
+            const pending = pendingProductEdits.get(product.id);
+            const priceValue = pending && pending.unit_price !== undefined ? pending.unit_price : parseFloat(product.unit_price || 0);
+            const requiresVat = pending && pending.requires_vat !== undefined
+                ? pending.requires_vat
+                : (product.requires_vat !== false && product.requires_vat !== 0);
+            const isDirty = pendingProductEdits.has(product.id);
+            return `<tr data-product-id="${product.id}"${isDirty ? ' style="outline:2px solid var(--accent);outline-offset:-2px;"' : ''}>
                 <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_code}</td>
                 <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_name}</td>
-                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.category || '-'}</td>
-                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">R ${parseFloat(product.unit_price).toFixed(2)}</td>
-                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.stock_quantity || product.current_stock || 0}</td>
                 <td>
+                    <select class="qe-vat" onchange="markProductRowDirty(${product.id})" style="padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;">
+                        <option value="15" ${requiresVat ? 'selected' : ''}>VAT (15%)</option>
+                        <option value="0" ${!requiresVat ? 'selected' : ''}>No VAT</option>
+                    </select>
+                </td>
+                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.category || '-'}</td>
+                <td>
+                    <input type="number" class="qe-price" step="0.01" min="0" value="${priceValue.toFixed(2)}"
+                        oninput="markProductRowDirty(${product.id})"
+                        style="width:90px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;">
+                </td>
+                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.stock_quantity || product.current_stock || 0}</td>
+                <td style="white-space:nowrap;">
                     <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;"
                         onclick="event.stopPropagation(); showProductStockModal(${product.id}, '${(product.product_name || '').replace(/'/g, "\\'")}', '${product.product_code}')">
                         Manage
+                    </button>
+                    <button class="btn btn-primary qe-save-btn" style="padding:4px 10px;font-size:11px;margin-left:6px;"
+                        onclick="event.stopPropagation(); saveProductQuickEdit(${product.id})">
+                        Save
                     </button>
                 </td>
             </tr>`;
@@ -7142,6 +7189,89 @@
             document.getElementById('productCount').textContent = `${productsToShow.length} Products`;
             // Single tbody write — eliminates per-row appendChild reflows.
             tbody.innerHTML = productsToShow.map(buildProductTableRowHtml).join('');
+        }
+
+        // Settings > Products quick-edit (VAT dropdown + Price input inline in the
+        // table, no need to open the full Add/Edit Product modal for a simple fix).
+        // Called on every change to either field in a row.
+        function markProductRowDirty(productId) {
+            const row = document.querySelector(`#productsTableBody [data-product-id="${productId}"]`);
+            if (!row) return;
+            const priceInput = row.querySelector('.qe-price');
+            const vatSelect = row.querySelector('.qe-vat');
+            const edit = {};
+            if (priceInput) edit.unit_price = parseFloat(priceInput.value) || 0;
+            if (vatSelect) {
+                const requiresVat = vatSelect.value !== '0';
+                edit.requires_vat = requiresVat;
+                edit.vat_rate = requiresVat ? 15 : 0;
+            }
+            pendingProductEdits.set(productId, edit);
+            row.style.outline = '2px solid var(--accent)';
+            row.style.outlineOffset = '-2px';
+            updateProductsQuickSaveBar();
+        }
+
+        function updateProductsQuickSaveBar() {
+            const bar = document.getElementById('productsQuickSaveBar');
+            const countEl = document.getElementById('productsQuickSaveCount');
+            if (!bar || !countEl) return;
+            const n = pendingProductEdits.size;
+            if (n === 0) {
+                bar.style.display = 'none';
+                return;
+            }
+            bar.style.display = 'flex';
+            countEl.textContent = `${n} unsaved change${n === 1 ? '' : 's'}`;
+        }
+
+        // Saves one row's pending VAT/Price edit via the same PUT /api/pos/products/:id
+        // route the full Add/Edit Product modal uses. Returns true/false so
+        // saveAllProductQuickEdits() can report how many succeeded.
+        async function saveProductQuickEdit(productId) {
+            const updates = pendingProductEdits.get(productId);
+            if (!updates) return true; // nothing pending for this row — no-op, not an error
+
+            try {
+                const response = await fetch(`${API_URL}/pos/products/${productId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    showNotification(err.error || 'Could not save changes', 'error');
+                    return false;
+                }
+                const result = await response.json();
+                const idx = products.findIndex(p => p.id === productId);
+                if (idx !== -1) products[idx] = { ...products[idx], ...result.product };
+
+                pendingProductEdits.delete(productId);
+                const row = document.querySelector(`#productsTableBody [data-product-id="${productId}"]`);
+                if (row) row.style.outline = '';
+                updateProductsQuickSaveBar();
+                return true;
+            } catch (e) {
+                showNotification('Network error saving changes', 'error');
+                return false;
+            }
+        }
+
+        // Bottom sticky bar's "Save All Changes" — saves every row touched since
+        // the products list was last loaded, one at a time (product PUTs are
+        // independent, so a single failure doesn't block the rest).
+        async function saveAllProductQuickEdits() {
+            const ids = [...pendingProductEdits.keys()];
+            if (ids.length === 0) return;
+            let ok = 0, failed = 0;
+            for (const id of ids) {
+                if (await saveProductQuickEdit(id)) ok++; else failed++;
+            }
+            showNotification(
+                `Saved ${ok} product${ok === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}`,
+                failed ? 'error' : 'success'
+            );
         }
 
         function searchProducts() {
@@ -7864,12 +7994,19 @@
             // If the cashier entered an amount received for a cash sale, it must
             // actually cover the total — can't hand back negative change. Entering
             // nothing at all is still allowed (cashier can skip the calculator).
+            // The parsed value (when present) is also what the till slip shows as
+            // Tendered/Change — carried through both the online and offline paths
+            // below so a synced offline sale keeps it too.
+            let cashTenderedForSlip;
             if (selectedPayment === 'CASH') {
                 const tenderedInput = document.getElementById('cashTenderedAmount');
                 const tendered = tenderedInput ? parseFloat(tenderedInput.value) : NaN;
-                if (!isNaN(tendered) && tendered < totalAmount) {
-                    showNotification(`Amount received (R ${tendered.toFixed(2)}) is less than the total (R ${totalAmount.toFixed(2)})`, 'error');
-                    return;
+                if (!isNaN(tendered)) {
+                    if (tendered < totalAmount) {
+                        showNotification(`Amount received (R ${tendered.toFixed(2)}) is less than the total (R ${totalAmount.toFixed(2)})`, 'error');
+                        return;
+                    }
+                    cashTenderedForSlip = tendered;
                 }
             }
 
@@ -7890,6 +8027,7 @@
                 subtotal,
                 vatAmount,
                 totalAmount,
+                cashTendered: cashTenderedForSlip,
                 // Captured now (both are already loaded client-side at checkout
                 // time) so the offline receipt can show Cashier/Till without a
                 // network round-trip — same fields the online receipt gets via
@@ -7948,7 +8086,8 @@
                         })),
                         paymentMethod: selectedPayment,
                         customerId: selectedAccountCustomerId || undefined,
-                        idempotencyKey: saleData.idempotencyKey
+                        idempotencyKey: saleData.idempotencyKey,
+                        cashTendered: cashTenderedForSlip
                     })
                 });
 
@@ -8166,6 +8305,8 @@
                     <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(r.sale.total_amount)}</span></div>
                     ${DLINE}
                     ${paymentsHtml}
+                    ${r.cashTendered != null ? ROW('Tendered:', fmt(r.cashTendered)) : ''}
+                    ${r.cashTendered != null ? ROW('Change:', fmt(r.changeGiven)) : ''}
                     ${DLINE}
                     <div style="text-align:center;font-size:11px;font-weight:700;margin-top:6px;">
                         ${footerHtml}
@@ -8459,6 +8600,10 @@
             (r.payments || []).forEach(p => {
                 parts.push(escPosRow((p.payment_method || 'Cash').toUpperCase() + ':', fmt(p.amount), width));
             });
+            if (r.cashTendered != null) {
+                parts.push(escPosRow('Tendered:', fmt(r.cashTendered), width));
+                parts.push(escPosRow('Change:', fmt(r.changeGiven), width));
+            }
             parts.push('-'.repeat(width) + '\n');
 
             if (r.footer) parts.push(ESC_POS.ALIGN_CENTER, r.footer + '\n');
@@ -8593,6 +8738,8 @@
                 <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(sale.totalAmount)}</span></div>
                 ${DLINE}
                 ${ROW('Payment:', (sale.paymentMethod || 'Cash').toUpperCase())}
+                ${sale.cashTendered != null ? ROW('Tendered:', fmt(sale.cashTendered)) : ''}
+                ${sale.cashTendered != null ? ROW('Change:', fmt(sale.cashTendered - (parseFloat(sale.totalAmount) || 0))) : ''}
                 ${DLINE}
                 <div style="text-align:center;font-size:11px;font-weight:700;margin-top:6px;">
                     Thank you for your purchase!<br>

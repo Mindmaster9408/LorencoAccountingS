@@ -81,6 +81,15 @@ async function ensurePosSchema(pool) {
     // New code always generates it; this just protects old in-flight records.
     await client.query(`ALTER TABLE sales ALTER COLUMN sale_number DROP NOT NULL`).catch(() => {});
 
+    // ── sale_payments: cash tendered/change, for the till slip ───────────────
+    // create_sale_atomic (the RPC that inserts sale_payments) is unchanged —
+    // these are populated by a plain follow-up UPDATE from sales.js after the
+    // atomic transaction commits, keyed by sale_id + payment_method = 'cash'.
+    // NULL for every non-cash payment row and for cash sales where the
+    // cashier left the tendered-amount box empty (checkout allows that).
+    await client.query(`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS tendered_amount DECIMAL(10,2)`);
+    await client.query(`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS change_given DECIMAL(10,2)`);
+
     // ── sale_items: add columns the code inserts ─────────────────────────────
     await client.query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS product_name VARCHAR(255)`);
     await client.query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(10,2) DEFAULT 0`);

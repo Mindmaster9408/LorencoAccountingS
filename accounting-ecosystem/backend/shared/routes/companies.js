@@ -276,6 +276,13 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
       'company_name', 'trading_name', 'registration_number', 'nature_of_business', 'financial_year_end',
       'paye_reference_number', 'uif_reference_number', 'labour_uif_number', 'sdl_reference_number', 'coid_reference_number', 'income_tax_number',
       'sdl_registered', 'uif_registered',
+      // vat_number and address were missing from this whitelist entirely — the
+      // Checkout Charlie Settings > General screen has always sent both (see
+      // saveGeneralSettings() in frontend-pos/index.html), and the PUT always
+      // returned 200 with the other fields saved, so there was no visible
+      // error — the two fields just silently never persisted, then reappeared
+      // blank/stale on the next page load.
+      'vat_number', 'address',
       'contact_email', 'contact_phone', 'website', 'contact_person',
       'address_street', 'address_suburb', 'address_city', 'address_province', 'address_postal_code',
       'bank_name', 'bank_account_holder', 'bank_account_number', 'bank_branch_code', 'bank_account_type',

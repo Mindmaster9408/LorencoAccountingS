@@ -205,6 +205,10 @@ function normaliseSaleBody(body) {
     idempotency_key: body.idempotency_key ?? body.idempotencyKey ?? null,
     // 'offline_sync' when sent by syncOfflineSales(); 'online' for real-time checkout
     source:          body.source || 'online',
+    // Amount received for a cash sale (till slip Tendered/Change) — optional,
+    // the cash-tendered box on the till is not mandatory. See POST / below,
+    // where this drives a follow-up UPDATE on the cash sale_payments row.
+    cash_tendered:   body.cash_tendered  ?? body.cashTendered ?? null,
   };
 }
 
@@ -412,6 +416,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       payments: paymentsFromBody,
       idempotency_key: clientIdempotencyKey,
       source,
+      cash_tendered,
     } = normaliseSaleBody(req.body);
 
     // Use client-supplied key (online checkout or offline sync replay) or
@@ -610,6 +615,26 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       });
       console.error('[Sales] create_sale_atomic failed:', rpcError);
       return res.status(500).json({ error: 'Sale creation failed', details: rpcError.message });
+    }
+
+    // Cash tendered/change for the till slip. create_sale_atomic (above) has no
+    // parameter for this, so it's a plain follow-up UPDATE on the cash leg's
+    // sale_payments row rather than a change to that RPC. Only runs for a plain
+    // cash sale where the cashier actually used the tendered-amount box —
+    // harmless no-op otherwise (payment_method !== 'cash' or no value given).
+    if (payment_method === 'cash' && cash_tendered != null && !isNaN(parseFloat(cash_tendered))) {
+      const tenderedNum = parseFloat(cash_tendered);
+      const changeGiven = Math.round((tenderedNum - total_amount) * 100) / 100;
+      const { error: tenderUpdateErr } = await supabase
+        .from('sale_payments')
+        .update({ tendered_amount: tenderedNum, change_given: changeGiven })
+        .eq('sale_id', rpcResult.sale_id)
+        .eq('payment_method', 'cash');
+      if (tenderUpdateErr) {
+        // Non-fatal — the sale itself already succeeded; the slip just won't
+        // show tendered/change for this one sale. Log for visibility only.
+        console.warn('[Sales] Could not store cash tendered/change:', tenderUpdateErr.message);
+      }
     }
 
     // ── 6. Audit + response ───────────────────────────────────────────────

@@ -30,6 +30,13 @@ router.get('/preview/:saleId', async (req, res) => {
 
     if (error || !sale) return res.status(404).json({ error: 'Sale not found' });
 
+    // Cash sale's tendered/change, if the cashier used the calculator at
+    // checkout — sale_payments.tendered_amount/change_given (see sales.js POST /).
+    // null for non-cash sales and for cash sales where the box was left empty.
+    const cashPayment = (sale.sale_payments || []).find(p => p.payment_method === 'cash');
+    const cashTendered = cashPayment?.tendered_amount ?? null;
+    const changeGiven = cashPayment?.change_given ?? null;
+
     // Get company info for receipt header
     const { data: company } = await supabase
       .from('companies')
@@ -70,6 +77,8 @@ router.get('/preview/:saleId', async (req, res) => {
         customer: sale.customers || null,
         cashier,
         till,
+        cashTendered,
+        changeGiven,
         header: settings?.receipt_header || '',
         footer: settings?.receipt_footer || 'Thank you for shopping with us!',
         generated_at: new Date().toISOString()
@@ -107,6 +116,10 @@ router.post('/print/:saleId', async (req, res) => {
       afterSnapshot: { sale_id: sale.id, receipt_number: sale.receipt_number, total_amount: sale.total_amount },
     });
 
+    // See GET /preview/:saleId above for why this comes off sale_payments
+    // rather than the RPC that creates the sale.
+    const cashPayment = (sale.sale_payments || []).find(p => p.payment_method === 'cash');
+
     res.json({
       success: true,
       printData: {
@@ -114,6 +127,8 @@ router.post('/print/:saleId', async (req, res) => {
         sale,
         items: sale.sale_items || [],
         payments: sale.sale_payments || [],
+        cashTendered: cashPayment?.tendered_amount ?? null,
+        changeGiven: cashPayment?.change_given ?? null,
         printed_at: new Date().toISOString()
       }
     });
