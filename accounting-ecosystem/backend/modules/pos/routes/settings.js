@@ -3,6 +3,8 @@
  * POS Settings Routes — Company-level POS configuration
  * ============================================================================
  * GET  /api/pos/settings              — read company_settings for this company
+ * PUT  /api/pos/settings              — update general settings (float, prefixes,
+ *                                       VAT rate, open-drawer-on-sale, etc.)
  * PUT  /api/pos/settings/stock-policy — update allow_negative_stock_sales
  *                                       (MANAGEMENT roles only)
  * ============================================================================
@@ -64,6 +66,51 @@ router.get('/', requirePermission('SETTINGS.VIEW'), async (req, res) => {
     res.json({ settings: data });
   } catch (err) {
     console.error('[Settings] GET error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/pos/settings
+ * Update general company_settings fields (float amount, prefixes, receipt
+ * numbering, VAT rate, open-drawer-on-sale, group-same-items).
+ *
+ * This route never existed — the frontend's "Save All Settings" button
+ * (saveGeneralSettings() in index.html) has been calling this exact path
+ * since it was written, silently getting a 404 every time, which is why
+ * open_drawer_on_sale in particular could never actually be changed from
+ * whatever default it was created with.
+ *
+ * Only real company_settings columns are accepted here — auto_print_receipt
+ * and use_product_images are also sent by the frontend today but are not
+ * columns on this table (a separate, pre-existing gap, not touched here).
+ */
+router.put('/', requirePermission('SETTINGS.EDIT'), async (req, res) => {
+  try {
+    const {
+      till_float_amount, product_code_prefix, receipt_prefix,
+      next_receipt_number, vat_rate, open_drawer_on_sale, group_same_items,
+    } = req.body;
+
+    const updates = { company_id: req.companyId, updated_by_user_id: req.user.userId, updated_at: new Date().toISOString() };
+    if (till_float_amount   !== undefined) updates.till_float_amount   = parseFloat(till_float_amount)   || 0;
+    if (product_code_prefix !== undefined) updates.product_code_prefix = String(product_code_prefix).trim().toUpperCase() || 'PRO';
+    if (receipt_prefix      !== undefined) updates.receipt_prefix      = String(receipt_prefix).trim().toUpperCase() || 'INV';
+    if (next_receipt_number !== undefined) updates.next_receipt_number = parseInt(next_receipt_number, 10) || 1;
+    if (vat_rate            !== undefined) updates.vat_rate            = parseFloat(vat_rate) || 0;
+    if (open_drawer_on_sale !== undefined) updates.open_drawer_on_sale = !!open_drawer_on_sale;
+    if (group_same_items    !== undefined) updates.group_same_items    = !!group_same_items;
+
+    const { data, error } = await supabase
+      .from('company_settings')
+      .upsert(updates, { onConflict: 'company_id' })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ settings: data });
+  } catch (err) {
+    console.error('[Settings] PUT / error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

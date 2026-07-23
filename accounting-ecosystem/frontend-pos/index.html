@@ -2002,6 +2002,17 @@
                             </div>
                         </div>
 
+                        <!-- Cash Tendered / Change Due — shown only for a plain CASH sale
+                             (not split, where cash is one of several amounts, and not
+                             ACCOUNT/CARD/etc. where no physical change is handed over).
+                             Purely a cashier convenience calculator; entering an amount
+                             is optional and nothing here is sent to the backend. -->
+                        <div id="cashTenderedSection" style="display:flex;gap:10px;align-items:center;margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+                            <label style="font-weight:600;white-space:nowrap;color:var(--text);">Amount Received</label>
+                            <input type="number" id="cashTenderedAmount" step="0.01" min="0" placeholder="0.00" oninput="updateChangeDue()" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                            <div id="changeDueDisplay" style="font-weight:700;white-space:nowrap;color:var(--text-secondary);">Change: R 0.00</div>
+                        </div>
+
                         <!-- Account Customer Selection (shown when ACCOUNT selected) -->
                         <div id="accountCustomerSection" style="display:none; background:#f0f4ff; padding:12px; border-radius:8px; margin-bottom:10px;">
                             <label style="font-weight:600;display:block;margin-bottom:5px;">Select Account Customer</label>
@@ -3505,6 +3516,29 @@
                                 </div>
                             </div>
                             <button class="btn btn-primary" onclick="saveReceiptSettings()" style="margin-top: 15px;">Save Settings</button>
+                        </div>
+
+                        <!-- USB Receipt Printer — pairs directly with the browser via
+                             WebUSB, so the receipt (and the cash drawer kick signal)
+                             are sent straight from this till PC to the printer with no
+                             separate software needed. Only supports Chrome/Edge (WebUSB
+                             isn't available in Firefox/Safari) and requires HTTPS.
+                             Network (IP-based) printers are a separate, not-yet-built
+                             path — see the "Printers" table below for that. -->
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <h4 style="margin: 0 0 5px 0;">USB Receipt Printer</h4>
+                            <p style="color:#666;font-size:13px;margin:0 0 15px;">
+                                For a printer/cash drawer plugged directly into this till's USB port.
+                                Pairing is per-computer — each till must pair its own printer once.
+                            </p>
+                            <div id="usbPrinterStatus" style="padding:10px;border-radius:6px;background:#fff;border:1px solid #ddd;margin-bottom:12px;font-size:14px;">
+                                Checking for a paired USB printer...
+                            </div>
+                            <div style="display:flex;gap:10px;">
+                                <button class="btn btn-primary" onclick="pairUsbPrinter()">🔌 Pair USB Printer</button>
+                                <button class="btn btn-secondary" id="usbPrinterTestBtn" onclick="testUsbPrinter()" style="display:none;">Print Test Slip</button>
+                                <button class="btn btn-secondary" id="usbPrinterForgetBtn" onclick="forgetUsbPrinter()" style="display:none;">Forget Printer</button>
+                            </div>
                         </div>
 
                         <!-- Printers Table -->
@@ -5441,6 +5475,11 @@
         // Initialize on page load
         window.addEventListener('load', async () => {
             await initIndexedDB();
+            // Populate cachedUsbPrinter from any previously-granted WebUSB
+            // permission so checkout can use it immediately — doesn't require
+            // login/company context, just a browser permission lookup, so this
+            // doesn't need to wait for Settings to be opened first.
+            cachedUsbPrinter = await getPairedUsbPrinter();
             isOnline = navigator.onLine;
             await updateOfflineBanner();
             await checkDeviceIdentity(); // Workstream 82 — validate this device against the backend before showing any login UI
@@ -7481,6 +7520,11 @@
                     </div>
                 `;
                 document.getElementById('checkoutBtn').disabled = true;
+                // Clear any leftover "amount received" from the last sale — otherwise
+                // it would silently carry over and show a wrong change-due for the
+                // next customer's total.
+                const tenderedInput = document.getElementById('cashTenderedAmount');
+                if (tenderedInput) tenderedInput.value = '';
             } else {
                 container.innerHTML = '';
 
@@ -7520,6 +7564,12 @@
             // Update split payment remaining if active
             if (splitPaymentMode) {
                 updateSplitRemaining();
+            }
+
+            // Keep change-due in sync if the cart changes while an amount is
+            // already entered (e.g. cashier adds one more item after typing it).
+            if (selectedPayment === 'CASH') {
+                updateChangeDue();
             }
         }
 
@@ -7618,6 +7668,42 @@
                 // focus back to the barcode input in that case.
                 setTimeout(refocusScanner, 100);
             }
+
+            // Cash Tendered / Change Due — only makes sense for a plain cash sale.
+            const cashTenderedSection = document.getElementById('cashTenderedSection');
+            if (cashTenderedSection) {
+                if (method === 'CASH') {
+                    cashTenderedSection.style.display = 'flex';
+                    updateChangeDue();
+                } else {
+                    cashTenderedSection.style.display = 'none';
+                    document.getElementById('cashTenderedAmount').value = '';
+                }
+            }
+        }
+
+        // Pure cashier convenience — never sent to the backend. The actual
+        // amount charged/recorded is always calcCartTotals(cart).total; this
+        // just tells the cashier how much change to hand back.
+        function updateChangeDue() {
+            const tenderedInput = document.getElementById('cashTenderedAmount');
+            const display = document.getElementById('changeDueDisplay');
+            if (!tenderedInput || !display) return;
+
+            const tendered = parseFloat(tenderedInput.value) || 0;
+            const { total } = calcCartTotals(cart);
+            const change = Math.round((tendered - total) * 100) / 100;
+
+            if (!tenderedInput.value) {
+                display.textContent = 'Change: R 0.00';
+                display.style.color = 'var(--text-secondary)';
+            } else if (change < 0) {
+                display.textContent = `Short: R ${Math.abs(change).toFixed(2)}`;
+                display.style.color = '#c62828';
+            } else {
+                display.textContent = `Change: R ${change.toFixed(2)}`;
+                display.style.color = '#2e7d32';
+            }
         }
 
         async function searchAccountCustomers(query) {
@@ -7660,6 +7746,9 @@
 
         let lastSaleId = null;
         let autoPrintEnabled = false;
+        // Defaults true to match company_settings' own default (open_drawer_on_sale
+        // defaults true in the DB) — updated for real from loadGeneralSettings().
+        let openDrawerEnabled = true;
         let activePrinterCount = 0;
 
         async function checkout() {
@@ -7674,6 +7763,18 @@
 
             // Calculate totals for offline mode
             const { subtotal, vat: vatAmount, total: totalAmount } = calcCartTotals(cart);
+
+            // If the cashier entered an amount received for a cash sale, it must
+            // actually cover the total — can't hand back negative change. Entering
+            // nothing at all is still allowed (cashier can skip the calculator).
+            if (selectedPayment === 'CASH') {
+                const tenderedInput = document.getElementById('cashTenderedAmount');
+                const tendered = tenderedInput ? parseFloat(tenderedInput.value) : NaN;
+                if (!isNaN(tendered) && tendered < totalAmount) {
+                    showNotification(`Amount received (R ${tendered.toFixed(2)}) is less than the total (R ${totalAmount.toFixed(2)})`, 'error');
+                    return;
+                }
+            }
 
             const saleData = {
                 // Generated once per checkout attempt. Persists with the
@@ -7979,6 +8080,26 @@
         }
 
         async function printReceipt(saleId) {
+            // A paired USB printer (WebUSB) is the one fully-working hardware
+            // path today — it prints AND kicks the drawer directly from this
+            // browser, no server round-trip needed. Takes priority over the
+            // (currently non-functional) network-printer path below.
+            const usbPrinter = cachedUsbPrinter || await getPairedUsbPrinter();
+            if (usbPrinter) {
+                try {
+                    await printReceiptViaUsb(saleId);
+                    if (openDrawerEnabled) await kickUsbDrawer();
+                    showNotification('Receipt printed!', 'success');
+                    closeSaleCompleteModal();
+                    return;
+                } catch (e) {
+                    console.warn('[Print] USB print failed, falling back to browser print:', e.message);
+                    showNotification('USB printer error — opening browser print instead', 'error');
+                    await printReceiptViaBrowser(saleId);
+                    return;
+                }
+            }
+
             // No network printers configured → use USB/local printer via browser print
             if (activePrinterCount === 0) {
                 await printReceiptViaBrowser(saleId);
@@ -8061,6 +8182,252 @@
 
             // Clear after print dialog closes
             setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
+        }
+
+        // ========== USB THERMAL PRINTER (WebUSB) ==========
+        // Talks directly to a USB receipt printer/cash drawer from this browser —
+        // no local software needed. Chrome/Edge only (WebUSB isn't implemented in
+        // Firefox/Safari), and requires HTTPS (or localhost). Pairing is stored
+        // per-browser (localStorage) since a WebUSB permission grant is already
+        // scoped to this browser profile + origin + device — it was never going
+        // to be a cross-till/server-side setting. Network (IP-based) printers are
+        // a deliberately separate, not-yet-built path (a browser cannot open a
+        // raw socket to a printer's IP — that needs a local relay agent on the
+        // till PC, a bigger, separate piece of work).
+
+        const USB_PRINTER_VENDOR_KEY = 'pos_usb_printer_vendor_id';
+        const USB_PRINTER_PRODUCT_KEY = 'pos_usb_printer_product_id';
+        let cachedUsbPrinter = null;
+
+        function webUsbSupported() {
+            return !!(navigator.usb);
+        }
+
+        async function getPairedUsbPrinter() {
+            if (!webUsbSupported()) return null;
+            const vendorId = parseInt(localStorage.getItem(USB_PRINTER_VENDOR_KEY), 10);
+            const productId = parseInt(localStorage.getItem(USB_PRINTER_PRODUCT_KEY), 10);
+            if (!vendorId || !productId) return null;
+            try {
+                const devices = await navigator.usb.getDevices();
+                return devices.find(d => d.vendorId === vendorId && d.productId === productId) || null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function refreshUsbPrinterStatus() {
+            const statusEl = document.getElementById('usbPrinterStatus');
+            const testBtn = document.getElementById('usbPrinterTestBtn');
+            const forgetBtn = document.getElementById('usbPrinterForgetBtn');
+            if (!statusEl) return;
+
+            if (!webUsbSupported()) {
+                statusEl.textContent = "⚠️ This browser doesn't support USB printing (WebUSB). Use Chrome or Edge on this till.";
+                statusEl.style.color = '#c62828';
+                testBtn.style.display = 'none';
+                forgetBtn.style.display = 'none';
+                return;
+            }
+
+            const device = await getPairedUsbPrinter();
+            cachedUsbPrinter = device;
+            if (device) {
+                statusEl.textContent = `✅ Paired: ${device.productName || 'USB Printer'} (${device.manufacturerName || 'Unknown manufacturer'})`;
+                statusEl.style.color = '#2e7d32';
+                testBtn.style.display = 'inline-block';
+                forgetBtn.style.display = 'inline-block';
+            } else {
+                statusEl.textContent = 'No USB printer paired yet.';
+                statusEl.style.color = '#666';
+                testBtn.style.display = 'none';
+                forgetBtn.style.display = 'none';
+            }
+        }
+
+        async function pairUsbPrinter() {
+            if (!webUsbSupported()) {
+                showNotification("This browser doesn't support USB printing. Use Chrome or Edge.", 'error');
+                return;
+            }
+            try {
+                // No vendor filter — thermal printers come from many manufacturers
+                // (Epson, Star, Xprinter, generic ESC/POS clones). An empty filter
+                // lets the cashier pick whichever USB device is the printer from
+                // the browser's own device picker, rather than us guessing vendor
+                // IDs wrong and missing hardware we don't recognise.
+                const device = await navigator.usb.requestDevice({ filters: [] });
+                localStorage.setItem(USB_PRINTER_VENDOR_KEY, device.vendorId);
+                localStorage.setItem(USB_PRINTER_PRODUCT_KEY, device.productId);
+                showNotification('USB printer paired!', 'success');
+                await refreshUsbPrinterStatus();
+            } catch (e) {
+                // NotFoundError = cashier closed the device picker without
+                // choosing anything — not a real error, stay quiet.
+                if (e.name !== 'NotFoundError') {
+                    showNotification('Failed to pair printer: ' + e.message, 'error');
+                }
+            }
+        }
+
+        function forgetUsbPrinter() {
+            if (!confirm('Forget the paired USB printer on this till?')) return;
+            localStorage.removeItem(USB_PRINTER_VENDOR_KEY);
+            localStorage.removeItem(USB_PRINTER_PRODUCT_KEY);
+            cachedUsbPrinter = null;
+            refreshUsbPrinterStatus();
+        }
+
+        // ── ESC/POS command building ────────────────────────────────────────────
+
+        const ESC_POS = {
+            INIT:         [0x1B, 0x40],
+            ALIGN_LEFT:   [0x1B, 0x61, 0x00],
+            ALIGN_CENTER: [0x1B, 0x61, 0x01],
+            BOLD_ON:      [0x1B, 0x45, 0x01],
+            BOLD_OFF:     [0x1B, 0x45, 0x00],
+            DOUBLE_ON:    [0x1D, 0x21, 0x11],
+            DOUBLE_OFF:   [0x1D, 0x21, 0x00],
+            CUT:          [0x1D, 0x56, 0x01],
+            // Standard "kick drawer pin 2" pulse — the near-universal default
+            // wiring for a drawer cabled through the printer's RJ11/RJ12 port.
+            // If a specific drawer needs pin 5 instead, this is the one constant
+            // to change (replace 0x00 with 0x01 as the third byte).
+            DRAWER_KICK:  [0x1B, 0x70, 0x00, 0x19, 0xFA],
+        };
+
+        // Flattens an array of plain strings (encoded as text) and/or raw command
+        // byte arrays (ESC_POS.* constants) into one Uint8Array ready to send.
+        function escPosBytes(parts) {
+            const encoder = new TextEncoder();
+            const chunks = parts.map(p => Array.isArray(p) ? new Uint8Array(p) : encoder.encode(p));
+            const total = chunks.reduce((sum, c) => sum + c.length, 0);
+            const result = new Uint8Array(total);
+            let offset = 0;
+            for (const c of chunks) { result.set(c, offset); offset += c.length; }
+            return result;
+        }
+
+        // Pads a label/value pair to the printer's character width — thermal
+        // printers are monospace, so this is how totals/prices line up on the
+        // right without needing real table layout.
+        function escPosRow(left, right, width) {
+            left = String(left); right = String(right);
+            const gap = Math.max(1, width - left.length - right.length);
+            return left + ' '.repeat(gap) + right + '\n';
+        }
+
+        async function buildEscPosReceipt(saleId) {
+            const response = await fetch(`${API_URL}/receipts/preview/${saleId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('Could not load receipt data');
+            const result = await response.json();
+            const r = result.receipt;
+
+            const width = (localStorage.getItem('pos_paper_width') || '80') === '58' ? 32 : 42;
+            const fmt = (v) => 'R ' + parseFloat(v || 0).toFixed(2);
+            const saleDate = new Date(r.sale.created_at || Date.now());
+            const dateStr = saleDate.toLocaleDateString('en-ZA') + ' ' + saleDate.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+
+            const parts = [ESC_POS.INIT, ESC_POS.ALIGN_CENTER, ESC_POS.BOLD_ON, ESC_POS.DOUBLE_ON,
+                (r.company?.trading_name || r.company?.company_name || 'Checkout Charlie') + '\n',
+                ESC_POS.DOUBLE_OFF];
+
+            if (r.company?.address) parts.push(r.company.address + '\n');
+            if (r.company?.registration_number) parts.push('Reg No: ' + r.company.registration_number + '\n');
+            if (r.company?.vat_number) parts.push('VAT Reg: ' + r.company.vat_number + '\n');
+            if (r.header) parts.push(r.header + '\n');
+            parts.push(ESC_POS.BOLD_OFF, ESC_POS.ALIGN_LEFT, '-'.repeat(width) + '\n');
+
+            parts.push(escPosRow('Receipt #:', String(r.sale.id), width));
+            parts.push(escPosRow('Date:', dateStr, width));
+            if (r.cashier) parts.push(escPosRow('Cashier:', r.cashier, width));
+            if (r.till) parts.push(escPosRow('Till:', r.till, width));
+            if (r.customer) parts.push(escPosRow('Customer:', r.customer.name, width));
+            parts.push('-'.repeat(width) + '\n');
+
+            (r.items || []).forEach(item => {
+                const name = item.products?.product_name || 'Item';
+                parts.push(`${item.quantity} x ${name}\n`);
+                parts.push(escPosRow(`  @ ${fmt(item.unit_price)}`, fmt(item.total_price), width));
+            });
+            parts.push('-'.repeat(width) + '\n');
+
+            parts.push(escPosRow('Subtotal:', fmt(r.sale.subtotal), width));
+            parts.push(escPosRow('VAT incl.:', fmt(r.sale.vat_amount), width));
+            parts.push(ESC_POS.BOLD_ON, ESC_POS.DOUBLE_ON, escPosRow('TOTAL', fmt(r.sale.total_amount), Math.floor(width * 0.7)), ESC_POS.DOUBLE_OFF, ESC_POS.BOLD_OFF);
+            parts.push('-'.repeat(width) + '\n');
+
+            (r.payments || []).forEach(p => {
+                parts.push(escPosRow((p.payment_method || 'Cash').toUpperCase() + ':', fmt(p.amount), width));
+            });
+            parts.push('-'.repeat(width) + '\n');
+
+            if (r.footer) parts.push(ESC_POS.ALIGN_CENTER, r.footer + '\n');
+            parts.push('\n\n\n', ESC_POS.CUT);
+
+            return escPosBytes(parts);
+        }
+
+        async function sendRawToUsbPrinter(device, bytes) {
+            let claimed = false;
+            try {
+                await device.open();
+                if (device.configuration === null) await device.selectConfiguration(1);
+
+                // Find the first interface with a bulk OUT endpoint — printers
+                // vary in which interface number they expose this on.
+                let interfaceNumber = 0, endpointNumber = null;
+                for (const iface of device.configuration.interfaces) {
+                    for (const alt of iface.alternates) {
+                        const out = alt.endpoints.find(e => e.direction === 'out');
+                        if (out) { interfaceNumber = iface.interfaceNumber; endpointNumber = out.endpointNumber; break; }
+                    }
+                    if (endpointNumber !== null) break;
+                }
+                if (endpointNumber === null) throw new Error('No USB OUT endpoint found on this device');
+
+                await device.claimInterface(interfaceNumber);
+                claimed = true;
+                await device.transferOut(endpointNumber, bytes);
+            } finally {
+                try {
+                    if (claimed) await device.releaseInterface(0);
+                    await device.close();
+                } catch (e) { /* device may already be disconnected — nothing more to do */ }
+            }
+        }
+
+        async function printReceiptViaUsb(saleId) {
+            const device = cachedUsbPrinter || await getPairedUsbPrinter();
+            if (!device) throw new Error('No USB printer paired');
+            const bytes = await buildEscPosReceipt(saleId);
+            await sendRawToUsbPrinter(device, bytes);
+        }
+
+        async function kickUsbDrawer() {
+            const device = cachedUsbPrinter || await getPairedUsbPrinter();
+            if (!device) return false;
+            await sendRawToUsbPrinter(device, escPosBytes([ESC_POS.INIT, ESC_POS.DRAWER_KICK]));
+            return true;
+        }
+
+        async function testUsbPrinter() {
+            try {
+                const device = cachedUsbPrinter || await getPairedUsbPrinter();
+                if (!device) { showNotification('No USB printer paired', 'error'); return; }
+                const testBytes = escPosBytes([
+                    ESC_POS.INIT, ESC_POS.ALIGN_CENTER, ESC_POS.BOLD_ON,
+                    'USB PRINTER TEST\n', ESC_POS.BOLD_OFF,
+                    'If you can read this, printing works.\n',
+                    '\n\n\n', ESC_POS.CUT,
+                ]);
+                await sendRawToUsbPrinter(device, testBytes);
+                showNotification('Test slip sent', 'success');
+            } catch (e) {
+                showNotification('USB print test failed: ' + e.message, 'error');
+            }
         }
 
         async function printLastReceipt() {
@@ -8231,6 +8598,7 @@
                 document.getElementById('receipt-printersSection').style.display = 'block';
                 loadPrinters();
                 loadReceiptSettings();
+                refreshUsbPrinterStatus();
             } else if (section === 'general') {
                 document.getElementById('generalSection').style.display = 'block';
                 loadGeneralSettings();
@@ -11002,6 +11370,10 @@
             // Update split payment remaining if active
             if (splitPaymentMode) {
                 updateSplitRemaining();
+            }
+
+            if (selectedPayment === 'CASH') {
+                updateChangeDue();
             }
         }
 
@@ -15347,18 +15719,19 @@
                 if (settingsRes.ok) {
                     const data = await settingsRes.json();
                     const settings = data.settings || {};
-                    document.getElementById('defaultFloatAmount').value = settings.default_float_amount || 500;
+                    document.getElementById('defaultFloatAmount').value = settings.till_float_amount || 500;
                     document.getElementById('settingsProductPrefix').value = settings.product_code_prefix || 'PRO';
                     document.getElementById('settingsReceiptPrefix').value = settings.receipt_prefix || 'INV';
                     document.getElementById('settingsNextReceiptNumber').value = settings.next_receipt_number || 1;
                     document.getElementById('settingsVatRate').value = settings.vat_rate || 15;
                     document.getElementById('settingsAutoPrint').checked = settings.auto_print_receipt !== 0;
-                    document.getElementById('settingsOpenDrawer').checked = settings.open_drawer_on_sale !== 0;
-                    document.getElementById('settingsGroupItems').checked = settings.group_same_items !== 0;
+                    document.getElementById('settingsOpenDrawer').checked = settings.open_drawer_on_sale !== false;
+                    document.getElementById('settingsGroupItems').checked = settings.group_same_items !== false;
                     document.getElementById('settingsShowImages').checked = settings.use_product_images === 1;
 
-                    // Update auto-print flag
+                    // Update auto-print / open-drawer flags actually used at checkout time.
                     autoPrintEnabled = settings.auto_print_receipt !== 0;
+                    openDrawerEnabled = settings.open_drawer_on_sale !== false;
                 }
             } catch (e) {
                 console.log('General settings load error:', e);
@@ -15395,21 +15768,23 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        default_float_amount: parseFloat(document.getElementById('defaultFloatAmount').value) || 500,
+                        till_float_amount: parseFloat(document.getElementById('defaultFloatAmount').value) || 500,
                         product_code_prefix: document.getElementById('settingsProductPrefix').value.trim().toUpperCase() || 'PRO',
                         receipt_prefix: document.getElementById('settingsReceiptPrefix').value.trim().toUpperCase() || 'INV',
                         next_receipt_number: parseInt(document.getElementById('settingsNextReceiptNumber').value) || 1,
                         vat_rate: parseFloat(document.getElementById('settingsVatRate').value) || 15,
-                        auto_print_receipt: document.getElementById('settingsAutoPrint').checked ? 1 : 0,
-                        open_drawer_on_sale: document.getElementById('settingsOpenDrawer').checked ? 1 : 0,
-                        group_same_items: document.getElementById('settingsGroupItems').checked ? 1 : 0,
-                        use_product_images: document.getElementById('settingsShowImages').checked ? 1 : 0
+                        open_drawer_on_sale: document.getElementById('settingsOpenDrawer').checked,
+                        group_same_items: document.getElementById('settingsGroupItems').checked
+                        // auto_print_receipt / use_product_images: not real company_settings
+                        // columns yet (pre-existing gap) — left out rather than sending
+                        // fields the backend would just ignore.
                     })
                 });
 
                 if ((!companyRes || companyRes.ok) && settingsRes.ok) {
                     showNotification('All settings saved successfully!', 'success');
                     autoPrintEnabled = document.getElementById('settingsAutoPrint').checked;
+                    openDrawerEnabled = document.getElementById('settingsOpenDrawer').checked;
                 } else {
                     showNotification('Some settings may not have saved', 'error');
                 }
