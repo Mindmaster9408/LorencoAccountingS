@@ -9585,6 +9585,7 @@
                 <table class="products-table">
                     <thead>
                         <tr>
+                            <th></th>
                             <th>Sale #</th>
                             <th>Cashier</th>
                             <th>Date</th>
@@ -9595,12 +9596,13 @@
                             <th>Margin %</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="grossProfitTableBody">
             `;
 
             sales.forEach(sale => {
                 html += `
-                    <tr>
+                    <tr class="gp-sale-row" data-sale-id="${sale.id}" onclick="toggleSaleDetail(${sale.id}, this)" style="cursor:pointer;">
+                        <td class="gp-expand-icon" style="width:20px;color:var(--text-muted, #999);">▶</td>
                         <td>${sale.sale_number}</td>
                         <td>${sale.cashier}</td>
                         <td>${new Date(sale.created_at).toLocaleDateString()}</td>
@@ -9615,6 +9617,85 @@
 
             html += `</tbody></table>`;
             container.innerHTML = html;
+        }
+
+        // Click-to-expand on a Gross Profit report row — shows the items bought
+        // and how it was paid (cash/card/account/etc.), plus Tendered/Change if
+        // it was a cash sale. Reuses GET /api/pos/sales/:id (the same detail
+        // endpoint the receipt/reprint flow uses) rather than adding a new
+        // route or bloating the summary report response with every sale's full
+        // item/payment data up front. Cached per sale id so re-expanding a row
+        // you already opened doesn't re-fetch.
+        const _saleDetailCache = new Map();
+
+        async function toggleSaleDetail(saleId, rowEl) {
+            const existing = document.getElementById(`gp-detail-${saleId}`);
+            if (existing) {
+                existing.remove();
+                rowEl.querySelector('.gp-expand-icon').textContent = '▶';
+                return;
+            }
+
+            // Collapse any other open row first — one at a time keeps the table readable.
+            document.querySelectorAll('[id^="gp-detail-"]').forEach(el => {
+                const openId = el.id.replace('gp-detail-', '');
+                document.querySelector(`.gp-sale-row[data-sale-id="${openId}"] .gp-expand-icon`).textContent = '▶';
+                el.remove();
+            });
+
+            const colCount = rowEl.children.length;
+            const detailRow = document.createElement('tr');
+            detailRow.id = `gp-detail-${saleId}`;
+            detailRow.innerHTML = `<td colspan="${colCount}" style="background:var(--surface-alt, #f8f9fa); padding:15px 20px;">Loading...</td>`;
+            rowEl.after(detailRow);
+            rowEl.querySelector('.gp-expand-icon').textContent = '▼';
+
+            try {
+                let sale = _saleDetailCache.get(saleId);
+                if (!sale) {
+                    const response = await fetch(`${API_URL}/pos/sales/${saleId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!response.ok) throw new Error('Could not load sale detail');
+                    const result = await response.json();
+                    sale = result.sale;
+                    _saleDetailCache.set(saleId, sale);
+                }
+
+                const fmt = (v) => 'R ' + parseFloat(v || 0).toFixed(2);
+                const itemsHtml = (sale.sale_items || []).map(item => `
+                    <tr>
+                        <td>${item.quantity} x ${item.products?.product_name || item.product_name || 'Item'}</td>
+                        <td style="text-align:right;">${fmt(item.unit_price)}</td>
+                        <td style="text-align:right;">${fmt(item.line_total || (item.unit_price * item.quantity))}</td>
+                    </tr>`).join('');
+
+                const paymentsHtml = (sale.sale_payments || []).map(p => {
+                    const methodLabel = (p.payment_method || 'cash').toUpperCase();
+                    let line = `<div style="display:flex;justify-content:space-between;"><span>${methodLabel}</span><span>${fmt(p.amount)}</span></div>`;
+                    if (p.payment_method === 'cash' && p.tendered_amount != null) {
+                        line += `<div style="display:flex;justify-content:space-between;color:var(--text-secondary,#666);font-size:12px;padding-left:10px;"><span>Tendered</span><span>${fmt(p.tendered_amount)}</span></div>`;
+                        line += `<div style="display:flex;justify-content:space-between;color:var(--text-secondary,#666);font-size:12px;padding-left:10px;"><span>Change</span><span>${fmt(p.change_given)}</span></div>`;
+                    }
+                    return line;
+                }).join('');
+
+                detailRow.innerHTML = `
+                    <td colspan="${colCount}" style="background:var(--surface-alt, #f8f9fa); padding:15px 20px;">
+                        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
+                            <div>
+                                <div style="font-weight:600; margin-bottom:8px; font-size:13px;">Items Purchased</div>
+                                <table style="width:100%; font-size:13px;">${itemsHtml}</table>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; margin-bottom:8px; font-size:13px;">Payment</div>
+                                <div style="font-size:13px;">${paymentsHtml || '<span style="color:var(--text-muted,#999);">No payment record</span>'}</div>
+                            </div>
+                        </div>
+                    </td>`;
+            } catch (e) {
+                detailRow.innerHTML = `<td colspan="${colCount}" style="padding:15px 20px; color:#c62828;">Could not load sale detail: ${e.message}</td>`;
+            }
         }
 
         function renderGrossProfitByPersonReport(data, container) {

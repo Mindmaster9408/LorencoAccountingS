@@ -813,6 +813,7 @@ async function fetchSalesWithProfit(companyId, start, end) {
     const gross_profit = total_amount - cost_total;
     const profit_margin = total_amount > 0 ? Math.round((gross_profit / total_amount) * 10000) / 100 : 0;
     return {
+      id: sale.id, // lets the frontend fetch full item/payment detail on demand (GET /api/pos/sales/:id) without bloating this summary response
       sale_number: sale.sale_number || sale.receipt_number,
       cashier: sale.users?.full_name || sale.users?.username || 'Unknown',
       user_id: sale.user_id,
