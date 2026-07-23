@@ -4928,6 +4928,7 @@
         let syncProgress = { current: 0, total: 0 }; // Progress counter for banner display
         let barcodeMap = new Map();   // O(1) barcode/product_code → product lookup; rebuilt after every products load
         let productRefreshInterval = null; // Periodic live-refresh timer — see startProductAutoRefresh() below
+        let lastProductSyncAt = null; // Server clock cursor for refreshProductsDelta() — set from server_time on every successful full or delta products fetch, never the till's own clock (avoids clock-skew gaps)
 
         // Initialize IndexedDB
         async function initIndexedDB() {
@@ -6220,6 +6221,10 @@
 
                     const result = await response.json();
                     products = result.products;
+                    // Baseline cursor for refreshProductsDelta() — server's own clock,
+                    // falls back to local time only if an older backend hasn't deployed
+                    // server_time yet.
+                    lastProductSyncAt = result.server_time || new Date().toISOString();
 
                     // Cache products in IndexedDB for offline use
                     await cacheProducts(products);
@@ -6282,8 +6287,93 @@
             if (productRefreshInterval) clearInterval(productRefreshInterval);
             productRefreshInterval = setInterval(() => {
                 if (!isOnline) return;
-                loadProducts();
+                refreshProductsDelta();
             }, PRODUCT_REFRESH_INTERVAL_MS);
+        }
+
+        // Delta version of loadProducts() — fetches only products changed since
+        // the last sync (price/stock/name edits, deactivation, new discounts)
+        // instead of re-fetching and re-rendering the entire catalog (2,500+
+        // products on some stores) every 90s. Found live (2026-07-23): the old
+        // full-rebuild-every-90s pattern could visibly freeze a scan on slower
+        // till hardware if the scan landed while the whole grid/table were
+        // being torn down and rebuilt from scratch. The common case here (zero
+        // or a handful of changed products) now costs a few targeted DOM
+        // patches instead of ~2,500 tile/row rebuilds.
+        //
+        // Falls back to the existing full loadProducts() if there's no
+        // baseline cursor yet (first load never completed, or came back online
+        // without one) — same as before this change in that case.
+        async function refreshProductsDelta() {
+            if (!isOnline || !lastProductSyncAt) return loadProducts();
+
+            try {
+                const response = await fetch(
+                    `${API_URL}/pos/products?updated_since=${encodeURIComponent(lastProductSyncAt)}&active_only=false`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }
+                );
+                if (!response.ok) return; // stay on last-known data; next interval retries
+
+                const result = await response.json();
+                const changed = result.products || [];
+                lastProductSyncAt = result.server_time || lastProductSyncAt;
+
+                if (changed.length === 0) return; // common case — nothing changed, zero DOM cost
+
+                let needsFullReRender = false;
+                changed.forEach(product => {
+                    const idx = products.findIndex(p => p.id === product.id);
+
+                    if (!product.is_active) {
+                        // Deactivated since last sync — drop from local state and any visible tile/row.
+                        if (idx !== -1) products.splice(idx, 1);
+                        document.querySelector(`#productsGrid [data-product-id="${product.id}"]`)?.remove();
+                        document.querySelector(`#productsTableBody [data-product-id="${product.id}"]`)?.remove();
+                        return;
+                    }
+
+                    if (product.category) categories.add(product.category);
+
+                    if (idx !== -1) {
+                        // Already known — patch just this one tile/row in place.
+                        products[idx] = product;
+                        const tile = document.querySelector(`#productsGrid [data-product-id="${product.id}"]`);
+                        if (tile) tile.outerHTML = buildProductTileHtml(product);
+                        const row = document.querySelector(`#productsTableBody [data-product-id="${product.id}"]`);
+                        if (row) row.outerHTML = buildProductTableRowHtml(product);
+                        // Not currently visible (e.g. filtered to a different category) —
+                        // the array update above is enough; it renders correctly next
+                        // time that filter/view is selected.
+                    } else {
+                        // Brand new or reactivated — not in local state, so there's no
+                        // tile/row to patch and no reliable way to know from here whether
+                        // it belongs under the currently selected category/shortcuts view.
+                        // Rare compared to routine price/stock ticks, so let the existing
+                        // filtered-view logic place it correctly via one full re-render.
+                        products.push(product);
+                        needsFullReRender = true;
+                    }
+                });
+
+                // Cheap (plain object Map rebuild, not DOM) — safe to always do in
+                // full rather than hand-maintain incrementally, since barcodeMap
+                // also indexes a normalized/stripped variant per product.
+                rebuildBarcodeMap();
+
+                if (needsFullReRender) {
+                    renderCategories();
+                    const shown = selectedCategory === 'all'
+                        ? products
+                        : selectedCategory === '__shortcuts__'
+                            ? products.filter(p => shortcutIds.has(p.id))
+                            : products.filter(p => p.category === selectedCategory);
+                    displayProductsGrid(shown);
+                }
+
+                await cacheProducts(products);
+            } catch (error) {
+                console.warn('[Products] Delta refresh failed — will retry next interval:', error.message);
+            }
         }
 
         // Cash Up Functions
@@ -6965,86 +7055,93 @@
             }
         }
 
+        // Builds a single grid tile's markup. Extracted from displayProductsGrid
+        // so refreshProductsDelta() can patch one tile in place (outerHTML) without
+        // rebuilding the other ~2,500 tiles around it — same markup either way.
+        function buildProductTileHtml(product) {
+            // When offline: show locally-estimated stock with visual distinction.
+            // current_stock is decremented by offline checkout; stock_quantity is the
+            // last confirmed server value. ~N (italic amber) signals "estimate, not confirmed".
+            let stockHtml;
+            if (!isOnline) {
+                // current_stock is the locally-decremented estimate (offline sales applied).
+                // stock_quantity is the last confirmed server value.
+                const est = product.current_stock ?? product.stock_quantity ?? 0;
+                if (est < 0) {
+                    // Estimate has gone negative — red badge, same class as online negative stock.
+                    stockHtml = `<div class="stock-negative">~${est} (est.) ⚠</div>`;
+                } else if (est === 0 && companyStockPolicy.allowNegativeStock) {
+                    // At zero estimate, policy allows further negative sales — amber warning.
+                    stockHtml = `<div class="stock-zero-neg">Out of stock (est., neg. allowed)</div>`;
+                } else if (est <= 0) {
+                    // Strict mode: zero or below — existing out-of-stock estimate style.
+                    stockHtml = `<div class="stock-zero-est">Out of stock (est.)</div>`;
+                } else {
+                    stockHtml = `<div class="stock-estimated">~${est} (est.)</div>`;
+                }
+            } else {
+                const qty = product.stock_quantity ?? 0;
+                if (qty < 0) {
+                    stockHtml = `<div class="stock-negative">Stock: ${qty} ⚠</div>`;
+                } else if (qty === 0 && companyStockPolicy.allowNegativeStock) {
+                    stockHtml = `<div class="stock-zero-neg">Out of stock (neg. allowed)</div>`;
+                } else {
+                    stockHtml = `<div class="product-stock">Stock: ${qty}</div>`;
+                }
+            }
+            const isStarred = shortcutIds.has(product.id);
+            // discount_price is attached server-side (GET /api/pos/products) only
+            // while a Daily Discount is active for today — show both prices so the
+            // cashier sees the same discounted amount addToCart() is about to charge,
+            // rather than a price that silently changes between the tile and the cart.
+            const priceHtml = product.discount_price != null
+                ? `<div class="product-price">
+                       <span style="text-decoration:line-through;opacity:0.6;font-size:0.85em;">R ${parseFloat(product.unit_price).toFixed(2)}</span>
+                       <span style="color:#e65100;font-weight:700;">R ${parseFloat(product.discount_price).toFixed(2)}</span>
+                   </div>`
+                : `<div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>`;
+            return `<div class="product-tile" data-product-id="${product.id}">
+                <button class="shortcut-star${isStarred ? ' starred' : ''}"
+                        data-shortcut-btn="${product.id}"
+                        onclick="event.stopPropagation(); toggleShortcut(${product.id}, this)">★</button>
+                <div class="product-name">${product.product_name}</div>
+                ${priceHtml}
+                ${stockHtml}
+            </div>`;
+        }
+
         function displayProductsGrid(productsToShow) {
             const grid = document.getElementById('productsGrid');
-
             // Single innerHTML write — no per-tile createElement or closure allocation.
             // Click handling is via event delegation set up in DOMContentLoaded.
-            grid.innerHTML = productsToShow.map(product => {
-                // When offline: show locally-estimated stock with visual distinction.
-                // current_stock is decremented by offline checkout; stock_quantity is the
-                // last confirmed server value. ~N (italic amber) signals "estimate, not confirmed".
-                let stockHtml;
-                if (!isOnline) {
-                    // current_stock is the locally-decremented estimate (offline sales applied).
-                    // stock_quantity is the last confirmed server value.
-                    const est = product.current_stock ?? product.stock_quantity ?? 0;
-                    if (est < 0) {
-                        // Estimate has gone negative — red badge, same class as online negative stock.
-                        stockHtml = `<div class="stock-negative">~${est} (est.) ⚠</div>`;
-                    } else if (est === 0 && companyStockPolicy.allowNegativeStock) {
-                        // At zero estimate, policy allows further negative sales — amber warning.
-                        stockHtml = `<div class="stock-zero-neg">Out of stock (est., neg. allowed)</div>`;
-                    } else if (est <= 0) {
-                        // Strict mode: zero or below — existing out-of-stock estimate style.
-                        stockHtml = `<div class="stock-zero-est">Out of stock (est.)</div>`;
-                    } else {
-                        stockHtml = `<div class="stock-estimated">~${est} (est.)</div>`;
-                    }
-                } else {
-                    const qty = product.stock_quantity ?? 0;
-                    if (qty < 0) {
-                        stockHtml = `<div class="stock-negative">Stock: ${qty} ⚠</div>`;
-                    } else if (qty === 0 && companyStockPolicy.allowNegativeStock) {
-                        stockHtml = `<div class="stock-zero-neg">Out of stock (neg. allowed)</div>`;
-                    } else {
-                        stockHtml = `<div class="product-stock">Stock: ${qty}</div>`;
-                    }
-                }
-                const isStarred = shortcutIds.has(product.id);
-                // discount_price is attached server-side (GET /api/pos/products) only
-                // while a Daily Discount is active for today — show both prices so the
-                // cashier sees the same discounted amount addToCart() is about to charge,
-                // rather than a price that silently changes between the tile and the cart.
-                const priceHtml = product.discount_price != null
-                    ? `<div class="product-price">
-                           <span style="text-decoration:line-through;opacity:0.6;font-size:0.85em;">R ${parseFloat(product.unit_price).toFixed(2)}</span>
-                           <span style="color:#e65100;font-weight:700;">R ${parseFloat(product.discount_price).toFixed(2)}</span>
-                       </div>`
-                    : `<div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>`;
-                return `<div class="product-tile" data-product-id="${product.id}">
-                    <button class="shortcut-star${isStarred ? ' starred' : ''}"
-                            data-shortcut-btn="${product.id}"
-                            onclick="event.stopPropagation(); toggleShortcut(${product.id}, this)">★</button>
-                    <div class="product-name">${product.product_name}</div>
-                    ${priceHtml}
-                    ${stockHtml}
-                </div>`;
-            }).join('');
+            grid.innerHTML = productsToShow.map(buildProductTileHtml).join('');
+        }
+
+        // Builds a single table row's markup. Extracted from displayProductsTable
+        // for the same reason as buildProductTileHtml above — lets
+        // refreshProductsDelta() patch one row in place.
+        function buildProductTableRowHtml(product) {
+            const safeJson = JSON.stringify(product).replace(/"/g, '&quot;');
+            return `<tr data-product-id="${product.id}">
+                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_code}</td>
+                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_name}</td>
+                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.category || '-'}</td>
+                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">R ${parseFloat(product.unit_price).toFixed(2)}</td>
+                <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.stock_quantity || product.current_stock || 0}</td>
+                <td>
+                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;"
+                        onclick="event.stopPropagation(); showProductStockModal(${product.id}, '${(product.product_name || '').replace(/'/g, "\\'")}', '${product.product_code}')">
+                        Manage
+                    </button>
+                </td>
+            </tr>`;
         }
 
         function displayProductsTable(productsToShow) {
             const tbody = document.getElementById('productsTableBody');
             document.getElementById('productCount').textContent = `${productsToShow.length} Products`;
-
             // Single tbody write — eliminates per-row appendChild reflows.
-            // safeJson computed once per product — eliminates 4× redundant JSON.stringify per row.
-            tbody.innerHTML = productsToShow.map(product => {
-                const safeJson = JSON.stringify(product).replace(/"/g, '&quot;');
-                return `<tr>
-                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_code}</td>
-                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.product_name}</td>
-                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.category || '-'}</td>
-                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">R ${parseFloat(product.unit_price).toFixed(2)}</td>
-                    <td onclick="editProduct(${safeJson})" style="cursor:pointer;">${product.stock_quantity || product.current_stock || 0}</td>
-                    <td>
-                        <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;"
-                            onclick="event.stopPropagation(); showProductStockModal(${product.id}, '${(product.product_name || '').replace(/'/g, "\\'")}', '${product.product_code}')">
-                            Manage
-                        </button>
-                    </td>
-                </tr>`;
-            }).join('');
+            tbody.innerHTML = productsToShow.map(buildProductTableRowHtml).join('');
         }
 
         function searchProducts() {

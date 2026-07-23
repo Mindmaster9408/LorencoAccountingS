@@ -36,7 +36,13 @@ router.use(requireCompany);
  */
 router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
   try {
-    const { category_id, search, active_only } = req.query;
+    // Captured before any query runs — becomes this response's `server_time`,
+    // which the caller should use as the next `updated_since` cursor. Using
+    // the server's own clock (not the till's) avoids missing a change that
+    // happens between "now" on a clock-skewed till and the actual query.
+    const requestReceivedAt = new Date().toISOString();
+
+    const { category_id, search, active_only, updated_since } = req.query;
 
     const buildQuery = () => {
       let query = supabase
@@ -51,6 +57,10 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
           `product_name.ilike.%${search}%,barcode.ilike.%${search}%,product_code.ilike.%${search}%`
         );
       }
+      // Delta sync (see frontend-pos/index.html refreshProductsDelta()): only
+      // rows changed since the caller's last poll. Covers price/stock/name
+      // edits AND deactivation (is_active flip also bumps updated_at).
+      if (updated_since) query = query.gt('updated_at', updated_since);
 
       return query.order('product_name');
     };
@@ -67,6 +77,35 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
       data = data.concat(page || []);
       if (!page || page.length < PAGE_SIZE) break;
       from += PAGE_SIZE;
+    }
+
+    // Delta sync only: a newly-created Daily Discount doesn't touch the
+    // product row itself, so a product whose only change is "gained a
+    // discount today" wouldn't otherwise appear in the updated_since window.
+    // Pull those in by id so the till's local copy picks up the discount.
+    // KNOWN LIMITATION: this catches new discounts (created_at) but not an
+    // edit/removal of an existing discount mid-day — that reaches the till
+    // on the next full reload (login/reconnect), same as before this change.
+    if (updated_since) {
+      const { data: newDiscounts } = await supabase
+        .from('pos_daily_discounts')
+        .select('product_id')
+        .eq('company_id', req.companyId)
+        .eq('is_active', true)
+        .gt('created_at', updated_since);
+
+      if (newDiscounts && newDiscounts.length > 0) {
+        const alreadyIncluded = new Set(data.map(p => p.id));
+        const extraIds = newDiscounts.map(d => d.product_id).filter(id => !alreadyIncluded.has(id));
+        if (extraIds.length > 0) {
+          const { data: extraProducts } = await supabase
+            .from('products')
+            .select('*, categories(name)')
+            .eq('company_id', req.companyId)
+            .in('id', extraIds);
+          if (extraProducts) data = data.concat(extraProducts);
+        }
+      }
     }
 
     // Attach today's active daily discount (if any) to each matching product.
@@ -107,7 +146,7 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
     // re-fetching, then revalidate in the background for 30 s more.
     // Applies to GET only — POST/PUT/DELETE are not cached.
     res.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=30');
-    res.json({ products: data });
+    res.json({ products: data, server_time: requestReceivedAt });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
