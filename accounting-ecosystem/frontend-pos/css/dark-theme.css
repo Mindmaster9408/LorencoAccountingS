@@ -25,84 +25,131 @@
     --accent-subtle: rgba(59,130,246,0.15);
 }
 
+/* ── Light Theme ──────────────────────────────────────────────────────────────
+   Same accent blue as dark mode (brand consistency with the ecosystem
+   dashboard) — only surfaces/borders/text re-point for light-on-white
+   readability. Toggled via <html data-theme="light">, set by toggleTheme()
+   in index.html and persisted per-device in localStorage (a UI preference,
+   not business data). Added for accessibility — some users find light text
+   on a dark background harder to read than the reverse, regardless of dark
+   mode's usual "easier on the eyes" reputation.
+
+   Deliberately NOT applied to the top nav bar, login screen, PIN login, or
+   company-selector screen — those stay permanently dark/branded (matching
+   the Checkout Charlie logo's own dark neon look), the same way many apps
+   keep a dark header bar even in light mode. Those sections use fixed
+   literal colors below rather than the variables here, specifically so this
+   override can't reach them. Everything a cashier/manager actually stares at
+   for hours — the till screen, cart, settings, reports, tables — uses the
+   variables and switches properly. */
+:root[data-theme="light"] {
+    --surface: rgba(15,23,42,0.04);
+    --surface-hover: rgba(15,23,42,0.08);
+    --surface-alt: rgba(15,23,42,0.025);
+    --border: rgba(15,23,42,0.12);
+    --border-strong: rgba(15,23,42,0.2);
+    --text: #0f172a;
+    --text-secondary: rgba(15,23,42,0.65);
+    --text-muted: rgba(15,23,42,0.45);
+    /* --accent stays the same blue in both themes. --accent-light was a
+       lighter/brighter blue for legibility against a DARK background — the
+       light-mode equivalent needs to go the other way (darker, not lighter)
+       or text using it (headings, totals, prices) would render as pale blue
+       on white: unreadable, defeating the entire point of this toggle. */
+    --accent-light: #1d4ed8;
+}
+
 /* ── Body & Base ────────────────────────────────────────────────────────────── */
 body {
     background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
     color: var(--text) !important;
 }
+:root[data-theme="light"] body {
+    /* Flat light background rather than trying to re-purpose the dark
+       theme's 3-stop gradient vars for a subtle light gradient — simpler to
+       guarantee this looks clean than to tune 3 near-white stops. */
+    background: #f4f6fb !important;
+}
 
-/* ── Top Navigation ─────────────────────────────────────────────────────────── */
+/* ── Top Navigation ─────────────────────────────────────────────────────────── *
+ * Always dark, on purpose — see the note above the light-theme block.
+ * Uses fixed literal colors (not the shared variables) so the light theme
+ * can never accidentally wash this bar out. */
 .top-nav {
     background: rgba(0,0,0,0.4) !important;
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
     box-shadow: none !important;
 }
 .nav-tab:hover { background: rgba(255,255,255,0.08) !important; }
 .nav-tab.active {
     background: rgba(255,255,255,0.12) !important;
-    color: var(--accent-light) !important;
+    color: #60a5fa !important;
     border-color: rgba(255,255,255,0.12) !important;
 }
 .session-badge { background: rgba(255,255,255,0.1) !important; }
 .manage-till-btn {
     background: rgba(255,255,255,0.1) !important;
     border-color: rgba(255,255,255,0.2) !important;
+    color: #fff;
 }
 
-/* ── Login Screen ───────────────────────────────────────────────────────────── */
+/* ── Login Screen ───────────────────────────────────────────────────────────── *
+ * Always dark, on purpose — see the note above the light-theme block. */
 .login-screen {
     background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
 }
 .login-box {
     background: rgba(255,255,255,0.08) !important;
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #fff;
 }
-.login-box h1 { color: var(--accent-light) !important; }
-.login-box label { color: var(--text-secondary) !important; }
+.login-box h1 { color: #60a5fa !important; }
+.login-box label { color: rgba(255,255,255,0.7) !important; }
 .login-box input {
     background: rgba(255,255,255,0.06) !important;
-    border-color: var(--border-strong) !important;
-    color: var(--text) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+    color: #fff !important;
 }
 
 /* ── PIN Login ──────────────────────────────────────────────────────────────── */
 /* Tab strip border */
 .login-box div[style*="border:1px solid #e0e0e0"],
 .login-box div[style*="border: 1px solid #e0e0e0"] {
-    border-color: var(--border-strong) !important;
+    border-color: rgba(255,255,255,0.12) !important;
 }
 /* Tab border colour on dark background */
 #loginTabPin, #loginTabPassword {
-    border-left-color: var(--border-strong) !important;
+    border-left-color: rgba(255,255,255,0.12) !important;
 }
 /* Tab text is always readable — background controlled by JS switchLoginTab() */
 /* "Logging in to:" company banner */
 #pinCompanyDisplay {
     background: var(--accent-subtle) !important;
-    color: var(--accent-light) !important;
-    border: 1px solid var(--border-strong) !important;
+    color: #60a5fa !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
 }
 /* PIN dot track */
 #pinLoginSection div[style*="background:#f5f7fa"],
 #pinLoginSection div[style*="background: #f5f7fa"] {
-    background: var(--surface) !important;
-    border-color: var(--border-strong) !important;
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.12) !important;
 }
 /* Empty PIN dots */
 #pd0, #pd1, #pd2, #pd3 { background: rgba(255,255,255,0.2) !important; }
 /* Number keypad buttons */
 #pinLoginSection button[style*="background:#f5f7fa"],
 #pinLoginSection button[style*="background: #f5f7fa"] {
-    background: var(--surface) !important;
-    border-color: var(--border-strong) !important;
-    color: var(--text) !important;
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+    color: #fff !important;
 }
 #pinLoginSection button[style*="background:#f5f7fa"]:hover,
 #pinLoginSection button[style*="background: #f5f7fa"]:hover {
-    background: var(--surface-hover) !important;
+    background: rgba(255,255,255,0.10) !important;
 }
 /* C (clear) button */
 #pinLoginSection button[style*="background:#fff0f0"],
@@ -114,24 +161,26 @@ body {
 /* Bottom "Don't have an account" divider */
 .login-box div[style*="border-top: 1px solid #eee"],
 .login-box div[style*="border-top:1px solid #eee"] {
-    border-top-color: var(--border) !important;
+    border-top-color: rgba(255,255,255,0.08) !important;
 }
 
-/* ── Company Selector ───────────────────────────────────────────────────────── */
+/* ── Company Selector ───────────────────────────────────────────────────────── *
+ * Always dark, on purpose — see the note above the light-theme block. */
 .company-selector-screen {
     background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
 }
 .company-selector-box {
     background: rgba(255,255,255,0.08) !important;
+    -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #fff;
 }
-.company-selector-box h1 { color: var(--accent-light) !important; }
-.company-selector-box .subtitle { color: var(--text-muted) !important; }
+.company-selector-box h1 { color: #60a5fa !important; }
+.company-selector-box .subtitle { color: rgba(255,255,255,0.5) !important; }
 .company-card {
-    border-color: var(--border-strong) !important;
-    color: var(--text);
+    border-color: rgba(255,255,255,0.12) !important;
+    color: #fff;
     background: transparent;
 }
 .company-card:hover {
@@ -145,20 +194,20 @@ body {
 }
 .company-card .role-badge {
     background: var(--accent-subtle) !important;
-    color: var(--accent-light) !important;
+    color: #60a5fa !important;
 }
 
 /* ── Till Interface ─────────────────────────────────────────────────────────── */
 .products-panel {
-    background: rgba(255,255,255,0.04) !important;
+    background: var(--surface-alt) !important;
     border-right-color: var(--border) !important;
 }
 .search-bar {
-    background: rgba(255,255,255,0.04) !important;
+    background: var(--surface-alt) !important;
     border-bottom-color: var(--border) !important;
 }
 .barcode-input {
-    background: rgba(255,255,255,0.06) !important;
+    background: var(--surface) !important;
     border-color: var(--accent) !important;
     color: var(--text) !important;
 }
@@ -171,7 +220,7 @@ body {
 
 /* ── Categories ─────────────────────────────────────────────────────────────── */
 .categories {
-    background: rgba(255,255,255,0.03) !important;
+    background: var(--surface-alt) !important;
     border-bottom-color: var(--border) !important;
 }
 .category-btn {
@@ -204,7 +253,7 @@ body {
 .product-stock { color: var(--text-muted) !important; }
 
 /* ── Cart Panel ─────────────────────────────────────────────────────────────── */
-.cart-panel { background: rgba(255,255,255,0.03) !important; }
+.cart-panel { background: var(--surface-alt) !important; }
 .cart-header {
     background: var(--surface) !important;
     border-bottom-color: var(--border) !important;
@@ -260,10 +309,10 @@ body {
 .settings-sidebar {
     background: var(--surface) !important;
     border-right-color: var(--border) !important;
-    scrollbar-color: rgba(255,255,255,0.25) transparent;
+    scrollbar-color: var(--border-strong) transparent;
 }
-.settings-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25) !important; }
-.settings-sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4) !important; }
+.settings-sidebar::-webkit-scrollbar-thumb { background: var(--border-strong) !important; }
+.settings-sidebar::-webkit-scrollbar-thumb:hover { background: var(--surface-hover) !important; }
 .settings-menu-item { color: var(--text-secondary); }
 .settings-menu-item:hover { background: var(--surface-hover) !important; }
 .settings-menu-item.active {
@@ -271,7 +320,7 @@ body {
     color: white !important;
     border-left-color: var(--accent-dark) !important;
 }
-.settings-content { background: rgba(255,255,255,0.02) !important; }
+.settings-content { background: var(--surface-alt) !important; }
 
 /* ── Tills Settings ──────────────────────────────────────────────────────────── */
 /* createTillForm has inline background:#f8f9fa. When JS sets display:block via
@@ -313,7 +362,7 @@ body {
 .customers-table thead,
 .stock-table th,
 .enterprise-table th {
-    background: rgba(255,255,255,0.06) !important;
+    background: var(--surface) !important;
     color: var(--text-secondary) !important;
     border-bottom-color: var(--border) !important;
 }
@@ -350,7 +399,7 @@ body {
 /* ── Status Badges ──────────────────────────────────────────────────────────── */
 .status-badge.active { background: rgba(46,125,50,0.2) !important; color: #6ee7b7 !important; }
 .status-badge.pending { background: rgba(230,81,0,0.2) !important; color: #fbbf24 !important; }
-.status-badge.closed { background: rgba(255,255,255,0.08) !important; color: var(--text-muted) !important; }
+.status-badge.closed { background: var(--surface-hover) !important; color: var(--text-muted) !important; }
 .status-badge.alert { background: rgba(198,40,40,0.2) !important; color: #fca5a5 !important; }
 
 /* ── Enterprise Layout ──────────────────────────────────────────────────────── */
@@ -389,7 +438,7 @@ body {
 }
 .cash-row .total { color: var(--text) !important; }
 .cash-row input {
-    background: rgba(255,255,255,0.06) !important;
+    background: var(--surface) !important;
     border-color: var(--border-strong) !important;
     color: var(--text) !important;
 }
@@ -414,13 +463,13 @@ body {
 .ent-btn-primary { background: var(--accent) !important; }
 .ent-btn-primary:hover { background: var(--accent-dark) !important; }
 .ent-btn-secondary {
-    background: rgba(255,255,255,0.08) !important;
+    background: var(--surface-hover) !important;
     color: var(--text-secondary) !important;
     border-color: var(--border-strong) !important;
 }
 .ent-btn-secondary:hover {
-    background: rgba(255,255,255,0.14) !important;
-    border-color: rgba(255,255,255,0.25) !important;
+    background: var(--border-strong) !important;
+    border-color: var(--border-strong) !important;
 }
 
 /* ── Forms ──────────────────────────────────────────────────────────────────── */
@@ -433,7 +482,7 @@ input[type="date"],
 input[type="search"],
 select,
 textarea {
-    background: rgba(255,255,255,0.06) !important;
+    background: var(--surface) !important;
     border-color: var(--border-strong) !important;
     color: var(--text) !important;
 }
@@ -445,17 +494,27 @@ textarea:focus {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 2px var(--accent-glow) !important;
 }
+/* select's native dropdown popup can't read CSS variables reliably across
+   browsers — fixed colors per theme instead, kept in sync with each other. */
 select option {
     background: #1e1b3a;
-    color: var(--text);
+    color: #fff;
 }
 select optgroup {
     background: #302b63;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.5);
     font-style: normal;
 }
+:root[data-theme="light"] select option {
+    background: #fff;
+    color: #0f172a;
+}
+:root[data-theme="light"] select optgroup {
+    background: #eef2f9;
+    color: rgba(15,23,42,0.45);
+}
 .search-box input {
-    background: rgba(255,255,255,0.06) !important;
+    background: var(--surface) !important;
     border-color: var(--border-strong) !important;
     color: var(--text) !important;
 }
@@ -463,11 +522,13 @@ select optgroup {
 
 /* ── Modals ─────────────────────────────────────────────────────────────────── */
 .modal-overlay { background: rgba(15,12,41,0.85) !important; }
+:root[data-theme="light"] .modal-overlay { background: rgba(15,23,42,0.4) !important; }
 .modal {
     background: #1e1b3a !important;
     border: 1px solid var(--border);
     color: var(--text);
 }
+:root[data-theme="light"] .modal { background: #fff !important; }
 .modal-header {
     border-bottom-color: var(--border) !important;
 }
@@ -482,6 +543,7 @@ select optgroup {
     box-shadow: 0 6px 24px rgba(0,0,0,0.5) !important;
     color: var(--text);
 }
+:root[data-theme="light"] .notification { background: #fff !important; box-shadow: 0 6px 24px rgba(0,0,0,0.15) !important; }
 .notification.success {
     background: rgba(16,185,129,0.15) !important;
     border-left-color: #10b981 !important;
@@ -502,6 +564,10 @@ select optgroup {
     border-left-color: #3b82f6 !important;
     color: #93c5fd !important;
 }
+:root[data-theme="light"] .notification.success { color: #065f46 !important; }
+:root[data-theme="light"] .notification.error { color: #991b1b !important; }
+:root[data-theme="light"] .notification.warning { color: #92400e !important; }
+:root[data-theme="light"] .notification.info { color: #1e40af !important; }
 
 /* ── Tabs ───────────────────────────────────────────────────────────────────── */
 .tab-sub-nav { border-bottom-color: var(--border) !important; }
@@ -520,7 +586,7 @@ select optgroup {
 /* ── Enterprise Toolbar ─────────────────────────────────────────────────────── */
 .enterprise-toolbar input,
 .enterprise-toolbar select {
-    background: rgba(255,255,255,0.06) !important;
+    background: var(--surface) !important;
     border-color: var(--border-strong) !important;
     color: var(--text) !important;
 }
@@ -597,6 +663,14 @@ select optgroup {
 [style*="background:#fff3e0"] [style*="color: #e65100"] {
     color: #fbbf24 !important;
 }
+:root[data-theme="light"] [style*="background: #fff3e0"] [style*="color: #92400e"],
+:root[data-theme="light"] [style*="background: #fff3e0"] [style*="color:#92400e"],
+:root[data-theme="light"] [style*="background:#fff3e0"] [style*="color: #92400e"],
+:root[data-theme="light"] [style*="background:#fff3e0"] [style*="color:#92400e"],
+:root[data-theme="light"] [style*="background: #fff3e0"] [style*="color: #e65100"],
+:root[data-theme="light"] [style*="background:#fff3e0"] [style*="color: #e65100"] {
+    color: #92400e !important;
+}
 
 /* ── Workstream 12A — Broad white/light background catch-all ────────────────── */
 /* Catches inline background:white divs in enterprise, settings, stock, and
@@ -629,7 +703,7 @@ select optgroup {
 /* ── Workstream 12A — Global inline gray text overrides ─────────────────────── */
 /* dark-theme.css is unconditionally loaded. color:#999, #666, #9ca3af are
    invisible on dark purple backgrounds. Override globally — --text-secondary
-   (rgba(255,255,255,0.7)) is correct for secondary/muted text in dark mode. */
+   is correct for secondary/muted text in both themes (each theme's own value). */
 /* Dark grays #333, #444 — near-black, invisible on dark backgrounds → --text */
 [style*="color: #333"],
 [style*="color:#333"],
@@ -708,7 +782,7 @@ select optgroup {
 
 /* GAP-4: Modal-body inline panel backgrounds (#e3f2fd, #f8f9fa) — used by the
    Sean AI assistant block and similar info panels inside product/customer modals.
-   Map to accent-subtle (a blue-tinted dark surface) to preserve visual hierarchy. */
+   Map to accent-subtle (a blue-tinted surface) to preserve visual hierarchy. */
 .modal-body [style*="background: #e3f2fd"],
 .modal-body [style*="background:#e3f2fd"],
 .modal-body [style*="background: #f8f9fa"],
@@ -718,14 +792,15 @@ select optgroup {
 }
 
 /* ── General Settings — form input visibility ───────────────────────────────── */
-/* The global input rule sets rgba(255,255,255,0.06) background which blends
-   into the section surface. Bump to 0.10 + stronger border for legibility. */
+/* The global input rule sets a surface background which can blend into the
+   section background at low opacity. Bump to the stronger hover-level tone
+   + border for legibility, in both themes. */
 #generalSection input[type="text"],
 #generalSection input[type="number"],
 #generalSection input[type="email"],
 #generalSection textarea {
-    background: rgba(255,255,255,0.10) !important;
-    border-color: rgba(255,255,255,0.25) !important;
+    background: var(--surface-hover) !important;
+    border-color: var(--border-strong) !important;
 }
 #generalSection h4 { color: var(--text) !important; }
 #generalSection p   { color: var(--text-secondary) !important; }
@@ -734,7 +809,7 @@ select optgroup {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.15);
+    background: var(--border-strong);
     border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+::-webkit-scrollbar-thumb:hover { background: var(--surface-hover); }

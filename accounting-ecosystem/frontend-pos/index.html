@@ -1516,6 +1516,20 @@
         }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
+    <script>
+        // Applied synchronously, before <body> renders, so a till that's
+        // chosen light mode never flashes dark-then-light on page load.
+        // UI preference only (theme choice) — not business data, so
+        // localStorage is the correct place for it per this app's data
+        // policy, unlike anything sale/payroll/customer-related.
+        (function() {
+            try {
+                if (localStorage.getItem('pos_theme') === 'light') {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                }
+            } catch (e) { /* localStorage unavailable — default dark theme applies */ }
+        })();
+    </script>
 </head>
 <body>
     <!-- Offline Banner — persistent bar, visible for offline/pending/conflict/failed/syncing states -->
@@ -1897,6 +1911,7 @@
                     <span id="userName"></span>
                 </div>
                 <span class="session-badge" id="sessionStatus">No Session</span>
+                <button id="themeToggleBtn" class="manage-till-btn" onclick="toggleTheme()" title="Switch between dark and light theme">🌙</button>
                 <button id="pwaInstallBtn" class="manage-till-btn" onclick="installPWA()" style="display:none; background:rgba(59,130,246,0.2); border-color:#3b82f6;">⬇ Install App</button>
                 <button class="manage-till-btn" onclick="showSwitchStoreModal()">Switch Store</button>
                 <button class="manage-till-btn" onclick="showOrdersModal()">📦 Orders</button>
@@ -4945,6 +4960,34 @@
         let productRefreshInterval = null; // Periodic live-refresh timer — see startProductAutoRefresh() below
         let lastProductSyncAt = null; // Server clock cursor for refreshProductsDelta() — set from server_time on every successful full or delta products fetch, never the till's own clock (avoids clock-skew gaps)
         let pendingProductEdits = new Map(); // Settings > Products quick-edit (VAT/Price) — productId -> { unit_price?, requires_vat?, vat_rate? }, see markProductRowDirty()
+
+        // ========== DARK / LIGHT THEME TOGGLE ==========
+        // Actual color values live in css/dark-theme.css under :root[data-theme="light"] —
+        // this just flips the attribute and remembers the choice per device.
+        // The <head> inline script applies a saved "light" choice before first
+        // paint (see near the top of <head>); this function only handles the
+        // button click after the page is already up.
+        function toggleTheme() {
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            if (isLight) {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.removeItem('pos_theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('pos_theme', 'light');
+            }
+            updateThemeToggleIcon();
+        }
+
+        function updateThemeToggleIcon() {
+            const btn = document.getElementById('themeToggleBtn');
+            if (!btn) return;
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            btn.textContent = isLight ? '☀️' : '🌙';
+            btn.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
+        }
+
+        document.addEventListener('DOMContentLoaded', updateThemeToggleIcon);
 
         // Initialize IndexedDB
         async function initIndexedDB() {
