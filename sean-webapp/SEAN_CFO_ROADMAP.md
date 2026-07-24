@@ -167,7 +167,7 @@ compared to similar bakeries"), not just accounting categorization.
 
 | Phase | Status |
 |---|---|
-| 1 — Live data connection | Not started |
+| 1 — Live data connection | **Done (2026-07-24)** — `Client.ecoCompanyId` / `Conversation.clientId` added, existing `getAccountingContext()` bridge wired into the main chat pipeline (client picker + grounded badge in `app/chat/page.tsx`), `PrivacyAuditLog` written on every live-data access. Verified end-to-end against a real local backend. See `accounting-ecosystem/docs/service-to-service-auth.md` for the credential this needed (long-lived super-admin JWT, minted via `accounting-ecosystem/backend/scripts/mint_service_token.js` — no new backend auth code required). **Known gap:** `reports.js`'s trial-balance endpoint uses a raw `pg` connection that timed out in the sandbox this was built in; unmatched-transactions and VAT-period-status fields both confirmed working with real data — trial balance specifically needs re-checking in a real dev/prod environment. |
 | 2 — LLM-based intent + learned-pattern cache | Not started |
 | 3 — POS/Inventory process learning | Not started |
 | Coaching backend | Deferred by explicit user instruction |

@@ -9,73 +9,9 @@ import {
   normalizeDescription,
   ALLOCATION_CATEGORIES,
 } from "./bank-allocations";
+import { callLLM, resolveProvider, type LLMProviderName } from "./llm-client";
 
-// LLM provider configuration
-const LLM_PROVIDERS = {
-  claude: {
-    url: "https://api.anthropic.com/v1/messages",
-    model: "claude-3-haiku-20240307",
-    formatRequest: (prompt: string, apiKey: string) => ({
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 500,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }),
-    parseResponse: (data: Record<string, unknown>) => {
-      const content = data.content as Array<{ text: string }>;
-      return content?.[0]?.text || "";
-    },
-  },
-  openai: {
-    url: "https://api.openai.com/v1/chat/completions",
-    model: "gpt-4o-mini",
-    formatRequest: (prompt: string, apiKey: string) => ({
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 500,
-      }),
-    }),
-    parseResponse: (data: Record<string, unknown>) => {
-      const choices = data.choices as Array<{ message: { content: string } }>;
-      return choices?.[0]?.message?.content || "";
-    },
-  },
-  grok: {
-    url: "https://api.x.ai/v1/chat/completions",
-    model: "grok-beta",
-    formatRequest: (prompt: string, apiKey: string) => ({
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "grok-beta",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 500,
-      }),
-    }),
-    parseResponse: (data: Record<string, unknown>) => {
-      const choices = data.choices as Array<{ message: { content: string } }>;
-      return choices?.[0]?.message?.content || "";
-    },
-  },
-};
-
-type LLMProvider = keyof typeof LLM_PROVIDERS;
+type LLMProvider = LLMProviderName;
 
 // Build allocation prompt for LLM
 function buildAllocationPrompt(description: string): string {
@@ -168,7 +104,7 @@ export async function getLLMAllocation(
   }
 
   // Determine which provider to use
-  const llmProvider = provider || (process.env.LLM_PROVIDER as LLMProvider) || "claude";
+  const llmProvider = resolveProvider(provider);
   const apiKey = process.env.LLM_API_KEY;
 
   if (!apiKey) {
@@ -176,25 +112,9 @@ export async function getLLMAllocation(
     return null;
   }
 
-  const providerConfig = LLM_PROVIDERS[llmProvider];
-  if (!providerConfig) {
-    console.error(`[AllocationEngine] Unknown provider: ${llmProvider}`);
-    return null;
-  }
-
   try {
     const prompt = buildAllocationPrompt(description);
-    const requestConfig = providerConfig.formatRequest(prompt, apiKey);
-
-    const response = await fetch(providerConfig.url, requestConfig);
-
-    if (!response.ok) {
-      console.error(`[AllocationEngine] LLM API error: ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-    const textResponse = providerConfig.parseResponse(data);
+    const textResponse = await callLLM(prompt, { provider: llmProvider, apiKey });
     const parsed = parseAllocationResponse(textResponse);
 
     if (!parsed) {

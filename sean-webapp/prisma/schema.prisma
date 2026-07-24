@@ -455,3 +455,23 @@ model AllocationLLMCache {
   @@index([normalizedPattern])
   @@index([suggestedCategory])
 }
+
+// Cached chat-message intent classifications (Phase 2 — see SEAN_CFO_ROADMAP.md).
+// Global, not client-scoped: intent ("what kind of message is this") isn't a
+// per-company concept the way allocation categories are.
+model IntentPattern {
+  id                String   @id @default(cuid())
+  normalizedPattern String   @unique // normalizeIntentQuery() output
+  intentType        String   // CALCULATION | TEACH | ALLOCATION | QUESTION | GENERAL
+  domain            String   // VAT | INCOME_TAX | ... | ACCOUNTING_GENERAL | OTHER
+  confidence        Float    @default(0.7)
+  source            String   // "llm" | "seed"
+  provider          String?  // which LLM produced it; null for seeded entries
+  reasoning         String?  // short LLM justification, for debugging
+  usedCount         Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([normalizedPattern])
+  @@index([intentType])
+}

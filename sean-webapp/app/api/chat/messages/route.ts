@@ -1,73 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { getUserFromRequest, unauthorized } from "@/lib/api-auth";
-import { bootstrapAnswer, inferDomainFromQuestion } from "@/lib/llm-bootstrap";
+import { bootstrapAnswer } from "@/lib/llm-bootstrap";
 import { processCalculation } from "@/lib/calculations";
 import { queryCodex, checkDeductibility, CodexQueryResult } from "@/lib/codex-engine";
 import { getAccountingContext, buildContextSummary, hasLiveData, AccountingContext } from "@/lib/accounting-context";
 import { hasClientAccess, logDataAccess } from "@/lib/privacy";
-
-// Intent classification for natural language understanding
-function classifyIntent(content: string): {
-  type: "QUESTION" | "TEACH" | "ALLOCATION" | "CALCULATION" | "GENERAL";
-  domain: string;
-  confidence: number;
-} {
-  const c = content.toLowerCase().trim();
-
-  // Calculation indicators (check first - highest priority for accounting)
-  const calculationPatterns = [
-    /\b(calculate|calc|vat|btw|tax on|paye|income tax)\b/i,
-    /\bR\s*\d+/i, // R followed by numbers
-    /\d+\s*%/i, // percentage
-    /how much (tax|vat|is)/i,
-    /what('s| is) the (vat|tax|paye)/i,
-  ];
-  const isCalculation = calculationPatterns.some(p => p.test(c));
-
-  // Teaching indicators
-  const teachPatterns = [
-    /^(remember|note|fyi|learn|know that)/i,
-    /the rule is/i,
-    /you should know/i,
-    /for future reference/i,
-    /always remember/i,
-  ];
-  const isTeach = teachPatterns.some(p => p.test(c));
-
-  // Question indicators
-  const questionPatterns = [
-    /^(what|how|why|when|where|who|which|can|does|is|are|should|would|could)\b/i,
-    /\?$/,
-    /^(tell me|explain|describe|show me)/i,
-  ];
-  const isQuestion = questionPatterns.some(p => p.test(c));
-
-  // Allocation indicators
-  const allocationPatterns = [
-    /\b(allocate|categorize|classify|what category|which account)\b/i,
-    /\b(bank statement|transaction|debit|credit)\b/i,
-    /\b(atm|eft|pos|card payment)\b/i,
-  ];
-  const isAllocation = allocationPatterns.some(p => p.test(c));
-
-  // Domain detection
-  const domain = inferDomainFromQuestion(content);
-
-  if (isCalculation) {
-    return { type: "CALCULATION", domain: domain || "VAT", confidence: 0.95 };
-  }
-  if (isTeach) {
-    return { type: "TEACH", domain, confidence: 0.8 };
-  }
-  if (isAllocation) {
-    return { type: "ALLOCATION", domain: "ACCOUNTING_GENERAL", confidence: 0.85 };
-  }
-  if (isQuestion) {
-    return { type: "QUESTION", domain, confidence: 0.9 };
-  }
-  return { type: "GENERAL", domain, confidence: 0.5 };
-}
+import { classifyIntent } from "@/lib/intent-classifier";
+import { submitTeachContent } from "@/lib/teach-submission";
+import { reasonAboutQuestion } from "@/lib/reasoning-engine";
 
 export async function POST(request: NextRequest) {
   try {
@@ -125,68 +66,41 @@ export async function POST(request: NextRequest) {
     let responseMetadata: Record<string, unknown> = {};
 
     if (teachMatch) {
-      // Explicit teach mode - submit to codex API
+      // Explicit teach mode - submit directly to the knowledge base (no
+      // self-HTTP-fetch to /api/codex/submit — that endpoint's core logic is
+      // this same function; calling it directly avoids a network round-trip
+      // and manual cookie-forwarding for a call within the same process).
       try {
-        const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : "http://localhost:3000";
-
-        const submitRes = await fetch(`${baseUrl}/api/codex/submit`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: `session=${request.cookies.get("session")?.value}`,
-          },
-          body: JSON.stringify({ content, conversationId }),
-        });
-
-        if (submitRes.ok) {
-          const result = await submitRes.json();
+        const result = await submitTeachContent(content, conversationId, user.id);
+        if (result.success) {
           assistantResponse = result.message;
           responseMetadata = { mode: "teach", citationId: result.citationId };
         } else {
-          const error = await submitRes.json();
-          assistantResponse = `Failed to process teach message: ${error.error}`;
+          assistantResponse = `Failed to process teach message: ${result.error}`;
         }
       } catch (error) {
         console.error("Knowledge submission error:", error);
         assistantResponse = "Failed to process teach message. Please try again.";
       }
     } else if (askMatch) {
-      // Explicit ASK: prefix - use reasoning endpoint
+      // Explicit ASK: prefix - reason directly (see teach note above for why
+      // this isn't a self-fetch to /api/reason anymore).
       const question = content.substring(askMatch[0].length).trim();
       try {
-        const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : "http://localhost:3000";
-
-        const reasonRes = await fetch(`${baseUrl}/api/reason`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Cookie: `session=${request.cookies.get("session")?.value}`,
-          },
-          body: JSON.stringify({ question, clientId: null }),
-        });
-
-        if (reasonRes.ok) {
-          const result = await reasonRes.json();
-          assistantResponse = result.answer;
-          responseMetadata = {
-            mode: "reason",
-            citations: result.citations,
-            domain: result.inferredDomain,
-          };
-        } else {
-          assistantResponse = "Failed to process question.";
-        }
+        const result = await reasonAboutQuestion(question, null, null, user.id);
+        assistantResponse = result.answer;
+        responseMetadata = {
+          mode: "reason",
+          citations: result.citations,
+          domain: result.inferredDomain,
+        };
       } catch (error) {
         console.error("Reasoning error:", error);
         assistantResponse = "Failed to process question.";
       }
     } else {
       // Natural language - classify intent and respond appropriately
-      const intent = classifyIntent(content);
+      const intent = await classifyIntent(content);
       console.log(`[Chat] Intent: ${intent.type}, Domain: ${intent.domain}, Confidence: ${intent.confidence}`);
 
       if (intent.type === "TEACH") {

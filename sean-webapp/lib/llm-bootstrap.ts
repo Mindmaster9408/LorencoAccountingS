@@ -2,22 +2,7 @@
 // Bootstrap Learning System - Call external LLM ONCE, store forever
 import prisma from "./db";
 import { generateSlug, generateCitationId } from "./kb";
-
-// LLM Provider configurations
-const LLM_PROVIDERS = {
-  CLAUDE: {
-    url: "https://api.anthropic.com/v1/messages",
-    model: "claude-3-haiku-20240307", // Cost-effective for bootstrap
-  },
-  OPENAI: {
-    url: "https://api.openai.com/v1/chat/completions",
-    model: "gpt-4o-mini",
-  },
-  GROK: {
-    url: "https://api.x.ai/v1/chat/completions",
-    model: "grok-beta",
-  },
-};
+import { callLLM, resolveProvider } from "./llm-client";
 
 export interface BootstrapResult {
   answer: string;
@@ -156,7 +141,7 @@ export async function bootstrapAnswer(
   // Step 3: No good KB match - call external LLM ONCE
   console.log(`[Bootstrap] No KB match, calling external LLM...`);
 
-  const provider = process.env.LLM_PROVIDER || "CLAUDE";
+  const provider = resolveProvider();
   const apiKey = process.env.LLM_API_KEY;
 
   if (!apiKey) {
@@ -254,87 +239,12 @@ Key instructions:
 
 Remember: Your answer will be cached and reused, so be accurate and include relevant context.`;
 
-  if (provider === "CLAUDE") {
-    const config = LLM_PROVIDERS.CLAUDE;
-    const response = await fetch(config.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: config.model,
-        max_tokens: 1500,
-        system: systemPrompt,
-        messages: [{ role: "user", content: question }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Claude API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-  }
-
-  if (provider === "OPENAI") {
-    const config = LLM_PROVIDERS.OPENAI;
-    const response = await fetch(config.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: question },
-        ],
-        max_tokens: 1500,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
-
-  if (provider === "GROK") {
-    const config = LLM_PROVIDERS.GROK;
-    const response = await fetch(config.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: question },
-        ],
-        max_tokens: 1500,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Grok API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
-
-  throw new Error(`Unknown LLM provider: ${provider}`);
+  return await callLLM(question, {
+    provider: resolveProvider(provider),
+    apiKey,
+    systemPrompt,
+    maxTokens: 1500,
+  });
 }
 
 // Check if bootstrap is configured
