@@ -124,7 +124,7 @@
         }
         .till-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 2fr 1.3fr;
             height: 100%;
             gap: 0;
             overflow: hidden;
@@ -308,6 +308,35 @@
             color: #333;
             margin: 0 0 2px;
             font-size: 16px;
+        }
+        /* Cart list (left) + payment/checkout controls (right), side by side
+           instead of stacked — found live 2026-07-24: with everything (cart
+           items, subtotal/VAT/total, payment buttons, More, split payment,
+           Complete Sale/Place as Order/Clear Cart) stacked in one narrow
+           vertical column, the checkout controls' fixed height ate almost all
+           the space, squeezing the scrollable cart-items list down to a sliver
+           whenever more than 1-2 items were in the cart. Splitting horizontally
+           gives the cart list its own full-height column so it no longer
+           competes with the checkout controls for vertical space. */
+        .cart-body-split {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .cart-items-col {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            border-right: 2px solid #e0e0e0;
+        }
+        .cart-checkout-col {
+            width: 260px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
         }
         .cart-items {
             flex: 1;
@@ -1971,104 +2000,110 @@
                         <div id="cartItemCount">0 items</div>
                     </div>
 
-                    <div class="cart-items" id="cartItems">
-                        <div class="empty-cart">
-                            <p>🛒 Cart is empty</p>
-                            <p style="font-size: 14px;">Scan or click products to add</p>
-                        </div>
-                    </div>
-
-                    <div class="cart-summary">
-                        <div class="summary-row">
-                            <span>Subtotal:</span>
-                            <span id="subtotal">R 0.00</span>
-                        </div>
-                        <div class="summary-row">
-                            <span>VAT (15%):</span>
-                            <span id="vat">R 0.00</span>
-                        </div>
-                        <div class="summary-row total">
-                            <span>TOTAL:</span>
-                            <span id="total">R 0.00</span>
-                        </div>
-                    </div>
-
-                    <div class="checkout-section">
-                        <!-- Workstream 76 — only the 4 standard methods show by default;
-                             EFT/SnapScan/Zapper/Gift Card moved behind "More" below. -->
-                        <div class="payment-methods payment-methods-primary">
-                            <button class="payment-btn selected" onclick="selectPayment('CASH', this)"><span class="pay-icon">💵</span>Cash</button>
-                            <button class="payment-btn" onclick="selectPayment('CARD', this)"><span class="pay-icon">💳</span>Card</button>
-                            <button class="payment-btn" onclick="selectPayment('ACCOUNT', this)"><span class="pay-icon">👤</span>Account</button>
-                            <button class="payment-btn" onclick="toggleSplitPayment()" id="splitPaymentBtn"><span class="pay-icon">✂️</span>Split</button>
-                        </div>
-
-                        <div class="payment-more-wrap" id="paymentMoreWrap">
-                            <button type="button" class="payment-more-btn" id="paymentMoreBtn" onclick="toggleMorePayments(event)">
-                                <span id="paymentMoreLabel">⋯ More</span>
-                            </button>
-                            <div class="payment-more-panel" id="paymentMorePanel">
-                                <button class="payment-btn" onclick="selectPayment('EFT', this)"><span class="pay-icon">🏦</span>EFT</button>
-                                <button class="payment-btn" onclick="selectPayment('SNAPSCAN', this)"><span class="pay-icon">📱</span>SnapScan</button>
-                                <button class="payment-btn" onclick="selectPayment('ZAPPER', this)"><span class="pay-icon">⚡</span>Zapper</button>
-                                <button class="payment-btn" onclick="selectPayment('GIFT_CARD', this)"><span class="pay-icon">🎁</span>Gift Card</button>
-                            </div>
-                        </div>
-
-                        <!-- Split Payment Section -->
-                        <div id="splitPaymentSection" class="split-payment-section">
-                            <div style="font-weight:600;margin-bottom:10px;color:#333;">Split Payment Allocation</div>
-                            <div id="splitPaymentRows">
-                                <div class="split-payment-row">
-                                    <label>💵 Cash:</label>
-                                    <input type="number" class="split-amount" data-method="CASH" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
-                                </div>
-                                <div class="split-payment-row">
-                                    <label>💳 Card:</label>
-                                    <input type="number" class="split-amount" data-method="CARD" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
-                                </div>
-                                <div class="split-payment-row">
-                                    <label>🏦 EFT:</label>
-                                    <input type="number" class="split-amount" data-method="EFT" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
-                                </div>
-                                <div class="split-payment-row">
-                                    <label>📱 SnapScan:</label>
-                                    <input type="number" class="split-amount" data-method="SNAPSCAN" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
+                    <div class="cart-body-split">
+                        <div class="cart-items-col">
+                            <div class="cart-items" id="cartItems">
+                                <div class="empty-cart">
+                                    <p>🛒 Cart is empty</p>
+                                    <p style="font-size: 14px;">Scan or click products to add</p>
                                 </div>
                             </div>
-                            <div class="split-remaining">
-                                Remaining: <span id="splitRemainingAmount">R 0.00</span>
-                            </div>
                         </div>
 
-                        <!-- Cash Tendered / Change Due — shown only for a plain CASH sale
-                             (not split, where cash is one of several amounts, and not
-                             ACCOUNT/CARD/etc. where no physical change is handed over).
-                             Purely a cashier convenience calculator; entering an amount
-                             is optional and nothing here is sent to the backend. -->
-                        <div id="cashTenderedSection" style="display:flex;gap:10px;align-items:center;margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
-                            <label style="font-weight:600;white-space:nowrap;color:var(--text);">Amount Received</label>
-                            <input type="number" id="cashTenderedAmount" step="0.01" min="0" placeholder="0.00" oninput="updateChangeDue()" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                            <div id="changeDueDisplay" style="font-weight:700;white-space:nowrap;color:var(--text-secondary);">Change: R 0.00</div>
-                        </div>
-
-                        <!-- Account Customer Selection (shown when ACCOUNT selected) -->
-                        <div id="accountCustomerSection" style="display:none; background:#f0f4ff; padding:12px; border-radius:8px; margin-bottom:10px;">
-                            <label style="font-weight:600;display:block;margin-bottom:5px;">Select Account Customer</label>
-                            <div style="display:flex;gap:8px;">
-                                <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" oninput="searchAccountCustomers(this.value)">
+                        <div class="cart-checkout-col">
+                            <div class="cart-summary">
+                                <div class="summary-row">
+                                    <span>Subtotal:</span>
+                                    <span id="subtotal">R 0.00</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span>VAT (15%):</span>
+                                    <span id="vat">R 0.00</span>
+                                </div>
+                                <div class="summary-row total">
+                                    <span>TOTAL:</span>
+                                    <span id="total">R 0.00</span>
+                                </div>
                             </div>
-                            <div id="accountCustomerResults" style="max-height:120px;overflow-y:auto;margin-top:8px;"></div>
-                            <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:white;border-radius:6px;border:2px solid #667eea;">
-                                <span id="selectedAccountName" style="font-weight:600;"></span>
-                                <span id="selectedAccountBalance" style="float:right;color:#666;font-size:13px;"></span>
+
+                            <div class="checkout-section">
+                                <!-- Workstream 76 — only the 4 standard methods show by default;
+                                     EFT/SnapScan/Zapper/Gift Card moved behind "More" below. -->
+                                <div class="payment-methods payment-methods-primary">
+                                    <button class="payment-btn selected" onclick="selectPayment('CASH', this)"><span class="pay-icon">💵</span>Cash</button>
+                                    <button class="payment-btn" onclick="selectPayment('CARD', this)"><span class="pay-icon">💳</span>Card</button>
+                                    <button class="payment-btn" onclick="selectPayment('ACCOUNT', this)"><span class="pay-icon">👤</span>Account</button>
+                                    <button class="payment-btn" onclick="toggleSplitPayment()" id="splitPaymentBtn"><span class="pay-icon">✂️</span>Split</button>
+                                </div>
+
+                                <div class="payment-more-wrap" id="paymentMoreWrap">
+                                    <button type="button" class="payment-more-btn" id="paymentMoreBtn" onclick="toggleMorePayments(event)">
+                                        <span id="paymentMoreLabel">⋯ More</span>
+                                    </button>
+                                    <div class="payment-more-panel" id="paymentMorePanel">
+                                        <button class="payment-btn" onclick="selectPayment('EFT', this)"><span class="pay-icon">🏦</span>EFT</button>
+                                        <button class="payment-btn" onclick="selectPayment('SNAPSCAN', this)"><span class="pay-icon">📱</span>SnapScan</button>
+                                        <button class="payment-btn" onclick="selectPayment('ZAPPER', this)"><span class="pay-icon">⚡</span>Zapper</button>
+                                        <button class="payment-btn" onclick="selectPayment('GIFT_CARD', this)"><span class="pay-icon">🎁</span>Gift Card</button>
+                                    </div>
+                                </div>
+
+                                <!-- Split Payment Section -->
+                                <div id="splitPaymentSection" class="split-payment-section">
+                                    <div style="font-weight:600;margin-bottom:10px;color:#333;">Split Payment Allocation</div>
+                                    <div id="splitPaymentRows">
+                                        <div class="split-payment-row">
+                                            <label>💵 Cash:</label>
+                                            <input type="number" class="split-amount" data-method="CASH" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
+                                        </div>
+                                        <div class="split-payment-row">
+                                            <label>💳 Card:</label>
+                                            <input type="number" class="split-amount" data-method="CARD" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
+                                        </div>
+                                        <div class="split-payment-row">
+                                            <label>🏦 EFT:</label>
+                                            <input type="number" class="split-amount" data-method="EFT" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
+                                        </div>
+                                        <div class="split-payment-row">
+                                            <label>📱 SnapScan:</label>
+                                            <input type="number" class="split-amount" data-method="SNAPSCAN" step="0.01" min="0" value="0" oninput="updateSplitRemaining()">
+                                        </div>
+                                    </div>
+                                    <div class="split-remaining">
+                                        Remaining: <span id="splitRemainingAmount">R 0.00</span>
+                                    </div>
+                                </div>
+
+                                <!-- Cash Tendered / Change Due — shown only for a plain CASH sale
+                                     (not split, where cash is one of several amounts, and not
+                                     ACCOUNT/CARD/etc. where no physical change is handed over).
+                                     Purely a cashier convenience calculator; entering an amount
+                                     is optional and nothing here is sent to the backend. -->
+                                <div id="cashTenderedSection" style="display:flex;gap:10px;align-items:center;margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+                                    <label style="font-weight:600;white-space:nowrap;color:var(--text);">Amount Received</label>
+                                    <input type="number" id="cashTenderedAmount" step="0.01" min="0" placeholder="0.00" oninput="updateChangeDue()" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                                    <div id="changeDueDisplay" style="font-weight:700;white-space:nowrap;color:var(--text-secondary);">Change: R 0.00</div>
+                                </div>
+
+                                <!-- Account Customer Selection (shown when ACCOUNT selected) -->
+                                <div id="accountCustomerSection" style="display:none; background:#f0f4ff; padding:12px; border-radius:8px; margin-bottom:10px;">
+                                    <label style="font-weight:600;display:block;margin-bottom:5px;">Select Account Customer</label>
+                                    <div style="display:flex;gap:8px;">
+                                        <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" oninput="searchAccountCustomers(this.value)">
+                                    </div>
+                                    <div id="accountCustomerResults" style="max-height:120px;overflow-y:auto;margin-top:8px;"></div>
+                                    <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:white;border-radius:6px;border:2px solid #667eea;">
+                                        <span id="selectedAccountName" style="font-weight:600;"></span>
+                                        <span id="selectedAccountBalance" style="float:right;color:#666;font-size:13px;"></span>
+                                    </div>
+                                </div>
+
+                                <button class="checkout-btn" id="checkoutBtn" onclick="checkout()" disabled>Complete Sale</button>
+                                <button class="btn btn-secondary" id="placeOrderBtn" style="width:100%;margin-top:8px;" onclick="showPlaceOrderModal()">📦 Place as Order (Pickup Later)</button>
+                                <button class="clear-cart-btn" onclick="clearCart()">Clear Cart</button>
+                                <button class="btn btn-secondary" style="width: 100%; margin-top: 10px;" onclick="openSaleSearch()">🔍 Search Sale / Reprint</button>
                             </div>
                         </div>
-
-                        <button class="checkout-btn" id="checkoutBtn" onclick="checkout()" disabled>Complete Sale</button>
-                        <button class="btn btn-secondary" id="placeOrderBtn" style="width:100%;margin-top:8px;" onclick="showPlaceOrderModal()">📦 Place as Order (Pickup Later)</button>
-                        <button class="clear-cart-btn" onclick="clearCart()">Clear Cart</button>
-                        <button class="btn btn-secondary" style="width: 100%; margin-top: 10px;" onclick="openSaleSearch()">🔍 Search Sale / Reprint</button>
                     </div>
                 </div>
             </div>
