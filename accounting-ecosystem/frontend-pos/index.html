@@ -9065,9 +9065,23 @@
             document.getElementById('productPrice').value = parseFloat(product.unit_price).toFixed(2);
             document.getElementById('productActive').checked = product.is_active == 1;
             document.getElementById('productBarcode').value = product.barcode || '';
-            document.getElementById('productRequiresVat').checked = product.requires_vat !== 0;
-            document.getElementById('productTaxRate').value = product.vat_rate || '15';
-            document.getElementById('productTaxRate').disabled = product.requires_vat === 0;
+            // requires_vat comes back from Supabase as a real boolean (true/false),
+            // not 0/1 — `!== 0` / `=== 0` never match a boolean, so this used to
+            // always show "Requires VAT" checked and the rate dropdown enabled
+            // regardless of the product's actual saved state. Matches the same
+            // both-boolean-and-legacy-number check buildProductTableRowHtml()
+            // already uses for the inline quick-edit dropdown (see that function's
+            // comment), so the modal and the list agree instead of disagreeing
+            // like they did for "1 X 20L Pure SF Oil" (found live 2026-07-24).
+            const productRequiresVat = product.requires_vat !== false && product.requires_vat !== 0;
+            document.getElementById('productRequiresVat').checked = productRequiresVat;
+            // product.vat_rate is a legitimate 0 for "No VAT" products — `|| '15'`
+            // treated that real 0 as missing data and silently substituted 15%,
+            // which then got saved back as 15% if the user didn't notice and hit
+            // Save. Only fall back to 15 when vat_rate is genuinely absent.
+            document.getElementById('productTaxRate').value =
+                (product.vat_rate === null || product.vat_rate === undefined) ? '15' : product.vat_rate;
+            document.getElementById('productTaxRate').disabled = !productRequiresVat;
             document.getElementById('seanResponse').innerHTML = '';
 
             // Trigger profit calculation
