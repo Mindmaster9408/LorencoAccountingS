@@ -8989,13 +8989,36 @@
             await generateProductCode();
         }
 
+        // Offline/server-unreachable fallback: scan the already-loaded products
+        // list (same data the till uses for barcode scanning) for the highest
+        // existing number under this prefix and increment it, instead of a
+        // static "<prefix>001" that collides with whatever product first used
+        // that code and silently creates a second product with a duplicate
+        // product_code (nothing in the DB or API enforces uniqueness on it).
+        function localNextProductCode(prefix) {
+            const nums = (products || [])
+                .map(p => (p.product_code || '').toUpperCase())
+                .filter(c => c.startsWith(prefix))
+                .map(c => parseInt(c.slice(prefix.length), 10))
+                .filter(n => !isNaN(n));
+            const next = (nums.length > 0 ? Math.max(...nums) : 0) + 1;
+            return `${prefix}${String(next).padStart(4, '0')}`;
+        }
+
         async function generateProductCode() {
             const prefix = document.getElementById('productCodePrefix').value.trim().toUpperCase() || 'PRO';
 
             try {
+                // Method + auth bug fix (2026-07-24): this was calling with the
+                // default GET (the route is POST-only, so it 404'd every time)
+                // and an `authToken` variable that doesn't exist anywhere in this
+                // file (the real session token is `token`) — both silently
+                // caught below, so Generate always fell through to a hardcoded
+                // "<prefix>001" that could already be in use.
                 const response = await fetch(`${API_URL}/pos/products/next-code/${prefix}`, {
+                    method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${authToken}`
+                        'Authorization': `Bearer ${token}`
                     }
                 });
 
@@ -9003,13 +9026,11 @@
                     const data = await response.json();
                     document.getElementById('productCode').value = data.code;
                 } else {
-                    // Fallback: generate locally
-                    document.getElementById('productCode').value = `${prefix}001`;
+                    document.getElementById('productCode').value = localNextProductCode(prefix);
                 }
             } catch (error) {
                 console.error('Error generating product code:', error);
-                // Fallback
-                document.getElementById('productCode').value = `${prefix}001`;
+                document.getElementById('productCode').value = localNextProductCode(prefix);
             }
         }
 
