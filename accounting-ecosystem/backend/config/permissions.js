@@ -10,11 +10,23 @@
  *   practice_manager (95)  — Business Owner equivalent (accounting practice context)
  *   administrator (95)     — Business Owner equivalent (general admin context)
  *   accountant (90)        — Finance + payroll access
+ *   corporate_admin/finance/ops (90) — Corporate-tier, multi-store oversight
+ *   regional_manager (88)  — Multi-district oversight, near-corporate access
+ *   district_manager (85)  — Multi-store oversight, near-corporate access
  *   store_manager (70)     — Store-level POS management
  *   payroll_admin (70)     — Payroll management
+ *   regional_analyst (60)  — Regional reporting/support, not full management
  *   assistant_manager (50) — Limited management
+ *   district_trainer (55)  — District training/support, not full management
  *   cashier (20)           — POS terminal only
  *   trainee (5)            — Supervised access
+ *
+ * regional_manager/district_manager/corporate_finance/corporate_ops were
+ * already offered as selectable roles in the frontend user-creation dropdowns
+ * (frontend-pos/index.html) and already listed in pin.js's PIN_ELIGIBLE_ROLES,
+ * but were never added here — hasPermission() defaults to deny for any role
+ * not present in a permission array, so every user assigned one of these
+ * roles had effectively zero POS access until this entry was added (2026-07-24).
  * ============================================================================
  */
 
@@ -25,10 +37,16 @@ const ROLE_LEVELS = {
   administrator: 95,
   accountant: 90,
   corporate_admin: 90,
+  corporate_finance: 90,
+  corporate_ops: 90,
+  regional_manager: 88,
+  district_manager: 85,
   store_manager: 70,
   payroll_admin: 70,
+  regional_analyst: 60,
   leave_admin: 50,       // Leave-only Paytime access — no payroll/salary visibility
   assistant_manager: 50,
+  district_trainer: 55,
   shift_supervisor: 40,
   senior_cashier: 30,
   cashier: 20,
@@ -37,8 +55,8 @@ const ROLE_LEVELS = {
   admin: 70,
 };
 
-const MANAGEMENT_ROLES = ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin'];
-const SUPERVISOR_ROLES = [...MANAGEMENT_ROLES, 'leave_admin', 'assistant_manager', 'shift_supervisor'];
+const MANAGEMENT_ROLES = ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'accountant', 'corporate_admin', 'corporate_finance', 'corporate_ops', 'regional_manager', 'district_manager', 'store_manager', 'payroll_admin', 'admin'];
+const SUPERVISOR_ROLES = [...MANAGEMENT_ROLES, 'leave_admin', 'regional_analyst', 'district_trainer', 'assistant_manager', 'shift_supervisor'];
 const ALL_ROLES = [...SUPERVISOR_ROLES, 'senior_cashier', 'cashier', 'trainee'];
 
 const PERMISSIONS = {
