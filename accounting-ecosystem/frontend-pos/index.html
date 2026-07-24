@@ -2087,10 +2087,10 @@
                                      ACCOUNT/CARD/etc. where no physical change is handed over).
                                      Purely a cashier convenience calculator; entering an amount
                                      is optional and nothing here is sent to the backend. -->
-                                <div id="cashTenderedSection" style="display:flex;gap:10px;align-items:center;margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
-                                    <label style="font-weight:600;white-space:nowrap;color:var(--text);">Amount Received</label>
-                                    <input type="number" id="cashTenderedAmount" step="0.01" min="0" placeholder="0.00" oninput="updateChangeDue()" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                                    <div id="changeDueDisplay" style="font-weight:700;white-space:nowrap;color:var(--text-secondary);">Change: R 0.00</div>
+                                <div id="cashTenderedSection" style="display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+                                    <label style="font-weight:600;color:var(--text);">Amount Received</label>
+                                    <input type="number" id="cashTenderedAmount" step="0.01" min="0" placeholder="0.00" oninput="updateChangeDue()" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                                    <div id="changeDueDisplay" style="font-weight:700;color:var(--text-secondary);">Change: R 0.00</div>
                                 </div>
 
                                 <!-- Account Customer Selection (shown when ACCOUNT selected) -->
