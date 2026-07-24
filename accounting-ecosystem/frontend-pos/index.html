@@ -8599,8 +8599,20 @@
             // thermal printers specifically — a normal-weight font renders as
             // faint/washed-out dot-matrix on thermal paper even with pure black
             // color, since thin strokes don't get enough heat-transfer coverage.
+            //
+            // Found live 2026-07-24 (Pennygrow/Turkstra Outlet): every right-aligned
+            // amount was printing with its last character cut off ("R 11.5|",
+            // "R 108.5|"...). Root cause: @page above reserves a 3mm margin on
+            // EVERY side, so the actual printable width is paperWidth - 6mm — but
+            // this container was hardcoded to width:${paperWidth}mm, the FULL
+            // undiminished page width, ignoring the very margin its own @page rule
+            // just carved out. That made the content permanently ~6mm (roughly one
+            // character at this font size) too wide for the printable area, and
+            // the browser doesn't shrink to fit — it clips at the page edge.
+            // width:100% fills whatever the @page margins actually leave available
+            // instead of assuming the full page width is printable.
             document.getElementById('printReceiptArea').innerHTML = `
-                <div style="width:${paperWidth}mm; font-family:'Courier New',monospace; font-size:13px; color:#000; font-weight:700; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+                <div style="width:100%; box-sizing:border-box; font-family:'Courier New',monospace; font-size:13px; color:#000; font-weight:700; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
                     ${receiptBodyHtml}
                 </div>`;
 
