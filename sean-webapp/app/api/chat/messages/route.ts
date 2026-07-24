@@ -4,6 +4,8 @@ import { getUserFromRequest, unauthorized } from "@/lib/api-auth";
 import { bootstrapAnswer, inferDomainFromQuestion } from "@/lib/llm-bootstrap";
 import { processCalculation } from "@/lib/calculations";
 import { queryCodex, checkDeductibility, CodexQueryResult } from "@/lib/codex-engine";
+import { getAccountingContext, buildContextSummary, hasLiveData, AccountingContext } from "@/lib/accounting-context";
+import { hasClientAccess, logDataAccess } from "@/lib/privacy";
 
 // Intent classification for natural language understanding
 function classifyIntent(content: string): {
@@ -96,6 +98,26 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Live accounting-ecosystem grounding — resolve the linked client (if any)
+    // and kick off the live-data fetch immediately so it overlaps with the
+    // Codex/LLM work below instead of adding sequential latency. Only actually
+    // prepended to the response for QUESTION/GENERAL/ALLOCATION intents (see
+    // `shouldGround` below) — a CALCULATION or TEACH message has no use for it.
+    let groundingClient: { id: string; name: string; ecoCompanyId: string } | null = null;
+    let contextPromise: Promise<AccountingContext> | null = null;
+    if (conversation.clientId) {
+      const client = await prisma.client.findUnique({
+        where: { id: conversation.clientId },
+        select: { id: true, name: true, ecoCompanyId: true },
+      });
+      const ecoBaseUrl = process.env.ECO_BASE_URL;
+      if (client?.ecoCompanyId && ecoBaseUrl && (await hasClientAccess(user.id, client.id))) {
+        groundingClient = { id: client.id, name: client.name, ecoCompanyId: client.ecoCompanyId };
+        contextPromise = getAccountingContext(client.ecoCompanyId, ecoBaseUrl);
+      }
+    }
+    let shouldGround = false;
+
     // Check for explicit prefixes first
     const teachMatch = content.match(/^(LEER:|TEACH:|SAVE TO KNOWLEDGE:)/i);
     const askMatch = content.match(/^ASK:\s*/i);
@@ -186,6 +208,7 @@ CONTENT: In South Africa, a business must register for VAT if its taxable turnov
         responseMetadata = { mode: "teach_guide", suggestedDomain: intent.domain };
 
       } else if (intent.type === "ALLOCATION") {
+        shouldGround = true;
         // Handle allocation questions
         const { suggestCategory, ALLOCATION_CATEGORIES } = await import("@/lib/bank-allocations");
 
@@ -240,6 +263,7 @@ If this is incorrect, you can teach me the correct category by going to the Bank
         }
 
       } else if (intent.type === "QUESTION" || intent.type === "GENERAL") {
+        shouldGround = true;
         // STEP 1: Query Codex for structured rules (Tax Rules, VAT, Decision Engines)
         let codexResult: CodexQueryResult | null = null;
         try {
@@ -330,6 +354,31 @@ If this is incorrect, you can teach me the correct category by going to the Bank
             responseMetadata = { mode: "error" };
           }
         }
+      }
+    }
+
+    // Prepend live accounting-ecosystem context, if this message's intent
+    // warranted it and the fetch actually returned something. Fails safe:
+    // getAccountingContext never throws (see lib/accounting-context.ts), and
+    // any missing piece (no linked client, no ecoCompanyId, ECO_BASE_URL unset,
+    // ecosystem backend unreachable) just leaves shouldGround/contextPromise
+    // false/null and the response is unchanged from today's behavior.
+    if (shouldGround && contextPromise && groundingClient) {
+      const ctx = await contextPromise;
+      if (hasLiveData(ctx)) {
+        const summary = buildContextSummary(ctx);
+        assistantResponse = summary + "\n" + assistantResponse;
+        responseMetadata.groundedClientId = groundingClient.id;
+        responseMetadata.groundedCompanyId = groundingClient.ecoCompanyId;
+
+        await logDataAccess({
+          userId: user.id,
+          clientId: groundingClient.id,
+          actionType: "VIEW",
+          dataType: "REPORT",
+          description: "Chat grounded with live accounting context",
+          request,
+        });
       }
     }
 

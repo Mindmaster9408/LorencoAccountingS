@@ -10,6 +10,13 @@ interface Conversation {
   id: string;
   title: string;
   createdAt: string;
+  clientId?: string | null;
+}
+
+interface ClientOption {
+  id: string;
+  name: string;
+  ecoCompanyId?: string | null;
 }
 
 interface Message {
@@ -33,6 +40,8 @@ export default function ChatPage() {
   const [lastReasonDebug, setLastReasonDebug] = useState<Record<string, unknown> | null>(null);
   const [lastActions, setLastActions] = useState<Record<string, unknown>[]>([]);
   const [approvedActionIds, setApprovedActionIds] = useState<Set<string>>(new Set());
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [clientUpdating, setClientUpdating] = useState(false);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -52,6 +61,13 @@ export default function ChatPage() {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    fetch("/api/clients")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: ClientOption[]) => setClients(data))
+      .catch((error) => console.error("Failed to load clients:", error));
+  }, []);
 
   useEffect(() => {
     if (currentConversation) {
@@ -292,6 +308,33 @@ export default function ChatPage() {
     }
   };
 
+  const changeConversationClient = async (clientId: string) => {
+    if (!currentConversation) return;
+    setClientUpdating(true);
+    try {
+      const res = await fetch("/api/chat/conversations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: currentConversation.id,
+          clientId, // "" clears the link — the API stores that as null
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setConversations(conversations.map((c) => (c.id === updated.id ? updated : c)));
+        setCurrentConversation(updated);
+      } else {
+        alert("Failed to link client to this conversation");
+      }
+    } catch (error) {
+      console.error("Failed to update conversation client:", error);
+      alert("Failed to link client to this conversation");
+    } finally {
+      setClientUpdating(false);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -419,6 +462,42 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col">
         {currentConversation ? (
           <>
+            {/* Client context bar — links this conversation to a client, and
+                grounds Sean's answers in that client's live accounting data
+                when it's linked to an accounting-ecosystem company. */}
+            <div className="flex items-center gap-3 px-6 py-2 border-b border-slate-200 bg-white">
+              <label htmlFor="conversation-client-select" className="text-xs font-medium text-slate-500">
+                Client:
+              </label>
+              <select
+                id="conversation-client-select"
+                value={currentConversation.clientId || ""}
+                onChange={(e) => changeConversationClient(e.target.value)}
+                disabled={clientUpdating}
+                className="text-sm border border-slate-300 rounded-lg px-2 py-1 text-slate-900"
+              >
+                <option value="">No client linked</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {currentConversation.clientId && (() => {
+                const linked = clients.find((c) => c.id === currentConversation.clientId);
+                if (!linked) return null;
+                return linked.ecoCompanyId ? (
+                  <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                    🏢 {linked.name} — live data
+                  </span>
+                ) : (
+                  <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded-full">
+                    {linked.name} — no accounting link (set one in Company Management)
+                  </span>
+                );
+              })()}
+            </div>
+
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 ? (

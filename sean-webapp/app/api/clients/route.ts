@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
       contactEmail,
       contactPhone,
       dataIsolationLevel,
+      ecoCompanyId,
     } = body;
 
     if (!name || !code) {
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest) {
         contactEmail,
         contactPhone,
         dataIsolationLevel: dataIsolationLevel || "STRICT",
+        ecoCompanyId: ecoCompanyId || undefined,
       },
       include: { industry: true },
     });
@@ -163,6 +165,7 @@ export async function PATCH(request: NextRequest) {
       contactEmail,
       contactPhone,
       dataIsolationLevel,
+      ecoCompanyId,
     } = body;
 
     if (!id) {
@@ -178,6 +181,9 @@ export async function PATCH(request: NextRequest) {
     if (isActive !== undefined) updateData.isActive = isActive;
     if (defaultMinConfidence !== undefined) updateData.defaultMinConfidence = defaultMinConfidence;
     if (autoAllocateEnabled !== undefined) updateData.autoAllocateEnabled = autoAllocateEnabled;
+    // Empty string clears the link (stored as null, since ecoCompanyId is @unique
+    // and Prisma/SQLite treat "" as a real value that would collide across clients)
+    if (ecoCompanyId !== undefined) updateData.ecoCompanyId = ecoCompanyId === "" ? null : ecoCompanyId;
 
     // Company profile fields
     if (industryId !== undefined) updateData.industryId = industryId;

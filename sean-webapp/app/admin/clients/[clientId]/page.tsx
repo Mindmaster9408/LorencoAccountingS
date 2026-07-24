@@ -51,6 +51,7 @@ interface Client {
   dataIsolationLevel: string;
   defaultMinConfidence: number;
   autoAllocateEnabled: boolean;
+  ecoCompanyId?: string;
 }
 
 export default function ClientProfilePage({ params }: { params: Promise<{ clientId: string }> }) {
@@ -84,6 +85,7 @@ export default function ClientProfilePage({ params }: { params: Promise<{ client
     dataIsolationLevel: "STRICT",
     defaultMinConfidence: 0.8,
     autoAllocateEnabled: true,
+    ecoCompanyId: "",
   });
 
   // Temp inputs for array fields
@@ -128,6 +130,7 @@ export default function ClientProfilePage({ params }: { params: Promise<{ client
             dataIsolationLevel: found.dataIsolationLevel || "STRICT",
             defaultMinConfidence: found.defaultMinConfidence || 0.8,
             autoAllocateEnabled: found.autoAllocateEnabled !== false,
+            ecoCompanyId: found.ecoCompanyId || "",
           });
         }
       }
@@ -280,6 +283,21 @@ export default function ClientProfilePage({ params }: { params: Promise<{ client
                   placeholder="e.g., 2020/123456/07"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Accounting Ecosystem Company ID</label>
+                <input
+                  type="text"
+                  value={formData.ecoCompanyId}
+                  onChange={(e) => setFormData({ ...formData, ecoCompanyId: e.target.value })}
+                  placeholder="e.g., 2"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-900"
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  Links this client to its company record in the accounting-ecosystem app.
+                  When set, Sean chat conversations for this client are grounded in its live
+                  trial balance / bank / VAT data.
+                </div>
               </div>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">

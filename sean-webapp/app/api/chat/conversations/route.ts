@@ -7,12 +7,13 @@ export async function POST(request: NextRequest) {
     const user = await getUserFromRequest(request);
     if (!user) return unauthorized();
 
-    const { title } = await request.json();
+    const { title, clientId } = await request.json();
 
     const conversation = await prisma.conversation.create({
       data: {
         userId: user.id,
         title: title || "New Conversation",
+        clientId: clientId || undefined,
       },
     });
 
@@ -93,10 +94,13 @@ export async function PATCH(request: NextRequest) {
     const user = await getUserFromRequest(request);
     if (!user) return unauthorized();
 
-    const { conversationId, title } = await request.json();
+    const { conversationId, title, clientId } = await request.json();
 
-    if (!conversationId || !title) {
-      return NextResponse.json({ error: "Conversation ID and title required" }, { status: 400 });
+    if (!conversationId || (title === undefined && clientId === undefined)) {
+      return NextResponse.json(
+        { error: "Conversation ID and at least one of title/clientId required" },
+        { status: 400 }
+      );
     }
 
     // Verify conversation belongs to user
@@ -108,20 +112,29 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
-    // Update conversation title
+    const updateData: { title?: string; clientId?: string | null } = {};
+    if (title !== undefined) updateData.title = title;
+    // "" from the UI means "unlink client" — store as null, not an empty string
+    if (clientId !== undefined) updateData.clientId = clientId || null;
+
     const updated = await prisma.conversation.update({
       where: { id: conversationId },
-      data: { title },
+      data: updateData,
     });
 
-    // Log rename action
+    // Log rename/relink action
     await prisma.auditLog.create({
       data: {
         userId: user.id,
-        actionType: "CONVERSATION_RENAME",
+        actionType: title !== undefined ? "CONVERSATION_RENAME" : "CONVERSATION_RELINK",
         entityType: "Conversation",
         entityId: conversationId,
-        detailsJson: JSON.stringify({ oldTitle: conversation.title, newTitle: title }),
+        detailsJson: JSON.stringify({
+          oldTitle: conversation.title,
+          newTitle: title,
+          oldClientId: conversation.clientId,
+          newClientId: updateData.clientId,
+        }),
       },
     });
 

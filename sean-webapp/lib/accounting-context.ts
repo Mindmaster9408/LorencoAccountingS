@@ -240,3 +240,63 @@ export async function getAccountingContext(
       vatPeriodStatus.status === "fulfilled" ? vatPeriodStatus.value : null,
   };
 }
+
+/**
+ * True when at least one field of an AccountingContext was actually fetched —
+ * used by callers to decide whether to prepend a summary / write an audit log,
+ * versus a context where every ecosystem call failed or returned nothing.
+ */
+export function hasLiveData(ctx: AccountingContext): boolean {
+  return ctx.trialBalance !== null || ctx.unmatchedTransactions !== null || ctx.vatPeriodStatus !== null;
+}
+
+// ── Context → readable markdown summary ─────────────────────────────────────
+// Shared by app/api/accounting/query/route.ts and app/api/chat/messages/route.ts
+// so both surfaces render live data identically instead of each rolling their own.
+
+export function buildContextSummary(ctx: AccountingContext): string {
+  const lines: string[] = [];
+
+  if (ctx.trialBalance) {
+    const tb = ctx.trialBalance;
+    const s = tb.summary;
+    const balanced = tb.isBalanced ? "✅ Balanced" : "⚠️ Out of balance";
+    lines.push(
+      `**Trial Balance (${tb.fromDate} → ${tb.toDate}):** ` +
+        `${tb.accountCount} accounts | ${tb.journalCount} posted journals | ${balanced}`
+    );
+    lines.push(
+      `  Income R${s.income.balance.toFixed(2)} | ` +
+        `Expenses R${s.expense.balance.toFixed(2)} | ` +
+        `Assets R${s.asset.balance.toFixed(2)} | ` +
+        `Liabilities R${s.liability.balance.toFixed(2)}`
+    );
+  }
+
+  if (ctx.unmatchedTransactions !== null) {
+    const count = ctx.unmatchedTransactions.length;
+    lines.push(
+      `**Unmatched Bank Transactions (last 30 days):** ${count} transaction${count !== 1 ? "s" : ""} pending allocation`
+    );
+  }
+
+  if (ctx.vatPeriodStatus) {
+    const v = ctx.vatPeriodStatus;
+    if (v.currentPeriodKey) {
+      lines.push(
+        `**VAT Period:** ${v.currentPeriodKey} — ${v.currentPeriodStatus ?? "open"} ` +
+          `(${v.openCount} open period${v.openCount !== 1 ? "s" : ""})`
+      );
+    } else {
+      lines.push(`**VAT Periods:** ${v.openCount} open period${v.openCount !== 1 ? "s" : ""}`);
+    }
+  }
+
+  if (lines.length === 0) return "";
+
+  return (
+    `> 📊 **Live Accounting Data** *(as of ${new Date(ctx.fetchedAt).toLocaleString("en-ZA")})*\n` +
+    lines.map((l) => `> ${l}`).join("\n") +
+    "\n"
+  );
+}

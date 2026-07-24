@@ -1,59 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest, unauthorized } from "@/lib/api-auth";
-import { getAccountingContext, AccountingContext } from "@/lib/accounting-context";
+import { getAccountingContext, buildContextSummary } from "@/lib/accounting-context";
 import { queryCodex } from "@/lib/codex-engine";
 import { bootstrapAnswer, inferDomainFromQuestion } from "@/lib/llm-bootstrap";
-
-// ── Live context → readable markdown summary ──────────────────────────────────
-// Prepended to the answer so the response is grounded in the company's real data.
-// Returns empty string when no context is available (all fields null).
-
-function buildContextSummary(ctx: AccountingContext): string {
-  const lines: string[] = [];
-
-  if (ctx.trialBalance) {
-    const tb = ctx.trialBalance;
-    const s = tb.summary;
-    const balanced = tb.isBalanced ? "✅ Balanced" : "⚠️ Out of balance";
-    lines.push(
-      `**Trial Balance (${tb.fromDate} → ${tb.toDate}):** ` +
-        `${tb.accountCount} accounts | ${tb.journalCount} posted journals | ${balanced}`
-    );
-    lines.push(
-      `  Income R${s.income.balance.toFixed(2)} | ` +
-        `Expenses R${s.expense.balance.toFixed(2)} | ` +
-        `Assets R${s.asset.balance.toFixed(2)} | ` +
-        `Liabilities R${s.liability.balance.toFixed(2)}`
-    );
-  }
-
-  if (ctx.unmatchedTransactions !== null) {
-    const count = ctx.unmatchedTransactions.length;
-    lines.push(
-      `**Unmatched Bank Transactions (last 30 days):** ${count} transaction${count !== 1 ? "s" : ""} pending allocation`
-    );
-  }
-
-  if (ctx.vatPeriodStatus) {
-    const v = ctx.vatPeriodStatus;
-    if (v.currentPeriodKey) {
-      lines.push(
-        `**VAT Period:** ${v.currentPeriodKey} — ${v.currentPeriodStatus ?? "open"} ` +
-          `(${v.openCount} open period${v.openCount !== 1 ? "s" : ""})`
-      );
-    } else {
-      lines.push(`**VAT Periods:** ${v.openCount} open period${v.openCount !== 1 ? "s" : ""}`);
-    }
-  }
-
-  if (lines.length === 0) return "";
-
-  return (
-    `> 📊 **Live Accounting Data** *(as of ${new Date(ctx.fetchedAt).toLocaleString("en-ZA")})*\n` +
-    lines.map((l) => `> ${l}`).join("\n") +
-    "\n"
-  );
-}
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 

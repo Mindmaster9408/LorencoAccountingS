@@ -38,10 +38,17 @@ model Conversation {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String    @default("Untitled")
   module    String?   @default("general") // "general" | "accounting" | "allocation"
+  // Which client this conversation is grounded in (optional) — when set and the
+  // client has an ecoCompanyId, chat answers are grounded in that company's live
+  // accounting-ecosystem data. See lib/accounting-context.ts.
+  clientId  String?
+  client    Client?   @relation("conversationClient", fields: [clientId], references: [id], onDelete: SetNull)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   messages Message[]
+
+  @@index([clientId])
 }
 
 model Message {
@@ -166,6 +173,12 @@ model Client {
   description       String?
   isActive          Boolean  @default(true)
 
+  // Link to the accounting-ecosystem company this client corresponds to (the
+  // numeric `companies.id` used by the separate accounting-ecosystem backend).
+  // Null until a superuser links this client — see lib/accounting-context.ts
+  // for how it's used to fetch live trial balance / bank / VAT data.
+  ecoCompanyId      String?  @unique
+
   // ============================================
   // COMPANY PROFILE - "Teach Sean about this company"
   // This helps Sean understand what the company does
@@ -208,6 +221,7 @@ model Client {
   bankTransactions  BankTransaction[] @relation("clientTransactions")
   customCategories  ClientCategory[]
   companyNotes      CompanyNote[]
+  conversations     Conversation[]   @relation("conversationClient")
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
