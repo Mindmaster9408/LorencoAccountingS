@@ -124,7 +124,15 @@
         }
         .till-grid {
             display: grid;
-            grid-template-columns: 2fr 1.3fr;
+            /* Found live 2026-07-24: widened again (from 2fr/1.3fr) specifically
+               to give .cart-checkout-col more room (260px -> 340px, see below) —
+               "Amount Received"/"Change:" were getting cut off. cart-items-col is
+               flex:1 (fills whatever's left in cart-panel after the fixed-width
+               checkout column), so growing cart-panel's own share by roughly the
+               same amount the checkout column grew keeps cart-items-col's width
+               unchanged — the extra room comes out of the products grid only,
+               per explicit request (cart list size was already correct). */
+            grid-template-columns: 1.8fr 1.5fr;
             height: 100%;
             gap: 0;
             overflow: hidden;
@@ -332,7 +340,7 @@
             border-right: 2px solid #e0e0e0;
         }
         .cart-checkout-col {
-            width: 260px;
+            width: 340px;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
