@@ -216,6 +216,18 @@
                (so it keeps handling the actual scroll) while still dispatching
                pointermove events to JS for the tap/scroll distinction below. */
             touch-action: pan-y;
+            /* Found live 2026-07-24: every product (up to ~1600+ on some stores,
+               since selectedCategory defaults to 'all') is rendered as a tile here
+               at once, with no virtualization. Without containment, ANY DOM change
+               elsewhere on the Till screen (e.g. updateCart() after a scan) forces
+               the browser to recompute layout for this entire grid too, even though
+               nothing in it changed — cheap on a fast CPU/GPU, ~3s on an 8GB-RAM
+               till PC. `contain: layout style` makes this grid its own layout
+               boundary so outside changes can't force it to re-layout, and vice
+               versa. See .product-tile's content-visibility below for the other
+               half of this fix (skips layout/paint for off-screen tiles).
+            */
+            contain: layout style;
         }
         .product-tile {
             background: white;
@@ -230,6 +242,12 @@
             flex-direction: column;
             justify-content: space-between;
             position: relative;
+            /* Skip layout/style/paint work entirely for tiles currently scrolled
+               out of view — the single biggest lever for a 1600+-tile grid.
+               contain-intrinsic-size gives the browser a placeholder size to
+               reserve for off-screen tiles so scrollbar height stays correct. */
+            content-visibility: auto;
+            contain-intrinsic-size: 150px 140px;
         }
         .shortcut-star {
             position: absolute;
