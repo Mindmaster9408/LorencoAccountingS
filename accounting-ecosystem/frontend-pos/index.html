@@ -6682,7 +6682,7 @@
             const countedTotal = (d.countedCash || 0) + (d.countedCard || 0) + (d.countedOther || 0);
             const varianceLabel = d.variance > 0 ? 'Over' : d.variance < 0 ? 'Short' : 'Balanced';
             return `
-                <div style="font-family:Arial,sans-serif;font-size:12px;color:#000;width:280px;">
+                <div style="font-family:Arial,sans-serif;font-size:14px;color:#000;max-width:700px;margin:0 auto;">
                     <h2 style="margin:0 0 2px;text-align:center;">${currentCompanyName || ''}</h2>
                     <p style="text-align:center;margin:0 0 10px;font-size:13px;"><strong>Cashup Summary</strong></p>
                     <p style="margin:0;">Till: ${d.tillName}</p>
@@ -6711,11 +6711,33 @@
             `;
         }
 
-        function printCashupSlip() {
-            if (!lastCashupPrintData) { showNotification('No cashup data to print', 'error'); return; }
-            document.getElementById('printReceiptArea').innerHTML = buildCashupPrintHtml(lastCashupPrintData);
+        // Prints report-style content (cashup summaries, customer statements, etc.
+        // — anything that isn't a till receipt) on A4, not the till's thermal
+        // receipt width. Shares #printReceiptArea/_printPageStyle with
+        // printBrowserReceipt() (below), but always forces A4 sizing here.
+        // Without this, an A4 report printed any time after a receipt silently
+        // inherited whatever narrow thermal @page width (e.g. 80mm) the last
+        // receipt left behind — that style element is created once and never
+        // removed, so nothing reset it back. Found live 2026-07-24: Cash Up
+        // printing at till-slip size; printCustomerStatement() had the identical
+        // bug and is fixed the same way.
+        function printA4Report(bodyHtml) {
+            let pageStyle = document.getElementById('_printPageStyle');
+            if (!pageStyle) {
+                pageStyle = document.createElement('style');
+                pageStyle.id = '_printPageStyle';
+                document.head.appendChild(pageStyle);
+            }
+            pageStyle.textContent = `@media print { @page { size: A4; margin: 15mm; } }`;
+
+            document.getElementById('printReceiptArea').innerHTML = bodyHtml;
             window.print();
             setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
+        }
+
+        function printCashupSlip() {
+            if (!lastCashupPrintData) { showNotification('No cashup data to print', 'error'); return; }
+            printA4Report(buildCashupPrintHtml(lastCashupPrintData));
         }
 
         function showCashupCompleteModal(d) {
@@ -17977,7 +17999,7 @@
                     <td style="text-align:right;">${t.credit ? t.credit.toFixed(2) : ''}</td>
                     <td style="text-align:right;">${t.running_balance != null ? t.running_balance.toFixed(2) : ''}</td>
                 </tr>`).join('');
-            document.getElementById('printReceiptArea').innerHTML = `
+            printA4Report(`
                 <div style="font-family:Arial,sans-serif;font-size:12px;color:#000;">
                     <h2 style="margin:0 0 4px;">${data.statement_type}</h2>
                     <p style="font-size:10px;color:#333;margin:0 0 12px;">${data.accounting_boundary_note}</p>
@@ -17993,9 +18015,7 @@
                         </tbody>
                     </table>
                 </div>
-            `;
-            window.print();
-            setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
+            `);
         }
 
         // ========== SUSPICIOUS ACTIVITY REPORT ==========
