@@ -8210,11 +8210,17 @@
                     // Update local stock estimate (decrease quantities).
                     // Initialise from stock_quantity if current_stock not yet set —
                     // the first offline sale must start from the server's last known value.
+                    // Patches only the sold items' own tile (same reasoning as the online
+                    // checkout path above — no need to rebuild the entire catalog's tiles
+                    // for a stock change affecting a handful of products).
                     for (const item of cart) {
                         const product = products.find(p => p.id === item.productId);
                         if (product) {
                             const base = product.current_stock ?? product.stock_quantity ?? 0;
                             product.current_stock = Math.max(0, base - item.quantity);
+
+                            const tile = document.querySelector(`#productsGrid [data-product-id="${product.id}"]`);
+                            if (tile) tile.outerHTML = buildProductTileHtml(product);
                         }
                     }
                     await cacheProducts(products);
@@ -8224,7 +8230,6 @@
 
                     cart = [];
                     updateCart();
-                    displayProductsGrid(products);
 
                     // Print receipt (browser dialog)
                     if (autoPrintEnabled) {
@@ -8274,6 +8279,18 @@
                     // Decrement stock_quantity in memory for immediate tile/table display.
                     // Server already committed the sale atomically — this is display-only.
                     // loadProducts() restores server truth on next login, reconnect, or manual refresh.
+                    //
+                    // Found live 2026-07-24 (Till scan-speed follow-up): this used to call
+                    // displayProductsGrid(products) + displayProductsTable(products) — a full
+                    // rebuild of every tile/row in the ENTIRE catalog (1600+ on some stores) —
+                    // after every single completed sale, for a stock change affecting only the
+                    // handful of items actually sold. Same class of cost as the old "full
+                    // rebuild every 90s" pattern already fixed for the periodic refresh (see
+                    // refreshProductsDelta), except this one fires far more often (every sale,
+                    // not every 90s) and was never updated to match. Patch only the sold
+                    // products' own tile/row in place instead, same pattern
+                    // refreshProductsDelta already uses. rebuildBarcodeMap() is also dropped
+                    // here — a stock_quantity change never affects barcode lookups.
                     for (const sold of soldItems) {
                         const product = products.find(p => p.id === sold.productId);
                         if (product) {
@@ -8281,11 +8298,13 @@
                             product.stock_quantity = companyStockPolicy.allowNegativeStock
                                 ? base - sold.quantity
                                 : Math.max(0, base - sold.quantity);
+
+                            const tile = document.querySelector(`#productsGrid [data-product-id="${product.id}"]`);
+                            if (tile) tile.outerHTML = buildProductTileHtml(product);
+                            const row = document.querySelector(`#productsTableBody [data-product-id="${product.id}"]`);
+                            if (row) row.outerHTML = buildProductTableRowHtml(product);
                         }
                     }
-                    displayProductsGrid(products);
-                    displayProductsTable(products);
-                    rebuildBarcodeMap();
 
                     // Auto-print if enabled
                     if (autoPrintEnabled && lastSaleId) {
