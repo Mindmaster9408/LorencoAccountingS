@@ -9618,6 +9618,21 @@
             }
         }
 
+        // Formats a Rand amount with a space thousands-separator for readability
+        // in reports (e.g. 47158.38 -> "R 47 158.38") — requested 2026-07-24 so
+        // large report totals read correctly at a glance instead of running
+        // digits together. Deliberately not using toLocaleString()/Intl (locale
+        // data support varies across older till-hardware browsers) — this hand-
+        // rolled version always produces a space separator + "." decimal,
+        // regardless of the runtime's locale support.
+        function formatCurrency(amount) {
+            const n = Number(amount) || 0;
+            const isNegative = n < 0;
+            const [intPart, decPart] = Math.abs(n).toFixed(2).split('.');
+            const withSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+            return 'R ' + (isNegative ? '-' : '') + withSpaces + '.' + decPart;
+        }
+
         function renderReport(reportType, data) {
             const container = document.getElementById('reportContainer');
 
@@ -9810,11 +9825,11 @@
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Sales</div>
-                        <div style="font-size: 24px; font-weight: bold; color: #2e7d32;">R ${summary.totalSales.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #2e7d32;">${formatCurrency(summary.totalSales)}</div>
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Gross Profit</div>
-                        <div style="font-size: 24px; font-weight: bold; color: #f57c00;">R ${summary.totalProfit.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #f57c00;">${formatCurrency(summary.totalProfit)}</div>
                     </div>
                     <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Profit Margin</div>
@@ -9849,10 +9864,10 @@
                         <td>${sale.sale_number}</td>
                         <td>${sale.cashier}</td>
                         <td>${new Date(sale.created_at).toLocaleDateString()}</td>
-                        <td>R ${sale.subtotal.toFixed(2)}</td>
-                        <td>R ${sale.vat.toFixed(2)}</td>
-                        <td>R ${sale.total_amount.toFixed(2)}</td>
-                        <td>R ${(sale.gross_profit || 0).toFixed(2)}</td>
+                        <td>${formatCurrency(sale.subtotal)}</td>
+                        <td>${formatCurrency(sale.vat)}</td>
+                        <td>${formatCurrency(sale.total_amount)}</td>
+                        <td>${formatCurrency((sale.gross_profit || 0))}</td>
                         <td>${sale.profit_margin || 0}%</td>
                     </tr>
                 `;
@@ -9948,11 +9963,11 @@
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Sales</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalSales.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalSales)}</div>
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Profit</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalProfit.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalProfit)}</div>
                     </div>
                     <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Avg Margin</div>
@@ -9982,9 +9997,9 @@
                     <tr>
                         <td>${person.cashier}</td>
                         <td>${person.sales_count}</td>
-                        <td>R ${person.total_sales.toFixed(2)}</td>
-                        <td>R ${person.total_vat.toFixed(2)}</td>
-                        <td>R ${person.gross_profit.toFixed(2)}</td>
+                        <td>${formatCurrency(person.total_sales)}</td>
+                        <td>${formatCurrency(person.total_vat)}</td>
+                        <td>${formatCurrency(person.gross_profit)}</td>
                         <td>${person.profit_margin}%</td>
                     </tr>
                 `;
@@ -10001,11 +10016,11 @@
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Revenue</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalRevenue.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalRevenue)}</div>
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Profit</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalProfit.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalProfit)}</div>
                     </div>
                     <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Avg Margin</div>
@@ -10038,8 +10053,8 @@
                         <td>${prod.product_name}</td>
                         <td>${prod.category || '-'}</td>
                         <td>${prod.quantity_sold}</td>
-                        <td>R ${prod.total_revenue.toFixed(2)}</td>
-                        <td>R ${prod.gross_profit.toFixed(2)}</td>
+                        <td>${formatCurrency(prod.total_revenue)}</td>
+                        <td>${formatCurrency(prod.gross_profit)}</td>
                         <td>${prod.profit_margin}%</td>
                     </tr>
                 `;
@@ -10056,15 +10071,15 @@
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Sales</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalSales.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalSales)}</div>
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total VAT</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalVat.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalVat)}</div>
                     </div>
                     <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Profit</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalProfit.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalProfit)}</div>
                     </div>
                     <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Avg Daily Sales</div>
@@ -10089,9 +10104,9 @@
                     <tr>
                         <td>${new Date(day.sale_date).toLocaleDateString()}</td>
                         <td>${day.transaction_count}</td>
-                        <td>R ${day.daily_sales.toFixed(2)}</td>
-                        <td>R ${day.daily_vat.toFixed(2)}</td>
-                        <td>R ${day.daily_profit.toFixed(2)}</td>
+                        <td>${formatCurrency(day.daily_sales)}</td>
+                        <td>${formatCurrency(day.daily_vat)}</td>
+                        <td>${formatCurrency(day.daily_profit)}</td>
                     </tr>
                 `;
             });
@@ -10111,7 +10126,7 @@
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Amount</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalAmount.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalAmount)}</div>
                     </div>
                     <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Payment Methods</div>
@@ -10143,9 +10158,9 @@
                         <td>${sale.cashier}</td>
                         <td>${sale.item_count}</td>
                         <td>${sale.total_quantity}</td>
-                        <td>R ${sale.subtotal.toFixed(2)}</td>
-                        <td>R ${sale.vat_amount.toFixed(2)}</td>
-                        <td>R ${sale.total_amount.toFixed(2)}</td>
+                        <td>${formatCurrency(sale.subtotal)}</td>
+                        <td>${formatCurrency(sale.vat_amount)}</td>
+                        <td>${formatCurrency(sale.total_amount)}</td>
                         <td>${sale.payment_method}</td>
                     </tr>
                 `;
@@ -10162,15 +10177,15 @@
                 <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Subtotal</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalSubtotal.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalSubtotal)}</div>
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total VAT</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalVat.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalVat)}</div>
                     </div>
                     <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total with VAT</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.totalWithVat.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalWithVat)}</div>
                     </div>
                     <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Vatable Items</div>
@@ -10206,10 +10221,10 @@
                         <td>${item.cashier}</td>
                         <td>${item.product_name}</td>
                         <td>${item.quantity}</td>
-                        <td>R ${item.unit_price.toFixed(2)}</td>
-                        <td>R ${item.subtotal.toFixed(2)}</td>
-                        <td>R ${item.vat_amount.toFixed(2)}</td>
-                        <td>R ${item.total_with_vat.toFixed(2)}</td>
+                        <td>${formatCurrency(item.unit_price)}</td>
+                        <td>${formatCurrency(item.subtotal)}</td>
+                        <td>${formatCurrency(item.vat_amount)}</td>
+                        <td>${formatCurrency(item.total_with_vat)}</td>
                     </tr>
                 `;
             });
@@ -10225,19 +10240,19 @@
                 <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Taxable Amount</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${totals.totalTaxable.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(totals.totalTaxable)}</div>
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">VAT Collected</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${totals.totalVat.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(totals.totalVat)}</div>
                     </div>
                     <div style="background: #fce4ec; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Exempt Amount</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${totals.totalExempt.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(totals.totalExempt)}</div>
                     </div>
                     <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Total Sales</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${totals.totalSales.toFixed(2)}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(totals.totalSales)}</div>
                     </div>
                     <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Effective VAT Rate</div>
@@ -10262,10 +10277,10 @@
                 html += `
                     <tr>
                         <td>${new Date(row.report_date).toLocaleDateString()}</td>
-                        <td>R ${row.taxable_amount.toFixed(2)}</td>
-                        <td>R ${row.vat_collected.toFixed(2)}</td>
-                        <td>R ${row.exempt_amount.toFixed(2)}</td>
-                        <td>R ${row.total_sales.toFixed(2)}</td>
+                        <td>${formatCurrency(row.taxable_amount)}</td>
+                        <td>${formatCurrency(row.vat_collected)}</td>
+                        <td>${formatCurrency(row.exempt_amount)}</td>
+                        <td>${formatCurrency(row.total_sales)}</td>
                         <td>${row.transaction_count}</td>
                     </tr>
                 `;
@@ -10310,9 +10325,9 @@
                         <td>${item.product_code}</td>
                         <td>${item.product_name}</td>
                         <td>${item.quantity}</td>
-                        <td>R ${item.unit_price.toFixed(2)}</td>
-                        <td>R ${item.cost_price.toFixed(2)}</td>
-                        <td>R ${item.cost_total.toFixed(2)}</td>
+                        <td>${formatCurrency(item.unit_price)}</td>
+                        <td>${formatCurrency(item.cost_price)}</td>
+                        <td>${formatCurrency(item.cost_total)}</td>
                         <td>${item.payment_method}</td>
                     </tr>
                 `;
@@ -10362,10 +10377,10 @@
                         <tr>
                             <td style="padding: 6px;">${item.product_name}</td>
                             <td style="padding: 6px; text-align: right;">${item.quantity}</td>
-                            <td style="padding: 6px; text-align: right;">R ${item.unit_price.toFixed(2)}</td>
-                            <td style="padding: 6px; text-align: right;">R ${item.line_subtotal.toFixed(2)}</td>
-                            <td style="padding: 6px; text-align: right;">R ${item.line_vat.toFixed(2)}</td>
-                            <td style="padding: 6px; text-align: right;">R ${item.line_total.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right;">${formatCurrency(item.unit_price)}</td>
+                            <td style="padding: 6px; text-align: right;">${formatCurrency(item.line_subtotal)}</td>
+                            <td style="padding: 6px; text-align: right;">${formatCurrency(item.line_vat)}</td>
+                            <td style="padding: 6px; text-align: right;">${formatCurrency(item.line_total)}</td>
                         </tr>
                     `;
                 });
@@ -10377,19 +10392,19 @@
                             <div></div>
                             <div></div>
                             <div style="min-width: 100px;">Subtotal:</div>
-                            <div style="min-width: 100px;">R ${inv.subtotal.toFixed(2)}</div>
+                            <div style="min-width: 100px;">${formatCurrency(inv.subtotal)}</div>
                         </div>
                         <div style="display: grid; grid-template-columns: auto 1fr auto auto; gap: 15px; font-weight: bold; text-align: right;">
                             <div></div>
                             <div></div>
                             <div style="min-width: 100px;">VAT:</div>
-                            <div style="min-width: 100px;">R ${inv.vat_amount.toFixed(2)}</div>
+                            <div style="min-width: 100px;">${formatCurrency(inv.vat_amount)}</div>
                         </div>
                         <div style="display: grid; grid-template-columns: auto 1fr auto auto; gap: 15px; font-weight: bold; text-align: right; border-top: 2px solid #667eea; padding-top: 10px;">
                             <div></div>
                             <div></div>
                             <div style="min-width: 100px;">TOTAL:</div>
-                            <div style="min-width: 100px; color: #667eea;">R ${inv.total_amount.toFixed(2)}</div>
+                            <div style="min-width: 100px; color: #667eea;">${formatCurrency(inv.total_amount)}</div>
                         </div>
                     </div>
                 `;
@@ -10400,7 +10415,7 @@
 
         function renderTillSummaryReport(data, container) {
             const { sessions, summary } = data;
-            const fmt = v => v != null ? `R ${parseFloat(v).toFixed(2)}` : '<span style="color:#bbb;">—</span>';
+            const fmt = v => v != null ? `${formatCurrency(parseFloat(v))}` : '<span style="color:#bbb;">—</span>';
             const varColor = v => v == null ? '' : v < 0 ? 'color:#c62828;font-weight:bold;' : v > 0 ? 'color:#e65100;' : 'color:#2e7d32;';
 
             let html = `
@@ -10418,16 +10433,16 @@
                     </div>
                     <div style="background:#e3f2fd;padding:12px;border-radius:8px;">
                         <div style="font-size:11px;color:#666;">Net Sales</div>
-                        <div style="font-size:20px;font-weight:bold;color:#1565c0;">R ${(summary.total_net_sales||0).toFixed(2)}</div>
+                        <div style="font-size:20px;font-weight:bold;color:#1565c0;">${formatCurrency((summary.total_net_sales||0))}</div>
                         <div style="font-size:11px;color:#888;">${summary.total_sale_count} transactions</div>
                     </div>
                     <div style="background:#e8f5e9;padding:12px;border-radius:8px;">
                         <div style="font-size:11px;color:#666;">Cash</div>
-                        <div style="font-size:20px;font-weight:bold;color:#2e7d32;">R ${(summary.total_cash||0).toFixed(2)}</div>
+                        <div style="font-size:20px;font-weight:bold;color:#2e7d32;">${formatCurrency((summary.total_cash||0))}</div>
                     </div>
                     <div style="background:#f3e5f5;padding:12px;border-radius:8px;">
                         <div style="font-size:11px;color:#666;">Card / EFT</div>
-                        <div style="font-size:20px;font-weight:bold;color:#6a1b9a;">R ${((summary.total_card||0)+(summary.total_eft||0)).toFixed(2)}</div>
+                        <div style="font-size:20px;font-weight:bold;color:#6a1b9a;">${formatCurrency(((summary.total_card||0)+(summary.total_eft||0)))}</div>
                     </div>
                     <div style="background:#fff3e0;padding:12px;border-radius:8px;">
                         <div style="font-size:11px;color:#666;">Voids</div>
@@ -10435,7 +10450,7 @@
                     </div>
                     <div style="background:#fce4ec;padding:12px;border-radius:8px;">
                         <div style="font-size:11px;color:#666;">Refunds</div>
-                        <div style="font-size:20px;font-weight:bold;color:#c62828;">R ${(summary.total_refunds||0).toFixed(2)}</div>
+                        <div style="font-size:20px;font-weight:bold;color:#c62828;">${formatCurrency((summary.total_refunds||0))}</div>
                     </div>
                     <div style="background:${summary.inconsistent_sessions>0?'#ffebee':'#e8f5e9'};padding:12px;border-radius:8px;">
                         <div style="font-size:11px;color:#666;">Variances</div>
@@ -10471,7 +10486,7 @@
                 }[s.status] || s.status;
                 const snapBadge = s.has_snapshot ? '' : ' <span style="font-size:10px;color:#bbb;">(est.)</span>';
                 const cardEft = (s.payment_card != null || s.payment_eft != null)
-                    ? `R ${((s.payment_card||0)+(s.payment_eft||0)).toFixed(2)}` : '<span style="color:#bbb;">—</span>';
+                    ? `${formatCurrency(((s.payment_card||0)+(s.payment_eft||0)))}` : '<span style="color:#bbb;">—</span>';
                 html += `
                     <tr style="background:${i%2===0?'#fff':'#f9f9f9'};border-bottom:1px solid #eee;">
                         <td style="padding:7px;">${s.cashier || '—'}</td>
@@ -10485,7 +10500,7 @@
                         <td style="padding:7px;text-align:right;">${s.void_count != null ? s.void_count : '<span style="color:#bbb;">—</span>'}</td>
                         <td style="padding:7px;text-align:right;">${fmt(s.expected_cash_in_drawer)}</td>
                         <td style="padding:7px;text-align:right;">${fmt(s.total_counted)}</td>
-                        <td style="padding:7px;text-align:right;${varColor(s.cash_variance)}">${s.cash_variance != null ? `R ${parseFloat(s.cash_variance).toFixed(2)}` : '<span style="color:#bbb;">—</span>'}</td>
+                        <td style="padding:7px;text-align:right;${varColor(s.cash_variance)}">${s.cash_variance != null ? `${formatCurrency(parseFloat(s.cash_variance))}` : '<span style="color:#bbb;">—</span>'}</td>
                         <td style="padding:7px;text-align:center;">${statusBadge}</td>
                     </tr>
                     ${s.is_consistent === false ? `<tr style="background:#fff8f8;"><td colspan="13" style="padding:4px 8px;font-size:11px;color:#c62828;">⚠ ${s.consistency_issue_count} consistency issue(s) detected on this session</td></tr>` : ''}
@@ -10515,8 +10530,8 @@
                     <td>${c.full_name || c.username || 'Unknown'}</td>
                     <td style="text-align:center;">${c.sessions_worked}</td>
                     <td style="text-align:right;">${c.completed_sales}</td>
-                    <td style="text-align:right;">R ${parseFloat(c.total_revenue || 0).toFixed(2)}</td>
-                    <td style="text-align:right;">R ${parseFloat(c.avg_transaction || 0).toFixed(2)}</td>
+                    <td style="text-align:right;">${formatCurrency(parseFloat(c.total_revenue || 0))}</td>
+                    <td style="text-align:right;">${formatCurrency(parseFloat(c.avg_transaction || 0))}</td>
                     <td style="text-align:center;">${c.voided_sales}</td>
                     <td style="text-align:center;">${c.refunds_processed}</td>
                     <td style="text-align:center;">${c.negative_stock_allowed}</td>
@@ -10576,7 +10591,7 @@
                         <td style="padding:7px;font-weight:500;">${p.product_name}</td>
                         <td style="padding:7px;color:#888;">${p.sku || '—'}</td>
                         <td style="padding:7px;text-align:right;color:#c62828;font-weight:bold;">${p.stock_quantity}</td>
-                        <td style="padding:7px;text-align:right;">R ${parseFloat(p.unit_price||0).toFixed(2)}</td>
+                        <td style="padding:7px;text-align:right;">${formatCurrency(parseFloat(p.unit_price||0))}</td>
                         <td style="padding:7px;font-size:12px;">${p.went_negative_at ? new Date(p.went_negative_at).toLocaleString() : '<span style="color:#bbb;">Not recorded in period</span>'}</td>
                     </tr>`;
                 });
