@@ -12,6 +12,36 @@ const express = require('express');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
 const { requireCompany } = require('../../middleware/auth');
+
+// Shared by GET/PUT /clients/:id (2026-07-24 cross-app identity sync fix) —
+// practice_clients keeps its own copy of VAT/registration/tax-reference fields
+// for legacy/unlinked clients, but when a client is linked to a real
+// operational company (practice_clients.eco_client_id -> eco_clients.id ->
+// eco_clients.client_company_id -> companies.id), the live `companies` row is
+// treated as canonical: read-through on GET, write-through on PUT. Without
+// this, entering a VAT number in Checkout Charlie/Payroll/Accounting (all of
+// which already read/write `companies` directly) never appeared on Practice's
+// client-detail page, and vice versa. Field names are 1:1 except COIDA
+// (practice_clients.coida_registration_number <-> companies.coid_reference_number).
+const COMPLIANCE_FIELD_MAP = {
+  vat_number: 'vat_number',
+  registration_number: 'registration_number',
+  income_tax_number: 'income_tax_number',
+  paye_reference_number: 'paye_reference_number',
+  uif_reference_number: 'uif_reference_number',
+  sdl_reference_number: 'sdl_reference_number',
+  coida_registration_number: 'coid_reference_number',
+};
+
+async function getLinkedCompanyId(ecoClientId) {
+  if (!ecoClientId) return null;
+  const { data: ec } = await supabase
+    .from('eco_clients')
+    .select('client_company_id')
+    .eq('id', ecoClientId)
+    .maybeSingle();
+  return ec?.client_company_id || null;
+}
 const workflowsRouter        = require('./workflows');
 const billingRouter          = require('./billing');
 const engagementsRouter      = require('./engagements');
@@ -765,13 +795,34 @@ router.get('/clients/:id', async (req, res) => {
   if (data.eco_client_id) {
     const { data: ec } = await supabase
       .from('eco_clients')
-      .select('id, client_code, apps, is_active, addons')
+      .select('id, client_code, apps, is_active, addons, client_company_id')
       .eq('id', data.eco_client_id)
       .single();
     if (ec) {
       client.client_code = ec.client_code;
       client.eco_apps    = ec.apps;
       client.eco_addons  = ec.addons;
+
+      // Read-through: prefer the linked operational company's live VAT/
+      // registration/tax-reference values over practice_clients' own copy
+      // (see COMPLIANCE_FIELD_MAP above) — falls back to practice_clients'
+      // stored value when the company doesn't have one set, or there's no
+      // link at all (legacy/practice-only clients, unaffected).
+      if (ec.client_company_id) {
+        const { data: company } = await supabase
+          .from('companies')
+          .select(Object.values(COMPLIANCE_FIELD_MAP).join(','))
+          .eq('id', ec.client_company_id)
+          .maybeSingle();
+        if (company) {
+          for (const [practiceField, companyField] of Object.entries(COMPLIANCE_FIELD_MAP)) {
+            const companyValue = company[companyField];
+            if (companyValue !== null && companyValue !== undefined && companyValue !== '') {
+              client[practiceField] = companyValue;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1018,6 +1069,27 @@ router.put('/clients/:id', async (req, res) => {
           .from('eco_clients')
           .update(ecoUpdate)
           .eq('id', existing.eco_client_id);
+      }
+
+      // Write-through: VAT/registration/tax-reference edits made from Practice
+      // propagate to the linked operational company too (see
+      // COMPLIANCE_FIELD_MAP above) — so POS/Payroll/Accounting see the same
+      // edit, not just Practice's own copy. No-op when there's no linked
+      // company (legacy/practice-only clients — practice_clients' own copy,
+      // already saved above, remains the only record for them, same as today).
+      const companyUpdate = {};
+      for (const [practiceField, companyField] of Object.entries(COMPLIANCE_FIELD_MAP)) {
+        if (body[practiceField] !== undefined) companyUpdate[companyField] = body[practiceField];
+      }
+      if (Object.keys(companyUpdate).length > 0) {
+        const linkedCompanyId = await getLinkedCompanyId(existing.eco_client_id);
+        if (linkedCompanyId) {
+          companyUpdate.updated_at = new Date().toISOString();
+          await supabase
+            .from('companies')
+            .update(companyUpdate)
+            .eq('id', linkedCompanyId);
+        }
       }
     } catch (ecoSyncErr) {
       console.error('[practice] eco_client identity sync failed:', ecoSyncErr.message);

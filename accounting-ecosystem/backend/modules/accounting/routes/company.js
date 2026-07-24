@@ -24,10 +24,19 @@ function mapCompanyRow(row) {
     isVatRegistered:    row.is_vat_registered || false,
     vatCycleType:       row.vat_cycle_type,
     vatRegisteredDate:  row.vat_registered_date,
-    payeRef:         row.paye_reference,
-    uifRef:          row.uif_reference,
-    sdlRef:          row.sdl_reference,
-    coidNumber:      row.coid_number,
+    // Canonical column names (2026-07-24) — this module used to read/write
+    // paye_reference/uif_reference/sdl_reference/coid_number, a DIFFERENT set of
+    // column names than Payroll's company-details page uses on the exact same
+    // companies row (paye_reference_number/uif_reference_number/
+    // sdl_reference_number/coid_reference_number). Confirmed live: every one of
+    // the 49 companies in the DB had null in the old names and real data in
+    // the new ones — Accounting's own company page was silently blank for
+    // these fields the whole time. Repointed to match Payroll's (and the
+    // shared PUT /api/companies/:id route's) already-correct naming instead.
+    payeRef:         row.paye_reference_number,
+    uifRef:          row.uif_reference_number,
+    sdlRef:          row.sdl_reference_number,
+    coidNumber:      row.coid_reference_number,
     yearEnd:         row.financial_year_end,
     vatPeriod:       row.vat_period,
     physicalAddress: row.physical_address,
@@ -168,10 +177,10 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
     if (d.isVatRegistered !== undefined) updates.is_vat_registered = !!d.isVatRegistered;
     if (d.vatCycleType)       updates.vat_cycle_type       = d.vatCycleType;
     if (d.vatRegisteredDate)  updates.vat_registered_date  = d.vatRegisteredDate;
-    if (d.payeRef)         updates.paye_reference      = d.payeRef;
-    if (d.uifRef)          updates.uif_reference       = d.uifRef;
-    if (d.sdlRef)          updates.sdl_reference       = d.sdlRef;
-    if (d.coidNumber)      updates.coid_number         = d.coidNumber;
+    if (d.payeRef)         updates.paye_reference_number = d.payeRef;
+    if (d.uifRef)          updates.uif_reference_number  = d.uifRef;
+    if (d.sdlRef)          updates.sdl_reference_number  = d.sdlRef;
+    if (d.coidNumber)      updates.coid_reference_number = d.coidNumber;
     if (d.yearEnd)         updates.financial_year_end  = d.yearEnd;
     if (d.vatPeriod)       updates.vat_period          = d.vatPeriod;
     if (d.physicalAddress) updates.physical_address    = d.physicalAddress;

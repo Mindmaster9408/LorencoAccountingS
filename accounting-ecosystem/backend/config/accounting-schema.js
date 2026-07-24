@@ -19,10 +19,15 @@ async function ensureAccountingSchema(pool) {
     // ── 1. Add SA-specific columns to companies table ─────────────────────────
     const companyColumns = [
       ['income_tax_number', 'VARCHAR(50)'],
-      ['paye_reference',    'VARCHAR(50)'],
-      ['uif_reference',     'VARCHAR(50)'],
-      ['sdl_reference',     'VARCHAR(50)'],
-      ['coid_number',       'VARCHAR(50)'],
+      // paye_reference/uif_reference/sdl_reference/coid_number removed
+      // (2026-07-24) — a divergent, never-populated set of column names vs.
+      // the canonical paye_reference_number/uif_reference_number/
+      // sdl_reference_number/coid_reference_number Payroll and the shared
+      // PUT /api/companies/:id route already use on this same table. See
+      // modules/accounting/routes/company.js for the corresponding fix.
+      // Not re-added here since they already exist in the live database;
+      // if a fresh environment ever needs them provisioned, that belongs
+      // wherever Payroll's own schema setup creates them, not duplicated here.
       ['financial_year_end','VARCHAR(20)'],
       ['vat_period',        'VARCHAR(20)'],
       ['company_type',      'VARCHAR(50)'],
