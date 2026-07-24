@@ -25,6 +25,7 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
+const { getBusinessDayBounds, activeDiscountOrFilter } = require('../services/discountWindow');
 
 const router = express.Router();
 
@@ -113,17 +114,16 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
     // /api/pos/discounts actually affect what the till charges — until this,
     // discounts.js could save a discount row but nothing ever read it back
     // into a price a cashier would see or charge. Same is_active/valid_from/
-    // valid_until predicate as discounts.js's default GET (must stay in sync
-    // with that route — there is no shared date-window helper for this single
-    // three-condition predicate, but if either changes, check the other).
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    // valid_until predicate as discounts.js's default GET — shared via
+    // discountWindow.js so the two routes can't drift out of sync.
+    const window = getBusinessDayBounds();
     const { data: activeDiscounts } = await supabase
       .from('pos_daily_discounts')
       .select('product_id, discount_type, discount_value, valid_until, reason')
       .eq('company_id', req.companyId)
       .eq('is_active', true)
-      .or(`valid_from.is.null,valid_from.lte.${today}`)
-      .or(`valid_until.is.null,valid_until.gte.${today}`);
+      .or(`valid_from.is.null,valid_from.lte.${window.day}`)
+      .or(activeDiscountOrFilter(window));
 
     if (activeDiscounts && activeDiscounts.length > 0) {
       const discountByProduct = new Map(activeDiscounts.map(d => [d.product_id, d]));

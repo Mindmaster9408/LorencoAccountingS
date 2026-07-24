@@ -18,6 +18,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
+const { getBusinessDayBounds, activeDiscountOrFilter, isDiscountActiveToday } = require('../services/discountWindow');
 
 const router = express.Router();
 
@@ -48,17 +49,21 @@ router.get('/performance', requirePermission('REPORTS.VIEW'), async (req, res) =
       .limit(100);
     if (discErr) return res.status(500).json({ error: discErr.message });
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBusinessDayBounds().day;
 
     // Per discount: sum sale_items for that product within the discount's own
-    // effective window (valid_from → valid_until, defaulting to created_at →
-    // now where either bound is open-ended), completed sales only. Run in
-    // parallel — each is a small, single-product/date-window query, not a
-    // table scan, so this doesn't need the pagination helper reports.js uses
-    // for whole-table queries.
+    // effective window. valid_until set -> through end of that date. No
+    // valid_until -> the discount was only ever active on its own creation
+    // day (see discountWindow.js), so the performance window is that single
+    // day, not "creation until whenever this report happens to run".
+    // Run in parallel — each is a small, single-product/date-window query,
+    // not a table scan, so this doesn't need the pagination helper
+    // reports.js uses for whole-table queries.
     const results = await Promise.all((discounts || []).map(async (d) => {
       const windowStart = d.valid_from || d.created_at;
-      const windowEnd   = d.valid_until ? `${d.valid_until}T23:59:59.999Z` : new Date().toISOString();
+      const windowEnd   = d.valid_until
+        ? `${d.valid_until}T23:59:59.999+02:00`
+        : getBusinessDayBounds(d.created_at).dayEndISO;
 
       const { data: saleItems, error: siErr } = await supabase
         .from('sale_items')
@@ -97,7 +102,7 @@ router.get('/performance', requirePermission('REPORTS.VIEW'), async (req, res) =
         reason: d.reason,
         valid_from: d.valid_from,
         valid_until: d.valid_until,
-        is_active: d.is_active && (!d.valid_from || d.valid_from <= today) && (!d.valid_until || d.valid_until >= today),
+        is_active: d.is_active && (!d.valid_from || d.valid_from <= today) && isDiscountActiveToday(d, today),
         units_sold: unitsSold,
         revenue: Math.round(revenue * 100) / 100,
         cost: Math.round(cost * 100) / 100,
@@ -129,7 +134,7 @@ router.get('/performance', requirePermission('REPORTS.VIEW'), async (req, res) =
  */
 router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const window = getBusinessDayBounds();
     const showAll = req.query.all === 'true';
 
     let query = supabase
@@ -141,8 +146,8 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
     if (!showAll) {
       query = query
         .eq('is_active', true)
-        .or(`valid_from.is.null,valid_from.lte.${today}`)
-        .or(`valid_until.is.null,valid_until.gte.${today}`);
+        .or(`valid_from.is.null,valid_from.lte.${window.day}`)
+        .or(activeDiscountOrFilter(window));
     }
 
     const { data, error } = await query;

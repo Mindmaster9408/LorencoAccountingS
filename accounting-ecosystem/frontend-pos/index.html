@@ -4920,6 +4920,46 @@
         </div>
     </div>
 
+    <!-- USB Printer "Access Denied" Help Modal — shown automatically (instead of
+         just a raw error) when WebUSB's device.open() is blocked because Windows
+         already has a driver (usually its built-in printer-class driver) bound
+         to the device. Fixed with a one-time WinUSB driver swap via Zadig; this
+         walks the user through exactly that instead of leaving them with only
+         the browser's "Access denied" text. -->
+    <div id="usbDriverHelpModal" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header">
+                <h2>USB Printer Needs a One-Time Fix</h2>
+                <button class="close-btn" onclick="closeUsbDriverHelpModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:20px;color:var(--text);">
+                <p style="margin:0 0 12px;">
+                    Windows has already claimed this printer with its own driver, so the browser
+                    isn't allowed to talk to it directly yet. This is fixed once per till by
+                    swapping the driver for this one device — after that it works every day
+                    without doing this again.
+                </p>
+                <ol style="margin:0 0 15px;padding-left:20px;line-height:1.7;">
+                    <li><a href="https://zadig.akeo.ie/" target="_blank" rel="noopener">Download Zadig</a> (free, no install needed — just run the .exe)</li>
+                    <li>In Zadig: <strong>Options → List All Devices</strong></li>
+                    <li>Pick your receipt printer from the dropdown</li>
+                    <li>Set the target driver to <strong>WinUSB</strong></li>
+                    <li>Click <strong>Replace Driver</strong></li>
+                    <li>Unplug and replug the printer</li>
+                    <li>Back here: <strong>Forget Printer</strong>, then <strong>Pair USB Printer</strong> again</li>
+                </ol>
+                <div style="padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-secondary);">
+                    <strong>Note:</strong> after this, the printer will only show up for this browser/POS —
+                    it won't appear as a normal Windows printer for other programs anymore. That's expected.
+                </div>
+            </div>
+            <div class="modal-footer" style="padding:15px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;">
+                <button class="btn btn-secondary" onclick="closeUsbDriverHelpModal()">Close</button>
+                <button class="btn btn-primary" onclick="retryUsbPrinterTest()">Try Again</button>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Notification -->
     <div id="notification" class="notification"></div>
@@ -8375,7 +8415,10 @@
                     return;
                 } catch (e) {
                     console.warn('[Print] USB print failed, falling back to browser print:', e.message);
-                    showNotification('USB printer error — opening browser print instead', 'error');
+                    const msg = isUsbAccessDeniedError(e)
+                        ? 'USB printer needs a one-time driver fix (Settings → Receipt Printers) — printing via browser instead'
+                        : 'USB printer error — opening browser print instead';
+                    showNotification(msg, 'error');
                     await printReceiptViaBrowser(saleId);
                     return;
                 }
@@ -8698,6 +8741,22 @@
             return true;
         }
 
+        // Windows binds its own driver to a USB printer by default, which blocks
+        // WebUSB's device.open() with this exact message — not a bug in this
+        // app, a one-time OS driver fix (see usbDriverHelpModal above).
+        function isUsbAccessDeniedError(e) {
+            return /access denied/i.test(e?.message || '');
+        }
+
+        function closeUsbDriverHelpModal() {
+            document.getElementById('usbDriverHelpModal').style.display = 'none';
+        }
+
+        function retryUsbPrinterTest() {
+            closeUsbDriverHelpModal();
+            testUsbPrinter();
+        }
+
         async function testUsbPrinter() {
             try {
                 const device = cachedUsbPrinter || await getPairedUsbPrinter();
@@ -8711,7 +8770,11 @@
                 await sendRawToUsbPrinter(device, testBytes);
                 showNotification('Test slip sent', 'success');
             } catch (e) {
-                showNotification('USB print test failed: ' + e.message, 'error');
+                if (isUsbAccessDeniedError(e)) {
+                    document.getElementById('usbDriverHelpModal').style.display = 'flex';
+                } else {
+                    showNotification('USB print test failed: ' + e.message, 'error');
+                }
             }
         }
 
