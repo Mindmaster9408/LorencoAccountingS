@@ -53,7 +53,17 @@ function parseMoney(val) {
 function parseVatRate(val) {
     if (val === null || val === undefined || val === '') return 15;
     const n = parseFloat(String(val).replace(/[%\s]/g, ''));
-    return isNaN(n) ? 15 : Math.min(100, Math.max(0, n));
+    if (isNaN(n)) return 15;
+    // Source spreadsheets sometimes enter VAT as a decimal multiplier (0.15)
+    // instead of a percentage (15) — every downstream consumer (checkout's
+    // VAT-inclusive-price split in sales.js: linePrice * (vat_rate / (100 +
+    // vat_rate)), the Add/Edit Product dropdown's 0/15 option values) expects
+    // a whole-number percentage. A decimal like 0.15 stored as-is silently
+    // charges ~0.15% VAT instead of 15% at every sale of that product.
+    // Nobody in SA has a VAT rate strictly between 0 and 1 percent, so any
+    // value in that range is unambiguously a decimal-multiplier mistake.
+    const normalised = (n > 0 && n < 1) ? n * 100 : n;
+    return Math.min(100, Math.max(0, normalised));
 }
 
 function parseBoolean(val) {
