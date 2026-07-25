@@ -234,7 +234,12 @@ router.get('/', requirePermission('SALES.VIEW'), async (req, res) => {
       .range(offset, offset + parseInt(limit) - 1);
 
     if (from)        query = query.gte('created_at', from);
-    if (to)          query = query.lte('created_at', to);
+    // Bare "YYYY-MM-DD" (e.g. from an HTML date input) is midnight at the
+    // START of that day — .lte() against that excludes every sale made
+    // later that same day. Same fix already applied a few lines below (see
+    // the sqlQuery.lte('created_at', `${to}T23:59:59.999Z`) case) and
+    // throughout reports.js's endOfDay() helper.
+    if (to)          query = query.lte('created_at', /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to}T23:59:59.999` : to);
     if (status)      query = query.eq('status', status);
     if (cashier_id)  query = query.eq('cashier_id', cashier_id);
 

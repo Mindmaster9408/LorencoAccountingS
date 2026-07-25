@@ -12,6 +12,24 @@ const { requireCompany, requirePermission } = require('../../../middleware/auth'
 
 const router = express.Router();
 
+// Normalizes an end-of-range date query param to the END of that calendar
+// day, not its start. Found live 2026-07-24: a bare "YYYY-MM-DD" from an
+// HTML <input type="date"> (e.g. "2026-07-24") compared with
+// .lte('created_at', ...) against a timestamptz column is implicitly
+// midnight AT THE START of that day — silently excluding every sale made
+// that day, since almost all of them happen after 00:00:00. That's why
+// picking a date range showed "no sales" for days that were clearly
+// visible with no filter at all. Only touches bare date strings (exactly
+// "YYYY-MM-DD", no time component) — an already-full ISO timestamp (e.g.
+// the `now.toISOString()` defaults used throughout this file) is returned
+// unchanged.
+function endOfDay(dateStr) {
+  if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return `${dateStr}T23:59:59.999`;
+  }
+  return dateStr;
+}
+
 // ── pos_audit_events has no FK constraint to users (confirmed directly
 // against the live schema — PostgREST error PGRST200: "Could not find a
 // relationship between 'pos_audit_events' and 'user_id'"). Several routes
@@ -91,7 +109,7 @@ router.get('/sales-summary', async (req, res) => {
     const { from, to, period } = req.query;
     const now = new Date();
     const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const endDate = to || now.toISOString();
+    const endDate = endOfDay(to || now.toISOString());
 
     let sales;
     try {
@@ -187,7 +205,7 @@ router.get('/cashier-performance', reportsViewGate, async (req, res) => {
     const { from, to, startDate, endDate } = req.query;
     const now = new Date();
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const end = endDate || to || now.toISOString();
+    const end = endOfDay(endDate || to || now.toISOString());
 
     let salesData, auditData, sessionsData;
     try {
@@ -349,7 +367,7 @@ router.get('/till-summary', reportsViewGate, async (req, res) => {
     const { from, to, startDate, endDate } = req.query;
     const now = new Date();
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const end   = endDate   || to   || now.toISOString();
+    const end   = endOfDay(endDate || to || now.toISOString());
 
     // Parallel: sessions + snapshots (both date-bounded by session open time)
     const [sessResult, snapResult] = await Promise.all([
@@ -489,7 +507,7 @@ router.get('/negative-stock', reportsViewGate, async (req, res) => {
     const { from, to, startDate, endDate } = req.query;
     const now = new Date();
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const end   = endDate   || to   || now.toISOString();
+    const end   = endOfDay(endDate || to || now.toISOString());
 
     const [productsResult, eventsResult, policyResult] = await Promise.all([
       // Part A: Products currently below zero (most negative first)
@@ -572,7 +590,7 @@ router.get('/recovery-sync', reportsViewGate, async (req, res) => {
     const { from, to, startDate, endDate } = req.query;
     const now = new Date();
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const end   = endDate   || to   || now.toISOString();
+    const end   = endOfDay(endDate || to || now.toISOString());
 
     const staleThreshold = new Date(Date.now() - 8 * 3_600_000).toISOString();
 
@@ -691,7 +709,7 @@ router.get('/audit-activity', reportsViewGate, async (req, res) => {
     const { from, to, startDate, endDate, action_type, category } = req.query;
     const now = new Date();
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const end   = endDate   || to   || now.toISOString();
+    const end   = endOfDay(endDate || to || now.toISOString());
 
     // No users embed — pos_audit_events has no FK to users (see
     // attachUserNames() note at the top of this file); resolved below.
@@ -836,7 +854,7 @@ function dateRangeFromQuery(query) {
   const { from, to, startDate, endDate } = query;
   const now = new Date();
   const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const end   = endDate   || to   || now.toISOString();
+  const end   = endOfDay(endDate || to || now.toISOString());
   return { start, end };
 }
 
@@ -1296,7 +1314,7 @@ router.get('/forensic-audit', reportsViewGate, async (req, res) => {
     if (entity_type) query = query.eq('entity_type', entity_type);
     if (username) query = query.ilike('user_email', `%${username}%`);
     if (start_date) query = query.gte('created_at', start_date);
-    if (end_date) query = query.lte('created_at', end_date);
+    if (end_date) query = query.lte('created_at', endOfDay(end_date));
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
