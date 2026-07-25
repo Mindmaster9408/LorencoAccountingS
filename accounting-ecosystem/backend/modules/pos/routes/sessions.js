@@ -274,7 +274,15 @@ router.post('/:id/close', async (req, res) => {
  */
 router.post('/:id/complete-cashup', async (req, res) => {
   try {
-    const { counted_cash, counted_card, counted_other, notes } = req.body;
+    // counted_eft/counted_account added 2026-07-24 alongside counted_card —
+    // counted_other kept for backward compatibility (older clients / the
+    // print template) but no longer the only way to record a non-card
+    // non-cash count. Each method gets its OWN expected-vs-counted variance
+    // below rather than being folded into one figure — see the comment on
+    // `variance` further down for why that combination was already found to
+    // be wrong (a phantom shortfall on any session with account sales, which
+    // have no "counted" figure at all).
+    const { counted_cash, counted_card, counted_eft, counted_account, counted_other, notes } = req.body;
 
     const { data: session } = await supabase
       .from('till_sessions')
@@ -304,16 +312,42 @@ router.post('/:id/complete-cashup', async (req, res) => {
       return res.status(403).json({ error: 'Only a manager can complete another cashier\'s cashup' });
     }
 
-    const totalCounted = (counted_cash || 0) + (counted_card || 0) + (counted_other || 0);
-    // Variance is a CASH-drawer figure: counted cash vs expected cash-in-drawer
-    // (now cash-only — see /close above). Comparing totalCounted (which folds
-    // in counted_card/counted_other) against a cash-only expected_balance would
-    // reintroduce the same mismatch this fix removes elsewhere, and would also
-    // show a phantom shortfall on any session with account/pay-later sales
-    // (no counted field exists for those at all). closing_balance below still
-    // stores totalCounted — that "total tendered across all methods" figure is
-    // unchanged and used elsewhere (till-summary reports) independently of variance.
+    const totalCounted = (counted_cash || 0) + (counted_card || 0) + (counted_eft || 0) + (counted_account || 0) + (counted_other || 0);
+    // Variance (the `variance` column) is a CASH-drawer figure: counted cash vs
+    // expected cash-in-drawer (now cash-only — see /close above). Comparing
+    // totalCounted (which folds in every method) against a cash-only
+    // expected_balance would reintroduce the same mismatch this fix removes
+    // elsewhere, and would also show a phantom shortfall on any session with
+    // account/pay-later sales (no meaningful "counted" figure exists for
+    // those at all). closing_balance below still stores totalCounted — that
+    // "total tendered across all methods" figure is unchanged and used
+    // elsewhere (till-summary reports) independently of variance.
     const variance = Math.round(((counted_cash || 0) - (session.expected_balance || 0)) * 100) / 100;
+
+    // Per-method variances (2026-07-24) — each non-cash method compared only
+    // against ITS OWN system-recorded sales for this session (via the same
+    // computeSessionRecon() the /reconciliation endpoint already uses as the
+    // authoritative source), never combined with the cash variance above.
+    // Only computed when a counted_* value was actually supplied for that
+    // method — omitted (not zero) otherwise, so the UI can tell "not counted"
+    // apart from "counted and matched exactly".
+    let methodVariances = {};
+    try {
+      const recon = await computeSessionRecon(req.params.id, req.companyId);
+      if (counted_card !== undefined && counted_card !== null) {
+        methodVariances.varianceCard = Math.round(((counted_card || 0) - recon.paymentCard) * 100) / 100;
+      }
+      if (counted_eft !== undefined && counted_eft !== null) {
+        methodVariances.varianceEft = Math.round(((counted_eft || 0) - recon.paymentEft) * 100) / 100;
+      }
+      if (counted_account !== undefined && counted_account !== null) {
+        methodVariances.varianceAccount = Math.round(((counted_account || 0) - recon.paymentAccount) * 100) / 100;
+      }
+    } catch (reconErr) {
+      // Non-fatal — cashup still completes on the cash figures above even if
+      // the per-method breakdown couldn't be computed for some reason.
+      console.warn('[Cashup] Per-method variance calc skipped:', reconErr.message);
+    }
 
     const { data, error } = await supabase
       .from('till_sessions')
@@ -331,13 +365,13 @@ router.post('/:id/complete-cashup', async (req, res) => {
 
     await auditFromReq(req, 'UPDATE', 'till_session', req.params.id, {
       module: 'pos',
-      metadata: { action: 'cashup', totalCounted, variance }
+      metadata: { action: 'cashup', totalCounted, variance, ...methodVariances }
     });
     posAuditFromReq(req, POS_EVENTS.CASHUP_COMPLETED, {
       tillId:         session.till_id || null,
       tillSessionId:  req.params.id,
       beforeSnapshot: { status: session.status, expected_balance: session.expected_balance },
-      afterSnapshot:  { status: 'cashed_up', total_counted: totalCounted, variance, counted_cash, counted_card, counted_other },
+      afterSnapshot:  { status: 'cashed_up', total_counted: totalCounted, variance, counted_cash, counted_card, counted_eft, counted_account, counted_other, ...methodVariances },
     });
     if (variance !== 0) {
       posAuditFromReq(req, POS_EVENTS.CASH_VARIANCE_RECORDED, {
@@ -355,10 +389,10 @@ router.post('/:id/complete-cashup', async (req, res) => {
       req.user.userId,
       req.user.email || req.user.username,
       'cashup',
-      { counted_cash, counted_card, counted_other, total_counted: totalCounted, variance }
+      { counted_cash, counted_card, counted_eft, counted_account, counted_other, total_counted: totalCounted, variance, ...methodVariances }
     );
 
-    res.json({ session: data });
+    res.json({ session: data, ...methodVariances });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

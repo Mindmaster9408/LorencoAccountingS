@@ -3131,6 +3131,20 @@
                     </div>
                 </div>
 
+                <!-- Other Payment Methods Counted — only shown for methods that
+                     actually had sales today (populated by loadCashUpSession()'s
+                     renderOtherPaymentCountRows()). Each method's count is
+                     compared only against its OWN system-recorded sales — kept
+                     deliberately separate from the cash variance below (see the
+                     comment on `variance` in backend sessions.js's
+                     /complete-cashup for why combining them into one figure
+                     would be wrong). -->
+                <div id="otherPaymentCountSection" style="background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px; display:none;">
+                    <h2 style="margin-bottom: 6px; color: #667eea;">💳 Count Other Payment Methods</h2>
+                    <p style="color:#666;font-size:13px;margin:0 0 15px;">Enter what your card machine / EFT confirmation / account records show, to check it matches the system. Optional — leave blank to skip.</p>
+                    <div id="otherPaymentCountRows" style="display:grid;gap:12px;"></div>
+                </div>
+
                 <!-- Cash Counter -->
                 <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px;">
                     <h2 style="margin-bottom: 20px; color: #667eea;">💵 Count Cash in Till</h2>
@@ -6615,6 +6629,7 @@
                     document.getElementById('cardSales').textContent    = `R ${payments.card.toFixed(2)}`;
                     document.getElementById('eftSales').textContent     = `R ${payments.eft.toFixed(2)}`;
                     document.getElementById('accountSales').textContent = `R ${payments.account.toFixed(2)}`;
+                    renderOtherPaymentCountRows(payments);
 
                     // Show cash refunds row only when refunds exist
                     if (refunds.cash > 0) {
@@ -6644,6 +6659,7 @@
                     document.getElementById('eftSales').textContent     = `R 0.00`;
                     document.getElementById('accountSales').textContent = `R 0.00`;
                     document.getElementById('cashRefundsRow').style.display = 'none';
+                    renderOtherPaymentCountRows(null);
                 }
 
                 // Reset denomination inputs
@@ -6721,9 +6737,25 @@
         // and a manager's on-behalf completion (completePendingCashup()).
         let lastCashupPrintData = null;
 
+        // One 2-column row (matches the rest of this table): "Method | R y.yy
+        // (variance)". Only rendered when a counted value was actually
+        // supplied (matches the "not counted" vs "counted zero" distinction
+        // the backend/UI use elsewhere).
+        function cashupMethodRow(label, systemAmount, counted) {
+            if (counted == null) return '';
+            const variance = Math.round((counted - (systemAmount || 0)) * 100) / 100;
+            const varianceText = variance === 0 ? 'matches' : `${variance >= 0 ? '+' : ''}R ${variance.toFixed(2)}`;
+            return `<tr><td>${label}</td><td style="text-align:right;">R ${counted.toFixed(2)} (${varianceText})</td></tr>`;
+        }
+
         function buildCashupPrintHtml(d) {
-            const countedTotal = (d.countedCash || 0) + (d.countedCard || 0) + (d.countedOther || 0);
+            const countedTotal = (d.countedCash || 0) + (d.countedCard || 0) + (d.countedEft || 0) + (d.countedAccount || 0) + (d.countedOther || 0);
             const varianceLabel = d.variance > 0 ? 'Over' : d.variance < 0 ? 'Short' : 'Balanced';
+            const otherMethodRows = [
+                cashupMethodRow('Card',    d.cardSales,    d.countedCard),
+                cashupMethodRow('EFT',     d.eftSales,     d.countedEft),
+                cashupMethodRow('Account', d.accountSales, d.countedAccount),
+            ].join('');
             return `
                 <div style="font-family:Arial,sans-serif;font-size:14px;color:#000;max-width:700px;margin:0 auto;">
                     <h2 style="margin:0 0 2px;text-align:center;">${currentCompanyName || ''}</h2>
@@ -6743,9 +6775,9 @@
                         <tr style="border-top:1px solid #000;"><td><strong>Expected Cash</strong></td><td style="text-align:right;"><strong>R ${(d.expectedCash || 0).toFixed(2)}</strong></td></tr>
                         <tr><td colspan="2" style="padding-top:6px;"><strong>Counted</strong></td></tr>
                         <tr><td>Cash</td><td style="text-align:right;">R ${(d.countedCash || 0).toFixed(2)}</td></tr>
-                        ${d.countedCard != null ? `<tr><td>Card</td><td style="text-align:right;">R ${d.countedCard.toFixed(2)}</td></tr>` : ''}
+                        ${otherMethodRows}
                         ${d.countedOther != null ? `<tr><td>Other</td><td style="text-align:right;">R ${d.countedOther.toFixed(2)}</td></tr>` : ''}
-                        ${(d.countedCard != null || d.countedOther != null) ? `<tr><td>Total Counted</td><td style="text-align:right;">R ${countedTotal.toFixed(2)}</td></tr>` : ''}
+                        ${(d.countedCard != null || d.countedEft != null || d.countedAccount != null || d.countedOther != null) ? `<tr><td>Total Counted</td><td style="text-align:right;">R ${countedTotal.toFixed(2)}</td></tr>` : ''}
                         <tr style="border-top:1px solid #000;"><td><strong>Variance</strong></td><td style="text-align:right;"><strong>${d.variance >= 0 ? '+' : ''}R ${d.variance.toFixed(2)} (${varianceLabel})</strong></td></tr>
                     </table>
                     ${d.notes ? `<p style="margin:10px 0 0;font-size:11px;">Notes: ${d.notes}</p>` : ''}
@@ -6880,9 +6912,20 @@
                                 <input type="number" id="pcCountedCard" step="0.01" value="${parseFloat(payments.card || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
                             </div>
                         </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Other (EFT / SnapScan / etc.)</label>
-                            <input type="number" id="pcCountedOther" step="0.01" value="${parseFloat(payments.eft || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                        <!-- EFT/Account each get their own counted field (2026-07-24 —
+                             was one combined "Counted Other" bucket that couldn't tell
+                             EFT and Account variances apart, same fix as the main Cash
+                             Up tab's "Count Other Payment Methods" section). Pre-filled
+                             with the system figure, same convention as Card above. -->
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                            <div>
+                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted EFT</label>
+                                <input type="number" id="pcCountedEft" step="0.01" value="${parseFloat(payments.eft || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                            </div>
+                            <div>
+                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Account</label>
+                                <input type="number" id="pcCountedAccount" step="0.01" value="${parseFloat(payments.account || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                            </div>
                         </div>
                         <div>
                             <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Notes (optional)</label>
@@ -6904,9 +6947,10 @@
         }
 
         async function completePendingCashup(sessionId) {
-            const counted_cash  = parseFloat(document.getElementById('pcCountedCash').value)  || 0;
-            const counted_card  = parseFloat(document.getElementById('pcCountedCard').value)  || 0;
-            const counted_other = parseFloat(document.getElementById('pcCountedOther').value) || 0;
+            const counted_cash    = parseFloat(document.getElementById('pcCountedCash').value)    || 0;
+            const counted_card    = parseFloat(document.getElementById('pcCountedCard').value)    || 0;
+            const counted_eft     = parseFloat(document.getElementById('pcCountedEft').value)     || 0;
+            const counted_account = parseFloat(document.getElementById('pcCountedAccount').value) || 0;
             const notes = document.getElementById('pcNotes').value || '';
 
             try {
@@ -6916,7 +6960,7 @@
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ counted_cash, counted_card, counted_other, notes })
+                    body: JSON.stringify({ counted_cash, counted_card, counted_eft, counted_account, notes })
                 });
 
                 const result = await response.json();
@@ -6942,7 +6986,8 @@
                         expectedCash: parseFloat(result.session.expected_balance ?? ctx.expectedBalance ?? 0),
                         countedCash: counted_cash,
                         countedCard: counted_card,
-                        countedOther: counted_other,
+                        countedEft: counted_eft,
+                        countedAccount: counted_account,
                         variance,
                         notes,
                     });
@@ -7041,6 +7086,68 @@
             return totalCounted;
         }
 
+        // Builds the "Count Other Payment Methods" rows — one per method that
+        // actually had sales today (payments.card/eft/account > 0), each with
+        // its own counted-amount input and its own variance vs that method's
+        // system-recorded total. Deliberately NOT combined into one figure —
+        // see the backend comment in sessions.js's /complete-cashup for why.
+        function renderOtherPaymentCountRows(payments) {
+            const section   = document.getElementById('otherPaymentCountSection');
+            const container = document.getElementById('otherPaymentCountRows');
+            if (!section || !container) return;
+
+            const methods = [
+                { key: 'card',    label: '💳 Card',    amount: payments?.card    || 0 },
+                { key: 'eft',     label: '🏦 EFT',      amount: payments?.eft     || 0 },
+                { key: 'account', label: '👤 Account',  amount: payments?.account || 0 },
+            ].filter(m => m.amount > 0);
+
+            if (methods.length === 0) {
+                section.style.display = 'none';
+                container.innerHTML = '';
+                return;
+            }
+
+            section.style.display = 'block';
+            container.innerHTML = methods.map(m => `
+                <div style="display:grid;grid-template-columns:110px 1fr 160px 120px;gap:10px;align-items:center;">
+                    <span style="font-weight:600;">${m.label}</span>
+                    <span style="color:#666;">System: R ${m.amount.toFixed(2)}</span>
+                    <input type="number" id="counted_${m.key}" step="0.01" min="0" placeholder="Counted amount"
+                        oninput="updateOtherPaymentVariance('${m.key}', ${m.amount})"
+                        style="padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    <span id="variance_${m.key}" style="font-weight:600;color:#999;text-align:right;">—</span>
+                </div>
+            `).join('');
+        }
+
+        function updateOtherPaymentVariance(key, systemAmount) {
+            const input   = document.getElementById(`counted_${key}`);
+            const varSpan = document.getElementById(`variance_${key}`);
+            if (!input || !varSpan) return;
+            if (input.value === '') { varSpan.textContent = '—'; varSpan.style.color = '#999'; return; }
+            const counted  = parseFloat(input.value) || 0;
+            const variance = Math.round((counted - systemAmount) * 100) / 100;
+            varSpan.textContent = (variance >= 0 ? '+' : '') + `R ${variance.toFixed(2)}`;
+            varSpan.style.color = variance === 0 ? '#2e7d32' : '#c62828';
+        }
+
+        // Returns { counted_card, counted_eft, counted_account } — only for
+        // rows that were actually rendered (method had sales today) AND the
+        // cashier actually typed a value. Omitting a field (rather than
+        // sending 0) lets the backend tell "not counted" apart from "counted
+        // and it was exactly zero".
+        function getOtherPaymentCounted() {
+            const result = {};
+            ['card', 'eft', 'account'].forEach((key) => {
+                const input = document.getElementById(`counted_${key}`);
+                if (input && input.value !== '') {
+                    result[`counted_${key}`] = parseFloat(input.value) || 0;
+                }
+            });
+            return result;
+        }
+
         async function completeCashUp() {
             if (!currentSessionData) {
                 showNotification('No active session', 'error');
@@ -7082,6 +7189,10 @@
                 const result = await response.json();
 
                 if (result.session) {
+                    // Captured once, before the tab switches away below — read
+                    // from the on-screen inputs while they still exist.
+                    const otherCounted = getOtherPaymentCounted();
+
                     // Fire-and-forget: creates immutable recon snapshot and transitions
                     // session status to 'cashed_up'. Session is already closed — this
                     // enriches the record without blocking the cashier's workflow.
@@ -7093,8 +7204,7 @@
                         },
                         body: JSON.stringify({
                             counted_cash: totalCounted,
-                            counted_card: 0,
-                            counted_other: 0,
+                            ...otherCounted,
                             notes: notes
                         })
                     }).catch(err => console.warn('[CashUp] complete-cashup snapshot call failed (non-blocking):', err.message));
@@ -7122,8 +7232,9 @@
                         cashRefunds: document.getElementById('cashRefundsRow')?.style.display !== 'none' ? Math.abs(parseRand('cashRefunds')) : 0,
                         expectedCash,
                         countedCash: totalCounted,
-                        countedCard: null,
-                        countedOther: null,
+                        countedCard: otherCounted.counted_card ?? null,
+                        countedEft: otherCounted.counted_eft ?? null,
+                        countedAccount: otherCounted.counted_account ?? null,
                         variance,
                         notes,
                     });
