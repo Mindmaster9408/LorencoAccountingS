@@ -2090,7 +2090,7 @@
                                 <div id="cashTenderedSection" style="display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
                                     <label style="font-weight:600;color:var(--text);">Amount Received</label>
                                     <input type="number" id="cashTenderedAmount" step="0.01" min="0" placeholder="0.00" oninput="updateChangeDue()" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                                    <div id="changeDueDisplay" style="font-weight:700;color:var(--text-secondary);">Change: R 0.00</div>
+                                    <div id="changeDueDisplay" style="font-weight:800;font-size:17px;color:var(--text-secondary);background:var(--surface);text-align:center;padding:8px;border-radius:6px;">Change: R 0.00</div>
                                 </div>
 
                                 <!-- Account Customer Selection (shown when ACCOUNT selected) -->
@@ -8198,15 +8198,27 @@
             const { total } = calcCartTotals(cart);
             const change = Math.round((tendered - total) * 100) / 100;
 
+            // Solid fill blocks (not just colored text) so the amount stays
+            // readable on till screens used outdoors — a client reported
+            // that thin colored text on the plain background washes out
+            // completely under direct sunlight glare. A solid saturated
+            // background + bold white text keeps enough contrast to read
+            // even when glare kills the surface color underneath. The
+            // "Short:"/"Change:" wording is also kept as a text cue, not
+            // just the color, in case a screen protector or glare still
+            // dulls the fill color itself.
             if (!tenderedInput.value) {
                 display.textContent = 'Change: R 0.00';
+                display.style.background = 'var(--surface)';
                 display.style.color = 'var(--text-secondary)';
             } else if (change < 0) {
-                display.textContent = `Short: R ${Math.abs(change).toFixed(2)}`;
-                display.style.color = '#c62828';
+                display.textContent = `⚠ SHORT: R ${Math.abs(change).toFixed(2)}`;
+                display.style.background = '#c62828';
+                display.style.color = '#ffffff';
             } else {
-                display.textContent = `Change: R ${change.toFixed(2)}`;
-                display.style.color = '#2e7d32';
+                display.textContent = `✓ CHANGE: R ${change.toFixed(2)}`;
+                display.style.background = '#2e7d32';
+                display.style.color = '#ffffff';
             }
         }
 
