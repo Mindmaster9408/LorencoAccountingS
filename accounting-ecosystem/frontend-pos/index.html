@@ -8013,6 +8013,25 @@
             return { subtotal, vat, total: subtotal };
         }
 
+        // Workstream 74 — single compact row (was: a header row with name+remove,
+        // then a second row with qty+total). Same removeItem()/updateQty()
+        // handlers, same item.name/quantity/price fields — only the markup shape
+        // changed.
+        function buildCartItemHtml(item) {
+            return `
+                <div class="item-name" title="${item.name.replace(/"/g, '&quot;')}">${item.name}</div>
+                <div class="cart-item-controls">
+                    <div class="qty-controls">
+                        <button class="qty-btn" onclick="updateQty(${item.productId}, -1)">-</button>
+                        <span class="qty-display">${item.quantity}</span>
+                        <button class="qty-btn" onclick="updateQty(${item.productId}, 1)">+</button>
+                    </div>
+                    <div class="item-total">R ${(item.price * item.quantity).toFixed(2)}</div>
+                    <button class="item-remove" onclick="removeItem(${item.productId})">✕</button>
+                </div>
+            `;
+        }
+
         function updateCart() {
             const container = document.getElementById('cartItems');
 
@@ -8030,28 +8049,46 @@
                 const tenderedInput = document.getElementById('cashTenderedAmount');
                 if (tenderedInput) tenderedInput.value = '';
             } else {
-                container.innerHTML = '';
+                // Patch in place instead of tearing down and rebuilding every row on
+                // every single scan — found live on weak till hardware: with a full
+                // rebuild, each additional item in the cart made EVERY subsequent
+                // scan slower (re-creating and re-laying-out the whole cart, not
+                // just the one line that changed), so a scan late in a large basket
+                // was the slowest of the whole sale. Same fix already applied to the
+                // product grid after checkout (see buildProductTileHtml/
+                // buildProductTableRowHtml patches) — this mirrors it for the cart.
+                if (container.querySelector('.empty-cart')) container.innerHTML = '';
 
+                const existingRows = new Map();
+                container.querySelectorAll('[data-cart-product-id]').forEach(row => {
+                    existingRows.set(parseInt(row.dataset.cartProductId, 10), row);
+                });
+
+                const seen = new Set();
                 cart.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'cart-item cart-item-compact';
-                    // Workstream 74 — single compact row (was: a header row with
-                    // name+remove, then a second row with qty+total). Same
-                    // removeItem()/updateQty() handlers, same item.name/quantity/
-                    // price fields — only the markup shape changed.
-                    itemDiv.innerHTML = `
-                        <div class="item-name" title="${item.name.replace(/"/g, '&quot;')}">${item.name}</div>
-                        <div class="cart-item-controls">
-                            <div class="qty-controls">
-                                <button class="qty-btn" onclick="updateQty(${item.productId}, -1)">-</button>
-                                <span class="qty-display">${item.quantity}</span>
-                                <button class="qty-btn" onclick="updateQty(${item.productId}, 1)">+</button>
-                            </div>
-                            <div class="item-total">R ${(item.price * item.quantity).toFixed(2)}</div>
-                            <button class="item-remove" onclick="removeItem(${item.productId})">✕</button>
-                        </div>
-                    `;
-                    container.appendChild(itemDiv);
+                    seen.add(item.productId);
+                    const row = existingRows.get(item.productId);
+                    if (row) {
+                        // Row already exists for this product — only touch the two
+                        // pieces of text that can actually change (qty, line total)
+                        // rather than re-parsing/re-laying-out the whole row.
+                        const qtyEl = row.querySelector('.qty-display');
+                        const totalEl = row.querySelector('.item-total');
+                        if (qtyEl) qtyEl.textContent = item.quantity;
+                        if (totalEl) totalEl.textContent = `R ${(item.price * item.quantity).toFixed(2)}`;
+                    } else {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'cart-item cart-item-compact';
+                        itemDiv.dataset.cartProductId = item.productId;
+                        itemDiv.innerHTML = buildCartItemHtml(item);
+                        container.appendChild(itemDiv);
+                    }
+                });
+
+                // Drop rows for items no longer in the cart (removeItem, or qty
+                // reduced to 0 via updateQty).
+                existingRows.forEach((row, productId) => {
+                    if (!seen.has(productId)) row.remove();
                 });
 
                 document.getElementById('checkoutBtn').disabled = !currentSession;
