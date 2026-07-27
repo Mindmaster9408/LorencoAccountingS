@@ -339,9 +339,9 @@ router.post('/', authenticate, hasPermission('ar.credit_note.create'), async (re
     const hdr = await dbClient.query(
       `INSERT INTO customer_credit_notes
          (company_id, customer_id, customer_name, credit_note_number, credit_note_date,
-          status, reason, notes, source_invoice_id,
+          status, reason, notes, source_invoice_id, vat_mode,
           subtotal_ex_vat, vat_amount, total_inc_vat, created_by_user_id)
-       VALUES ($1,$2,$3,$4,$5,'draft',$6,$7,$8,$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,'draft',$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         companyId,
@@ -352,6 +352,7 @@ router.post('/', authenticate, hasPermission('ar.credit_note.create'), async (re
         reason || null,
         notes || null,
         sourceInvoiceId ? parseInt(sourceInvoiceId) : null,
+        vatInclusive === true ? 'inclusive' : 'exclusive',
         totals.subtotalExVat,
         totals.vatAmount,
         totals.totalIncVat,
@@ -568,7 +569,15 @@ router.put('/:id', authenticate, hasPermission('ar.credit_note.create'), async (
     }
   }
 
-  const processedLines = lines ? processLines(lines, vatInclusive) : null;
+  // vatInclusive is a strict boolean sent by the edit form on every save, but
+  // fall back to the credit note's existing stored mode if a caller omits it
+  // entirely — never silently downgrade an Inclusive credit note to
+  // Exclusive just because a field was left out of a partial payload.
+  const effectiveVatMode = vatInclusive === true ? 'inclusive'
+    : vatInclusive === false ? 'exclusive'
+    : (existing.vat_mode || 'exclusive');
+
+  const processedLines = lines ? processLines(lines, effectiveVatMode === 'inclusive') : null;
   const totals = processedLines ? sumLines(processedLines) : {
     subtotalExVat: parseFloat(existing.subtotal_ex_vat),
     vatAmount:     parseFloat(existing.vat_amount),
@@ -585,16 +594,18 @@ router.put('/:id', authenticate, hasPermission('ar.credit_note.create'), async (
            credit_note_date = $2,
            reason           = $3,
            notes            = $4,
-           subtotal_ex_vat  = $5,
-           vat_amount       = $6,
-           total_inc_vat    = $7,
-           updated_at       = $8
-       WHERE id = $9 AND company_id = $10`,
+           vat_mode         = $5,
+           subtotal_ex_vat  = $6,
+           vat_amount       = $7,
+           total_inc_vat    = $8,
+           updated_at       = $9
+       WHERE id = $10 AND company_id = $11`,
       [
         customerName       || existing.customer_name,
         creditNoteDate     || existing.credit_note_date,
         reason             !== undefined ? reason : existing.reason,
         notes              !== undefined ? notes  : existing.notes,
+        effectiveVatMode,
         totals.subtotalExVat,
         totals.vatAmount,
         totals.totalIncVat,

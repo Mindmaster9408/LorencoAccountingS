@@ -981,7 +981,13 @@ function openInvoiceModal(inv) {
   document.getElementById('invDueDate').value         = inv ? (inv.due_date?.split('T')[0] || '') : '';
   document.getElementById('invNotes').value           = inv ? (inv.notes || '') : '';
 
-  document.querySelector('input[name="invVatMode"][value="exclusive"]').checked = true;
+  // Restore the toggle to whatever mode the invoice was actually saved
+  // with — never hardcode Exclusive. The stored unit_price is the raw
+  // number the user typed (gross if Inclusive, net if Exclusive); showing
+  // the wrong mode here means an unrelated edit + save silently re-charges
+  // VAT on top of an already-gross amount.
+  const invVatModeVal = (inv && inv.vat_mode === 'inclusive') ? 'inclusive' : 'exclusive';
+  document.querySelector(`input[name="invVatMode"][value="${invVatModeVal}"]`).checked = true;
 
   document.getElementById('invLinesTbody').innerHTML = '';
   if (inv && inv.lines && inv.lines.length) {

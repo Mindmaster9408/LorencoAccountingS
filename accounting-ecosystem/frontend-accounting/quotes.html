@@ -873,7 +873,24 @@ function populateQuoteForm(quote) {
   }
 
   document.getElementById('quoteLinesBody').innerHTML = '';
-  (quote.lines || []).forEach(l => addQuoteLine(l));
+  // customer_quote_lines.unit_price is always stored ex-VAT (collectLines()
+  // below divides a gross entry down to net before ever sending it) — but
+  // addQuoteLine() just drops l.unit_price straight into the price field.
+  // With the toggle correctly restored to Inclusive above, that field would
+  // show the net figure while the toggle claims it's gross, so an unrelated
+  // edit + save divides the already-net price by (1 + rate/100) AGAIN,
+  // shrinking the quote. Convert back to the gross figure here so what's
+  // displayed actually matches what the toggle says and a no-op save stays
+  // a no-op.
+  (quote.lines || []).forEach(l => {
+    if (quote.vat_mode === 'inclusive' && l.unit_price != null) {
+      const rate = parseFloat(l.vat_rate) || 0;
+      const grossPrice = Math.round(parseFloat(l.unit_price) * (1 + rate / 100) * 100) / 100;
+      addQuoteLine({ ...l, unit_price: grossPrice });
+    } else {
+      addQuoteLine(l);
+    }
+  });
   updateQuoteTotals();
 
   const isEditable = ['draft','sent'].includes(quote.status);

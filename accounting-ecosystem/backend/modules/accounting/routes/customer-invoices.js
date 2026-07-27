@@ -381,9 +381,9 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
       const hdrResult = await dbClient.query(
         `INSERT INTO customer_invoices
            (company_id, customer_id, customer_name, invoice_number, reference,
-            invoice_date, due_date, status, subtotal_ex_vat, vat_amount, total_inc_vat,
+            invoice_date, due_date, status, vat_mode, subtotal_ex_vat, vat_amount, total_inc_vat,
             amount_paid, notes, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          RETURNING *`,
         [
           companyId,
@@ -394,6 +394,7 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
           invoiceDate,
           dueDate || null,
           'draft',
+          vatInclusive === true ? 'inclusive' : 'exclusive',
           totals.subtotalExVat,
           totals.vatAmount,
           totals.totalIncVat,
@@ -496,9 +497,17 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
       return res.status(409).json({ error: 'Only draft invoices can be edited' });
     }
 
+    // vatInclusive is a strict boolean sent by the edit form on every save, but
+    // fall back to the invoice's existing stored mode if a caller omits it
+    // entirely — never silently downgrade an Inclusive invoice to Exclusive
+    // just because a field was left out of a partial payload.
+    const effectiveVatMode = vatInclusive === true ? 'inclusive'
+      : vatInclusive === false ? 'exclusive'
+      : (existing.vat_mode || 'exclusive');
+
     const processedLines = (lines || []).map((l, i) => {
       const { subtotalExVat, vatAmount, totalIncVat } = calcLineVAT(
-        l.quantity, l.unitPrice, l.vatRate != null ? l.vatRate : 15, vatInclusive === true
+        l.quantity, l.unitPrice, l.vatRate != null ? l.vatRate : 15, effectiveVatMode === 'inclusive'
       );
       return {
         description: l.description || '',
@@ -550,18 +559,20 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
          SET customer_name    = $1,
              invoice_number   = $2,
              invoice_date     = $3,
-             subtotal_ex_vat  = $4,
-             vat_amount       = $5,
-             total_inc_vat    = $6,
-             reference        = $7,
-             due_date         = $8,
-             notes            = $9,
-             updated_at       = $10
-         WHERE id = $11 AND company_id = $12`,
+             vat_mode         = $4,
+             subtotal_ex_vat  = $5,
+             vat_amount       = $6,
+             total_inc_vat    = $7,
+             reference        = $8,
+             due_date         = $9,
+             notes            = $10,
+             updated_at       = $11
+         WHERE id = $12 AND company_id = $13`,
         [
           effectiveCustomerName,
           effectiveInvoiceNumber,
           effectiveInvoiceDate,
+          effectiveVatMode,
           totals.subtotalExVat,
           totals.vatAmount,
           totals.totalIncVat,

@@ -840,8 +840,11 @@ async function prefillFromInvoice(invoiceId) {
         unit_price:  l.unit_price,
         vat_rate:    l.vat_rate,
       }));
-      // VAT mode — match invoice
-      if (inv.vat_inclusive) {
+      // VAT mode — match invoice's actual saved mode (customer_invoices now
+      // persists vat_mode; inv.vat_inclusive never existed as a field, so
+      // this always evaluated false and silently defaulted to Exclusive
+      // regardless of how the source invoice was really entered).
+      if (inv.vat_mode === 'inclusive') {
         document.querySelectorAll('input[name="cnVatMode"]')[1].checked = true;
       }
     } else {
@@ -893,6 +896,13 @@ async function editCN(id) {
       document.getElementById('linkedInvGroup').style.display = 'none';
     }
     document.getElementById('fromInvBanner').classList.remove('show');
+
+    // Restore the toggle to whatever mode this credit note was actually
+    // saved with — previously left whatever the modal's last session had
+    // showing, so reopening a draft could silently re-derive VAT under the
+    // wrong mode on the next save.
+    const cnVatModeIdx = cn.vat_mode === 'inclusive' ? 1 : 0;
+    document.querySelectorAll('input[name="cnVatMode"]')[cnVatModeIdx].checked = true;
 
     document.getElementById('linesBody').innerHTML = '';
     lineIdx = 0;
