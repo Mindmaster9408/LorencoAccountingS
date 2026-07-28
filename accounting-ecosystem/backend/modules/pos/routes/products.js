@@ -217,7 +217,15 @@ router.post('/', requirePermission('PRODUCTS.CREATE'), async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      // Duplicate product_code (Postgres 23505 on products_company_id_product_code_key)
+      // — surfaced as a clear, actionable message instead of the raw
+      // constraint-violation string leaking straight to the cashier's screen.
+      if (error.code === '23505' || /duplicate key/i.test(error.message || '')) {
+        return res.status(409).json({ error: `Product code "${code}" is already in use — click Generate again or enter a different code.` });
+      }
+      return res.status(500).json({ error: error.message });
+    }
 
     await auditFromReq(req, 'CREATE', 'product', data.id, {
       module: 'pos',
@@ -338,22 +346,32 @@ router.post('/next-code/:prefix', requirePermission('PRODUCTS.CREATE'), async (r
 
     const codePrefix = settings?.product_code_prefix || prefix;
 
+    // Fetch every code under this prefix rather than trusting a single
+    // "ORDER BY product_code DESC LIMIT 1" row — found live 2026-07-28:
+    // that sorts as TEXT, not a number ("PRO9" sorts after "PRO10"), and
+    // the case-insensitive `ilike` match combined with a case-SENSITIVE
+    // `.replace(codePrefix, '')` meant a differently-cased or differently-
+    // padded existing code (e.g. legacy data) silently parsed as numPart=0,
+    // producing "PRO0001" again on a shop that already had one — a
+    // duplicate-key error on save instead of a real next code. Computing
+    // the true max across every matching code, case-insensitively, fixes
+    // both failure modes at once.
     const { data: products } = await supabase
       .from('products')
       .select('product_code')
       .eq('company_id', req.companyId)
-      .ilike('product_code', `${codePrefix}%`)
-      .order('product_code', { ascending: false })
-      .limit(1);
+      .ilike('product_code', `${codePrefix}%`);
 
-    let nextNum = 1;
-    if (products && products.length > 0) {
-      const lastCode = products[0].product_code;
-      const numPart = parseInt(lastCode.replace(codePrefix, '')) || 0;
-      nextNum = numPart + 1;
-    }
+    let maxNum = 0;
+    const prefixUpper = codePrefix.toUpperCase();
+    (products || []).forEach(p => {
+      const code = (p.product_code || '').toUpperCase();
+      if (!code.startsWith(prefixUpper)) return;
+      const numPart = parseInt(code.slice(prefixUpper.length), 10);
+      if (!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
+    });
 
-    const nextCode = `${codePrefix}${String(nextNum).padStart(4, '0')}`;
+    const nextCode = `${codePrefix}${String(maxNum + 1).padStart(4, '0')}`;
     res.json({ code: nextCode, prefix: codePrefix });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
