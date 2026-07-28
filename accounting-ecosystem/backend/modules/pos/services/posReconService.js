@@ -342,7 +342,9 @@ async function detectInconsistencies(sessionId, companyId) {
  * @param {number|null}   generatedByUserId
  * @param {string|null}   generatedByEmail
  * @param {string}        triggeredBy   — 'cashup' | 'manual'
- * @param {object}        cashupData    — { counted_cash, counted_card, counted_other, total_counted, variance }
+ * @param {object}        cashupData    — { counted_cash, counted_card, counted_eft, counted_account,
+ *                                          counted_other, total_counted, variance,
+ *                                          varianceCard, varianceEft, varianceAccount }
  *
  * Wrapped in try/catch. Never throws. Returns the created snapshot row or null on failure.
  * Safe to call without await (fire-and-forget).
@@ -414,11 +416,19 @@ async function createReconSnapshot(
         net_sales:              recon.netSales,
         expected_cash_in_drawer: recon.expectedCashInDrawer,
 
-        counted_cash:           cashupData.counted_cash  != null ? n(cashupData.counted_cash)  : null,
-        counted_card:           cashupData.counted_card  != null ? n(cashupData.counted_card)  : null,
-        counted_other:          cashupData.counted_other != null ? n(cashupData.counted_other) : null,
-        total_counted:          cashupData.total_counted != null ? totalCounted                : null,
+        counted_cash:           cashupData.counted_cash    != null ? n(cashupData.counted_cash)    : null,
+        counted_card:           cashupData.counted_card    != null ? n(cashupData.counted_card)    : null,
+        counted_eft:            cashupData.counted_eft     != null ? n(cashupData.counted_eft)     : null,
+        counted_account:        cashupData.counted_account != null ? n(cashupData.counted_account) : null,
+        counted_other:          cashupData.counted_other   != null ? n(cashupData.counted_other)   : null,
+        total_counted:          cashupData.total_counted   != null ? totalCounted                  : null,
         cash_variance:          cashVariance,
+        // Per-method variances computed by the caller (sessions.js's
+        // complete-cashup route) against this session's own system-recorded
+        // sales — see migration 070. Null when that method was never counted.
+        variance_card:          cashupData.varianceCard    != null ? round2(cashupData.varianceCard)    : null,
+        variance_eft:           cashupData.varianceEft     != null ? round2(cashupData.varianceEft)     : null,
+        variance_account:       cashupData.varianceAccount != null ? round2(cashupData.varianceAccount) : null,
 
         payment_breakdown:      recon.paymentByMethod,
         refund_breakdown:       recon.refundByMethod,

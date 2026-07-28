@@ -4,6 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#667eea">
+    <!-- This entire UI (Till, Settings, Reports, Cash Up) is deliberately
+         light-themed — hardcoded white/pastel backgrounds with dark text
+         throughout, no dark-mode CSS anywhere. Without declaring that
+         explicitly, Chromium's "Auto Dark Mode for web content" (on by
+         default on many Android/Windows tablet till devices when the OS is
+         set to dark mode) heuristically recolors the page — it partially
+         succeeds on bold/saturated colors (KPI headline numbers, variance
+         red/green) but leaves light-grey labels and pastel card backgrounds
+         washed out and hard to read, exactly the "faded reports" symptom
+         reported live on till hardware. Declaring color-scheme:light opts
+         the whole page out of that heuristic so it renders exactly as
+         designed regardless of the device's OS theme. -->
+    <meta name="color-scheme" content="light">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="/pos/manifest.json">
@@ -17,6 +30,10 @@
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #f5f7fa;
+            /* Belt-and-braces with the <meta name="color-scheme"> tag above —
+               some browsers key off the CSS property instead of/in addition
+               to the meta tag for their forced-dark-mode heuristic. */
+            color-scheme: light;
             overflow: hidden;
         }
 
@@ -6815,6 +6832,49 @@
             printA4Report(buildCashupPrintHtml(lastCashupPrintData));
         }
 
+        // Reprint a cashup slip for a session that was already cashed up —
+        // e.g. earlier today, or any past session — without needing the
+        // original in-memory lastCashupPrintData (which only exists for the
+        // rest of that one browser session). Sources figures from the
+        // immutable pos_recon_snapshots row created at cashup time (GET
+        // /api/pos/sessions/:id/snapshot — already existed, unused by the
+        // frontend until now), the one authoritative historical record of
+        // what was actually counted. tillName/userName/openedAt are passed
+        // in from the Till Summary row that already has them rather than
+        // re-fetching — the snapshot itself only stores till_id, not a name.
+        async function reprintCashupForSession(session) {
+            try {
+                const res = await fetch(`${API_URL}/sessions/${session.session_id}/snapshot`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'No reconciliation snapshot found for this session');
+                const snap = data.snapshot;
+
+                printA4Report(buildCashupPrintHtml({
+                    tillName:       session.till_name ? `${session.till_name}${session.till_number ? ' #' + session.till_number : ''}` : (snap.till_id ? `Till #${snap.till_id}` : ''),
+                    userName:       session.cashier || '',
+                    openedAt:       snap.session_opened_at || session.opened_at,
+                    openingBalance: parseFloat(snap.opening_balance) || 0,
+                    saleCount:      snap.sale_count,
+                    cashSales:      parseFloat(snap.payment_cash)    || 0,
+                    cardSales:      parseFloat(snap.payment_card)    || 0,
+                    eftSales:       parseFloat(snap.payment_eft)     || 0,
+                    accountSales:   parseFloat(snap.payment_account) || 0,
+                    cashRefunds:    parseFloat(snap.refund_cash)     || 0,
+                    expectedCash:   parseFloat(snap.expected_cash_in_drawer) || 0,
+                    countedCash:    snap.counted_cash    != null ? parseFloat(snap.counted_cash)    : 0,
+                    countedCard:    snap.counted_card    != null ? parseFloat(snap.counted_card)    : null,
+                    countedEft:     snap.counted_eft     != null ? parseFloat(snap.counted_eft)     : null,
+                    countedAccount: snap.counted_account != null ? parseFloat(snap.counted_account) : null,
+                    countedOther:   snap.counted_other   != null ? parseFloat(snap.counted_other)   : null,
+                    variance:       parseFloat(snap.cash_variance) || 0,
+                }));
+            } catch (err) {
+                showNotification(`Reprint failed: ${err.message}`, 'error');
+            }
+        }
+
         function showCashupCompleteModal(d) {
             lastCashupPrintData = d;
             const varianceLabel = d.variance > 0 ? 'Over' : d.variance < 0 ? 'Short' : 'Balanced';
@@ -10585,9 +10645,15 @@
             container.innerHTML = html;
         }
 
+        // Holds the currently-rendered Till Summary sessions so the Reprint
+        // button's onclick (which can only pass simple values, not the full
+        // session object) can look a row back up by index.
+        let currentTillSummarySessions = [];
+
         function renderTillSummaryReport(data, container) {
             const { sessions, summary } = data;
-            const fmt = v => v != null ? `${formatCurrency(parseFloat(v))}` : '<span style="color:#bbb;">—</span>';
+            currentTillSummarySessions = sessions;
+            const fmt = v => v != null ? `${formatCurrency(parseFloat(v))}` : '<span style="color:#999;">—</span>';
             const varColor = v => v == null ? '' : v < 0 ? 'color:#c62828;font-weight:bold;' : v > 0 ? 'color:#e65100;' : 'color:#2e7d32;';
 
             let html = `
@@ -10656,24 +10722,27 @@
                     closed:    '<span style="background:#fff3e0;color:#e65100;padding:2px 7px;border-radius:10px;font-size:11px;">Pending</span>',
                     cashed_up: '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:10px;font-size:11px;">Cashed Up</span>',
                 }[s.status] || s.status;
-                const snapBadge = s.has_snapshot ? '' : ' <span style="font-size:10px;color:#bbb;">(est.)</span>';
+                const snapBadge = s.has_snapshot ? '' : ' <span style="font-size:10px;color:#999;">(est.)</span>';
                 const cardEft = (s.payment_card != null || s.payment_eft != null)
-                    ? `${formatCurrency(((s.payment_card||0)+(s.payment_eft||0)))}` : '<span style="color:#bbb;">—</span>';
+                    ? `${formatCurrency(((s.payment_card||0)+(s.payment_eft||0)))}` : '<span style="color:#999;">—</span>';
                 html += `
                     <tr style="background:${i%2===0?'#fff':'#f9f9f9'};border-bottom:1px solid #eee;">
                         <td style="padding:7px;">${s.cashier || '—'}</td>
                         <td style="padding:7px;">${s.till_name ? `${s.till_name}${s.till_number ? ' #'+s.till_number : ''}` : '—'}</td>
                         <td style="padding:7px;white-space:nowrap;">${s.opened_at ? new Date(s.opened_at).toLocaleString() : '—'}</td>
                         <td style="padding:7px;white-space:nowrap;">${s.closed_at ? new Date(s.closed_at).toLocaleString() : '<span style="color:#999;">—</span>'}</td>
-                        <td style="padding:7px;text-align:right;">${s.sale_count != null ? s.sale_count : '<span style="color:#bbb;">—</span>'}${snapBadge}</td>
+                        <td style="padding:7px;text-align:right;">${s.sale_count != null ? s.sale_count : '<span style="color:#999;">—</span>'}${snapBadge}</td>
                         <td style="padding:7px;text-align:right;">${fmt(s.payment_cash)}</td>
                         <td style="padding:7px;text-align:right;">${cardEft}</td>
                         <td style="padding:7px;text-align:right;">${fmt(s.refund_total)}</td>
-                        <td style="padding:7px;text-align:right;">${s.void_count != null ? s.void_count : '<span style="color:#bbb;">—</span>'}</td>
+                        <td style="padding:7px;text-align:right;">${s.void_count != null ? s.void_count : '<span style="color:#999;">—</span>'}</td>
                         <td style="padding:7px;text-align:right;">${fmt(s.expected_cash_in_drawer)}</td>
                         <td style="padding:7px;text-align:right;">${fmt(s.total_counted)}</td>
-                        <td style="padding:7px;text-align:right;${varColor(s.cash_variance)}">${s.cash_variance != null ? `${formatCurrency(parseFloat(s.cash_variance))}` : '<span style="color:#bbb;">—</span>'}</td>
-                        <td style="padding:7px;text-align:center;">${statusBadge}</td>
+                        <td style="padding:7px;text-align:right;${varColor(s.cash_variance)}">${s.cash_variance != null ? `${formatCurrency(parseFloat(s.cash_variance))}` : '<span style="color:#999;">—</span>'}</td>
+                        <td style="padding:7px;text-align:center;">
+                            ${statusBadge}
+                            ${s.status === 'cashed_up' && s.has_snapshot ? `<button onclick="reprintCashupForSession(currentTillSummarySessions[${i}])" title="Reprint cashup slip" style="margin-left:6px;padding:2px 7px;font-size:11px;border:1px solid #ccc;border-radius:10px;background:#fff;cursor:pointer;">🖨️ Reprint</button>` : ''}
+                        </td>
                     </tr>
                     ${s.is_consistent === false ? `<tr style="background:#fff8f8;"><td colspan="13" style="padding:4px 8px;font-size:11px;color:#c62828;">⚠ ${s.consistency_issue_count} consistency issue(s) detected on this session</td></tr>` : ''}
                 `;
@@ -10764,7 +10833,7 @@
                         <td style="padding:7px;color:#888;">${p.sku || '—'}</td>
                         <td style="padding:7px;text-align:right;color:#c62828;font-weight:bold;">${p.stock_quantity}</td>
                         <td style="padding:7px;text-align:right;">${formatCurrency(parseFloat(p.unit_price||0))}</td>
-                        <td style="padding:7px;font-size:12px;">${p.went_negative_at ? new Date(p.went_negative_at).toLocaleString() : '<span style="color:#bbb;">Not recorded in period</span>'}</td>
+                        <td style="padding:7px;font-size:12px;">${p.went_negative_at ? new Date(p.went_negative_at).toLocaleString() : '<span style="color:#999;">Not recorded in period</span>'}</td>
                     </tr>`;
                 });
                 html += `</tbody></table>`;
@@ -11472,7 +11541,7 @@
                             style="width:80px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"
                             oninput="updateStockTakeVariance(${p.id},${p.stock_quantity})">
                     </td>
-                    <td id="var_${p.id}" style="padding:7px;text-align:right;color:#bbb;">—</td>
+                    <td id="var_${p.id}" style="padding:7px;text-align:right;color:#999;">—</td>
                 </tr>
             `).join('');
             document.getElementById('stockTakeNotes').value = '';
@@ -11483,7 +11552,7 @@
             const input = document.getElementById('stk_' + productId);
             const cell  = document.getElementById('var_' + productId);
             const val   = input.value.trim();
-            if (val === '') { cell.textContent = '—'; cell.style.color = '#bbb'; return; }
+            if (val === '') { cell.textContent = '—'; cell.style.color = '#999'; return; }
             const variance = parseFloat(val) - systemQty;
             cell.textContent = (variance > 0 ? '+' : '') + variance;
             cell.style.color = variance === 0 ? '#2e7d32' : variance < 0 ? '#c62828' : '#e65100';
