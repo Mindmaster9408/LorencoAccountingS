@@ -189,6 +189,7 @@ const PERMISSIONS = {
     VIEW: ALL_ROLES,
     OPEN: ALL_ROLES.filter(r => r !== 'trainee'),
     CLOSE: ALL_ROLES.filter(r => r !== 'trainee'),
+    PAID_OUT: ALL_ROLES.filter(r => r !== 'trainee'), // recording cash removed from the drawer mid-shift — same trust level as closing a till
     MANAGE: MANAGEMENT_ROLES,
   },
   REPORTS: {

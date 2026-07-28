@@ -12,6 +12,7 @@ const categoriesRoutes     = require('./routes/categories');
 const inventoryRoutes      = require('./routes/inventory');
 const sessionsRoutes       = require('./routes/sessions');
 const reconciliationRoutes = require('./routes/reconciliation');
+const cashPaidOutsRoutes   = require('./routes/cashPaidOuts');
 const tillsRoutes          = require('./routes/tills');
 const kvRoutes             = require('./routes/kv');
 const discountsRoutes      = require('./routes/discounts');
@@ -46,6 +47,8 @@ router.use('/sessions',   sessionsRoutes);
 // Reconciliation routes — mounted after sessionsRoutes so session handlers take
 // priority; /sessions/:id/reconciliation and /snapshot fall through to this router.
 router.use('/sessions',   reconciliationRoutes);
+// Same pattern — /sessions/:id/paid-out(s) falls through after sessions/reconciliation.
+router.use('/sessions',   cashPaidOutsRoutes);
 router.use('/tills',      tillsRoutes);
 router.use('/till',       tillsRoutes);   // alias used by some frontend calls
 router.use('/discounts',  discountsRoutes);

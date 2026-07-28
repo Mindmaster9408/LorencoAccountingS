@@ -104,6 +104,10 @@ router.get('/:id/reconciliation', requirePermission('INVENTORY.VIEW'), async (re
         card:           recon.refundCard,
         full_breakdown: recon.refundByMethod,
       },
+      // Cash removed from the drawer mid-shift for a legitimate reason
+      // (migration 071) — already subtracted into expected_cash_in_drawer
+      // below, surfaced here too so the UI can show it as its own line.
+      paid_out_total: recon.paidOutTotal,
       cash_reconciliation: {
         opening_balance:          recon.openingBalance,
         cash_sales:               recon.paymentCash,

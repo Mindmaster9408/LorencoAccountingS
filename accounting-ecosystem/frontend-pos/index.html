@@ -2022,7 +2022,13 @@
                 <div class="cart-panel">
                     <div class="cart-header">
                         <h2>Current Sale</h2>
-                        <div id="cartItemCount">0 items</div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                            <div id="cartItemCount">0 items</div>
+                            <button onclick="showCashPaidOutModal()" title="Record cash removed from the drawer"
+                                style="padding:3px 10px;font-size:12px;border:1px solid #ddd;border-radius:12px;background:#fff;cursor:pointer;white-space:nowrap;">
+                                💵 Paid Out
+                            </button>
+                        </div>
                     </div>
 
                     <div class="cart-body-split">
@@ -3131,7 +3137,7 @@
                     <div style="background: #fff3e0; padding: 20px; border-radius: 10px; border-left: 5px solid #ff9800;">
                         <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Expected Cash</div>
                         <div id="cashUpExpectedCash" style="font-size: 32px; font-weight: bold; color: #e65100;">R 0.00</div>
-                        <div style="font-size: 13px; color: #666; margin-top: 5px;">Opening + Cash sales − Cash refunds</div>
+                        <div style="font-size: 13px; color: #666; margin-top: 5px;">Opening + Cash sales − Cash refunds − Paid out</div>
                     </div>
                     <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #2196f3;">
                         <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Payment Breakdown</div>
@@ -3143,6 +3149,10 @@
                             <div id="cashRefundsRow" style="display: none; justify-content: space-between; margin: 5px 0; border-top: 1px solid #bbdefb; padding-top: 5px; margin-top: 8px;">
                                 <span style="color: #c62828;">Cash Refunds:</span>
                                 <span id="cashRefunds" style="color: #c62828;">−R 0.00</span>
+                            </div>
+                            <div id="cashPaidOutRow" style="display: none; justify-content: space-between; margin: 5px 0;">
+                                <span style="color: #c62828;">Cash Paid Out:</span>
+                                <span id="cashPaidOut" style="color: #c62828;">−R 0.00</span>
                             </div>
                         </div>
                     </div>
@@ -6668,6 +6678,15 @@
                         document.getElementById('cashRefundsRow').style.display = 'none';
                     }
 
+                    // Show cash paid-out row only when a paid-out was recorded this session
+                    const paidOutTotal = recon.paid_out_total || 0;
+                    if (paidOutTotal > 0) {
+                        document.getElementById('cashPaidOut').textContent = `−R ${paidOutTotal.toFixed(2)}`;
+                        document.getElementById('cashPaidOutRow').style.display = 'flex';
+                    } else {
+                        document.getElementById('cashPaidOutRow').style.display = 'none';
+                    }
+
                     // Warn if consistency issues were detected
                     if (recon.consistency && !recon.consistency.is_consistent) {
                         console.warn('[CashUp] Consistency issues detected:', recon.consistency.issues);
@@ -6688,6 +6707,7 @@
                     document.getElementById('eftSales').textContent     = `R 0.00`;
                     document.getElementById('accountSales').textContent = `R 0.00`;
                     document.getElementById('cashRefundsRow').style.display = 'none';
+                    document.getElementById('cashPaidOutRow').style.display = 'none';
                     renderOtherPaymentCountRows(null);
                 }
 
@@ -6801,6 +6821,7 @@
                         <tr><td>EFT</td><td style="text-align:right;">R ${(d.eftSales || 0).toFixed(2)}</td></tr>
                         <tr><td>Account</td><td style="text-align:right;">R ${(d.accountSales || 0).toFixed(2)}</td></tr>
                         ${d.cashRefunds > 0 ? `<tr><td>Cash Refunds</td><td style="text-align:right;">&minus;R ${d.cashRefunds.toFixed(2)}</td></tr>` : ''}
+                        ${d.paidOut > 0 ? `<tr><td>Cash Paid Out</td><td style="text-align:right;">&minus;R ${d.paidOut.toFixed(2)}</td></tr>` : ''}
                         <tr style="border-top:1px solid #000;"><td><strong>Expected Cash</strong></td><td style="text-align:right;"><strong>R ${(d.expectedCash || 0).toFixed(2)}</strong></td></tr>
                         <tr><td colspan="2" style="padding-top:6px;"><strong>Counted</strong></td></tr>
                         <tr><td>Cash</td><td style="text-align:right;">R ${(d.countedCash || 0).toFixed(2)}</td></tr>
@@ -6874,6 +6895,7 @@
                     eftSales:       parseFloat(snap.payment_eft)     || 0,
                     accountSales:   parseFloat(snap.payment_account) || 0,
                     cashRefunds:    parseFloat(snap.refund_cash)     || 0,
+                    paidOut:        parseFloat(snap.paid_out_total)  || 0,
                     expectedCash:   parseFloat(snap.expected_cash_in_drawer) || 0,
                     countedCash:    snap.counted_cash    != null ? parseFloat(snap.counted_cash)    : 0,
                     countedCard:    snap.counted_card    != null ? parseFloat(snap.counted_card)    : null,
@@ -6884,6 +6906,80 @@
                 }));
             } catch (err) {
                 showNotification(`Reprint failed: ${err.message}`, 'error');
+            }
+        }
+
+        // Cash Paid Out — records cash physically removed from the drawer
+        // mid-shift for a legitimate reason (e.g. paying a delivery driver).
+        // Added 2026-07-28 after investigating a real cash-up shortfall that
+        // turned out to have no trace in the sales data at all — there was
+        // simply nowhere to record this kind of event, so it always looked
+        // like an unexplained variance. Only available while a session is
+        // open (see backend guard in cashPaidOuts.js).
+        function showCashPaidOutModal() {
+            if (!currentSession) {
+                showNotification('No open till session', 'error');
+                return;
+            }
+
+            let modal = document.getElementById('cashPaidOutModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'cashPaidOutModal';
+                modal.className = 'modal-overlay';
+                document.body.appendChild(modal);
+            }
+
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 400px;">
+                    <div class="modal-header">
+                        <h2>💵 Cash Paid Out</h2>
+                        <button class="close-btn" onclick="closeCashPaidOutModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px;">
+                        <p style="font-size:13px;color:#666;margin:0 0 15px;">Cash physically removed from this till's drawer — reduces the expected cash amount at cash-up.</p>
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Amount</label>
+                        <input type="number" id="paidOutAmount" step="0.01" min="0.01" placeholder="0.00" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;margin-bottom:12px;">
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Reason</label>
+                        <input type="text" id="paidOutReason" placeholder="e.g. Paid delivery driver" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;margin-bottom:12px;">
+                        <label style="font-weight:600;display:block;margin-bottom:5px;">Notes (optional)</label>
+                        <textarea id="paidOutNotes" rows="2" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;"></textarea>
+                    </div>
+                    <div class="modal-footer" style="padding:15px 20px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;">
+                        <button class="btn btn-secondary" onclick="closeCashPaidOutModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="submitCashPaidOut()">Record Paid Out</button>
+                    </div>
+                </div>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function closeCashPaidOutModal() {
+            const modal = document.getElementById('cashPaidOutModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function submitCashPaidOut() {
+            const amount = parseFloat(document.getElementById('paidOutAmount').value);
+            const reason = document.getElementById('paidOutReason').value.trim();
+            const notes = document.getElementById('paidOutNotes').value.trim();
+
+            if (!amount || amount <= 0) { showNotification('Enter a valid amount', 'error'); return; }
+            if (!reason) { showNotification('Reason is required', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/sessions/${currentSession.id}/paid-out`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ amount, reason, notes: notes || null })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to record paid-out');
+
+                showNotification(`Recorded R ${amount.toFixed(2)} paid out`, 'success');
+                closeCashPaidOutModal();
+            } catch (err) {
+                showNotification(`Paid-out failed: ${err.message}`, 'error');
             }
         }
 
@@ -7055,6 +7151,7 @@
                         eftSales: parseFloat(payments.eft || 0),
                         accountSales: parseFloat(payments.account || 0),
                         cashRefunds: parseFloat(refunds.cash || 0),
+                        paidOut: parseFloat(ctx.recon?.paid_out_total || 0),
                         expectedCash: parseFloat(result.session.expected_balance ?? ctx.expectedBalance ?? 0),
                         countedCash: counted_cash,
                         countedCard: counted_card,
@@ -7302,6 +7399,7 @@
                         eftSales: parseRand('eftSales'),
                         accountSales: parseRand('accountSales'),
                         cashRefunds: document.getElementById('cashRefundsRow')?.style.display !== 'none' ? Math.abs(parseRand('cashRefunds')) : 0,
+                        paidOut: document.getElementById('cashPaidOutRow')?.style.display !== 'none' ? Math.abs(parseRand('cashPaidOut')) : 0,
                         expectedCash,
                         countedCash: totalCounted,
                         countedCard: otherCounted.counted_card ?? null,

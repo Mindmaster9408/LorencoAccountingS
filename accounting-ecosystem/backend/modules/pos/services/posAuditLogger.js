@@ -67,6 +67,7 @@ const POS_EVENTS = {
     TILL_CLOSED:            'TILL_CLOSED',
     CASHUP_COMPLETED:       'CASHUP_COMPLETED',
     CASH_VARIANCE_RECORDED: 'CASH_VARIANCE_RECORDED',
+    CASH_PAID_OUT:          'CASH_PAID_OUT',
     // Legacy aliases — kept so existing Workstream 1A wiring in sales.js is unaffected
     SESSION_OPENED:         'SESSION_OPENED',
     SESSION_CLOSED:         'SESSION_CLOSED',
@@ -238,6 +239,7 @@ const EVENT_CATEGORY = {
     TILL_CLOSED:            'session',
     CASHUP_COMPLETED:       'session',
     CASH_VARIANCE_RECORDED: 'session',
+    CASH_PAID_OUT:          'session',
     SESSION_OPENED:         'session',
     SESSION_CLOSED:         'session',
     RECEIPT_PRINTED:        'receipt',

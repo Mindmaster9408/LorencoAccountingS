@@ -107,6 +107,18 @@ async function computeSessionRecon(sessionId, companyId) {
     returns = retData || [];
   }
 
+  // 4b. Cash paid out mid-shift (migration 071) — legitimate cash removed
+  // from the drawer (e.g. paying a delivery driver) that would otherwise
+  // show up as an unexplained shortfall with no trace in the sales data.
+  const { data: paidOuts, error: paidOutErr } = await supabase
+    .from('pos_cash_paidouts')
+    .select('amount')
+    .eq('till_session_id', sessionIdInt)
+    .eq('company_id', companyIdInt);
+
+  if (paidOutErr) throw new Error(`Paid-outs query failed: ${paidOutErr.message}`);
+  const paidOutTotal = round2((paidOuts || []).reduce((sum, p) => sum + n(p.amount), 0));
+
   // 5. Compute sale totals
   const completedSales = allSales.filter(s => s.status === 'completed');
   const voidedSales    = allSales.filter(s => s.status === 'voided');
@@ -153,8 +165,11 @@ async function computeSessionRecon(sessionId, companyId) {
   const openingBalance        = round2(session.opening_balance);
   const netSales              = round2(grossSales - refundTotal);
   // Forensically correct cash expectation: only cash payments count toward the
-  // physical drawer. Card/EFT/account are settled elsewhere.
-  const expectedCashInDrawer  = round2(openingBalance + paymentCash - refundCash);
+  // physical drawer. Card/EFT/account are settled elsewhere. Cash paid out
+  // mid-shift (migration 071) is physically removed from the same drawer,
+  // so it reduces what's expected to be counted at cash-up exactly like a
+  // cash refund does.
+  const expectedCashInDrawer  = round2(openingBalance + paymentCash - refundCash - paidOutTotal);
 
   return {
     session,
@@ -178,6 +193,8 @@ async function computeSessionRecon(sessionId, companyId) {
     refundCash,
     refundCard,
     refundByMethod,    // full map for JSONB storage
+    // Cash paid out mid-shift (migration 071)
+    paidOutTotal,
     // Derived
     openingBalance,
     netSales,
@@ -415,6 +432,11 @@ async function createReconSnapshot(
 
         net_sales:              recon.netSales,
         expected_cash_in_drawer: recon.expectedCashInDrawer,
+        // Already subtracted into expected_cash_in_drawer above — stored
+        // separately too so the cash-up slip can show it as its own line
+        // and so historical snapshots keep the exact figure that was
+        // subtracted at the time, not one re-derived later (migration 071).
+        paid_out_total:         recon.paidOutTotal,
 
         counted_cash:           cashupData.counted_cash    != null ? n(cashupData.counted_cash)    : null,
         counted_card:           cashupData.counted_card    != null ? n(cashupData.counted_card)    : null,
