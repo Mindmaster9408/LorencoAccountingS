@@ -5089,6 +5089,11 @@
         let syncDebounceTimer = null; // Debounce: network flap fires online event repeatedly
         let syncProgress = { current: 0, total: 0 }; // Progress counter for banner display
         let barcodeMap = new Map();   // O(1) barcode/product_code → product lookup; rebuilt after every products load
+        let productsById = new Map(); // O(1) numeric id → product lookup; rebuilt alongside barcodeMap. Every tile
+                                       // tap on the Till screen used to do products.find(p => p.id === id) — an
+                                       // O(n) scan of the whole catalog (1600-2500+ items on some stores) on
+                                       // EVERY single tap, not just scans. Found live 2026-07-28 as the next
+                                       // biggest till-speed cost after the cart/grid rebuild fixes.
         let productRefreshInterval = null; // Periodic live-refresh timer — see startProductAutoRefresh() below
         let lastProductSyncAt = null; // Server clock cursor for refreshProductsDelta() — set from server_time on every successful full or delta products fetch, never the till's own clock (avoids clock-skew gaps)
         let pendingProductEdits = new Map(); // Settings > Products quick-edit (VAT/Price) — productId -> { unit_price?, requires_vat?, vat_rate? }, see markProductRowDirty()
@@ -6388,7 +6393,9 @@
 
         function rebuildBarcodeMap() {
             barcodeMap = new Map();
+            productsById = new Map();
             for (const p of products) {
+                productsById.set(p.id, p);
                 if (p.product_code) {
                     barcodeMap.set(p.product_code, p);
                     // Also index the stripped version in case stored code has a prefix
@@ -7464,11 +7471,44 @@
             </div>`;
         }
 
+        // Bumped on every displayProductsGrid() call so an in-flight chunked
+        // render (below) can tell it's been superseded (e.g. cashier switches
+        // category again before the previous one finished) and stop instead
+        // of appending stale tiles into the new grid.
+        let productsGridRenderToken = 0;
+
+        const PRODUCTS_GRID_FIRST_CHUNK = 60;   // enough to fill the visible grid + a scroll buffer
+        const PRODUCTS_GRID_CHUNK_SIZE  = 150;
+
         function displayProductsGrid(productsToShow) {
             const grid = document.getElementById('productsGrid');
-            // Single innerHTML write — no per-tile createElement or closure allocation.
-            // Click handling is via event delegation set up in DOMContentLoaded.
-            grid.innerHTML = productsToShow.map(buildProductTileHtml).join('');
+            const myToken = ++productsGridRenderToken;
+
+            // The first chunk renders synchronously so the screen is never left
+            // blank — everything after that is appended across animation frames
+            // instead of one single innerHTML write, so building/inserting a
+            // large catalog (1600-2500+ tiles on some stores) never blocks the
+            // main thread for the whole thing in one long task. Found live
+            // 2026-07-28: on weak till hardware that single big write was
+            // itself a visible freeze on login and on switching back to the
+            // "All" category, on top of the scan/checkout costs already fixed.
+            // Final rendered result is identical either way — this only paces
+            // out WHEN the work happens, not what gets rendered.
+            const firstChunk = productsToShow.slice(0, PRODUCTS_GRID_FIRST_CHUNK);
+            grid.innerHTML = firstChunk.map(buildProductTileHtml).join('');
+
+            if (productsToShow.length <= PRODUCTS_GRID_FIRST_CHUNK) return;
+
+            let i = PRODUCTS_GRID_FIRST_CHUNK;
+            function appendNextChunk() {
+                if (myToken !== productsGridRenderToken) return; // superseded — abandon
+                const next = productsToShow.slice(i, i + PRODUCTS_GRID_CHUNK_SIZE);
+                if (next.length === 0) return;
+                grid.insertAdjacentHTML('beforeend', next.map(buildProductTileHtml).join(''));
+                i += PRODUCTS_GRID_CHUNK_SIZE;
+                if (i < productsToShow.length) requestAnimationFrame(appendNextChunk);
+            }
+            requestAnimationFrame(appendNextChunk);
         }
 
         // Builds a single table row's markup. Extracted from displayProductsTable
@@ -7662,7 +7702,7 @@
                     const tile = e.target.closest('[data-product-id]');
                     if (!tile) return;
                     const productId = parseInt(tile.dataset.productId, 10);
-                    const product = products.find(p => p.id === productId);
+                    const product = productsById.get(productId);
                     if (product) addToCart(product);
                 });
             }
@@ -8434,7 +8474,7 @@
                     // checkout path above — no need to rebuild the entire catalog's tiles
                     // for a stock change affecting a handful of products).
                     for (const item of cart) {
-                        const product = products.find(p => p.id === item.productId);
+                        const product = productsById.get(item.productId);
                         if (product) {
                             const base = product.current_stock ?? product.stock_quantity ?? 0;
                             product.current_stock = Math.max(0, base - item.quantity);
@@ -8512,7 +8552,7 @@
                     // refreshProductsDelta already uses. rebuildBarcodeMap() is also dropped
                     // here — a stock_quantity change never affects barcode lookups.
                     for (const sold of soldItems) {
-                        const product = products.find(p => p.id === sold.productId);
+                        const product = productsById.get(sold.productId);
                         if (product) {
                             const base = product.stock_quantity ?? 0;
                             product.stock_quantity = companyStockPolicy.allowNegativeStock
@@ -11477,7 +11517,7 @@
                 return;
             }
 
-            const product = products.find(p => p.id == productId);
+            const product = productsById.get(parseInt(productId, 10));
             if (product) {
                 document.getElementById('currentStockDisplay').textContent = product.stock_quantity;
             }
@@ -11494,7 +11534,7 @@
             if (!reason)    { showNotification('Please select a reason', 'error'); return; }
             if (quantityRaw < 0) { showNotification('Quantity must be 0 or greater', 'error'); return; }
 
-            const product    = products.find(p => p.id == productId);
+            const product    = productsById.get(parseInt(productId, 10));
             const currentQty = product ? (product.stock_quantity || 0) : 0;
 
             let quantity_change;
@@ -11960,7 +12000,7 @@
                 return;
             }
 
-            const product = products.find(p => p.id == productId);
+            const product = productsById.get(parseInt(productId, 10));
             if (product) {
                 document.getElementById('originalPriceDisplay').textContent = `R ${parseFloat(product.unit_price).toFixed(2)}`;
             }
@@ -11985,7 +12025,7 @@
             // not a flat new price, so the entered "discounted price" is
             // converted to a fixed-amount-off value here using the same
             // product.unit_price already shown as "Original Price" above.
-            const product = products.find(p => p.id == productId);
+            const product = productsById.get(parseInt(productId, 10));
             const originalPrice = product ? parseFloat(product.unit_price) : 0;
             const newPrice = parseFloat(discountPrice);
             if (newPrice >= originalPrice) {
