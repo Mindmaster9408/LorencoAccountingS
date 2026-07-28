@@ -1570,25 +1570,18 @@ router.post('/pos/pin-login', async (req, res) => {
       return res.status(403).json({ error: 'This device has been revoked. Please ask a manager to reactivate it.', device_error: 'revoked' });
     }
 
-    // ── Device-level lockout check (independent of the per-user check below) ─
-    const deviceLockoutSince = new Date(Date.now() - 15 * 60 * 1000);
-    const deviceWindowStart = (device.pin_unlocked_at && new Date(device.pin_unlocked_at) > deviceLockoutSince)
-      ? device.pin_unlocked_at : deviceLockoutSince.toISOString();
-    const { count: deviceFailCount } = await supabase
-      .from('pos_pin_attempts')
-      .select('*', { count: 'exact', head: true })
-      .eq('device_id', device.id)
-      .eq('success', false)
-      .gte('created_at', deviceWindowStart);
-
-    if ((deviceFailCount || 0) >= 5) {
-      await bcrypt.compare(String(pin), _PIN_TIMING_DUMMY);
-      logPosEvent({ companyId: device.company_id, actionType: POS_EVENTS.DEVICE_PIN_LOCKED, userEmail: user_identifier, metadata: { device_id: device.id, device_name: device.device_name } });
-      return res.status(429).json({
-        error: 'This device is locked due to too many failed PIN attempts. A manager must unlock it from Device Management.',
-        device_error: 'device_locked',
-      });
-    }
+    // Device-level lockout (5 failed PIN attempts on this device within 15
+    // min, any user) is checked further below, AFTER the submitted PIN is
+    // actually compared — not here. Rejecting every attempt outright the
+    // moment the device crosses the threshold (the original behaviour)
+    // meant a correct PIN from a different, perfectly legitimate cashier
+    // was ALSO refused without ever being checked, taking the whole till
+    // out of service until a manager manually unlocked it or the full 15
+    // minutes elapsed — a real problem live with only 2 tills in a shop.
+    // A wrong PIN still gets exactly the same lockout treatment as before;
+    // only a genuinely correct one is now let through regardless of prior
+    // unrelated failures on this device. See the credentialValid branch
+    // below.
 
     // ── Resolve company from the device (never from client input) ───────────
     const { data: company } = await supabase
@@ -1740,26 +1733,58 @@ router.post('/pos/pin-login', async (req, res) => {
       });
     }
 
-    // Lockout check: count failures for THIS USER in last 15 minutes
-    // (independent of, and in addition to, the device-level check above)
-    const lockoutSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    const { count: failCount } = await supabase
-      .from('pos_pin_attempts')
-      .select('*', { count: 'exact', head: true })
-      .eq('company_id', company.id)
-      .eq('user_id', userData.id)
-      .eq('success', false)
-      .gte('created_at', lockoutSince);
+    // A genuinely correct, active PIN always succeeds from here, regardless
+    // of any device/user lockout state — a wrong PIN never reaches this
+    // branch, so letting a correct one through doesn't help an actual
+    // attacker (who by definition doesn't have it). Both lockout checks
+    // below only ever run for a credential that's already known to be
+    // wrong, deciding which error message to show, not whether to block a
+    // real one.
+    const credentialValid = pinMatches && pinRecord && pinRecord.is_active;
 
-    if ((failCount || 0) >= 5) {
-      logAttempt(false, 'lockout');
-      logPosEvent({ companyId: company.id, userId: userData.id, userEmail: user_identifier, actionType: POS_EVENTS.PIN_LOGIN_LOCKED, metadata: { device_id: device.id } });
-      return res.status(429).json({
-        error: 'Account temporarily locked due to too many failed attempts. Please try again in 15 minutes.',
-      });
-    }
+    if (!credentialValid) {
+      // ── Device-level lockout (5 failed attempts on this device, any user,
+      // within 15 min) — checked here instead of before the PIN was even
+      // compared, so a correct PIN from a different cashier is never turned
+      // away sight-unseen (see the note near device resolution above).
+      const deviceLockoutSince = new Date(Date.now() - 15 * 60 * 1000);
+      const deviceWindowStart = (device.pin_unlocked_at && new Date(device.pin_unlocked_at) > deviceLockoutSince)
+        ? device.pin_unlocked_at : deviceLockoutSince.toISOString();
+      const { count: deviceFailCount } = await supabase
+        .from('pos_pin_attempts')
+        .select('*', { count: 'exact', head: true })
+        .eq('device_id', device.id)
+        .eq('success', false)
+        .gte('created_at', deviceWindowStart);
 
-    if (!pinMatches || !(pinRecord && pinRecord.is_active)) {
+      if ((deviceFailCount || 0) >= 5) {
+        logAttempt(false, 'device_locked');
+        logPosEvent({ companyId: device.company_id, actionType: POS_EVENTS.DEVICE_PIN_LOCKED, userEmail: user_identifier, metadata: { device_id: device.id, device_name: device.device_name } });
+        return res.status(429).json({
+          error: 'This device is locked due to too many failed PIN attempts. A manager must unlock it from Device Management.',
+          device_error: 'device_locked',
+        });
+      }
+
+      // Lockout check: count failures for THIS USER in last 15 minutes
+      // (independent of, and in addition to, the device-level check above)
+      const lockoutSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { count: failCount } = await supabase
+        .from('pos_pin_attempts')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_id', company.id)
+        .eq('user_id', userData.id)
+        .eq('success', false)
+        .gte('created_at', lockoutSince);
+
+      if ((failCount || 0) >= 5) {
+        logAttempt(false, 'lockout');
+        logPosEvent({ companyId: company.id, userId: userData.id, userEmail: user_identifier, actionType: POS_EVENTS.PIN_LOGIN_LOCKED, metadata: { device_id: device.id } });
+        return res.status(429).json({
+          error: 'Account temporarily locked due to too many failed attempts. Please try again in 15 minutes.',
+        });
+      }
+
       const reason  = pinRecord ? 'wrong_pin' : 'no_pin_set';
       const remain  = Math.max(0, 4 - (failCount || 0));
       logAttempt(false, reason);
@@ -1772,7 +1797,18 @@ router.post('/pos/pin-login', async (req, res) => {
     // ── Success ───────────────────────────────────────────────────────────────
     logAttempt(true, null);
     supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', userData.id).then(() => {});
-    supabase.from('pos_devices').update({ last_seen_at: new Date().toISOString(), last_user_id: userData.id, pin_fail_count: 0 }).eq('id', device.id).then(() => {});
+    // pin_unlocked_at fast-forwards the device-level lockout window's start
+    // (see deviceWindowStart above) so prior failed attempts stop counting —
+    // exactly the same field the manager "unlock device" button already sets
+    // (routes/devices.js POST /:id/unlock). Setting it here too means ANY
+    // successful PIN login — not just a manual manager unlock — clears the
+    // device lockout: a different cashier logging in successfully proves the
+    // device isn't actively being brute-forced, so the person who mistyped
+    // their own PIN can retry immediately instead of waiting out the full
+    // 15 minutes with only 2 tills in the shop. pin_fail_count is a display-
+    // only counter (see logAttempt above) and resetting it here doesn't
+    // itself affect the lockout decision — pin_unlocked_at is what matters.
+    supabase.from('pos_devices').update({ last_seen_at: new Date().toISOString(), last_user_id: userData.id, pin_fail_count: 0, pin_unlocked_at: new Date().toISOString() }).eq('id', device.id).then(() => {});
 
     const permissions = getRolePermissions(userRole);
     const token = jwt.sign({
