@@ -10965,68 +10965,102 @@
             container.innerHTML = html;
         }
 
-        // Focused Cash/Card list for reconciling against the card machine's own
-        // settlement report — the on-screen Till Summary combines Card+EFT into
-        // one column (fine for a quick glance) and isn't meant for printing.
-        // Card and EFT are kept SEPARATE here (unlike that combined column)
-        // since a card machine statement only ever reflects actual card
-        // transactions, never manual EFT — combining them would make this
-        // comparison impossible. Uses printA4Report() (same "print, then Save
-        // as PDF" pattern as every other document in this app — there's no
-        // separate PDF library anywhere in this codebase) against whatever
-        // date range/sessions are already loaded in Till Summary.
-        function printCashCardList() {
-            const sessions = currentTillSummarySessions || [];
-            if (sessions.length === 0) {
-                showNotification('No sessions to print — generate the report first', 'error');
+        // Per-SALE Cash/Card list for reconciling against the card machine's own
+        // settlement report — a card machine statement lists every individual
+        // transaction, so a day's aggregate total isn't enough to check against
+        // it line by line (two offsetting errors could still match a total).
+        // Replaces the earlier session-level summary version (found live
+        // 2026-07-28: "wat ek gesoek het was... elke sale individueel... sale 1,
+        // 2, 3... 52") — this instead numbers every individual sale_payments
+        // leg for the selected date range, split into separate Cash/Card/EFT
+        // lists, each summing to that list's own total. A split-payment sale
+        // (part cash, part card) contributes its own leg amount to each list
+        // it actually touched, not the sale's full total to both. Uses the
+        // existing GET /api/pos/sales listing (from/to date filters, embeds
+        // sale_payments already) rather than a new endpoint. Excludes voided
+        // sales — nothing was actually settled on the card machine for those.
+        async function printCashCardList() {
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate   = document.getElementById('reportEndDate').value;
+            if (!startDate || !endDate) {
+                showNotification('Select a Start Date and End Date first', 'error');
                 return;
             }
 
-            let totalCash = 0, totalCard = 0, totalEft = 0;
-            const rows = sessions.map(s => {
-                totalCash += s.payment_cash || 0;
-                totalCard += s.payment_card || 0;
-                totalEft  += s.payment_eft  || 0;
-                return `
-                    <tr>
-                        <td>${s.closed_at ? new Date(s.closed_at).toLocaleDateString() : (s.opened_at ? new Date(s.opened_at).toLocaleDateString() : '—')}</td>
-                        <td>${s.cashier || '—'}</td>
-                        <td>${s.till_name ? `${s.till_name}${s.till_number ? ' #' + s.till_number : ''}` : '—'}</td>
-                        <td style="text-align:right;">R ${(s.payment_cash || 0).toFixed(2)}</td>
-                        <td style="text-align:right;">R ${(s.payment_card || 0).toFixed(2)}</td>
-                        <td style="text-align:right;">R ${(s.payment_eft || 0).toFixed(2)}</td>
-                    </tr>`;
-            }).join('');
+            try {
+                const res = await fetch(
+                    `${API_URL}/pos/sales?from=${startDate}&to=${endDate}&status=completed&limit=5000`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }
+                );
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to load sales');
 
-            const html = `
-                <div style="font-family:Arial,sans-serif;font-size:12px;color:#000;">
-                    <h2 style="margin:0 0 2px;text-align:center;">${currentCompanyName || ''}</h2>
-                    <p style="text-align:center;margin:0 0 15px;font-size:13px;"><strong>Cash / Card Reconciliation List</strong></p>
-                    <table style="width:100%;border-collapse:collapse;" cellpadding="5">
-                        <thead>
-                            <tr style="background:#667eea;color:#fff;">
-                                <th style="text-align:left;">Date</th>
-                                <th style="text-align:left;">Cashier</th>
-                                <th style="text-align:left;">Till</th>
-                                <th style="text-align:right;">Cash</th>
-                                <th style="text-align:right;">Card</th>
-                                <th style="text-align:right;">EFT</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                        <tfoot>
-                            <tr style="border-top:2px solid #000;font-weight:bold;">
-                                <td colspan="3">Total</td>
-                                <td style="text-align:right;">R ${totalCash.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${totalCard.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${totalEft.toFixed(2)}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                    <p style="margin-top:14px;font-size:10px;text-align:center;color:#333;">Printed ${new Date().toLocaleString()} by ${currentUser?.fullName || currentUser?.username || 'Unknown'}</p>
-                </div>
-            `;
-            printA4Report(html);
+                const lists = { cash: [], card: [], eft: [], account: [], other: [] };
+                (data.sales || []).forEach(sale => {
+                    (sale.sale_payments || []).forEach(p => {
+                        const method = (p.payment_method || 'other').toLowerCase();
+                        const bucket = lists[method] ? method : 'other';
+                        lists[bucket].push({
+                            saleNumber: sale.sale_number || sale.receipt_number || `#${sale.id}`,
+                            time: new Date(sale.created_at).toLocaleString(),
+                            amount: parseFloat(p.amount) || 0,
+                        });
+                    });
+                });
+
+                const buildSection = (title, rows) => {
+                    if (rows.length === 0) return '';
+                    const total = rows.reduce((s, r) => s + r.amount, 0);
+                    const body = rows.map((r, i) => `
+                        <tr>
+                            <td>${i + 1}</td>
+                            <td>${r.saleNumber}</td>
+                            <td>${r.time}</td>
+                            <td style="text-align:right;">R ${r.amount.toFixed(2)}</td>
+                        </tr>`).join('');
+                    return `
+                        <h3 style="margin:16px 0 6px;">${title} (${rows.length} sale${rows.length !== 1 ? 's' : ''})</h3>
+                        <table style="width:100%;border-collapse:collapse;font-size:11px;" cellpadding="4">
+                            <thead>
+                                <tr style="background:#667eea;color:#fff;">
+                                    <th style="text-align:left;">#</th>
+                                    <th style="text-align:left;">Sale</th>
+                                    <th style="text-align:left;">Time</th>
+                                    <th style="text-align:right;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>${body}</tbody>
+                            <tfoot>
+                                <tr style="border-top:2px solid #000;font-weight:bold;">
+                                    <td colspan="3">Total ${title}</td>
+                                    <td style="text-align:right;">R ${total.toFixed(2)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>`;
+                };
+
+                if (lists.cash.length === 0 && lists.card.length === 0 && lists.eft.length === 0 && lists.account.length === 0 && lists.other.length === 0) {
+                    showNotification('No completed sales in that date range', 'error');
+                    return;
+                }
+
+                const html = `
+                    <div style="font-family:Arial,sans-serif;font-size:12px;color:#000;">
+                        <h2 style="margin:0 0 2px;text-align:center;">${currentCompanyName || ''}</h2>
+                        <p style="text-align:center;margin:0 0 4px;font-size:13px;"><strong>Cash / Card Reconciliation — Individual Sales</strong></p>
+                        <p style="text-align:center;margin:0 0 10px;font-size:11px;color:#555;">${startDate} to ${endDate}</p>
+                        ${buildSection('Cash', lists.cash)}
+                        ${buildSection('Card', lists.card)}
+                        ${buildSection('EFT', lists.eft)}
+                        ${buildSection('Account', lists.account)}
+                        ${buildSection('Other', lists.other)}
+                        <p style="margin-top:14px;font-size:10px;text-align:center;color:#333;">Printed ${new Date().toLocaleString()} by ${currentUser?.fullName || currentUser?.username || 'Unknown'}</p>
+                    </div>
+                `;
+                printA4Report(html);
+            } catch (err) {
+                showNotification(`Failed to build list: ${err.message}`, 'error');
+            }
         }
 
         // Workstream 71 — backend already existed (GET /api/reports/cashier-performance,
