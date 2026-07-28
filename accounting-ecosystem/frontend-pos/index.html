@@ -8569,6 +8569,20 @@
         let openDrawerEnabled = true;
         let activePrinterCount = 0;
 
+        // Turns a checkout failure response into a message that actually says
+        // which item and why — the backend (sales.js) already computes a
+        // specific reason per item (not found / inactive / insufficient
+        // stock) into result.details, but every checkout error path here
+        // used to show only the generic result.error bucket ("Stock check
+        // failed", "Checkout failed"), leaving the cashier no way to tell
+        // which of several cart items was the actual problem.
+        function formatCheckoutError(result) {
+            if (result.details && result.details.length) {
+                return `${result.error || 'Checkout failed'}: ${result.details.join('; ')}`;
+            }
+            return result.error || 'Checkout failed';
+        }
+
         async function checkout() {
             if (forceUpdatePending) {
                 showNotification('A required update is pending. Please refresh before continuing.', 'error');
@@ -8736,7 +8750,14 @@
                         printReceipt(lastSaleId);
                     }
                 } else {
-                    showNotification(result.error || 'Checkout failed', 'error');
+                    // "Stock check failed" alone never told the cashier WHICH item
+                    // or WHY (not found / inactive / insufficient stock) — the
+                    // actual reason was always in result.details, computed
+                    // server-side (sales.js) but never shown here. Found live
+                    // 2026-07-28: a cashier saw only "Stock check failed" with 4
+                    // items in the cart and no way to tell which one was the
+                    // problem.
+                    showNotification(formatCheckoutError(result), 'error');
                 }
             } catch (error) {
                 // Network error - try offline save
@@ -12568,7 +12589,7 @@
                         toggleSplitPayment();
                         await loadProducts();
                     } else {
-                        showNotification(result.error || 'Checkout failed', 'error');
+                        showNotification(formatCheckoutError(result), 'error');
                     }
                 } catch (error) {
                     showNotification('Checkout failed: ' + error.message, 'error');
