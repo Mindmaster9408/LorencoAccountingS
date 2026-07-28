@@ -6856,7 +6856,7 @@
         // re-fetching — the snapshot itself only stores till_id, not a name.
         async function reprintCashupForSession(session) {
             try {
-                const res = await fetch(`${API_URL}/sessions/${session.session_id}/snapshot`, {
+                const res = await fetch(`${API_URL}/pos/sessions/${session.session_id}/snapshot`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
