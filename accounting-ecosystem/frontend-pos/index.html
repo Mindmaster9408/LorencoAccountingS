@@ -6804,6 +6804,42 @@
             return `<tr><td>${label}</td><td style="text-align:right;">R ${counted.toFixed(2)} (${varianceText})</td></tr>`;
         }
 
+        // "Count Cash in Till" note/coin breakdown for the printed slip —
+        // mirrors the on-screen Cash Up tab's own note/coin layout (two
+        // columns: Notes, Coins) so the printed record matches what the
+        // cashier actually counted, not just a single "Cash" total. Only
+        // rendered when denominations were captured (self-service Cash Up
+        // tab flow) — null for cashups completed via the manager's remote
+        // pending-cashup flow, which only ever has one aggregate figure.
+        function buildDenominationsPrintHtml(denominations) {
+            if (!denominations) return '';
+            const notes = [
+                ['R200', 'note200', 200], ['R100', 'note100', 100], ['R50', 'note50', 50],
+                ['R20', 'note20', 20], ['R10', 'note10', 10],
+            ];
+            const coins = [
+                ['R5', 'coin5', 5], ['R2', 'coin2', 2], ['R1', 'coin1', 1],
+                ['50c', 'coin050', 0.50], ['20c', 'coin020', 0.20], ['10c', 'coin010', 0.10],
+            ];
+            const row = ([label, key, value]) => {
+                const qty = parseInt(denominations[key]) || 0;
+                return `<tr><td>${label}</td><td style="text-align:right;">${qty}</td><td style="text-align:right;">R ${(qty * value).toFixed(2)}</td></tr>`;
+            };
+            const col = (rows, title) => `
+                <table style="width:100%;border-collapse:collapse;font-size:11px;" cellpadding="3">
+                    <tr><th colspan="3" style="text-align:left;border-bottom:1px solid #000;padding-bottom:3px;">${title}</th></tr>
+                    <tr style="font-size:10px;color:#555;"><td>Denom.</td><td style="text-align:right;">Qty</td><td style="text-align:right;">Amount</td></tr>
+                    ${rows.map(row).join('')}
+                </table>`;
+            return `
+                <p style="margin:12px 0 4px;"><strong>Count Cash in Till</strong></p>
+                <table style="width:100%;border-collapse:collapse;"><tr>
+                    <td style="width:50%;vertical-align:top;padding-right:8px;">${col(notes, 'Notes')}</td>
+                    <td style="width:50%;vertical-align:top;padding-left:8px;">${col(coins, 'Coins')}</td>
+                </tr></table>
+            `;
+        }
+
         function buildCashupPrintHtml(d) {
             const countedTotal = (d.countedCash || 0) + (d.countedCard || 0) + (d.countedEft || 0) + (d.countedAccount || 0) + (d.countedOther || 0);
             const varianceLabel = d.variance > 0 ? 'Over' : d.variance < 0 ? 'Short' : 'Balanced';
@@ -6837,6 +6873,7 @@
                         ${(d.countedCard != null || d.countedEft != null || d.countedAccount != null || d.countedOther != null) ? `<tr><td>Total Counted</td><td style="text-align:right;">R ${countedTotal.toFixed(2)}</td></tr>` : ''}
                         <tr style="border-top:1px solid #000;"><td><strong>Variance</strong></td><td style="text-align:right;"><strong>${d.variance >= 0 ? '+' : ''}R ${d.variance.toFixed(2)} (${varianceLabel})</strong></td></tr>
                     </table>
+                    ${buildDenominationsPrintHtml(d.denominations)}
                     ${d.notes ? `<p style="margin:10px 0 0;font-size:11px;">Notes: ${d.notes}</p>` : ''}
                     <p style="margin-top:14px;font-size:10px;text-align:center;color:#333;">Printed ${new Date().toLocaleString()} by ${currentUser?.fullName || currentUser?.username || 'Unknown'}</p>
                 </div>
@@ -6910,6 +6947,7 @@
                     countedAccount: snap.counted_account != null ? parseFloat(snap.counted_account) : null,
                     countedOther:   snap.counted_other   != null ? parseFloat(snap.counted_other)   : null,
                     variance:       parseFloat(snap.cash_variance) || 0,
+                    denominations:  snap.denominations || null,
                 }));
             } catch (err) {
                 showNotification(`Reprint failed: ${err.message}`, 'error');
@@ -7324,6 +7362,20 @@
             return result;
         }
 
+        // Note/coin counts the cashier entered (migration 072) — same field
+        // list as calculateCashTotal()'s denominations array. Purely for the
+        // printed slip's "Count Cash in Till" breakdown; never used for any
+        // total/variance math (that's already totalCounted).
+        function getCountedDenominations() {
+            const ids = ['note200', 'note100', 'note50', 'note20', 'note10', 'coin5', 'coin2', 'coin1', 'coin050', 'coin020', 'coin010'];
+            const result = {};
+            ids.forEach(id => {
+                const input = document.getElementById(id);
+                result[id] = input ? (parseInt(input.value) || 0) : 0;
+            });
+            return result;
+        }
+
         async function completeCashUp() {
             if (!currentSessionData) {
                 showNotification('No active session', 'error');
@@ -7368,6 +7420,7 @@
                     // Captured once, before the tab switches away below — read
                     // from the on-screen inputs while they still exist.
                     const otherCounted = getOtherPaymentCounted();
+                    const denominations = getCountedDenominations();
 
                     // Fire-and-forget: creates immutable recon snapshot and transitions
                     // session status to 'cashed_up'. Session is already closed — this
@@ -7381,6 +7434,7 @@
                         body: JSON.stringify({
                             counted_cash: totalCounted,
                             ...otherCounted,
+                            denominations,
                             notes: notes
                         })
                     }).catch(err => console.warn('[CashUp] complete-cashup snapshot call failed (non-blocking):', err.message));
@@ -7414,6 +7468,7 @@
                         countedAccount: otherCounted.counted_account ?? null,
                         variance,
                         notes,
+                        denominations,
                     });
 
                     currentSessionData = null;

@@ -282,7 +282,11 @@ router.post('/:id/complete-cashup', async (req, res) => {
     // `variance` further down for why that combination was already found to
     // be wrong (a phantom shortfall on any session with account sales, which
     // have no "counted" figure at all).
-    const { counted_cash, counted_card, counted_eft, counted_account, counted_other, notes } = req.body;
+    // denominations (migration 072) — the note/coin counts the cashier
+    // actually entered on the Cash Up tab, e.g. { note200: 2, ... }. Purely
+    // for the printed/reprinted slip's "Count Cash in Till" breakdown;
+    // never used in any total/variance math (counted_cash already is that).
+    const { counted_cash, counted_card, counted_eft, counted_account, counted_other, notes, denominations } = req.body;
 
     const { data: session } = await supabase
       .from('till_sessions')
@@ -389,7 +393,7 @@ router.post('/:id/complete-cashup', async (req, res) => {
       req.user.userId,
       req.user.email || req.user.username,
       'cashup',
-      { counted_cash, counted_card, counted_eft, counted_account, counted_other, total_counted: totalCounted, variance, ...methodVariances }
+      { counted_cash, counted_card, counted_eft, counted_account, counted_other, total_counted: totalCounted, variance, denominations, ...methodVariances }
     );
 
     res.json({ session: data, ...methodVariances });

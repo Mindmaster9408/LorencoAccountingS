@@ -361,7 +361,7 @@ async function detectInconsistencies(sessionId, companyId) {
  * @param {string}        triggeredBy   — 'cashup' | 'manual'
  * @param {object}        cashupData    — { counted_cash, counted_card, counted_eft, counted_account,
  *                                          counted_other, total_counted, variance,
- *                                          varianceCard, varianceEft, varianceAccount }
+ *                                          varianceCard, varianceEft, varianceAccount, denominations }
  *
  * Wrapped in try/catch. Never throws. Returns the created snapshot row or null on failure.
  * Safe to call without await (fire-and-forget).
@@ -454,6 +454,9 @@ async function createReconSnapshot(
 
         payment_breakdown:      recon.paymentByMethod,
         refund_breakdown:       recon.refundByMethod,
+        // Note/coin counts as entered on the Cash Up tab (migration 072) —
+        // purely for the printed slip's breakdown, no math depends on it.
+        denominations:          cashupData.denominations || null,
 
         is_consistent:          issues.length === 0,
         consistency_issues:     issues.length > 0 ? issues : null,
