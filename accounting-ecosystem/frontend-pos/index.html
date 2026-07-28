@@ -6196,6 +6196,16 @@
             await loadCompanySettings();
 
             await loadShortcuts();  // populate shortcutIds before first product render
+            // Default the Till screen to Shortcuts instead of "All" when the
+            // company has any set up — rendering the full catalog (1600-2500+
+            // tiles on some stores) on every single login/tab-open was a real
+            // cost on weak till hardware even after the chunked-render fix
+            // below, and most scans/taps during a shift are for the same
+            // handful of fast-moving items anyway. Falls back to "All" for a
+            // company that has never configured shortcuts, so a cashier never
+            // lands on a confusing empty grid on their first-ever login.
+            // "All" remains one tap away either way.
+            if (shortcutIds.size > 0) selectedCategory = '__shortcuts__';
             loadProducts();
             startProductAutoRefresh();
             checkSession();
@@ -6445,7 +6455,7 @@
                 });
 
                 renderCategories();
-                displayProductsGrid(products);
+                displayProductsGrid(getProductsForSelectedCategory());
                 displayProductsTable(products);
                 rebuildBarcodeMap();
             } catch (error) {
@@ -6461,7 +6471,7 @@
                             if (p.category) categories.add(p.category);
                         });
                         renderCategories();
-                        displayProductsGrid(products);
+                        displayProductsGrid(getProductsForSelectedCategory());
                         displayProductsTable(products);
                         rebuildBarcodeMap();
                         showNotification('Using cached products (offline mode)', 'info');
@@ -6561,12 +6571,7 @@
 
                 if (needsFullReRender) {
                     renderCategories();
-                    const shown = selectedCategory === 'all'
-                        ? products
-                        : selectedCategory === '__shortcuts__'
-                            ? products.filter(p => shortcutIds.has(p.id))
-                            : products.filter(p => p.category === selectedCategory);
-                    displayProductsGrid(shown);
+                    displayProductsGrid(getProductsForSelectedCategory());
                 }
 
                 await cacheProducts(products);
@@ -7347,19 +7352,24 @@
             container.appendChild(shortcutBtn);
         }
 
+        // Single source of truth for "which products match the currently
+        // selected category chip" — was duplicated three separate times
+        // (filterByCategory, loadShortcuts' reRender branch, refreshProductsDelta's
+        // needsFullReRender branch) before loadProducts() also needed it.
+        function getProductsForSelectedCategory() {
+            if (selectedCategory === '__shortcuts__') return products.filter(p => shortcutIds.has(p.id));
+            if (selectedCategory === 'all') return products;
+            return products.filter(p => p.category === selectedCategory);
+        }
+
         function filterByCategory(category) {
             selectedCategory = category;
             renderCategories();
+            displayProductsGrid(getProductsForSelectedCategory());
             if (category === '__shortcuts__') {
-                displayProductsGrid(products.filter(p => shortcutIds.has(p.id)));
                 // Refresh shortcuts from server in the background
                 loadShortcuts(true);
-                return;
             }
-            const filtered = category === 'all'
-                ? products
-                : products.filter(p => p.category === category);
-            displayProductsGrid(filtered);
         }
 
         async function loadShortcuts(reRender) {
@@ -7373,12 +7383,7 @@
                 shortcutIds = new Set((data.shortcuts || []).map(s => s.product_id));
                 // Re-render so star state is correct; also refreshes the shortcuts view
                 if (reRender && products.length > 0) {
-                    const shown = selectedCategory === 'all'
-                        ? products
-                        : selectedCategory === '__shortcuts__'
-                            ? products.filter(p => shortcutIds.has(p.id))
-                            : products.filter(p => p.category === selectedCategory);
-                    displayProductsGrid(shown);
+                    displayProductsGrid(getProductsForSelectedCategory());
                 }
             } catch (e) {
                 console.warn('[Shortcuts] Could not load:', e.message);
@@ -7399,7 +7404,7 @@
                     btnEl.classList.remove('starred');
                     // If shortcuts view is active, remove the tile immediately
                     if (selectedCategory === '__shortcuts__') {
-                        displayProductsGrid(products.filter(p => shortcutIds.has(p.id)));
+                        displayProductsGrid(getProductsForSelectedCategory());
                     }
                 } else {
                     const res = await fetch(`${API_URL}/pos/shortcuts`, {
