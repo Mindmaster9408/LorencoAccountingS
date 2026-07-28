@@ -10862,7 +10862,10 @@
             const varColor = v => v == null ? '' : v < 0 ? 'color:#c62828;font-weight:bold;' : v > 0 ? 'color:#e65100;' : 'color:#2e7d32;';
 
             let html = `
-                <h2 style="margin-bottom: 20px;">Till Summary</h2>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <h2 style="margin:0;">Till Summary</h2>
+                    <button class="btn btn-secondary" onclick="printCashCardList()">🖨️ Print Cash/Card List (PDF)</button>
+                </div>
                 ${summary.snapshotted_sessions < summary.total_sessions ? `
                 <div style="background:#fff3e0;border-left:4px solid #ff9800;padding:10px 15px;margin-bottom:15px;border-radius:4px;font-size:13px;">
                     <strong>${summary.total_sessions - summary.snapshotted_sessions} session(s)</strong> not yet cashed up — payment breakdown unavailable for those rows.
@@ -10960,6 +10963,70 @@
                 html += `<p style="margin-top:10px;font-size:11px;color:#999;">Payment breakdown sourced from <strong>sale_payments</strong> (split-payment authoritative). Rows marked (est.) are sessions not yet cashed up.</p>`;
             }
             container.innerHTML = html;
+        }
+
+        // Focused Cash/Card list for reconciling against the card machine's own
+        // settlement report — the on-screen Till Summary combines Card+EFT into
+        // one column (fine for a quick glance) and isn't meant for printing.
+        // Card and EFT are kept SEPARATE here (unlike that combined column)
+        // since a card machine statement only ever reflects actual card
+        // transactions, never manual EFT — combining them would make this
+        // comparison impossible. Uses printA4Report() (same "print, then Save
+        // as PDF" pattern as every other document in this app — there's no
+        // separate PDF library anywhere in this codebase) against whatever
+        // date range/sessions are already loaded in Till Summary.
+        function printCashCardList() {
+            const sessions = currentTillSummarySessions || [];
+            if (sessions.length === 0) {
+                showNotification('No sessions to print — generate the report first', 'error');
+                return;
+            }
+
+            let totalCash = 0, totalCard = 0, totalEft = 0;
+            const rows = sessions.map(s => {
+                totalCash += s.payment_cash || 0;
+                totalCard += s.payment_card || 0;
+                totalEft  += s.payment_eft  || 0;
+                return `
+                    <tr>
+                        <td>${s.closed_at ? new Date(s.closed_at).toLocaleDateString() : (s.opened_at ? new Date(s.opened_at).toLocaleDateString() : '—')}</td>
+                        <td>${s.cashier || '—'}</td>
+                        <td>${s.till_name ? `${s.till_name}${s.till_number ? ' #' + s.till_number : ''}` : '—'}</td>
+                        <td style="text-align:right;">R ${(s.payment_cash || 0).toFixed(2)}</td>
+                        <td style="text-align:right;">R ${(s.payment_card || 0).toFixed(2)}</td>
+                        <td style="text-align:right;">R ${(s.payment_eft || 0).toFixed(2)}</td>
+                    </tr>`;
+            }).join('');
+
+            const html = `
+                <div style="font-family:Arial,sans-serif;font-size:12px;color:#000;">
+                    <h2 style="margin:0 0 2px;text-align:center;">${currentCompanyName || ''}</h2>
+                    <p style="text-align:center;margin:0 0 15px;font-size:13px;"><strong>Cash / Card Reconciliation List</strong></p>
+                    <table style="width:100%;border-collapse:collapse;" cellpadding="5">
+                        <thead>
+                            <tr style="background:#667eea;color:#fff;">
+                                <th style="text-align:left;">Date</th>
+                                <th style="text-align:left;">Cashier</th>
+                                <th style="text-align:left;">Till</th>
+                                <th style="text-align:right;">Cash</th>
+                                <th style="text-align:right;">Card</th>
+                                <th style="text-align:right;">EFT</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                        <tfoot>
+                            <tr style="border-top:2px solid #000;font-weight:bold;">
+                                <td colspan="3">Total</td>
+                                <td style="text-align:right;">R ${totalCash.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${totalCard.toFixed(2)}</td>
+                                <td style="text-align:right;">R ${totalEft.toFixed(2)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <p style="margin-top:14px;font-size:10px;text-align:center;color:#333;">Printed ${new Date().toLocaleString()} by ${currentUser?.fullName || currentUser?.username || 'Unknown'}</p>
+                </div>
+            `;
+            printA4Report(html);
         }
 
         // Workstream 71 — backend already existed (GET /api/reports/cashier-performance,
