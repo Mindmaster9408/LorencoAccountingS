@@ -12180,7 +12180,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${result.items.map(item => `
+                            ${(result.sale.sale_items || []).map(item => `
                                 <tr>
                                     <td>${item.product_name}</td>
                                     <td>${item.quantity}</td>
@@ -12238,7 +12238,7 @@
         }
 
         async function processReturn(saleId, authorizedBy = null) {
-            const items = selectedSale.items.map(item => ({
+            const items = (selectedSale.sale.sale_items || []).map(item => ({
                 product_id: item.product_id,
                 quantity: item.quantity
             }));

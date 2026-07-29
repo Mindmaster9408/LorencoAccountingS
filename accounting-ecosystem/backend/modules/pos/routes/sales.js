@@ -379,14 +379,20 @@ router.get('/search', requirePermission('SALES.VIEW'), async (req, res) => {
  */
 router.get('/:id', requirePermission('SALES.VIEW'), async (req, res) => {
   try {
+    // users:user_id join added so the Search Sale / Reprint detail view can
+    // show who rang up the sale — sales has no cashier_name column itself
+    // (confirmed live: querying it directly 42703s), same reason the
+    // /search route above already joins this. Was previously omitted here,
+    // so the detail modal always showed "Cashier: undefined".
     const { data, error } = await supabase
       .from('sales')
-      .select('*, sale_items(*, products(product_name, barcode)), sale_payments(*)')
+      .select('*, sale_items(*, products(product_name, barcode)), sale_payments(*), users:user_id(username, full_name)')
       .eq('id', req.params.id)
       .eq('company_id', req.companyId)
       .single();
 
     if (error || !data) return res.status(404).json({ error: 'Sale not found' });
+    data.cashier_name = data.users?.full_name || data.users?.username || 'Unknown';
     res.json({ sale: data });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
