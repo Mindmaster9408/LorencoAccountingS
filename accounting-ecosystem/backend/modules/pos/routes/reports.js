@@ -293,13 +293,25 @@ router.get('/cashier-performance', reportsViewGate, async (req, res) => {
  */
 router.get('/inventory-value', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('products')
-      .select('id, product_name, stock_quantity, cost_price, unit_price, is_active')
-      .eq('company_id', req.companyId)
-      .eq('is_active', true);
+    // Paged past Supabase/PostgREST's default 1000-row cap — same class of
+    // bug found live 2026-07-28 in inventory.js's Stock Management listing.
+    // A company with 1000+ active products (e.g. Pennygrow: 1638) would
+    // have silently understated total_cost_value/total_retail_value by
+    // whatever the un-fetched rows were worth, with no error or indication.
+    const PAGE_SIZE = 1000;
+    let data = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data: page, error } = await supabase
+        .from('products')
+        .select('id, product_name, stock_quantity, cost_price, unit_price, is_active')
+        .eq('company_id', req.companyId)
+        .eq('is_active', true)
+        .range(offset, offset + PAGE_SIZE - 1);
 
-    if (error) return res.status(500).json({ error: error.message });
+      if (error) return res.status(500).json({ error: error.message });
+      data = data.concat(page || []);
+      if (!page || page.length < PAGE_SIZE) break;
+    }
 
     const products = (data || []).map(p => ({
       ...p,

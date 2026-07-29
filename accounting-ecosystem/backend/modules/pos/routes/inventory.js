@@ -35,16 +35,33 @@ router.get('/', requirePermission('INVENTORY.VIEW'), async (req, res) => {
   try {
     const { low_stock } = req.query;
 
-    const { data, error } = await supabase
-      .from('products')
-      .select('id, product_name, barcode, product_code, stock_quantity, min_stock_level, cost_price, unit_price, category_id, category, categories(name)')
-      .eq('company_id', req.companyId)
-      .eq('is_active', true)
-      .order('product_name');
+    // A single unbounded select() is silently capped at Supabase/PostgREST's
+    // default max-rows (1000) — found live 2026-07-28: Pennygrow has 1638
+    // active products, so the 638 that sort alphabetically past the cutoff
+    // (product_name is the order column) were invisible in Stock Management
+    // with no error and no indication anything was missing — including
+    // several genuinely new products, purely because of where their name
+    // happened to fall alphabetically, nothing to do with when they were
+    // added. Page through with .range() until a page comes back short of
+    // PAGE_SIZE, accumulating every row, so the frontend (which expects one
+    // complete flat list — no pagination UI exists for this screen) keeps
+    // working unchanged.
+    const PAGE_SIZE = 1000;
+    let products = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, product_name, barcode, product_code, stock_quantity, min_stock_level, cost_price, unit_price, category_id, category, categories(name)')
+        .eq('company_id', req.companyId)
+        .eq('is_active', true)
+        .order('product_name')
+        .range(offset, offset + PAGE_SIZE - 1);
 
-    if (error) return res.status(500).json({ error: error.message });
+      if (error) return res.status(500).json({ error: error.message });
+      products = products.concat(data || []);
+      if (!data || data.length < PAGE_SIZE) break;
+    }
 
-    let products = data || [];
     if (low_stock === 'true') {
       products = products.filter(p => p.stock_quantity <= (p.min_stock_level ?? 10));
     }
