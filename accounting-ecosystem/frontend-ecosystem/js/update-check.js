@@ -46,30 +46,37 @@
     const style = document.createElement('style');
     style.id = 'app-update-banner-styles';
     style.textContent = `
+      /* Corner-anchored, fixed narrow width — was a wide bottom-center bar
+         (max-width: 95vw) that sat directly on top of whatever table/content
+         happened to be at the bottom of the viewport (found live 2026-07-29
+         in the POS app; same shared component here). A small bottom-right
+         toast stays out of the way of page content while remaining just as
+         visible. */
       #${BANNER_ID} {
         position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%) translateY(80px);
+        bottom: 20px;
+        right: 20px;
+        transform: translateY(80px);
         z-index: 99999;
         display: flex;
         align-items: center;
-        gap: 14px;
-        padding: 12px 20px;
+        gap: 12px;
+        padding: 12px 16px;
         background: rgba(15, 12, 41, 0.97);
         border: 1px solid rgba(102, 126, 234, 0.45);
         border-radius: 14px;
         box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(102,126,234,0.12);
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        font-size: 0.84rem;
+        font-size: 0.82rem;
         color: #fff;
         opacity: 0;
         transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease;
-        white-space: nowrap;
-        max-width: 95vw;
+        white-space: normal;
+        width: 320px;
+        max-width: calc(100vw - 40px);
       }
       #${BANNER_ID}.visible {
-        transform: translateX(-50%) translateY(0);
+        transform: translateY(0);
         opacity: 1;
       }
       #${BANNER_ID} .uc-icon { font-size: 1.1rem; flex-shrink: 0; }
