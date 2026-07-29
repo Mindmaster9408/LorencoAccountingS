@@ -17,10 +17,89 @@
  */
 
 const express = require('express');
+const multer  = require('multer');
+const XLSX    = require('xlsx');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const HistoricalComparativesService = require('../services/historicalComparativesService');
+const { supabase } = require('../../../config/database');
 
 const router = express.Router();
+
+// ─── Multer: memory storage, 15 MB limit, Excel/CSV only ────────────────────
+// Same shape as legacy-gl.js's upload config — one file, parsed with `xlsx`
+// (which transparently handles both CSV and Excel), never written to disk.
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = (file.originalname || '').split('.').pop().toLowerCase();
+    if (['xlsx', 'xls', 'csv'].includes(ext)) return cb(null, true);
+    cb(new Error('Only Excel (.xlsx/.xls) and CSV files are accepted'));
+  },
+});
+
+// Month-name → SA financial-year calendar month (1-12) lookup, case-insensitive.
+// Accepts both full and abbreviated names so exports in any month order work.
+const MONTH_NAME_TO_NUM = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+  apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+  aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+  oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+};
+
+// Parse a currency-ish cell into a signed float, or null if blank.
+// Unlike legacy-gl's cleanAmount() (which always returns a positive value
+// because debit/credit sign is caller-owned there), this preserves sign —
+// historical comparative amounts are signed figures, not debit/credit pairs.
+function parseSignedAmount(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+  let s = String(raw).trim();
+  const isParenNeg = s.startsWith('(') && s.endsWith(')');
+  if (isParenNeg) s = s.slice(1, -1);
+  s = s.replace(/[^\d.\-]/g, '');
+  const isTrailingMinus = s.endsWith('-');
+  if (isTrailingMinus) s = s.slice(0, -1);
+  const n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return (isParenNeg || isTrailingMinus) ? -Math.abs(n) : n;
+}
+
+// Detect the header row and build a column map. Scans the first 10 rows for
+// one containing BOTH an account-identity column (code or name) and a
+// financial-year column — tolerates title/blank rows above the real header.
+function detectCsvColumns(allRows) {
+  const ACCOUNT_CODE_RE = /^(account[\s_-]?code|acc[\s_-]?code|code)$/i;
+  const ACCOUNT_NAME_RE = /^(account[\s_-]?name|name)$/i;
+  const ACCOUNT_TYPE_RE = /^(account[\s_-]?type|type)$/i;
+  const FIN_YEAR_RE     = /^(financial[\s_-]?year|fy|year)$/i;
+
+  const maxScan = Math.min(10, allRows.length);
+  for (let i = 0; i < maxScan; i++) {
+    const row = allRows[i];
+    if (!row || row.length === 0) continue;
+
+    const mapping = {};
+    const monthCols = {}; // periodMonth (1-12) -> column index
+    row.forEach((cell, idx) => {
+      const h = String(cell || '').trim();
+      if (!h) return;
+      if (ACCOUNT_CODE_RE.test(h)) mapping.account_code = idx;
+      else if (ACCOUNT_NAME_RE.test(h)) mapping.account_name = idx;
+      else if (ACCOUNT_TYPE_RE.test(h)) mapping.account_type = idx;
+      else if (FIN_YEAR_RE.test(h)) mapping.financial_year = idx;
+      else {
+        const m = MONTH_NAME_TO_NUM[h.toLowerCase()];
+        if (m) monthCols[m] = idx;
+      }
+    });
+
+    const hasAccountIdentity = mapping.account_code !== undefined || mapping.account_name !== undefined;
+    if (hasAccountIdentity && mapping.financial_year !== undefined && Object.keys(monthCols).length > 0) {
+      return { headerRowIdx: i, mapping, monthCols };
+    }
+  }
+  return null;
+}
 
 // ── BATCH MANAGEMENT ─────────────────────────────────────────────────────────
 
@@ -272,6 +351,149 @@ router.post('/batch/:batchId/manual-grid', authenticate, hasPermission('historic
     res.status(500).json({ error: 'Failed to save grid.' });
   }
 });
+
+// ── CSV BULK IMPORT ───────────────────────────────────────────────────────────
+
+/**
+ * POST /api/accounting/historical-comparatives/batch/:batchId/import-csv
+ * Bulk-import monthly account balances from a CSV/Excel file.
+ * One row = one account × one financial year, with up to 12 month columns
+ * (matched by name, any order). Each valid row is saved via the existing
+ * saveManualGrid() — same transactional upsert used by the manual grid UI.
+ * multipart/form-data, field name 'file'.
+ */
+router.post('/batch/:batchId/import-csv', authenticate, hasPermission('historical.create'),
+  csvUpload.single('file'),
+  async (req, res) => {
+    try {
+      const { batchId } = req.params;
+      const companyId = req.user.companyId;
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded.' });
+      }
+
+      const batch = await HistoricalComparativesService.getBatch({ companyId, batchId });
+      if (!batch) return res.status(404).json({ error: 'Batch not found or access denied.' });
+      if (batch.status === 'finalized') {
+        return res.status(403).json({ error: 'This batch is finalized and cannot be edited.' });
+      }
+
+      let workbook;
+      try {
+        workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true, raw: false });
+      } catch (err) {
+        return res.status(400).json({ error: `Failed to parse file: ${err.message}` });
+      }
+
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) return res.status(400).json({ error: 'File contains no sheets.' });
+
+      const allRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false });
+      if (allRows.length < 2) {
+        return res.status(400).json({ error: 'File must have at least one header row and one data row.' });
+      }
+
+      const detection = detectCsvColumns(allRows);
+      if (!detection) {
+        return res.status(422).json({
+          error: 'Could not detect the required columns from this file.',
+          hint: 'Expected an Account Code or Account Name column, a Financial Year column, and at least one month column (e.g. Mar, Apr, ... Feb).',
+        });
+      }
+
+      const { headerRowIdx, mapping, monthCols } = detection;
+      const dataRows = allRows.slice(headerRowIdx + 1);
+
+      // Parse every data row into a candidate (account × FY) grid before any DB writes.
+      const candidates = [];
+      const rowErrors = [];
+      let totalDataRows = 0;
+      dataRows.forEach((row, i) => {
+        if (!row || row.every(c => c === '' || c == null)) return; // blank row
+        totalDataRows++;
+        const rowNumber = headerRowIdx + i + 2; // 1-indexed, accounts for header row
+
+        const accountCode = mapping.account_code !== undefined ? String(row[mapping.account_code] || '').trim() || null : null;
+        const accountName = mapping.account_name !== undefined ? String(row[mapping.account_name] || '').trim() || null : null;
+        const accountType = mapping.account_type !== undefined ? String(row[mapping.account_type] || '').trim() || null : null;
+        const financialYear = parseInt(row[mapping.financial_year], 10);
+
+        if (!accountCode && !accountName) {
+          rowErrors.push({ row: rowNumber, message: 'No account code or account name — cannot identify the account.' });
+          return;
+        }
+        if (!financialYear || isNaN(financialYear)) {
+          rowErrors.push({ row: rowNumber, message: 'Missing or invalid financial year.' });
+          return;
+        }
+
+        const cells = [];
+        for (const [month, colIdx] of Object.entries(monthCols)) {
+          const amount = parseSignedAmount(row[colIdx]);
+          if (amount !== null) cells.push({ periodMonth: parseInt(month, 10), amount });
+        }
+        if (cells.length === 0) {
+          rowErrors.push({ row: rowNumber, message: 'No month amounts found on this row — skipped.' });
+          return;
+        }
+
+        candidates.push({
+          rowNumber, accountCode, accountName: accountName || accountCode, accountType, financialYear, cells,
+        });
+      });
+
+      // Bulk-resolve account codes against the Chart of Accounts in one query,
+      // instead of a lookup per row.
+      const codes = [...new Set(candidates.map(c => c.accountCode).filter(Boolean))];
+      let codeToId = {};
+      if (codes.length > 0) {
+        const { data: matched, error: lookupErr } = await supabase
+          .from('accounts')
+          .select('id, code')
+          .eq('company_id', companyId)
+          .in('code', codes);
+        if (lookupErr) throw lookupErr;
+        for (const a of matched || []) codeToId[a.code] = a.id;
+      }
+
+      let imported = 0;
+      const accountsMatched = new Set();
+      const accountsUnmatched = new Set();
+
+      for (const c of candidates) {
+        const accountId = c.accountCode ? (codeToId[c.accountCode] || null) : null;
+        if (c.accountCode) {
+          (accountId ? accountsMatched : accountsUnmatched).add(c.accountCode);
+        }
+        try {
+          await HistoricalComparativesService.saveManualGrid({
+            companyId, batchId, userId: req.user.id,
+            accountId, accountCode: c.accountCode, accountName: c.accountName,
+            accountType: c.accountType, financialYear: c.financialYear, cells: c.cells,
+          });
+          imported++;
+        } catch (err) {
+          if (err.message && err.message.includes('finalized')) {
+            return res.status(403).json({ error: err.message });
+          }
+          rowErrors.push({ row: c.rowNumber, message: err.message });
+        }
+      }
+
+      res.json({
+        imported,
+        totalRows: totalDataRows,
+        accountsMatched: [...accountsMatched],
+        accountsUnmatched: [...accountsUnmatched],
+        errors: rowErrors,
+      });
+    } catch (error) {
+      console.error('[HistoricalComparatives] import-csv error:', error);
+      res.status(500).json({ error: 'Failed to import file.', detail: error.message });
+    }
+  }
+);
 
 // ── RESCALE ───────────────────────────────────────────────────────────────────
 

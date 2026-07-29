@@ -733,6 +733,33 @@
     </div>
   </div>
 
+  <!-- ── IMPORT CSV MODAL ───────────────────────────────────────────────── -->
+  <div id="importCsvModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:10px; padding:28px; width:520px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+      <h2 style="font-size:17px; font-weight:600; margin:0 0 12px 0; color:#1a1a2e;">Upload CSV / Excel</h2>
+      <p style="font-size:13px; color:#555; margin:0 0 16px 0; line-height:1.5;">
+        One row per account per financial year. Columns: <strong>Account Code</strong> or
+        <strong>Account Name</strong>, <strong>Account Type</strong>, <strong>Financial Year</strong>,
+        plus a column per month (Mar, Apr, May … Feb — any order, full or short names).
+      </p>
+      <div id="importCsvMsg" class="msg"></div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>File (.xlsx, .xls or .csv)</label>
+          <input type="file" id="importCsvFile" accept=".xlsx,.xls,.csv" />
+        </div>
+      </div>
+
+      <div id="importCsvResult" style="display:none; margin-top:14px; font-size:13px; color:#333;"></div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeImportCsvModal()">Close</button>
+        <button class="btn btn-primary" id="btnImportCsv" onclick="submitImportCsv()">Upload</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ── Bootstrap ────────────────────────────────────────────────────────
     const _token = localStorage.getItem('token');
@@ -973,6 +1000,7 @@
             <div class="action-row">
               ${!isFinalized ? `
                 <button type="button" class="btn btn-secondary btn-sm" onclick="openAddAccountRow()">+ Add Account</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openImportCsvModal()">📤 Upload CSV</button>
                 <button type="button" id="btnSaveAll" class="btn btn-secondary btn-sm" onclick="saveAllGrids()">Save All</button>
                 <button type="button" class="btn btn-warning btn-sm" onclick="fixScaledAmounts()" title="Fix amounts that were saved 100× too large due to a number format bug">Fix ×100 amounts</button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="validateBatch()">Validate</button>
@@ -1578,6 +1606,58 @@
         await selectBatch(data.batch);
       } catch (e) {
         showMsg('createBatchMsg', 'error', e.message);
+      }
+    }
+
+    // ── CSV / Excel bulk import ──────────────────────────────────────────
+    function openImportCsvModal() {
+      document.getElementById('importCsvFile').value = '';
+      document.getElementById('importCsvResult').style.display = 'none';
+      document.getElementById('importCsvMsg').className = 'msg';
+      document.getElementById('importCsvModal').style.display = 'flex';
+    }
+    function closeImportCsvModal() {
+      document.getElementById('importCsvModal').style.display = 'none';
+    }
+    async function submitImportCsv() {
+      const fileInput = document.getElementById('importCsvFile');
+      const file = fileInput.files[0];
+      if (!file) {
+        showMsg('importCsvMsg', 'error', 'Choose a file first.');
+        return;
+      }
+
+      const btn = document.getElementById('btnImportCsv');
+      btn.disabled = true;
+      showMsg('importCsvMsg', 'info', 'Uploading and importing…');
+      document.getElementById('importCsvResult').style.display = 'none';
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch(`${BASE}/batch/${currentBatch.id}/import-csv`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + _token },
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail ? `${data.error}: ${data.detail}` : (data.error || `HTTP ${res.status}`));
+
+        showMsg('importCsvMsg', 'info', `Imported ${data.imported} of ${data.totalRows} row(s).`);
+
+        const resultEl = document.getElementById('importCsvResult');
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = `
+          ${data.accountsMatched.length ? `<p>✅ Matched to Chart of Accounts: ${data.accountsMatched.map(escHtml).join(', ')}</p>` : ''}
+          ${data.accountsUnmatched.length ? `<p style="color:#b45309;">⚠️ No matching COA code (saved as free-text): ${data.accountsUnmatched.map(escHtml).join(', ')}</p>` : ''}
+          ${data.errors.length ? `<p style="color:#dc2626;">Row issues:</p><ul style="margin:4px 0 0 18px; color:#dc2626;">${data.errors.map(e => `<li>Row ${e.row}: ${escHtml(e.message)}</li>`).join('')}</ul>` : ''}
+        `;
+
+        await selectBatch(currentBatch); // reload grids so imported data appears
+      } catch (e) {
+        showMsg('importCsvMsg', 'error', e.message);
+      } finally {
+        btn.disabled = false;
       }
     }
 
