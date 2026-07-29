@@ -5119,6 +5119,7 @@
                                        // biggest till-speed cost after the cart/grid rebuild fixes.
         let productRefreshInterval = null; // Periodic live-refresh timer — see startProductAutoRefresh() below
         let lastProductSyncAt = null; // Server clock cursor for refreshProductsDelta() — set from server_time on every successful full or delta products fetch, never the till's own clock (avoids clock-skew gaps)
+        let pendingFullReRender = false; // set when refreshProductsDelta() deferred a full grid rebuild because a scan was in flight — applied on the next tick instead
         let pendingProductEdits = new Map(); // Settings > Products quick-edit (VAT/Price) — productId -> { unit_price?, requires_vat?, vat_rate? }, see markProductRowDirty()
 
         // ========== DARK / LIGHT THEME TOGGLE ==========
@@ -6550,7 +6551,22 @@
                 const changed = result.products || [];
                 lastProductSyncAt = result.server_time || lastProductSyncAt;
 
-                if (changed.length === 0) return; // common case — nothing changed, zero DOM cost
+                // True whenever a full grid rebuild would risk visibly freezing a
+                // scan the cashier is mid-way through — see the deferral below.
+                const scanInFlight = () => globalScanInProgress ||
+                    (document.getElementById('barcodeInput')?.value || '').length > 0;
+
+                if (changed.length === 0) {
+                    // Nothing changed this cycle, but an earlier cycle may have
+                    // deferred a full re-render because a scan was in flight then —
+                    // catch up now if the till has since gone idle.
+                    if (pendingFullReRender && !scanInFlight()) {
+                        renderCategories();
+                        displayProductsGrid(getProductsForSelectedCategory());
+                        pendingFullReRender = false;
+                    }
+                    return; // common case — nothing changed, zero further DOM cost
+                }
 
                 let needsFullReRender = false;
                 changed.forEach(product => {
@@ -6592,9 +6608,19 @@
                 // also indexes a normalized/stripped variant per product.
                 rebuildBarcodeMap();
 
-                if (needsFullReRender) {
+                // Skip the full rebuild while a scan is plausibly in flight — found
+                // live (2026-07-23) that this exact rebuild could freeze a scan in
+                // progress; the delta-fetch above already reduced how OFTEN this
+                // branch runs, but landing here mid-scan was the one case that
+                // wasn't covered. Deferred, not dropped: pendingFullReRender makes
+                // a later tick (this one, or the "nothing changed" branch above)
+                // apply it once the till is idle again.
+                if ((needsFullReRender || pendingFullReRender) && !scanInFlight()) {
                     renderCategories();
                     displayProductsGrid(getProductsForSelectedCategory());
+                    pendingFullReRender = false;
+                } else if (needsFullReRender) {
+                    pendingFullReRender = true;
                 }
 
                 await cacheProducts(products);
@@ -7925,11 +7951,23 @@
                     }
                 });
 
-                barcodeInput.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
+                // 'keydown' (not 'keypress') so Tab is reliably caught — 'keypress'
+                // does not fire for Tab in most browsers since it produces no
+                // character. Tab is treated as an equivalent terminator to Enter:
+                // some scanners are configured to send Tab instead of a CR/Enter
+                // suffix, and previously only Enter bypassed the debounce timers
+                // below, so a Tab-suffix scanner never got the instant-add path on
+                // any scan. Threshold aligned to \d{4,} (was \d{6,}) to match the
+                // input listener's own barcode-shape check and MIN_BARCODE_LENGTH
+                // in initGlobalScanCapture() — a 4-5 digit code was previously
+                // falling through to the slow debounce path even when Enter was
+                // pressed immediately.
+                barcodeInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' || e.key === 'Tab') {
                         const raw        = e.target.value;
                         const normalized = normalizeBarcode(raw);
-                        if (/^[A-Za-z]{0,2}\d{6,}$/.test(normalized)) {
+                        if (/^[A-Za-z]{0,2}\d{4,}$/.test(normalized)) {
+                            e.preventDefault(); // stop Tab from moving focus away
                             clearTimeout(barcodeTimeout);
                             searchByBarcode(raw);
                         }
@@ -8107,19 +8145,24 @@
                 // elsewhere in the OS/browser are never swallowed into the buffer.
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' || e.key === 'Tab') {
                     const raw = scanBuffer;
-                    const timestamps = scanTimestamps;
                     resetBuffer();
 
                     if (raw.length < MIN_BARCODE_LENGTH) return;
 
-                    let avgInterval = Infinity;
-                    if (timestamps.length >= 2) {
-                        avgInterval = (timestamps[timestamps.length - 1] - timestamps[0]) / (timestamps.length - 1);
-                    }
-                    if (avgInterval > MAX_AVG_INTERVAL_MS) return; // too slow to be a scanner — ignore
-
+                    // Previously also required the buffer's average inter-keystroke
+                    // interval to be ≤50ms (MAX_AVG_INTERVAL_MS), or the scan was
+                    // dropped here with no notification and no fallback — a real
+                    // scanner's timing can legitimately vary (USB polling jitter,
+                    // Bluetooth wedge scanners, virtualised till sessions), and this
+                    // was the only place in the whole scan chain that could silently
+                    // swallow a genuine scan. The idle-reset below (line ~8146,
+                    // 150ms gap starts a fresh buffer) and MIN_BARCODE_LENGTH already
+                    // filter out stray human typing; a burst that reaches here and
+                    // is long enough to look like a barcode is worth attempting —
+                    // worst case is a harmless "Product not found".
+                    e.preventDefault(); // stop Tab from moving focus away mid-scan
                     setScanStatus('Scanning…', 'scanning');
                     searchByBarcode(raw); // exact same barcodeMap lookup + addToCart path as the input field
                     return;
