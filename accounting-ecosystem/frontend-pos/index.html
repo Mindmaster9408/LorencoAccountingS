@@ -8747,7 +8747,7 @@
 
                     // Auto-print if enabled
                     if (autoPrintEnabled && lastSaleId) {
-                        printReceipt(lastSaleId);
+                        printReceipt(lastSaleId, selectedPayment === 'CASH');
                     }
                 } else {
                     // "Stock check failed" alone never told the cashier WHICH item
@@ -8836,7 +8836,7 @@
                         <div style="background:#f8f9fa;border-radius:10px;padding:15px;text-align:left;margin-bottom:15px;">
                             <div style="font-weight:600;margin-bottom:10px;color:#333;">Send Receipt</div>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                <button class="btn btn-primary" onclick="deliverReceipt(${sale.saleId}, 'print')" style="padding:10px;font-size:13px;">
+                                <button class="btn btn-primary" onclick="deliverReceipt(${sale.saleId}, 'print', ${selectedPayment === 'CASH'})" style="padding:10px;font-size:13px;">
                                     &#128424; Print
                                 </button>
                                 <button class="btn btn-secondary" onclick="showEmailReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;">
@@ -8948,7 +8948,16 @@
             }
         }
 
-        async function printReceipt(saleId) {
+        // isFreshCashSale must be explicitly passed true by a caller that KNOWS
+        // this call is the immediate completion of a CASH sale (checkout()'s
+        // auto-print, or the Sale Complete modal's own manual Print button for
+        // that same sale) — every other caller (reprint a past sale found via
+        // Search, "print last receipt" some time later, order-pickup delivery)
+        // defaults to false and never kicks the drawer. Found live 2026-07-28:
+        // the drawer was popping open for every payment method (card, EFT,
+        // account), not just cash — there was no gate on payment method at
+        // all, only on the openDrawerEnabled setting.
+        async function printReceipt(saleId, isFreshCashSale = false) {
             // A paired USB printer (WebUSB) is the one fully-working hardware
             // path today — it prints AND kicks the drawer directly from this
             // browser, no server round-trip needed. Takes priority over the
@@ -8957,7 +8966,7 @@
             if (usbPrinter) {
                 try {
                     await printReceiptViaUsb(saleId);
-                    if (openDrawerEnabled) await kickUsbDrawer();
+                    if (openDrawerEnabled && isFreshCashSale) await kickUsbDrawer();
                     showNotification('Receipt printed!', 'success');
                     closeSaleCompleteModal();
                     return;
@@ -8993,7 +9002,7 @@
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ open_drawer: true })
+                    body: JSON.stringify({ open_drawer: isFreshCashSale })
                 });
 
                 const result = await response.json();
@@ -18086,9 +18095,9 @@
 
         let receiptDeliveryMethod = null;
 
-        async function deliverReceipt(saleId, method) {
+        async function deliverReceipt(saleId, method, isFreshCashSale = false) {
             if (method === 'print') {
-                printReceipt(saleId);
+                printReceipt(saleId, isFreshCashSale);
                 return;
             }
             try {
