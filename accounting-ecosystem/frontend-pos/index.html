@@ -690,6 +690,12 @@
             border-right: 1px solid #e0e0e0;
             overflow-y: scroll;
             scrollbar-width: thin;
+            /* Without this, the list scrolls but stops a little short of the
+               true bottom — the last item (e.g. "Customer Statement" under
+               Reports' "Customers" section) never fully clears the
+               container's own bottom edge. Found live 2026-07-29. */
+            padding-bottom: 24px;
+            box-sizing: border-box;
         }
         /* The sidebar's item list grows every time a new report/section is
            added (e.g. Workstream 83's "Customers" section) and can exceed
