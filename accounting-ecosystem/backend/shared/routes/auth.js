@@ -172,7 +172,7 @@ router.post('/login', async (req, res) => {
     }
     // ── END 2FA DORMANT GATE ────────────────────────────────────────────────
 
-    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '8h' });
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '12h' });
 
     // Audit login
     await auditFromReq(req, 'LOGIN', 'user', user.id, {
@@ -447,7 +447,7 @@ router.post('/register', async (req, res) => {
       fullName: mainUser.full_name,
       companyId: company?.id || null,
       role: company ? ownerRole : null,
-    }, JWT_SECRET, { expiresIn: '8h' });
+    }, JWT_SECRET, { expiresIn: '12h' });
 
     res.status(201).json({
       success: true,
@@ -599,7 +599,7 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       role: role,
       isSuperAdmin: isSuperAdmin,
       hasCoachingAccess,
-    }, JWT_SECRET, { expiresIn: '8h' });
+    }, JWT_SECRET, { expiresIn: '12h' });
 
     res.json({
       success: true,
@@ -1138,7 +1138,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
       isSuperAdmin: user.is_super_admin || false,
       ssoSource: 'ecosystem',
       targetApp: targetApp,
-    }, JWT_SECRET, { expiresIn: '8h' });
+    }, JWT_SECRET, { expiresIn: '12h' });
 
     await auditFromReq(req, 'SSO_LAUNCH', 'user', user.id, {
       module: 'shared',
@@ -1821,7 +1821,7 @@ router.post('/pos/pin-login', async (req, res) => {
       companyId:         company.id,
       role:              userRole,
       permissions,
-    }, JWT_SECRET, { expiresIn: '8h' });
+    }, JWT_SECRET, { expiresIn: '12h' });
 
     res.json({
       success:     true,
