@@ -124,11 +124,23 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       item_code, item_name, item_type,
       is_taxable, is_recurring, default_amount, irp5_code,
       category, tax_treatment, paye_projection_type, affects_uif,
-      is_variable, frequency
+      is_variable, frequency, taxable_percentage
     } = req.body;
 
     if (!item_code || !item_name || !item_type) {
       return res.status(400).json({ error: 'item_code, item_name, and item_type are required' });
+    }
+
+    // taxable_percentage: what fraction of this item counts toward PAYE taxable
+    // income AND the UIF base (same percentage for both — e.g. a fixed travel
+    // allowance is typically 80). Only meaningful when is_taxable/affects_uif
+    // aren't explicitly false. Defaults to 100 (fully taxable/UIF-applicable).
+    let taxablePercentageValue = 100;
+    if (taxable_percentage !== undefined && taxable_percentage !== null && taxable_percentage !== '') {
+      taxablePercentageValue = parseFloat(taxable_percentage);
+      if (isNaN(taxablePercentageValue) || taxablePercentageValue < 0 || taxablePercentageValue > 100) {
+        return res.status(400).json({ error: `Invalid taxable_percentage: "${taxable_percentage}". Must be a number between 0 and 100.` });
+      }
     }
 
     // Validate IRP5 code format if supplied
@@ -162,7 +174,8 @@ router.post('/', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       paye_projection_type: allowedProjectionTypes.includes(paye_projection_type) ? paye_projection_type : 'VARIABLE_AVERAGE',
       affects_uif:          affects_uif === false ? false : true,
       is_variable:          is_variable || false,
-      frequency:            allowedFrequencies.includes(frequency) ? frequency : 'regular'
+      frequency:            allowedFrequencies.includes(frequency) ? frequency : 'regular',
+      taxable_percentage:   taxablePercentageValue
     };
 
     if (irp5_code) {
@@ -242,6 +255,16 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
       updates.affects_uif = req.body.affects_uif === false ? false : true;
     }
 
+    // Handle taxable_percentage — validate range. Only meaningful when
+    // is_taxable/affects_uif aren't explicitly false; see payroll-engine.js.
+    if (req.body.taxable_percentage !== undefined && req.body.taxable_percentage !== null && req.body.taxable_percentage !== '') {
+      const pct = parseFloat(req.body.taxable_percentage);
+      if (isNaN(pct) || pct < 0 || pct > 100) {
+        return res.status(400).json({ error: `Invalid taxable_percentage: "${req.body.taxable_percentage}". Must be a number between 0 and 100.` });
+      }
+      updates.taxable_percentage = pct;
+    }
+
     // Handle irp5_code change separately — needs IRP5 code validation + Sean event
     const newIrp5Code = req.body.irp5_code !== undefined
       ? (req.body.irp5_code === '' || req.body.irp5_code === null ? null : String(req.body.irp5_code).trim())
@@ -284,15 +307,27 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Sync affects_uif (and paye_projection_type if changed) to payroll_items by name.
-    // payroll_items is the calculation-time table used by PayrollDataService.
-    // When the admin changes affects_uif in the UI, existing payroll_items records
-    // for this company + item name must reflect the new value so calculations are correct.
+    // Sync affects_uif/is_taxable/taxable_percentage/paye_projection_type to
+    // payroll_items by name. payroll_items is the calculation-time table used
+    // by PayrollDataService. When the admin changes these in the UI, existing
+    // payroll_items records for this company + item name must reflect the new
+    // value so calculations are correct.
     // Fire-and-forget: failure does not block the master save.
     // NOTE: payroll_items_master uses item_name; payroll_items uses name.
+    //
+    // is_taxable was previously MISSING from this sync entirely — a real,
+    // separate bug (edits to "Taxable?" in this UI never reached the calc
+    // table). Found and fixed alongside taxable_percentage since the new
+    // field's correctness depends on is_taxable being in sync (the percentage
+    // only takes effect when is_taxable is true) — PayrollDataService.js's
+    // live master-override at calculation time already covers for this in
+    // practice, but the calc-table row itself should not silently disagree
+    // with the master row it's supposed to mirror.
     const itemName = updates.item_name || existing.item_name;
     const calcSync = {};
-    if (updates.affects_uif       !== undefined) calcSync.affects_uif       = updates.affects_uif;
+    if (updates.affects_uif          !== undefined) calcSync.affects_uif          = updates.affects_uif;
+    if (updates.is_taxable            !== undefined) calcSync.is_taxable            = updates.is_taxable;
+    if (updates.taxable_percentage    !== undefined) calcSync.taxable_percentage    = updates.taxable_percentage;
     if (updates.paye_projection_type !== undefined) calcSync.paye_projection_type = updates.paye_projection_type;
     if (Object.keys(calcSync).length > 0) {
       supabase
@@ -391,17 +426,24 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
     // at creation time, and stays in sync when items are reassigned.
     // Best-effort: failure defaults to true (UIF-applicable) — safe conservative default.
     let resolvedAffectsUif = true;
+    // taxable_percentage: same lookup, same reasoning — a fixed travel allowance
+    // item type set to 80% in the master must flow into every employee's
+    // assignment, not just apply to newly-created ones. Defaults to 100.
+    let resolvedTaxablePercentage = 100;
     try {
       const { data: masterConfig } = await supabase
         .from('payroll_items_master')
-        .select('affects_uif')
+        .select('affects_uif, taxable_percentage')
         .eq('company_id', req.companyId)
         .ilike('item_name', description)  // payroll_items_master uses item_name not name
         .maybeSingle();
       if (masterConfig && masterConfig.affects_uif === false) {
         resolvedAffectsUif = false;
       }
-    } catch (_) { /* defaults to true */ }
+      if (masterConfig && masterConfig.taxable_percentage !== undefined && masterConfig.taxable_percentage !== null) {
+        resolvedTaxablePercentage = masterConfig.taxable_percentage;
+      }
+    } catch (_) { /* defaults to true / 100 */ }
 
     // Find an existing payroll_items master record for this company + description
     let masterItemId = null;
@@ -416,7 +458,7 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
       masterItemId = existingMaster.id;
       // Sync affects_uif and paye_projection_type from the master config into the
       // calculation record — ensures future calculations use the correct flags.
-      const syncUpdates = { affects_uif: resolvedAffectsUif };
+      const syncUpdates = { affects_uif: resolvedAffectsUif, taxable_percentage: resolvedTaxablePercentage };
       if (paye_projection_type && allowedProjectionTypes.includes(paye_projection_type)) {
         syncUpdates.paye_projection_type = resolvedProjectionType;
       }
@@ -444,7 +486,8 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
             is_taxable:           is_taxable !== false,
             is_recurring:         true,
             paye_projection_type: resolvedProjectionType,
-            affects_uif:          resolvedAffectsUif
+            affects_uif:          resolvedAffectsUif,
+            taxable_percentage:   resolvedTaxablePercentage
           })
           .select('id')
           .single();

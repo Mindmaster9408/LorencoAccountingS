@@ -556,7 +556,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
       // Primary: query payroll_items_master (authoritative after migration)
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif, paye_projection_type, is_taxable, tax_treatment')
+        .select('item_name, affects_uif, paye_projection_type, is_taxable, tax_treatment, taxable_percentage')
         .eq('company_id', companyId)
         .eq('is_active', true);
 
@@ -579,6 +579,12 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
           }
           if (m.is_taxable !== undefined && m.is_taxable !== null) {
             item.payroll_items.is_taxable = m.is_taxable === true;
+          }
+          // taxable_percentage: same live-override reasoning as affects_uif/is_taxable
+          // above — a change to an item type's taxable % (e.g. travel allowance
+          // 80/20) must apply immediately, not just to newly-created assignments.
+          if (m.taxable_percentage !== undefined && m.taxable_percentage !== null) {
+            item.payroll_items.taxable_percentage = m.taxable_percentage;
           }
           // tax_treatment: payroll_items_master is authoritative (set via /api/payroll/items).
           // payroll_items (calculation table) may lag — e.g. pre_tax vs net_only mismatch.
@@ -616,6 +622,9 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
               }
               if (kv.is_taxable !== undefined && kv.is_taxable !== null) {
                 item.payroll_items.is_taxable = kv.is_taxable === true;
+              }
+              if (kv.taxable_percentage !== undefined && kv.taxable_percentage !== null) {
+                item.payroll_items.taxable_percentage = kv.taxable_percentage;
               }
             });
           }
@@ -700,7 +709,7 @@ async function fetchPeriodInputs(
       // Primary: payroll_items_master
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif, paye_projection_type')
+        .select('item_name, affects_uif, paye_projection_type, taxable_percentage')
         .eq('company_id', companyId)
         .eq('is_active', true);
 
@@ -719,6 +728,14 @@ async function fetchPeriodInputs(
           }
           if (m.paye_projection_type) {
             ci.paye_projection_type = m.paye_projection_type;
+          }
+          // taxable_percentage: same live-override reasoning as the regular-items
+          // path above — read from payroll_items_master (not payroll_period_inputs
+          // directly, matching the existing affects_uif/is_taxable caution for this
+          // table: never select an unconfirmed column on payroll_period_inputs
+          // itself, since a 400 there empties ALL period inputs, not just one item).
+          if (m.taxable_percentage !== undefined && m.taxable_percentage !== null) {
+            ci.taxable_percentage = m.taxable_percentage;
           }
         });
       } else {
@@ -746,6 +763,9 @@ async function fetchPeriodInputs(
               }
               if (kv.paye_projection_type) {
                 ci.paye_projection_type = kv.paye_projection_type;
+              }
+              if (kv.taxable_percentage !== undefined && kv.taxable_percentage !== null) {
+                ci.taxable_percentage = kv.taxable_percentage;
               }
             });
           }
@@ -820,7 +840,12 @@ function normalizeCalculationInput(
     // affects_uif: controls whether this item contributes to the UIF-applicable gross.
     // MUST preserve explicit false — do not use || true fallback (it erases false).
     // null/undefined → true (default UIF-applicable); only explicit false = excluded.
-    affects_uif: item.payroll_items?.affects_uif !== false
+    affects_uif: item.payroll_items?.affects_uif !== false,
+    // taxable_percentage: what fraction of this item's amount is taxable/UIF-
+    // applicable when is_taxable/affects_uif are not explicitly false (e.g. a
+    // fixed travel allowance is typically 80, not 0 or 100). Default 100 —
+    // identical to pre-existing behaviour for every item that never sets this.
+    taxable_percentage: item.payroll_items?.taxable_percentage != null ? item.payroll_items.taxable_percentage : 100
   }));
 
   // Normalize period inputs (current-period items)
@@ -839,7 +864,11 @@ function normalizeCalculationInput(
     //   FIXED_RECURRING / VARIABLE_AVERAGE → periodicTaxable (projected via YTD averaging × 12)
     //   ONCE_OFF                           → onceOffTaxable  (added once, never projected forward)
     // Default VARIABLE_AVERAGE is the conservative safe choice for unclassified items.
-    paye_projection_type: item.paye_projection_type || 'VARIABLE_AVERAGE'
+    paye_projection_type: item.paye_projection_type || 'VARIABLE_AVERAGE',
+    // taxable_percentage: live-overridden from payroll_items_master in fetchPeriodInputs
+    // above (never read from payroll_period_inputs directly — see the caution comment
+    // there about unconfirmed columns on that specific table). Default 100.
+    taxable_percentage: item.taxable_percentage != null ? item.taxable_percentage : 100
   }));
 
   // Normalize overtime (preserve decimal hours)

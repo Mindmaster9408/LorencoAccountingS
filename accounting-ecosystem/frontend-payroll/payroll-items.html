@@ -780,6 +780,19 @@
                         </div>
                     </div>
 
+                    <!-- Taxable % — what fraction of this item counts toward PAYE taxable
+                         income AND the UIF base (same percentage for both), when Taxable?/
+                         Affects UIF? above are not set to No. Only matters for items that
+                         are PARTIALLY taxable — e.g. a fixed travel allowance is typically
+                         80% taxable (or 20% if a logbook proves >= 80% business use).
+                         Defaults to 100 — every item that never touches this behaves exactly
+                         as before. -->
+                    <div class="form-group" style="margin-bottom:20px;">
+                        <label>Taxable % <span style="color:#666; font-weight:normal;">(of amount that counts toward PAYE &amp; UIF)</span></label>
+                        <input type="number" id="taxablePercentage" min="0" max="100" step="0.01" placeholder="100" value="100">
+                        <small style="color:#666;">Default 100 (fully taxable/UIF-applicable). Set to 80 for a fixed travel allowance (or 20 if a logbook proves &ge;80% business use). Only applies when Taxable? and/or Affects UIF? above are Yes.</small>
+                    </div>
+
                     <!-- Tax Treatment — only shown for deduction items -->
                     <div id="taxTreatmentGroup" class="form-group" style="display:none;">
                         <label>Tax Treatment <span style="color:#dc3545;">*</span></label>
@@ -1366,6 +1379,7 @@
             // is the SA default). A null stored value means the item predates this column — treat as Yes
             // so the accountant consciously sets No and saves, writing an explicit false to the DB.
             document.getElementById('affectsUif').value = item.affects_uif === false ? '0' : '1';
+            document.getElementById('taxablePercentage').value = (item.taxable_percentage === undefined || item.taxable_percentage === null) ? '100' : item.taxable_percentage;
             document.getElementById('taxTreatment').value = item.tax_treatment || 'net_only';
             document.getElementById('payeProjectionType').value = item.paye_projection_type || 'VARIABLE_AVERAGE';
             document.getElementById('itemFrequency').value = item.frequency || 'regular';
@@ -1447,6 +1461,7 @@
                 default_amount:       parseFloat(document.getElementById('defaultAmount').value) || 0,
                 is_taxable:           parseInt(document.getElementById('isTaxable').value) === 1,
                 affects_uif:          parseInt(document.getElementById('affectsUif').value) === 1,
+                taxable_percentage:   document.getElementById('taxablePercentage').value === '' ? 100 : parseFloat(document.getElementById('taxablePercentage').value),
                 is_variable:          document.getElementById('behaviourVariable').checked,
                 frequency:            document.getElementById('itemFrequency').value || 'regular',
                 tax_treatment:        uiType === 'deduction'

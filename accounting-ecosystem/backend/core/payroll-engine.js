@@ -677,13 +677,28 @@ const PayrollEngine = {
         resolvedRegularInputs.forEach(function(ri) {
             if (ri.type !== 'deduction') {
                 var amt = parseFloat(ri.amount) || 0;
+                // taxable_percentage: what fraction of amt is taxable/UIF-applicable
+                // when the item isn't fully excluded (e.g. a fixed travel allowance
+                // is typically 80% taxable, not 0% or 100%). null/undefined → 100
+                // (safe default — identical to pre-existing behaviour for every
+                // item that has never set this field). Only takes effect when the
+                // item is otherwise taxable/UIF-applicable — is_taxable/affects_uif
+                // remain the master on/off switch, unaffected by this percentage.
+                var pct = (ri.taxable_percentage === null || ri.taxable_percentage === undefined)
+                    ? 100 : parseFloat(ri.taxable_percentage);
+                var taxablePortion    = PayrollEngine.r2(amt * (pct / 100));
+                var nonTaxablePortion = PayrollEngine.r2(amt - taxablePortion);
+
                 // UIF: include only items where affects_uif !== false (whitelist).
                 // null/undefined → UIF-applicable (safe default). Only explicit false excludes.
-                if (ri.affects_uif !== false) { uifApplicableGross += amt; }
+                // Uses the same taxablePortion as PAYE — SARS applies the identical
+                // percentage split to UIF remuneration as to PAYE taxable income.
+                if (ri.affects_uif !== false) { uifApplicableGross += taxablePortion; }
                 if (ri.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
-                    periodicTaxable += amt;
+                    periodicTaxable  += taxablePortion;
+                    nonTaxableIncome += nonTaxablePortion;
                 }
             }
         });
@@ -697,16 +712,25 @@ const PayrollEngine = {
         (currentInputs || []).forEach(function(ci) {
             if (ci.type !== 'deduction') {
                 var amt = parseFloat(ci.amount) || 0;
+                // taxable_percentage: same fractional-inclusion rule as regular
+                // inputs above (see that loop's comment) — applied before the
+                // once-off/periodic routing decision below.
+                var pct = (ci.taxable_percentage === null || ci.taxable_percentage === undefined)
+                    ? 100 : parseFloat(ci.taxable_percentage);
+                var taxablePortion    = PayrollEngine.r2(amt * (pct / 100));
+                var nonTaxablePortion = PayrollEngine.r2(amt - taxablePortion);
+
                 // UIF: include only if affects_uif !== false (whitelist — same rule as regular inputs).
-                if (ci.affects_uif !== false) { uifApplicableGross += amt; }
+                if (ci.affects_uif !== false) { uifApplicableGross += taxablePortion; }
                 if (ci.is_taxable === false) {
                     nonTaxableIncome += amt;
                 } else {
+                    nonTaxableIncome += nonTaxablePortion;
                     var projType = ci.paye_projection_type || 'VARIABLE_AVERAGE';
                     if (projType === 'ONCE_OFF') {
-                        onceOffTaxable += amt;
+                        onceOffTaxable += taxablePortion;
                     } else {
-                        periodicTaxable += amt;
+                        periodicTaxable += taxablePortion;
                     }
                 }
             }
@@ -999,6 +1023,12 @@ const PayrollEngine = {
         // Employee-level UIF exemption (stored in employee_payroll_setup.uif_exempt).
         if (employeeOptions && employeeOptions.uif_exempt === true) { uif = 0; }
 
+        // Employer UIF contribution — under the Unemployment Insurance Contributions
+        // Act the employer matches the employee's 1% (same base, same monthly cap),
+        // so it is always equal to `uif` once all registration/director/exemption
+        // overrides above have already zeroed it out where applicable.
+        var uif_employer = uif;
+
         // === VOLUNTARY PAYE ADJUSTMENT ===
         // Supports signed adjustments: direction 'increase' (default) adds to PAYE,
         // direction 'reduce' subtracts. Types: fixed, variable, bonus_spread, target_paye.
@@ -1109,6 +1139,9 @@ const PayrollEngine = {
             // UIF transparency fields — allow payslip and audit to show the correct UIF base.
             uifApplicableGross:   PayrollEngine.r2(uifApplicableGross),
             uifExcludedEarnings:  PayrollEngine.r2(uifExcludedEarnings),
+            // === ADDITIVE FIELD (company contributions payslip display) ===
+            // Employer-side UIF match — see comment at calculation site above.
+            uif_employer: PayrollEngine.r2(uif_employer),
             // === ADDITIVE FIELDS (SARS spec compliance — tax breakdown transparency) ===
             // taxBeforeRebate: monthly bracket tax before age rebates (annual ÷ 12)
             // rebate: monthly sum of applicable age rebates (primary + secondary + tertiary)
