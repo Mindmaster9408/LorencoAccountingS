@@ -1037,6 +1037,35 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // 5. Sync Serial Number Tracking addon toggle → companies.modules_enabled
+    //    (POS add-on — see Control Panel APP_REGISTRY 'pos' entry's seanAddonKey)
+    if (changedFields.includes('addons') && updated.client_company_id) {
+      try {
+        const newAddons = updated.addons || [];
+        const oldAddons = old.addons || [];
+        const serialAdded   = newAddons.includes('serial_tracking') && !oldAddons.includes('serial_tracking');
+        const serialRemoved = !newAddons.includes('serial_tracking') && oldAddons.includes('serial_tracking');
+        if (serialAdded || serialRemoved) {
+          const { data: coData } = await supabase
+            .from('companies')
+            .select('modules_enabled')
+            .eq('id', updated.client_company_id)
+            .single();
+          if (coData) {
+            let mods = coData.modules_enabled || [];
+            if (serialAdded   && !mods.includes('serial_tracking')) mods = [...mods, 'serial_tracking'];
+            if (serialRemoved) mods = mods.filter(m => m !== 'serial_tracking');
+            await supabase
+              .from('companies')
+              .update({ modules_enabled: mods })
+              .eq('id', updated.client_company_id);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[eco-clients] Serial tracking addon sync to companies failed:', syncErr.message);
+      }
+    }
+
     // 5. Sync core contact fields → companies table (eco hub → accounting direction)
     // eco_clients.name ↔ companies.company_name
     // eco_clients.email ↔ companies.email

@@ -63,7 +63,23 @@ router.get('/', requirePermission('SETTINGS.VIEW'), async (req, res) => {
       }
     }
 
-    res.json({ settings: data });
+    // Serial Number Tracking is a Control-Panel-governed add-on (companies.modules_enabled),
+    // not a manager-toggleable company_settings field — merged in read-only here so the
+    // existing PUT /settings route can never accidentally write it. First time POS reads
+    // modules_enabled at all; every other consumer of this flag lives outside POS.
+    let serialTrackingEnabled = false;
+    try {
+      const { data: co } = await supabase
+        .from('companies')
+        .select('modules_enabled')
+        .eq('id', req.companyId)
+        .maybeSingle();
+      serialTrackingEnabled = !!(co && co.modules_enabled && co.modules_enabled.includes('serial_tracking'));
+    } catch (modErr) {
+      console.warn('[Settings] modules_enabled lookup failed, defaulting serial_tracking_enabled=false:', modErr.message);
+    }
+
+    res.json({ settings: { ...data, serial_tracking_enabled: serialTrackingEnabled } });
   } catch (err) {
     console.error('[Settings] GET error:', err);
     res.status(500).json({ error: 'Server error' });

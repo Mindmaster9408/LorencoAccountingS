@@ -443,6 +443,9 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     const normItems = items.map(item => ({
       product_id: item.product_id ?? item.productId,
       quantity:   item.quantity,
+      // Serial Number Tracking — optional, only present when the till collected
+      // specific serials for a serial-tracked product. Absent for every other item.
+      serial_numbers: Array.isArray(item.serial_numbers) ? item.serial_numbers : undefined,
     }));
 
     const productIds = [...new Set(normItems.map(i => i.product_id).filter(Boolean))];
@@ -605,6 +608,10 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
         vat_rate:        item.product.vat_rate || 15,
         line_total:      item.line_total,
         discount_amount: 0,
+        // Serial Number Tracking — key omitted entirely (not sent as null) when
+        // absent, since create_sale_atomic checks key EXISTENCE (`v_item ?
+        // 'serial_numbers'`), not truthiness, to stay backward compatible.
+        ...(item.serial_numbers && item.serial_numbers.length > 0 ? { serial_numbers: item.serial_numbers } : {}),
       })),
       p_payments: payments,
     });
@@ -618,6 +625,14 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
           metadata: { rpc_error: rpcError.message, stage: 'atomic_rpc' },
         });
         return res.status(422).json({ error: 'Stock check failed', details: [rpcError.message] });
+      }
+      if (msg.includes('serial number')) {
+        posAuditFromReq(req, POS_EVENTS.SALE_STOCK_FAILED, {
+          tillSessionId: till_session_id,
+          source,
+          metadata: { rpc_error: rpcError.message, stage: 'atomic_rpc_serial' },
+        });
+        return res.status(422).json({ error: 'Serial number check failed', details: [rpcError.message] });
       }
       posAuditFromReq(req, POS_EVENTS.SALE_RPC_FAILED, {
         tillSessionId: till_session_id,
@@ -811,6 +826,9 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
     const normItems = items.map(item => ({
       product_id: item.product_id ?? item.productId,
       quantity:   item.quantity,
+      // Serial Number Tracking — optional, only present when the till collected
+      // specific serials for a serial-tracked product. Absent for every other item.
+      serial_numbers: Array.isArray(item.serial_numbers) ? item.serial_numbers : undefined,
     }));
 
     const productIds = [...new Set(normItems.map(i => i.product_id).filter(Boolean))];
@@ -897,6 +915,7 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
         vat_rate:        item.product.vat_rate || 15,
         line_total:      item.line_total,
         discount_amount: 0,
+        ...(item.serial_numbers && item.serial_numbers.length > 0 ? { serial_numbers: item.serial_numbers } : {}),
       })),
       p_payments: [{ payment_method: payment_method || 'cash', amount: depositAmount, reference: null }],
     });
@@ -905,6 +924,9 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
       const msg = (rpcError.message || '').toLowerCase();
       if (msg.includes('insufficient stock')) {
         return res.status(422).json({ error: 'Stock check failed', details: [rpcError.message] });
+      }
+      if (msg.includes('serial number')) {
+        return res.status(422).json({ error: 'Serial number check failed', details: [rpcError.message] });
       }
       console.error('[Sales] create_sale_atomic (order) failed:', rpcError);
       return res.status(500).json({ error: 'Order creation failed', details: rpcError.message });

@@ -2269,7 +2269,7 @@
                     </div>
                     <div class="form-group">
                         <label>Adjustment Type</label>
-                        <select id="adjustType">
+                        <select id="adjustType" onchange="updateAdjustSerialArea()">
                             <option value="add">Add Stock (+)</option>
                             <option value="remove">Remove Stock (−)</option>
                             <option value="set">Set to Exact Level</option>
@@ -2277,7 +2277,15 @@
                     </div>
                     <div class="form-group">
                         <label>Quantity</label>
-                        <input type="number" id="adjustQuantity" min="0" value="0">
+                        <input type="number" id="adjustQuantity" min="0" value="0" oninput="updateAdjustSerialArea()">
+                    </div>
+                    <!-- Serial Number Tracking — only shown for serial-tracked products, and
+                         only for add/remove (a "set to exact level" doesn't identify which
+                         specific units are involved, so it's not offered here). -->
+                    <div class="form-group" id="adjustSerialsArea" style="display:none;">
+                        <label id="adjustSerialsLabel">Serial Numbers</label>
+                        <textarea id="adjustSerials" rows="3" placeholder="One serial number per line or comma-separated" style="width:100%;padding:6px;font-size:13px;border:1px solid #ddd;border-radius:4px;" oninput="updateAdjustSerialHint()"></textarea>
+                        <div id="adjustSerialsHint" style="font-size:11px;color:#666;margin-top:2px;"></div>
                     </div>
                     <div class="form-group">
                         <label>Reason *</label>
@@ -2377,6 +2385,36 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeReceiveStock()">Cancel</button>
                     <button class="btn btn-primary" onclick="submitReceiveStock()">Receive Stock</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Serial Number Picker Modal — shown at add-to-cart time only for
+             products with track_serial=true (Serial Number Tracking add-on).
+             Every other product's add-to-cart flow never touches this modal. -->
+        <div id="serialPickerModal" class="modal-overlay">
+            <div class="modal" style="max-width:420px;">
+                <div class="modal-header">
+                    <h2>Select Serial Number</h2>
+                    <button class="close-btn" onclick="closeSerialPickerModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="serialPickerProductName" style="font-weight:600;margin:0 0 10px;"></p>
+                    <div class="form-group">
+                        <label>Scan or type the serial number</label>
+                        <input type="text" id="serialPickerInput" autocomplete="off"
+                            placeholder="Serial number..." style="width:100%;"
+                            onkeypress="if(event.key==='Enter'){event.preventDefault();confirmSerialPicker();}">
+                    </div>
+                    <div id="serialPickerError" style="color:#c62828;font-size:12px;display:none;margin-bottom:8px;"></div>
+                    <div>
+                        <label style="font-size:12px;color:#666;">Available in stock (click to select):</label>
+                        <div id="serialPickerList" style="max-height:160px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;margin-top:4px;"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeSerialPickerModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="confirmSerialPicker()">Add to Cart</button>
                 </div>
             </div>
         </div>
@@ -3071,6 +3109,9 @@
                     <div class="settings-menu-item" onclick="showReport('stock-takes', event)">Stock Takes</div>
                     <div class="settings-menu-item" onclick="showReport('stock-receives', event)">Supplier Receives</div>
                     <div class="settings-menu-item" onclick="showReport('stock-transfers', event)">Stock Transfers</div>
+                    <!-- Serial Number Tracking add-on only — hidden entirely for every
+                         other client (toggled by applyRoleBasedVisibility()/completeLogin()). -->
+                    <div class="settings-menu-item" id="serialLookupMenuItem" style="display:none;" onclick="showReport('serial-lookup', event)">Serial Number Lookup</div>
 
                     <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">Customers</h3>
                     <div class="settings-menu-item" onclick="showReport('sales-by-customer', event)">Sales by Customer</div>
@@ -4420,6 +4461,16 @@
                         Active
                     </label>
                 </div>
+
+                <!-- Serial Number Tracking — only shown when the Control-Panel add-on
+                     (serialTrackingEnabled) is active for this company. Hidden entirely
+                     otherwise so the form is byte-for-byte unchanged for every other client. -->
+                <div class="form-group" id="productTrackSerialRow" style="display:none;">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="productTrackSerial">
+                        Track Serial Numbers
+                    </label>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeProductModal()">Cancel</button>
@@ -5102,6 +5153,11 @@
         // Default false = strict mode (negative stock blocked). Never read from
         // localStorage; always sourced from the API on each login.
         let companyStockPolicy = { allowNegativeStock: false };
+
+        // Serial Number Tracking add-on — Control-Panel-governed (companies.modules_enabled),
+        // loaded read-only from the same /api/pos/settings call. Default false so every
+        // client without the add-on sees zero UI change anywhere in the till.
+        let serialTrackingEnabled = false;
 
         // ========== OFFLINE-FIRST FUNCTIONALITY ==========
         let isOnline = navigator.onLine;
@@ -6196,6 +6252,9 @@
                     if (companyStockPolicy.allowNegativeStock) {
                         console.warn('[StockPolicy] Negative stock sales ENABLED for this company');
                     }
+                    serialTrackingEnabled = !!(d.settings?.serial_tracking_enabled);
+                    const serialLookupMenuItem = document.getElementById('serialLookupMenuItem');
+                    if (serialLookupMenuItem) serialLookupMenuItem.style.display = serialTrackingEnabled ? 'block' : 'none';
                 }
             } catch (e) {
                 // Default remains false — strict mode if the endpoint is unavailable.
@@ -8245,11 +8304,29 @@
             displayProductsGrid(filtered);
         }
 
-        function addToCart(product) {
+        // Serial Number Picker state (Serial Number Tracking add-on) — mirrors
+        // the single-active-modal pattern already used elsewhere (e.g.
+        // editingProductId) rather than passing product through inline HTML.
+        let currentSerialPickerProduct = null;
+        let currentSerialPickerAvailable = [];
+
+        function addToCart(product, serialNumber) {
             if (forceUpdatePending) {
                 showNotification('A required update is pending. Please refresh before continuing.', 'error');
                 return;
             }
+
+            // Serial Number Tracking — a serial-tracked product needs the cashier
+            // to pick/scan which specific unit is being sold before it can be
+            // added to the cart. Intercepted here (not at each call site) so
+            // every existing caller (barcode scan, tile click) is completely
+            // unchanged — this only ever branches for a serial-tracked product,
+            // never for the overwhelming majority that aren't.
+            if (product.track_serial && serialNumber === undefined) {
+                openSerialPickerModal(product);
+                return;
+            }
+
             const existing = cart.find(item => item.productId === product.id);
             // When offline use the locally-estimated stock so the cart guard reflects
             // sales already saved to IndexedDB that haven't been confirmed by the server.
@@ -8260,8 +8337,10 @@
             if (existing) {
                 if (existing.quantity < availableStock) {
                     existing.quantity++;
+                    if (serialNumber) (existing.serialNumbers = existing.serialNumbers || []).push(serialNumber);
                 } else if (companyStockPolicy.allowNegativeStock) {
                     existing.quantity++;
+                    if (serialNumber) (existing.serialNumbers = existing.serialNumbers || []).push(serialNumber);
                     showNotification(
                         `Warning: ${product.product_name} — selling into negative stock`,
                         'error'
@@ -8298,12 +8377,91 @@
                     // enforces the actual decrement. Use a very large number rather than
                     // Infinity to stay compatible with any JSON serialisation that might
                     // happen to the cart array.
-                    maxStock: companyStockPolicy.allowNegativeStock ? 999999 : availableStock
+                    maxStock: companyStockPolicy.allowNegativeStock ? 999999 : availableStock,
+                    ...(serialNumber ? { serialNumbers: [serialNumber] } : {})
                 });
             }
 
             updateCart();
             setTimeout(refocusScanner, 100);
+        }
+
+        // ── Serial Number Picker (Serial Number Tracking add-on) ────────────────
+        // Only ever opened from addToCart() for a product with track_serial=true.
+        async function openSerialPickerModal(product) {
+            currentSerialPickerProduct = product;
+            currentSerialPickerAvailable = [];
+            document.getElementById('serialPickerProductName').textContent = product.product_name;
+            document.getElementById('serialPickerInput').value = '';
+            document.getElementById('serialPickerError').style.display = 'none';
+            document.getElementById('serialPickerList').innerHTML = '<div style="padding:8px;color:#888;font-size:12px;">Loading…</div>';
+            document.getElementById('serialPickerModal').style.display = 'flex';
+
+            try {
+                const res = await fetch(`${API_URL}/pos/products/${product.id}/serials?status=in_stock`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    currentSerialPickerAvailable = (data.serials || []).map(s => s.serial_number);
+                }
+            } catch (e) {
+                console.warn('[SerialPicker] Failed to load available serials:', e.message);
+            }
+            renderSerialPickerList();
+            document.getElementById('serialPickerInput').focus();
+        }
+
+        function renderSerialPickerList() {
+            // Exclude serials already added to THIS cart (same product, multiple
+            // units) so the same physical unit can't be picked twice in one sale.
+            const alreadyInCart = new Set(
+                (cart.find(i => i.productId === currentSerialPickerProduct?.id)?.serialNumbers) || []
+            );
+            const available = currentSerialPickerAvailable.filter(s => !alreadyInCart.has(s));
+            const list = document.getElementById('serialPickerList');
+            if (available.length === 0) {
+                list.innerHTML = '<div style="padding:8px;color:#888;font-size:12px;">No serial numbers currently in stock for this product.</div>';
+                return;
+            }
+            list.innerHTML = available.map(s => `
+                <div onclick="document.getElementById('serialPickerInput').value=${JSON.stringify(s)}"
+                    style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;"
+                    onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">
+                    ${s.replace(/</g, '&lt;')}
+                </div>
+            `).join('');
+        }
+
+        function closeSerialPickerModal() {
+            document.getElementById('serialPickerModal').style.display = 'none';
+            currentSerialPickerProduct = null;
+        }
+
+        function confirmSerialPicker() {
+            const raw = document.getElementById('serialPickerInput').value.trim();
+            const errorEl = document.getElementById('serialPickerError');
+            if (!raw) {
+                errorEl.textContent = 'Scan or select a serial number.';
+                errorEl.style.display = 'block';
+                return;
+            }
+            const alreadyInCart = new Set(
+                (cart.find(i => i.productId === currentSerialPickerProduct?.id)?.serialNumbers) || []
+            );
+            if (alreadyInCart.has(raw)) {
+                errorEl.textContent = 'That serial number is already in this sale.';
+                errorEl.style.display = 'block';
+                return;
+            }
+            if (!currentSerialPickerAvailable.includes(raw)) {
+                errorEl.textContent = 'That serial number is not currently in stock for this product.';
+                errorEl.style.display = 'block';
+                return;
+            }
+            const product = currentSerialPickerProduct;
+            closeSerialPickerModal();
+            addToCart(product, raw);
         }
 
         // Single source of truth for cart totals. unit_price is VAT-INCLUSIVE, so VAT is
@@ -8430,16 +8588,35 @@
 
         function updateQty(productId, change) {
             const item = cart.find(i => i.productId === productId);
-            if (item) {
-                item.quantity += change;
-                if (item.quantity <= 0) {
-                    removeItem(productId);
-                } else if (item.quantity > item.maxStock) {
-                    item.quantity = item.maxStock;
-                    showNotification('Maximum stock reached', 'error');
+            if (!item) return;
+
+            // Serial Number Tracking — quantity for a serial-tracked line is
+            // derived from item.serialNumbers, not a free-standing number, so
+            // the +/- buttons can't just adjust it blindly (checkout would then
+            // send a serial count that doesn't match quantity). "+" re-opens the
+            // picker to scan another unit; "-" drops the most recently added
+            // serial. Every non-serial-tracked item is completely unaffected.
+            if (item.serialNumbers) {
+                if (change > 0) {
+                    const product = productsById.get(productId);
+                    if (product) openSerialPickerModal(product);
+                    return;
                 }
-                updateCart();
+                item.serialNumbers.pop();
+                item.quantity = item.serialNumbers.length;
+                if (item.quantity <= 0) removeItem(productId);
+                else updateCart();
+                return;
             }
+
+            item.quantity += change;
+            if (item.quantity <= 0) {
+                removeItem(productId);
+            } else if (item.quantity > item.maxStock) {
+                item.quantity = item.maxStock;
+                showNotification('Maximum stock reached', 'error');
+            }
+            updateCart();
         }
 
         function removeItem(productId) {
@@ -8675,7 +8852,10 @@
                     quantity: item.quantity,
                     productName: item.name,
                     unitPrice: item.price,
-                    totalPrice: item.price * item.quantity
+                    totalPrice: item.price * item.quantity,
+                    // Serial Number Tracking — only present on serial-tracked products
+                    // (see addToCart()); absent for every other cart line.
+                    ...(item.serialNumbers && item.serialNumbers.length > 0 ? { serial_numbers: item.serialNumbers } : {}),
                 })),
                 paymentMethod: selectedPayment,
                 subtotal,
@@ -8741,7 +8921,8 @@
                         tillSessionId: currentSession.id,
                         items: cart.map(item => ({
                             productId: item.productId,
-                            quantity: item.quantity
+                            quantity: item.quantity,
+                            ...(item.serialNumbers && item.serialNumbers.length > 0 ? { serial_numbers: item.serialNumbers } : {}),
                         })),
                         paymentMethod: selectedPayment,
                         customerId: selectedAccountCustomerId || undefined,
@@ -9600,6 +9781,8 @@
             document.getElementById('productRequiresVat').checked = true;
             document.getElementById('productTaxRate').disabled = false;
             document.getElementById('seanResponse').innerHTML = '';
+            document.getElementById('productTrackSerialRow').style.display = serialTrackingEnabled ? 'block' : 'none';
+            document.getElementById('productTrackSerial').checked = false;
 
             document.getElementById('productModal').style.display = 'flex';
 
@@ -9701,6 +9884,8 @@
                 (product.vat_rate === null || product.vat_rate === undefined) ? '15' : product.vat_rate;
             document.getElementById('productTaxRate').disabled = !productRequiresVat;
             document.getElementById('seanResponse').innerHTML = '';
+            document.getElementById('productTrackSerialRow').style.display = serialTrackingEnabled ? 'block' : 'none';
+            document.getElementById('productTrackSerial').checked = product.track_serial === true || product.track_serial === 1;
 
             // Trigger profit calculation
             const event = new Event('input');
@@ -9759,7 +9944,11 @@
                 is_active: nowActive ? 1 : 0,
                 barcode: barcode,
                 requires_vat: document.getElementById('productRequiresVat').checked ? 1 : 0,
-                vat_rate: parseFloat(document.getElementById('productTaxRate').value)
+                vat_rate: parseFloat(document.getElementById('productTaxRate').value),
+                // Only meaningful when the Serial Tracking add-on is enabled for this
+                // company — the row is hidden and the checkbox stays unchecked otherwise,
+                // so this is always false/0 for clients without the add-on.
+                track_serial: document.getElementById('productTrackSerial').checked ? 1 : 0
             };
 
             try {
@@ -10102,6 +10291,10 @@
             }
             if (currentReport === 'customer-statement') {
                 loadCustomerStatementReport(container);
+                return;
+            }
+            if (currentReport === 'serial-lookup') {
+                loadSerialLookupReport(container);
                 return;
             }
 
@@ -11848,6 +12041,8 @@
             document.getElementById('adjustQuantity').value = '0';
             document.getElementById('adjustReason').value = '';
             if (document.getElementById('adjustNotes')) document.getElementById('adjustNotes').value = '';
+            document.getElementById('adjustSerials').value = '';
+            document.getElementById('adjustSerialsArea').style.display = 'none';
             document.getElementById('stockAdjustModal').style.display = 'flex';
         }
 
@@ -11859,6 +12054,7 @@
             const productId = document.getElementById('adjustProductId').value;
             if (!productId) {
                 document.getElementById('currentStockDisplay').textContent = '-';
+                updateAdjustSerialArea();
                 return;
             }
 
@@ -11866,6 +12062,34 @@
             if (product) {
                 document.getElementById('currentStockDisplay').textContent = product.stock_quantity;
             }
+            updateAdjustSerialArea();
+        }
+
+        // Shows/hides the serial-capture textarea in the Stock Adjustment modal.
+        // Only relevant for a serial-tracked product AND an add/remove type (a
+        // "set to exact level" adjustment doesn't identify which specific units
+        // moved, so serial capture isn't offered for it). Every non-serial-
+        // tracked product sees no change to this modal at all.
+        function updateAdjustSerialArea() {
+            const productId = document.getElementById('adjustProductId').value;
+            const product = productId ? productsById.get(parseInt(productId, 10)) : null;
+            const adjustType = document.getElementById('adjustType').value;
+            const area = document.getElementById('adjustSerialsArea');
+            const show = !!(product && product.track_serial && (adjustType === 'add' || adjustType === 'remove'));
+            area.style.display = show ? 'block' : 'none';
+            if (show) {
+                document.getElementById('adjustSerialsLabel').textContent =
+                    adjustType === 'add' ? 'Serial Numbers (new units)' : 'Serial Numbers (units being removed)';
+                updateAdjustSerialHint();
+            }
+        }
+
+        function updateAdjustSerialHint() {
+            const qty = parseInt(document.getElementById('adjustQuantity').value) || 0;
+            const entered = parseReceiveSerials(document.getElementById('adjustSerials').value).length;
+            const hint = document.getElementById('adjustSerialsHint');
+            hint.textContent = `${entered} of ${qty} serial number(s) entered`;
+            hint.style.color = entered === qty ? '#2e7d32' : '#b45309';
         }
 
         async function submitStockAdjust() {
@@ -11887,11 +12111,20 @@
             else if (adjustType === 'remove') quantity_change = -quantityRaw;
             else quantity_change = quantityRaw - currentQty; // set to exact level
 
+            let serial_numbers;
+            if (product && product.track_serial && (adjustType === 'add' || adjustType === 'remove')) {
+                serial_numbers = parseReceiveSerials(document.getElementById('adjustSerials').value);
+                if (serial_numbers.length !== Math.abs(quantity_change)) {
+                    showNotification(`This product is serial-tracked — entered ${serial_numbers.length} serial number(s), expected ${Math.abs(quantity_change)}.`, 'error');
+                    return;
+                }
+            }
+
             try {
                 const response = await fetch(`${API_URL}/pos/inventory/adjust`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ product_id: parseInt(productId), quantity_change, reason, notes })
+                    body: JSON.stringify({ product_id: parseInt(productId), quantity_change, reason, notes, serial_numbers })
                 });
                 const result = await response.json();
                 if (response.ok) {
@@ -11911,6 +12144,7 @@
             showStockAdjustModal();
             document.getElementById('adjustProductId').value = productId;
             document.getElementById('currentStockDisplay').textContent = currentStock;
+            updateAdjustSerialArea(); // setting .value directly above doesn't fire onchange
         }
 
         // ── Stock Take ────────────────────────────────────────────────────────────
@@ -11987,17 +12221,21 @@
 
         function addReceiveRow() {
             const tbody = document.getElementById('receiveItemsBody');
-            const options = (products || []).map(p => `<option value="${p.id}">${p.product_name}</option>`).join('');
+            const options = (products || []).map(p => `<option value="${p.id}" data-track-serial="${p.track_serial ? '1' : '0'}">${p.product_name}</option>`).join('');
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #eee';
             tr.innerHTML = `
                 <td style="padding:5px;">
-                    <select style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;">
+                    <select style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;" onchange="updateReceiveRowSerials(this)">
                         <option value="">Select product...</option>${options}
                     </select>
+                    <div class="receive-serials-area" style="display:none;margin-top:5px;">
+                        <textarea rows="2" placeholder="One serial number per line or comma-separated" style="width:100%;padding:4px;font-size:12px;border:1px solid #ddd;border-radius:4px;" oninput="updateReceiveSerialHint(this)"></textarea>
+                        <div class="receive-serials-hint" style="font-size:11px;color:#666;margin-top:2px;"></div>
+                    </div>
                 </td>
                 <td style="padding:5px;">
-                    <input type="number" min="1" value="1" style="width:75px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
+                    <input type="number" min="1" value="1" style="width:75px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;" oninput="updateReceiveRowSerials(this)">
                 </td>
                 <td style="padding:5px;">
                     <input type="number" min="0" step="0.01" placeholder="0.00" style="width:90px;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
@@ -12008,12 +12246,43 @@
             tbody.appendChild(tr);
         }
 
+        // Shows/hides the per-row serial-capture textarea based on whether the
+        // selected product is serial-tracked (track_serial), and keeps the
+        // live "X of Y entered" hint current as quantity changes. Only ever
+        // does anything for serial-tracked products — every other product's
+        // row is completely unaffected (area stays hidden, no extra fields
+        // sent on submit).
+        function updateReceiveRowSerials(el) {
+            const row = el.closest('tr');
+            const select = row.querySelector('select');
+            const qtyInput = row.querySelectorAll('input[type="number"]')[0];
+            const area = row.querySelector('.receive-serials-area');
+            const opt = select.options[select.selectedIndex];
+            const isSerialTracked = !!(opt && opt.dataset.trackSerial === '1');
+            area.style.display = isSerialTracked ? 'block' : 'none';
+            if (isSerialTracked) updateReceiveSerialHint(area.querySelector('textarea'));
+        }
+
+        function updateReceiveSerialHint(textarea) {
+            const row = textarea.closest('tr');
+            const qty = parseInt(row.querySelectorAll('input[type="number"]')[0]?.value) || 0;
+            const entered = parseReceiveSerials(textarea.value).length;
+            const hint = textarea.closest('.receive-serials-area').querySelector('.receive-serials-hint');
+            hint.textContent = `${entered} of ${qty} serial number(s) entered`;
+            hint.style.color = entered === qty ? '#2e7d32' : '#b45309';
+        }
+
+        function parseReceiveSerials(raw) {
+            return (raw || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+        }
+
         async function submitReceiveStock() {
             const supplier_name = document.getElementById('receiveSupplier').value.trim();
             if (!supplier_name) { showNotification('Supplier name is required', 'error'); return; }
             const reference = document.getElementById('receiveReference').value.trim();
             const notes     = document.getElementById('receiveNotes').value.trim();
             const items = [];
+            let serialMismatch = null;
             document.querySelectorAll('#receiveItemsBody tr').forEach(row => {
                 const sel  = row.querySelector('select');
                 const inputs = row.querySelectorAll('input[type="number"]');
@@ -12021,10 +12290,21 @@
                 const qty  = parseInt(inputs[0]?.value);
                 if (pid && qty > 0) {
                     const cost = inputs[1]?.value;
-                    items.push({ product_id: parseInt(pid), quantity: qty, cost_price: cost ? parseFloat(cost) : null });
+                    const item = { product_id: parseInt(pid), quantity: qty, cost_price: cost ? parseFloat(cost) : null };
+                    const opt = sel.options[sel.selectedIndex];
+                    if (opt && opt.dataset.trackSerial === '1') {
+                        const textarea = row.querySelector('.receive-serials-area textarea');
+                        const serials = parseReceiveSerials(textarea?.value);
+                        if (serials.length !== qty) {
+                            serialMismatch = `${opt.textContent} is serial-tracked — entered ${serials.length} serial number(s), expected ${qty}.`;
+                        }
+                        item.serial_numbers = serials;
+                    }
+                    items.push(item);
                 }
             });
             if (items.length === 0) { showNotification('Please add at least one product', 'error'); return; }
+            if (serialMismatch) { showNotification(serialMismatch, 'error'); return; }
             try {
                 const res = await fetch(`${API_URL}/pos/inventory/receive`, {
                     method: 'POST',
@@ -12033,7 +12313,12 @@
                 });
                 const result = await res.json();
                 if (res.ok) {
-                    showNotification(`Stock received from ${supplier_name} — ${items.length} product(s)`, 'success');
+                    const serialErrors = (result.receive?.items || []).filter(i => i.serial_error);
+                    if (serialErrors.length > 0) {
+                        showNotification(`Received, but serial number issue: ${serialErrors.map(e => e.serial_error).join(' ')}`, 'error');
+                    } else {
+                        showNotification(`Stock received from ${supplier_name} — ${items.length} product(s)`, 'success');
+                    }
                     closeReceiveStock();
                     loadProducts();
                     loadStock();
@@ -12622,7 +12907,8 @@
                     tillSessionId: currentSession.id,
                     items: cart.map(item => ({
                         productId: item.productId,
-                        quantity: item.quantity
+                        quantity: item.quantity,
+                        ...(item.serialNumbers && item.serialNumbers.length > 0 ? { serial_numbers: item.serialNumbers } : {}),
                     })),
                     payments
                 };
@@ -17946,7 +18232,11 @@
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         tillSessionId: currentSession.id,
-                        items: cart.map(item => ({ productId: item.productId, quantity: item.quantity })),
+                        items: cart.map(item => ({
+                            productId: item.productId,
+                            quantity: item.quantity,
+                            ...(item.serialNumbers && item.serialNumbers.length > 0 ? { serial_numbers: item.serialNumbers } : {}),
+                        })),
                         paymentMethod: selectedPayment,
                         customerId: selectedAccountCustomerId || undefined,
                         // Walk-in customers placing a pickup order don't need a full
@@ -18588,6 +18878,77 @@
         }
 
         // ========== CUSTOMER STATEMENT REPORT (Workstream 83) ==========
+
+        // Serial Number Lookup — Serial Number Tracking add-on only. Search by
+        // (partial) serial number, see which product it belongs to and, if
+        // sold, jump straight to the full sale via the existing viewSaleDetail()
+        // modal rather than duplicating sale-detail rendering here.
+        function loadSerialLookupReport(container) {
+            container.innerHTML = `
+                <h2 style="margin-bottom:16px;">Serial Number Lookup</h2>
+                <div style="display:flex;gap:10px;margin-bottom:16px;padding:14px;background:#f5f7fa;border-radius:8px;align-items:end;">
+                    <div style="flex:1;max-width:320px;">
+                        <label style="font-size:11px;color:#666;display:block;">Serial Number</label>
+                        <input type="text" id="serialLookupInput" placeholder="Scan or type a serial number..."
+                            style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;"
+                            onkeypress="if(event.key==='Enter'){event.preventDefault();runSerialLookup();}">
+                    </div>
+                    <button class="btn btn-primary" onclick="runSerialLookup()">Search</button>
+                </div>
+                <div id="serialLookupResults"><div style="text-align:center;padding:40px;color:#999;">Enter a serial number to search.</div></div>
+            `;
+            document.getElementById('serialLookupInput').focus();
+        }
+
+        async function runSerialLookup() {
+            const resultsEl = document.getElementById('serialLookupResults');
+            const serial = document.getElementById('serialLookupInput')?.value?.trim();
+            if (!serial) { showNotification('Enter a serial number to search', 'error'); return; }
+
+            resultsEl.innerHTML = '<div style="text-align:center;padding:40px;color:#667eea;">Searching...</div>';
+
+            try {
+                const res = await fetch(`${API_URL}/pos/products/serials/search?serial=${encodeURIComponent(serial)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    resultsEl.innerHTML = `<p style="color:#f44336;">${data.error || 'Search failed'}</p>`;
+                    return;
+                }
+                const results = data.results || [];
+                if (results.length === 0) {
+                    resultsEl.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">No matching serial numbers found.</div>';
+                    return;
+                }
+                resultsEl.innerHTML = `
+                    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                        <thead>
+                            <tr style="background:#667eea;color:white;">
+                                <th style="padding:8px;text-align:left;">Serial Number</th>
+                                <th style="padding:8px;text-align:left;">Product</th>
+                                <th style="padding:8px;text-align:left;">Status</th>
+                                <th style="padding:8px;text-align:left;">Sold At</th>
+                                <th style="padding:8px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.map(r => `
+                                <tr style="border-bottom:1px solid #eee;">
+                                    <td style="padding:8px;color:#222;">${(r.serial_number || '').replace(/</g, '&lt;')}</td>
+                                    <td style="padding:8px;color:#222;">${r.products ? r.products.product_name.replace(/</g, '&lt;') : '—'}</td>
+                                    <td style="padding:8px;color:#222;text-transform:capitalize;">${r.status}</td>
+                                    <td style="padding:8px;color:#222;">${r.sold_at ? new Date(r.sold_at).toLocaleString() : '—'}</td>
+                                    <td style="padding:8px;">${r.sale_id ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="viewSaleDetail(${r.sale_id})">View Sale</button>` : ''}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (e) {
+                resultsEl.innerHTML = `<p style="color:#f44336;">Error: ${e.message}</p>`;
+            }
+        }
 
         async function loadCustomerStatementReport(container) {
             container.innerHTML = '<div style="text-align:center;padding:40px;color:#667eea;">Loading customers...</div>';

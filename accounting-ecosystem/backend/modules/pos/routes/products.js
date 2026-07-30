@@ -181,7 +181,7 @@ router.post('/', requirePermission('PRODUCTS.CREATE'), async (req, res) => {
       category, category_id,
       cost_price, unit_price,
       stock_quantity, min_stock_level,
-      requires_vat, vat_rate, unit
+      requires_vat, vat_rate, unit, track_serial
     } = req.body;
 
     if (!product_name || unit_price === undefined) {
@@ -213,6 +213,7 @@ router.post('/', requirePermission('PRODUCTS.CREATE'), async (req, res) => {
         vat_rate:        vat_rate != null ? vat_rate : 15,
         unit:            unit || 'each',
         is_active:       true,
+        track_serial:    track_serial != null ? Boolean(track_serial) : false,
       })
       .select()
       .single();
@@ -264,7 +265,7 @@ router.put('/:id', requirePermission('PRODUCTS.EDIT'), async (req, res) => {
       'category', 'category_id',
       'cost_price', 'unit_price',
       'stock_quantity', 'min_stock_level',
-      'requires_vat', 'vat_rate', 'unit', 'is_active'
+      'requires_vat', 'vat_rate', 'unit', 'is_active', 'track_serial'
     ];
     const updates = {};
     for (const key of allowed) {
@@ -424,6 +425,65 @@ router.delete('/:id', requirePermission('PRODUCTS.DELETE'), async (req, res) => 
       afterSnapshot:  { is_active: false },
     });
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/products/serials/search?serial=XXX
+ * Warranty/serial lookup — find which product and sale a serial number
+ * belongs to, regardless of which product it's linked to. Backs the Serial
+ * Number Lookup report screen. Registered before /:id/serials since it's a
+ * more specific literal path (no route-order ambiguity either way, since
+ * 'serials' as an :id segment would still require a matching second literal
+ * 'serials' segment — but keeping the specific route first reads clearer).
+ */
+router.get('/serials/search', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
+  try {
+    const { serial } = req.query;
+    if (!serial || !serial.trim()) {
+      return res.status(400).json({ error: 'serial query parameter is required' });
+    }
+
+    const { data, error } = await supabase
+      .from('pos_product_serials')
+      .select('id, serial_number, status, product_id, sale_id, sold_at, received_reference, created_at, products(product_name, product_code)')
+      .eq('company_id', req.companyId)
+      .ilike('serial_number', `%${serial.trim()}%`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ results: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/products/:id/serials?status=in_stock
+ * List serial numbers for a serial-tracked product — backs the at-checkout
+ * serial picker (status=in_stock) and the warranty lookup screen (any status).
+ * Only meaningful for products with track_serial=true; returns an empty
+ * array otherwise rather than an error, since the frontend gates on
+ * track_serial before ever calling this.
+ */
+router.get('/:id/serials', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
+  try {
+    const { status } = req.query;
+    let query = supabase
+      .from('pos_product_serials')
+      .select('id, serial_number, status, sale_id, sold_at, received_reference, created_at')
+      .eq('company_id', req.companyId)
+      .eq('product_id', req.params.id)
+      .order('created_at', { ascending: true });
+
+    if (status) query = query.eq('status', status);
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ serials: data || [] });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

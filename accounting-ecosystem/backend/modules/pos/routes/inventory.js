@@ -78,7 +78,7 @@ router.get('/', requirePermission('INVENTORY.VIEW'), async (req, res) => {
  */
 router.post('/adjust', requirePermission('INVENTORY.ADJUST'), async (req, res) => {
   try {
-    const { product_id, quantity_change, reason, notes } = req.body;
+    const { product_id, quantity_change, reason, notes, serial_numbers } = req.body;
 
     if (!product_id || quantity_change === undefined) {
       return res.status(400).json({ error: 'product_id and quantity_change are required' });
@@ -96,7 +96,7 @@ router.post('/adjust', requirePermission('INVENTORY.ADJUST'), async (req, res) =
     // company-transfers.js/purchase-orders.js for this exact reason.
     const { data: product } = await supabase
       .from('products')
-      .select('stock_quantity, product_name')
+      .select('stock_quantity, product_name, track_serial')
       .eq('id', product_id)
       .eq('company_id', req.companyId)
       .single();
@@ -109,6 +109,36 @@ router.post('/adjust', requirePermission('INVENTORY.ADJUST'), async (req, res) =
     const currentQty = parseFloat(product.stock_quantity || 0);
     const clampedChange = Math.max(-currentQty, quantity_change);
 
+    // Serial Number Tracking — validated before any stock mutation. A
+    // negative change removes/writes off specific units (must currently be
+    // in_stock for this product); a positive change is a mini-receive of new
+    // units. Count must match exactly — never silently accept a mismatch.
+    const serials = Array.isArray(serial_numbers) ? serial_numbers.filter(s => s && String(s).trim()).map(s => String(s).trim()) : [];
+    if (product.track_serial && clampedChange !== 0) {
+      const expectedCount = Math.abs(clampedChange);
+      if (serials.length !== expectedCount) {
+        return res.status(400).json({
+          error: `This product is serial-tracked — expected ${expectedCount} serial number(s), got ${serials.length}.`,
+        });
+      }
+      if (clampedChange < 0) {
+        // Removing/writing off specific units — each must exist and currently
+        // be in_stock for this product, or the whole adjustment is rejected.
+        const { data: existing } = await supabase
+          .from('pos_product_serials')
+          .select('serial_number')
+          .eq('company_id', req.companyId)
+          .eq('product_id', product_id)
+          .eq('status', 'in_stock')
+          .in('serial_number', serials);
+        if (!existing || existing.length !== serials.length) {
+          return res.status(400).json({
+            error: 'One or more of those serial numbers are not currently in stock for this product.',
+          });
+        }
+      }
+    }
+
     const result = await adjustStockCAS(req.companyId, product_id, clampedChange, { allowNegative: true });
     if (!result.ok) {
       return res.status(409).json({ error: 'Stock changed concurrently — please retry', detail: result.error });
@@ -116,6 +146,30 @@ router.post('/adjust', requirePermission('INVENTORY.ADJUST'), async (req, res) =
 
     const oldQty = result.oldQty;
     const newQty = result.newQty;
+
+    // Apply the serial-status change now that the stock mutation has succeeded.
+    if (product.track_serial && clampedChange !== 0 && serials.length > 0) {
+      if (clampedChange < 0) {
+        await supabase
+          .from('pos_product_serials')
+          .update({ status: 'removed' })
+          .eq('company_id', req.companyId)
+          .eq('product_id', product_id)
+          .eq('status', 'in_stock')
+          .in('serial_number', serials);
+      } else {
+        await supabase.from('pos_product_serials').insert(
+          serials.map(s => ({
+            company_id: req.companyId,
+            product_id,
+            serial_number: s,
+            status: 'in_stock',
+            received_reference: `Manual adjustment: ${reason}`,
+            created_by_user_id: req.user.userId,
+          }))
+        );
+      }
+    }
 
     // Record adjustment in inventory_adjustments
     // (table created by pos-schema.js migration)
@@ -453,6 +507,34 @@ router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) 
     if (!supplier_name) return res.status(400).json({ error: 'supplier_name is required' });
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items array is required' });
 
+    // Serial Number Tracking — validated up front, before anything is written,
+    // so a mismatched serial count never partially applies. Only products
+    // with track_serial=true require this; every other product is completely
+    // unaffected (serial_numbers is simply ignored if sent for them).
+    const itemProductIds = [...new Set(items.map(i => parseInt(i.product_id)).filter(Boolean))];
+    let trackSerialMap = {};
+    if (itemProductIds.length > 0) {
+      const { data: serialProducts } = await supabase
+        .from('products')
+        .select('id, track_serial')
+        .eq('company_id', req.companyId)
+        .in('id', itemProductIds);
+      for (const p of (serialProducts || [])) trackSerialMap[p.id] = p.track_serial === true;
+    }
+    for (const item of items) {
+      const pid = parseInt(item.product_id);
+      const qty = parseInt(item.quantity);
+      if (!pid || !qty || qty <= 0) continue;
+      if (trackSerialMap[pid]) {
+        const serials = Array.isArray(item.serial_numbers) ? item.serial_numbers.filter(s => s && String(s).trim()) : [];
+        if (serials.length !== qty) {
+          return res.status(400).json({
+            error: `Product ${pid} is serial-tracked — expected ${qty} serial number(s), got ${serials.length}.`,
+          });
+        }
+      }
+    }
+
     const totalQty = items.reduce((sum, i) => sum + (parseInt(i.quantity) || 0), 0);
     const { data: receive, error: recErr } = await supabase
       .from('pos_supplier_receives')
@@ -507,6 +589,35 @@ router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) 
         notes: `Receive #${receive.id}: ${supplier_name}${reference ? ' / ' + reference : ''}`,
       });
 
+      // Serial Number Tracking — one row per unit, count already validated
+      // to match qty above. A duplicate serial (unique company+product+serial)
+      // is surfaced back to the caller but does not roll back the stock
+      // increment already applied via CAS — same best-effort-per-line
+      // convention this route already uses elsewhere (a CAS race on another
+      // line already `continue`s rather than failing the whole request).
+      let serialError = null;
+      if (trackSerialMap[pid]) {
+        const serials = Array.isArray(item.serial_numbers) ? item.serial_numbers.filter(s => s && String(s).trim()) : [];
+        if (serials.length > 0) {
+          const { error: serialErr } = await supabase.from('pos_product_serials').insert(
+            serials.map(s => ({
+              company_id: req.companyId,
+              product_id: pid,
+              serial_number: String(s).trim(),
+              status: 'in_stock',
+              received_reference: `Receive #${receive.id}${reference ? ' / ' + reference : ''}`,
+              created_by_user_id: req.user.userId,
+            }))
+          );
+          if (serialErr) {
+            console.error('[inventory] receive: serial insert failed for product', pid, serialErr.message);
+            serialError = /duplicate key/i.test(serialErr.message || '')
+              ? 'One or more serial numbers already exist for this product.'
+              : serialErr.message;
+          }
+        }
+      }
+
       posAuditFromReq(req, POS_EVENTS.STOCK_ADJUSTED, {
         productId: pid,
         beforeSnapshot: { stock_quantity: oldQty },
@@ -545,7 +656,7 @@ router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) 
         }
       }
 
-      processedItems.push({ product_id: pid, product_name: product.product_name, quantity: qty, qty_before: oldQty, qty_after: newQty });
+      processedItems.push({ product_id: pid, product_name: product.product_name, quantity: qty, qty_before: oldQty, qty_after: newQty, serial_error: serialError });
     }
 
     posAuditFromReq(req, POS_EVENTS.SUPPLIER_RECEIVE_COMPLETED, {

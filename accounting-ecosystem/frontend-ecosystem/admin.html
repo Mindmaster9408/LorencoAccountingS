@@ -819,8 +819,9 @@
                 name:           'Checkout Charlie',
                 subtitle:       'Point of Sale',
                 icon:           '&#128722;',
-                seanAddonKey:   null,
-                seanAddonLabel: null,
+                seanAddonKey:   'serial_tracking',
+                seanAddonLabel: 'Serial Number Tracking',
+                seanAddonSub:   'Per-unit serial capture for high-value stock &amp; warranty lookup',
                 billingMetric:  null,
                 packageSupport: true,
             },
@@ -1323,7 +1324,7 @@
                     <div class="sean-sub-name">${appDef.seanAddonLabel}</div>
                     <div class="sean-sub-sub">${appDef.seanAddonSub || 'AI insights add-on'}</div>
                 </div>
-                <label class="app-toggle" title="${seanOn ? 'Deactivate' : 'Activate'} SEAN">
+                <label class="app-toggle" title="${seanOn ? 'Deactivate' : 'Activate'} ${appDef.seanAddonLabel}">
                     <input type="checkbox" ${seanOn ? 'checked' : ''}
                         onchange="toggleAddon(${c.id}, '${appDef.seanAddonKey}', this.checked)">
                     <span class="slider"></span>
@@ -1395,7 +1396,9 @@
                 });
                 if (!res.ok) throw new Error((await res.json()).error || 'Failed');
                 client.addons = [...addons];
-                showToast(`${enable ? '&#9989;' : '&#128683;'} SEAN ${enable ? 'activated' : 'deactivated'} for ${client.name}`);
+                const addonDef = APP_REGISTRY.find(a => a.seanAddonKey === addonKey);
+                const addonName = addonDef ? addonDef.seanAddonLabel : addonKey;
+                showToast(`${enable ? '&#9989;' : '&#128683;'} ${addonName} ${enable ? 'activated' : 'deactivated'} for ${client.name}`);
                 renderStats();
                 applyFilters();
             } catch(err) {
