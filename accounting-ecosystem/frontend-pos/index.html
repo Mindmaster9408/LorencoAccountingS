@@ -6841,18 +6841,29 @@
                         // Complete Cashup modal, sourced from the reconciliation API).
                         const tillName = session.tills?.till_name || session.tills?.till_number || `Till #${session.till_id}`;
                         const userName = session.users?.full_name || session.users?.username || 'Unknown cashier';
+                        // still_open (found live, 2026-07-31): a cashier logging out
+                        // without hitting "Close Till" leaves the session status='open'
+                        // forever — /pending-cashup now surfaces those too (previously
+                        // invisible entirely). expected_balance was never computed for
+                        // these (that only happens at /close), so showing it would be
+                        // the exact misleading "Expected: R0.00" this fix exists to
+                        // avoid — badge it instead and let the modal's live
+                        // reconciliation fetch show the real figures.
+                        const statusLine = session.still_open
+                            ? `<span style="color:#c62828;font-weight:600;">⚠ Still open — never closed</span>`
+                            : `Expected: R ${parseFloat(session.expected_balance || 0).toFixed(2)}`;
                         return `
-                        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="background: var(--surface); border: 1px solid ${session.still_open ? '#c62828' : 'var(--border)'}; border-radius: 8px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <div style="font-weight: bold; color: var(--text);">
                                     ${tillName} - ${userName}
                                 </div>
                                 <div style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">
                                     Opened: ${new Date(session.opened_at).toLocaleString()} |
-                                    Expected: R ${parseFloat(session.expected_balance || 0).toFixed(2)}
+                                    ${statusLine}
                                 </div>
                             </div>
-                            <button onclick="showPendingCashupModal(${session.id}, ${session.expected_balance || 0}, '${tillName.replace(/'/g, "\\'")}', '${userName.replace(/'/g, "\\'")}')"
+                            <button onclick="showPendingCashupModal(${session.id}, ${session.expected_balance || 0}, '${tillName.replace(/'/g, "\\'")}', '${userName.replace(/'/g, "\\'")}', ${!!session.still_open})"
                                     style="background: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
                                 Complete Cashup
                             </button>
@@ -7161,16 +7172,20 @@
         // sessionId) can still build an accurate print slip afterwards.
         let _pendingCashupContext = null;
 
-        async function showPendingCashupModal(sessionId, expectedBalance, tillName, userName) {
+        async function showPendingCashupModal(sessionId, expectedBalance, tillName, userName, stillOpen) {
             let recon = null;
             try {
+                // Reconciliation is computed live from sales/sale_payments regardless
+                // of session status, so this works correctly even for a still-open
+                // session — only /complete-cashup itself requires status='closed',
+                // which completePendingCashup() below handles by closing first.
                 const reconRes = await fetch(`${API_URL}/pos/sessions/${sessionId}/reconciliation`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (reconRes.ok) recon = await reconRes.json();
             } catch (e) { /* fall back to expectedBalance only, handled below */ }
 
-            _pendingCashupContext = { sessionId, tillName, userName, expectedBalance, recon };
+            _pendingCashupContext = { sessionId, tillName, userName, expectedBalance, recon, stillOpen: !!stillOpen };
 
             let modal = document.getElementById('pendingCashupModal');
             if (!modal) {
@@ -7191,6 +7206,11 @@
                         <button class="close-btn" onclick="closePendingCashupModal()">&times;</button>
                     </div>
                     <div class="modal-body" style="padding: 20px;">
+                        ${stillOpen ? `
+                            <div style="background:#ffebee;border:1px solid #c62828;border-radius:8px;padding:10px 12px;margin-bottom:15px;font-size:13px;color:#c62828;">
+                                ⚠ This session was never closed by the cashier — completing cashup will close it now.
+                            </div>
+                        ` : ''}
                         ${recon ? `
                             <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:15px;font-size:13px;color:var(--text-secondary);">
                                 <div style="display:flex;justify-content:space-between;"><span>Gross sales (${recon.totals.sale_count} txn${recon.totals.void_count > 0 ? `, ${recon.totals.void_count} voided` : ''})</span><span style="color:var(--text);">R ${parseFloat(recon.totals.gross_sales).toFixed(2)}</span></div>
@@ -7258,6 +7278,28 @@
             const notes = document.getElementById('pcNotes').value || '';
 
             try {
+                // A still-open forgotten session must go through /close first —
+                // that's the only place expected_balance gets computed
+                // (via computeSessionRecon), and /complete-cashup requires
+                // status='closed'. /close already permits a manager (TILLS.MANAGE)
+                // closing a session that isn't their own, so no backend change
+                // was needed for this step — reusing the existing, tested path.
+                if (_pendingCashupContext?.stillOpen) {
+                    const closeResponse = await fetch(`${API_URL}/pos/sessions/${sessionId}/close`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({})
+                    });
+                    const closeResult = await closeResponse.json();
+                    if (!closeResponse.ok) {
+                        showNotification(closeResult.error || 'Failed to close session before cashup', 'error');
+                        return;
+                    }
+                }
+
                 const response = await fetch(`${API_URL}/pos/sessions/${sessionId}/complete-cashup`, {
                     method: 'POST',
                     headers: {

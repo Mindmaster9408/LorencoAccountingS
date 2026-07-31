@@ -9,6 +9,7 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const { requireCompany, requirePermission } = require('../../../middleware/auth');
+const { computeSessionRecon } = require('../services/posReconService');
 
 const router = express.Router();
 
@@ -111,17 +112,43 @@ router.patch('/:id', requirePermission('SALES.CREATE'), async (req, res) => {
  */
 router.post('/daily-reset', requirePermission('SALES.VOID'), async (req, res) => {
   try {
-    const { error } = await supabase
+    // BUG FIX (found live, 2026-07-31, same audit as /sessions/pending-cashup):
+    // this used to blanket-UPDATE every open session straight to 'closed'
+    // without ever computing expected_balance — unlike POST /:id/close, which
+    // always derives it via computeSessionRecon(). Any session closed through
+    // Daily Reset therefore landed in the pending-cashup list showing
+    // "Expected: R0.00" regardless of actual sales, indistinguishable from a
+    // real zero-sales till. Compute it per-session here the same way /close
+    // does, so a Daily Reset session reconciles identically to a manually
+    // closed one.
+    const { data: openSessions, error: fetchError } = await supabase
       .from('till_sessions')
-      .update({
-        status: 'closed',
-        closed_at: new Date().toISOString(),
-        notes: 'Closed by daily reset'
-      })
+      .select('id')
       .eq('company_id', req.companyId)
       .eq('status', 'open');
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (fetchError) return res.status(500).json({ error: fetchError.message });
+
+    for (const s of (openSessions || [])) {
+      let expected = null;
+      try {
+        const recon = await computeSessionRecon(s.id, req.companyId);
+        expected = recon.expectedCashInDrawer;
+      } catch (reconErr) {
+        console.warn('[DailyReset] Recon calc skipped for session', s.id, reconErr.message);
+      }
+
+      await supabase
+        .from('till_sessions')
+        .update({
+          status: 'closed',
+          expected_balance: expected,
+          closed_at: new Date().toISOString(),
+          notes: 'Closed by daily reset'
+        })
+        .eq('id', s.id);
+    }
+
     res.json({ success: true, message: 'All open sessions closed' });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

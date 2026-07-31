@@ -86,15 +86,43 @@ router.get('/pending-cashup', requirePermission('TILLS.MANAGE'), async (req, res
     // 'cashed_up' (only /complete-cashup sets 'cashed_up'), so "needs
     // cash-up" correctly means status = 'closed', independent of whatever
     // closing_balance value (if any) was recorded at close time.
-    const { data, error } = await supabase
+    const { data: closedSessions, error: closedError } = await supabase
       .from('till_sessions')
       .select('*, tills(till_name, till_number), users:user_id(username, full_name)')
       .eq('company_id', req.companyId)
       .eq('status', 'closed')
       .order('closed_at', { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ sessions: data || [] });
+    if (closedError) return res.status(500).json({ error: closedError.message });
+
+    // Forgotten sessions (found live, 2026-07-31): a cashier logging out /
+    // closing the browser does NOT close their till_session — it stays
+    // status='open' indefinitely. That made it invisible here (this query
+    // only ever looked at 'closed'), and invisible on the cashier's own
+    // Cash Up tab the next day too (GET /current only matches the LOGGED-IN
+    // user's own open session), so a manager checking the next day saw
+    // nothing at all for a till with real, un-reconciled sales sitting in it.
+    // Surface any session still open from a previous day so a manager can
+    // close + cash it up without needing that cashier's login.
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const { data: staleOpenSessions, error: staleError } = await supabase
+      .from('till_sessions')
+      .select('*, tills(till_name, till_number), users:user_id(username, full_name)')
+      .eq('company_id', req.companyId)
+      .eq('status', 'open')
+      .lt('opened_at', startOfToday.toISOString())
+      .order('opened_at', { ascending: false });
+
+    if (staleError) return res.status(500).json({ error: staleError.message });
+
+    const sessions = [
+      ...(closedSessions || []),
+      ...(staleOpenSessions || []).map(s => ({ ...s, still_open: true })),
+    ];
+
+    res.json({ sessions });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
