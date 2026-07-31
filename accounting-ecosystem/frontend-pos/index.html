@@ -6819,14 +6819,24 @@
         }
 
         async function loadPendingCashups() {
+            const section = document.getElementById('pendingCashupsSection');
+            const list = document.getElementById('pendingCashupsList');
             try {
                 const response = await fetch(`${API_URL}/pos/sessions/pending-cashup`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const result = await response.json();
 
-                const section = document.getElementById('pendingCashupsSection');
-                const list = document.getElementById('pendingCashupsList');
+                // Diagnostic visibility fix (found live, 2026-07-31): a non-OK
+                // response (e.g. 403 — this endpoint requires TILLS.MANAGE) or a
+                // network error used to fail completely silently — console.error
+                // only, section just stayed hidden. That made "why don't I see
+                // yesterday's till" undiagnosable from the UI itself. Surface it.
+                if (!response.ok) {
+                    section.style.display = 'block';
+                    list.innerHTML = `<p style="color:#c62828;">Could not load pending cashups: ${result.error || response.status}</p>`;
+                    return;
+                }
 
                 if (result.sessions && result.sessions.length > 0) {
                     section.style.display = 'block';
@@ -6876,6 +6886,8 @@
                 }
             } catch (error) {
                 console.error('Error loading pending cashups:', error);
+                section.style.display = 'block';
+                list.innerHTML = `<p style="color:#c62828;">Could not load pending cashups: ${error.message}</p>`;
             }
         }
 
