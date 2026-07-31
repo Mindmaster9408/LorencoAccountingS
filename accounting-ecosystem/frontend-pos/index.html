@@ -2094,6 +2094,20 @@
                                     </div>
                                 </div>
 
+                                <!-- Manual discretionary discount (2026-07-31) — a manager can give any
+                                     % on the spot; anyone else needs a manager's PIN (managerPinAuthModal).
+                                     Distinct from the customer/product/Daily-Discount pricing above — this
+                                     stacks on top as a final whole-sale reduction (see calcCartTotals()). -->
+                                <div id="manualDiscountSection" style="display:block; background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:10px;">
+                                    <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Discount %</label>
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <input type="number" id="manualDiscountInput" step="0.01" min="0" max="100" placeholder="0" style="width:80px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                                        <button class="btn btn-secondary" onclick="applyManualDiscount()" style="padding:8px 15px;font-size:13px;">Apply</button>
+                                        <span id="manualDiscountAppliedLine" style="display:none;color:#2e7d32;font-weight:600;font-size:13px;"></span>
+                                        <a id="manualDiscountClear" onclick="clearManualDiscount()" style="display:none;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
+                                    </div>
+                                </div>
+
                                 <!-- Workstream 76 — only the 4 standard methods show by default;
                                      EFT/SnapScan/Zapper/Gift Card moved behind "More" below. -->
                                 <div class="payment-methods payment-methods-primary">
@@ -3056,29 +3070,32 @@
         </div>
 
         <!-- Manager Authorization Modal -->
-        <div id="managerAuthModal" class="modal-overlay">
-            <div class="modal" style="max-width: 400px;">
+        <!-- Manager PIN Authorization (2026-07-31) — replaces the old
+             username+password managerAuthModal, which called a backend
+             endpoint (POST /auth/verify-manager) that never existed — every
+             cashier-initiated return had been silently failing manager
+             authorization since that flow was written. This one actually
+             works: POST /pos/manager-auth/verify, same PIN infrastructure
+             already used for till login. -->
+        <div id="managerPinAuthModal" class="modal-overlay">
+            <div class="modal" style="max-width: 380px;">
                 <div class="modal-header">
                     <h2>Manager Authorization Required</h2>
-                    <button class="close-btn" onclick="closeManagerAuth()">&times;</button>
+                    <button class="close-btn" onclick="closeManagerPinAuth()">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="auth-required">
-                        <h4>This action requires manager approval</h4>
-                        <p id="authActionDescription">A manager or business owner must authorize this action.</p>
+                        <p id="managerPinAuthDescription">A manager must authorize this action.</p>
                     </div>
                     <div class="form-group">
-                        <label>Manager Username</label>
-                        <input type="text" id="managerUsername" placeholder="Enter manager username">
+                        <label>Manager PIN</label>
+                        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="managerPinInput" placeholder="Enter manager PIN" style="font-size:20px;letter-spacing:4px;text-align:center;" onkeydown="if(event.key==='Enter') submitManagerPinAuth()">
                     </div>
-                    <div class="form-group">
-                        <label>Manager Password</label>
-                        <input type="password" id="managerPassword" placeholder="Enter manager password">
-                    </div>
+                    <div id="managerPinAuthError" style="display:none;color:#c62828;font-size:13px;margin-top:5px;"></div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeManagerAuth()">Cancel</button>
-                    <button class="btn btn-primary" onclick="verifyManagerAuth()">Authorize</button>
+                    <button class="btn btn-secondary" onclick="closeManagerPinAuth()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitManagerPinAuth()">Authorize</button>
                 </div>
             </div>
         </div>
@@ -5494,6 +5511,7 @@
                                 items: sale.items,
                                 paymentMethod: sale.paymentMethod,
                                 customerId: sale.customerId,
+                                discountPercent: sale.discountPercent,
                                 offlineCreatedAt: sale.createdAt,
                                 idempotencyKey: sale.idempotencyKey,
                                 cashTendered: sale.cashTendered,
@@ -8592,6 +8610,17 @@
                     vat += lineEffective * (item.vatRate / (100 + item.vatRate));
                 }
             });
+            // Manual, manager-authorized discretionary discount (2026-07-31) —
+            // a distinct, final whole-total layer on top of everything above
+            // (customer/product/Daily Discount), not another per-line
+            // candidate — mirrors sales.js's authorizeManualDiscount()
+            // application exactly, including the same proportional VAT scaling
+            // since this really is a flat percentage off everything.
+            if (manualDiscountPercent > 0) {
+                const preManualTotal = total;
+                total = Math.max(0, preManualTotal * (1 - manualDiscountPercent / 100));
+                vat = preManualTotal > 0 ? vat * (total / preManualTotal) : vat;
+            }
             const discount = Math.max(0, grossSubtotal - total);
             return { subtotal: grossSubtotal, vat, total, discount };
         }
@@ -8753,6 +8782,10 @@
         function clearCart() {
             if (cart.length > 0 && confirm('Clear all items?')) {
                 cart = [];
+                // A manual discount authorization is tied to this specific
+                // checkout attempt — don't let it silently carry over to an
+                // unrelated new sale.
+                if (typeof clearManualDiscount === 'function') clearManualDiscount();
                 updateCart();
                 setTimeout(refocusScanner, 100);
             }
@@ -8967,6 +9000,52 @@
             updateCart();
         }
 
+        // ── Manual discretionary discount (2026-07-31) ─────────────────────
+        // Client-side mirror of backend MANAGEMENT_ROLES — a manager applies
+        // it directly; anyone else is routed through the manager-PIN modal.
+        // The backend independently re-derives/enforces this regardless (see
+        // authorizeManualDiscount() in sales.js) — this is only a UX gate.
+        const MANAGEMENT_TIER_ROLES_FOR_DISCOUNT = [
+            'super_admin', 'business_owner', 'practice_manager', 'administrator',
+            'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
+        ];
+        let manualDiscountPercent = 0;
+
+        function applyManualDiscount() {
+            const value = parseFloat(document.getElementById('manualDiscountInput').value);
+            if (isNaN(value) || value <= 0 || value > 100) {
+                showNotification('Enter a discount between 0 and 100', 'error');
+                return;
+            }
+            if (MANAGEMENT_TIER_ROLES_FOR_DISCOUNT.includes(userRole)) {
+                setManualDiscount(value);
+            } else {
+                requestManagerPinAuth({
+                    actionType: 'discount',
+                    discountPercent: value,
+                    tillSessionId: currentSession?.id,
+                    onSuccess: () => setManualDiscount(value),
+                });
+            }
+        }
+
+        function setManualDiscount(value) {
+            manualDiscountPercent = value;
+            document.getElementById('manualDiscountInput').value = value;
+            document.getElementById('manualDiscountAppliedLine').textContent = `${value}% applied`;
+            document.getElementById('manualDiscountAppliedLine').style.display = 'inline';
+            document.getElementById('manualDiscountClear').style.display = 'inline';
+            updateCart();
+        }
+
+        function clearManualDiscount() {
+            manualDiscountPercent = 0;
+            document.getElementById('manualDiscountInput').value = '';
+            document.getElementById('manualDiscountAppliedLine').style.display = 'none';
+            document.getElementById('manualDiscountClear').style.display = 'none';
+            updateCart();
+        }
+
         let lastSaleId = null;
         let autoPrintEnabled = false;
         // Defaults true to match company_settings' own default (open_drawer_on_sale
@@ -9044,6 +9123,7 @@
                 // syncOfflineSales() below only ever forwarded a fixed field list that
                 // didn't include it either (fixed there too).
                 customerId: selectedAccountCustomerId || undefined,
+                discountPercent: manualDiscountPercent || undefined,
                 subtotal,
                 vatAmount,
                 totalAmount,
@@ -9083,6 +9163,7 @@
                     showOfflineSaleModal(offlineSale);
 
                     cart = [];
+                    clearManualDiscount();
                     updateCart();
 
                     // Print receipt (browser dialog)
@@ -9112,6 +9193,7 @@
                         })),
                         paymentMethod: selectedPayment,
                         customerId: selectedAccountCustomerId || undefined,
+                        discountPercent: manualDiscountPercent || undefined,
                         idempotencyKey: saleData.idempotencyKey,
                         cashTendered: cashTenderedForSlip
                     })
@@ -9129,6 +9211,7 @@
                     showSaleCompleteModal(result);
 
                     cart = [];
+                    clearManualDiscount();
                     updateCart();
 
                     // Decrement stock_quantity in memory for immediate tile/table display.
@@ -12784,19 +12867,32 @@
             closeSaleDetail();
         }
 
+        // Client-side mirror of backend SALES.VOID (SUPERVISOR_ROLES) — purely
+        // a UX shortcut to skip the PIN modal for roles that don't need it;
+        // the backend re-checks this for real regardless (a mismatch here
+        // just means an unnecessary PIN prompt or a 403 with a clear error,
+        // never a security gap).
+        const SUPERVISOR_TIER_ROLES_FOR_RETURN = [
+            'shift_supervisor', 'assistant_manager', 'store_manager', 'district_manager',
+            'district_trainer', 'regional_manager', 'regional_analyst', 'corporate_admin',
+            'corporate_finance', 'corporate_ops', 'business_owner', 'accountant',
+            'administrator', 'admin', 'practice_manager', 'payroll_admin', 'leave_admin', 'super_admin',
+        ];
+
         function showReturnModal() {
             if (!selectedSale) return;
-            // Check if manager auth is needed
-            if (userRole === 'cashier') {
-                pendingAuthAction = { type: 'return', saleId: selectedSale.sale.id };
-                document.getElementById('authActionDescription').textContent = 'Returns require manager authorization.';
-                document.getElementById('managerAuthModal').style.display = 'flex';
+            if (!SUPERVISOR_TIER_ROLES_FOR_RETURN.includes(userRole)) {
+                requestManagerPinAuth({
+                    actionType: 'return',
+                    tillSessionId: currentSession?.id,
+                    onSuccess: () => processReturn(selectedSale.sale.id),
+                });
             } else {
                 processReturn(selectedSale.sale.id);
             }
         }
 
-        async function processReturn(saleId, authorizedBy = null) {
+        async function processReturn(saleId) {
             const items = (selectedSale.sale.sale_items || []).map(item => ({
                 product_id: item.product_id,
                 quantity: item.quantity
@@ -12812,7 +12908,12 @@
                     body: JSON.stringify({
                         items: items,
                         reason: 'Customer return',
-                        authorized_by_user_id: authorizedBy
+                        // till_session_id: needed server-side to look up a
+                        // manager-PIN authorization for this exact till
+                        // session (see requestManagerPinAuth() above) —
+                        // authorized_by_user_id (the old field) was never
+                        // actually read by the backend at all, removed.
+                        till_session_id: currentSession?.id,
                     })
                 });
 
@@ -12919,55 +13020,76 @@
             }
         }
 
-        // ========== MANAGER AUTHORIZATION FUNCTIONS ==========
+        // ========== MANAGER PIN AUTHORIZATION (2026-07-31) ==========
+        // One shared mechanism for "a manager approves a cashier-initiated
+        // action by entering their PIN" — used by the checkout Discount %
+        // control and by showReturnModal(). Replaces the old broken
+        // username+password flow (verifyManagerAuth(), called an endpoint
+        // that never existed server-side — see git history for that version).
 
-        let pendingAuthAction = null;
+        let _pendingManagerAuth = null; // { actionType, discountPercent, tillSessionId, onSuccess }
 
-        function closeManagerAuth() {
-            document.getElementById('managerAuthModal').style.display = 'none';
-            document.getElementById('managerUsername').value = '';
-            document.getElementById('managerPassword').value = '';
-            pendingAuthAction = null;
+        // actionType: 'discount' | 'return'. discountPercent required (and
+        // > 0) only for 'discount'. onSuccess(result) is called after the
+        // PIN is verified — result is { authorized, authorization_id,
+        // manager_name }; the till itself still has to include the matching
+        // discount_percent/authorization in its own checkout()/processReturn()
+        // call afterwards — this only proves a manager approved it.
+        function requestManagerPinAuth({ actionType, discountPercent, tillSessionId, onSuccess }) {
+            _pendingManagerAuth = { actionType, discountPercent, tillSessionId, onSuccess };
+            document.getElementById('managerPinAuthDescription').textContent =
+                actionType === 'discount'
+                    ? `A manager must enter their PIN to approve a ${discountPercent}% discount.`
+                    : 'A manager must enter their PIN to approve this return.';
+            document.getElementById('managerPinInput').value = '';
+            document.getElementById('managerPinAuthError').style.display = 'none';
+            document.getElementById('managerPinAuthModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('managerPinInput').focus(), 50);
         }
 
-        async function verifyManagerAuth() {
-            const username = document.getElementById('managerUsername').value;
-            const password = document.getElementById('managerPassword').value;
+        function closeManagerPinAuth() {
+            document.getElementById('managerPinAuthModal').style.display = 'none';
+            document.getElementById('managerPinInput').value = '';
+            _pendingManagerAuth = null;
+        }
 
-            if (!username || !password) {
-                showNotification('Please enter manager credentials', 'error');
+        async function submitManagerPinAuth() {
+            if (!_pendingManagerAuth) { closeManagerPinAuth(); return; }
+            const pin = document.getElementById('managerPinInput').value;
+            const errorEl = document.getElementById('managerPinAuthError');
+            if (!pin) {
+                errorEl.textContent = 'Enter a PIN';
+                errorEl.style.display = 'block';
                 return;
             }
 
             try {
-                // Verify manager credentials
-                const response = await fetch(`${API_URL}/auth/verify-manager`, {
+                const response = await fetch(`${API_URL}/pos/manager-auth/verify`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ username, password })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        pin,
+                        action_type: _pendingManagerAuth.actionType,
+                        till_session_id: _pendingManagerAuth.tillSessionId,
+                        discount_percent: _pendingManagerAuth.discountPercent,
+                    })
                 });
-
                 const result = await response.json();
 
-                if (result.success && result.authorized) {
-                    closeManagerAuth();
-
-                    // Execute pending action
-                    if (pendingAuthAction) {
-                        if (pendingAuthAction.type === 'return') {
-                            processReturn(pendingAuthAction.saleId, result.userId);
-                        } else if (pendingAuthAction.type === 'price_override') {
-                            // Handle price override
-                        }
-                    }
+                if (response.ok && result.authorized) {
+                    const onSuccess = _pendingManagerAuth.onSuccess;
+                    closeManagerPinAuth();
+                    showNotification(`Authorized by ${result.manager_name}`, 'success');
+                    if (onSuccess) onSuccess(result);
                 } else {
-                    showNotification('Invalid manager credentials or insufficient permissions', 'error');
+                    errorEl.textContent = result.error || 'Invalid manager PIN';
+                    errorEl.style.display = 'block';
+                    document.getElementById('managerPinInput').value = '';
+                    document.getElementById('managerPinInput').focus();
                 }
             } catch (error) {
-                showNotification('Error verifying credentials: ' + error.message, 'error');
+                errorEl.textContent = 'Error verifying PIN: ' + error.message;
+                errorEl.style.display = 'block';
             }
         }
 

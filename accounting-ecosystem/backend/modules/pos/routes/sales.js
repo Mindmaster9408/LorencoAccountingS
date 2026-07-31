@@ -24,7 +24,7 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getStockPolicy } = require('../services/stockPolicyCache');
-const { hasPermission } = require('../../../config/permissions');
+const { hasPermission, MANAGEMENT_ROLES } = require('../../../config/permissions');
 const { syncAccountSaleToLinkedBuyerPO } = require('../services/accountSaleToPOSync');
 const { getBusinessDayBounds, activeDiscountOrFilter } = require('../services/discountWindow');
 
@@ -113,6 +113,56 @@ async function resolveEffectivePrices({ companyId, productIds, productMap, custo
   }
 
   return effectivePriceByProduct;
+}
+
+/**
+ * Find + consume (mark used) an unexpired, unused manager-PIN authorization
+ * (POST /manager-auth/verify) for a given action. Shared by the manual-
+ * discount check below and POST /:id/return's manager-tier gate — one real
+ * "was this actually approved" check instead of two, since the PIN modal
+ * feeds the same pos_manager_authorizations table for both.
+ *
+ * @returns {Promise<{ok:true}|{ok:false}>}
+ */
+async function consumeManagerAuthorization({ companyId, tillSessionId, actionType, discountPercent }) {
+  let query = supabase
+    .from('pos_manager_authorizations')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('till_session_id', tillSessionId)
+    .eq('action_type', actionType)
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (actionType === 'discount') query = query.eq('discount_percent', discountPercent);
+
+  const { data: authRow } = await query.maybeSingle();
+  if (!authRow) return { ok: false };
+
+  // Single-use — a second sale/return can't silently reuse the same approval.
+  await supabase.from('pos_manager_authorizations').update({ used_at: new Date().toISOString() }).eq('id', authRow.id);
+  return { ok: true };
+}
+
+/**
+ * Verify (and consume) authorization for a manual, discretionary checkout
+ * discount — the one the manager-PIN-authorization feature added (2026-07-31,
+ * same day as resolveEffectivePrices above, but a distinct concept: this is
+ * a whole-sale percentage a manager grants at their own discretion, not a
+ * pricing-tier rule). A management-tier requester self-authorizes (they ARE
+ * the manager); anyone else needs a matching unused, unexpired
+ * pos_manager_authorizations row created by POST /manager-auth/verify.
+ *
+ * @returns {Promise<{ok:true}|{ok:false, error:string}>}
+ */
+async function authorizeManualDiscount({ companyId, tillSessionId, requesterRole, discountPercent }) {
+  if (!discountPercent) return { ok: true }; // nothing requested — nothing to authorize
+  if (MANAGEMENT_ROLES.includes(requesterRole)) return { ok: true }; // manager giving it directly
+
+  const result = await consumeManagerAuthorization({ companyId, tillSessionId, actionType: 'discount', discountPercent });
+  if (!result.ok) return { ok: false, error: 'This discount requires manager PIN authorization' };
+  return { ok: true };
 }
 
 /**
@@ -495,12 +545,15 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       items,
       till_session_id,
       customer_id,
-      // discount_amount kept as an optional manual override on top of the
-      // server-derived per-line pricing below (resolveEffectivePrices) — see
-      // that function's comment. discount_percent is no longer read here:
-      // the customer's actual discount_percentage is looked up server-side
-      // instead (never trust a client-supplied discount rate).
+      // discount_amount kept as an optional flat manual override — see
+      // resolveEffectivePrices()'s comment. discount_percent, unlike this
+      // morning's version, IS read here again — but only as a manager-
+      // authorized DISCRETIONARY discount on top of everything else
+      // (resolveEffectivePrices/authorizeManualDiscount below), never as a
+      // way to spoof a customer's own discount rate (that's still always
+      // server-derived from the customers table, ignoring this field).
       discount_amount: discountAmt,
+      discount_percent: manualDiscountPercent,
       notes,
       payment_method,
       payments: paymentsFromBody,
@@ -680,9 +733,34 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     // (no frontend UI sends it — confirmed this morning) but is kept as an
     // optional manual override ON TOP of the per-line calculation above,
     // for backward compatibility with that dormant field.
-    const total_amount = Math.max(0, Math.round(((discountAmt ? netSubtotal - discountAmt : netSubtotal)) * 100) / 100);
-    const discount      = Math.max(0, Math.round((grossSubtotal - total_amount) * 100) / 100);
-    const vat_total_for_rpc = Math.round(vat_total * 100) / 100;
+    let total_amount = Math.max(0, Math.round(((discountAmt ? netSubtotal - discountAmt : netSubtotal)) * 100) / 100);
+    let vat_total_for_rpc = Math.round(vat_total * 100) / 100;
+
+    // ── 3c. Manual, manager-authorized discretionary discount ──────────────
+    // A whole-sale percentage on top of everything above — distinct from
+    // resolveEffectivePrices' per-line pricing rules. Requires either the
+    // requester themselves being management-tier, or a matching manager-PIN
+    // authorization (POST /manager-auth/verify) for this exact till session
+    // and percentage.
+    if (discount_percent) {
+      const authResult = await authorizeManualDiscount({
+        companyId: req.companyId,
+        tillSessionId: till_session_id,
+        requesterRole: req.user.role,
+        discountPercent: discount_percent,
+      });
+      if (!authResult.ok) {
+        return res.status(403).json({ error: authResult.error });
+      }
+      const preManualTotal = total_amount;
+      total_amount = Math.max(0, Math.round(preManualTotal * (1 - discount_percent / 100) * 100) / 100);
+      // Same proportional VAT scaling as this morning's whole-cart approach —
+      // appropriate HERE because this discount really is a flat percentage
+      // off everything, unlike the per-line pricing above.
+      vat_total_for_rpc = preManualTotal > 0 ? Math.round(vat_total_for_rpc * (total_amount / preManualTotal) * 100) / 100 : vat_total_for_rpc;
+    }
+
+    const discount = Math.max(0, Math.round((grossSubtotal - total_amount) * 100) / 100);
 
     // ── 3b. Validate split payment total if provided ──────────────────────
     if (paymentsFromBody && paymentsFromBody.length > 0) {
@@ -912,7 +990,9 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
         // through, and kept pressing Complete Sale, creating real duplicate
         // sales (confirmed live: three identical R271 Card sales ~15s apart).
         subtotal:        grossSubtotal,
-        vat_amount:      vat_total,
+        // vat_total_for_rpc (not raw vat_total) — matches what was actually
+        // stored via the RPC, including the manual-discount VAT scaling above.
+        vat_amount:      vat_total_for_rpc,
         discount_amount: discount,
         payment_method,
         status:          'completed',
@@ -1358,14 +1438,34 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
  * off a customer's balance additionally requires SALES.REFUND (management),
  * checked before any write.
  *
+ * BUG FIX (found live, 2026-07-31): this route used to gate on
+ * requirePermission('SALES.VOID') alone — a plain cashier (below
+ * SUPERVISOR_ROLES) could never even reach this handler, making the
+ * frontend's "cashier initiates, manager approves by PIN" flow impossible
+ * end-to-end (compounded by that flow's PIN-verification endpoint not
+ * existing at all — also fixed today). The route-level gate is now removed;
+ * SALES.VOID/SALES.REFUND are still enforced below, just with a manager-PIN
+ * authorization (POST /manager-auth/verify) as a working alternative to
+ * already having the role — not a weaker check, a functioning one.
+ *
  * idempotency_key (optional): protects the whole operation — retrying the
  * same request returns the original pos_returns row unchanged rather than
  * creating a second return (which would double-restore stock and
  * double-reverse the ledger).
  */
-router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => {
+router.post('/:id/return', async (req, res) => {
   try {
-    const { reason, refund_method, items: returnItems, idempotency_key: idempotencyKey } = req.body;
+    const { reason, refund_method, items: returnItems, idempotency_key: idempotencyKey, till_session_id } = req.body;
+
+    // General return capability — SALES.VOID (supervisor-tier) self-
+    // authorizes; anyone else needs a consumed manager-PIN authorization for
+    // this exact till session. The actual check happens further below, once
+    // accountPortionOfReturn is known — a plain return only needs SALES.VOID
+    // (supervisor), a balance-reversing one needs the stricter SALES.REFUND
+    // (management); either way it's ONE role-or-PIN check against whichever
+    // bar actually applies, consuming at most one authorization row (was a
+    // bug in an earlier version of this fix: checking VOID and REFUND
+    // separately could try to consume two rows for one approval).
 
     if (!reason) return res.status(400).json({ error: 'Return reason is required' });
 
@@ -1410,11 +1510,24 @@ router.post('/:id/return', requirePermission('SALES.VOID'), async (req, res) => 
     const accountShareRatio = saleTotal > 0 ? (accountTenderTotal / saleTotal) : 0;
     const accountPortionOfReturn = Math.round(refundAmount * accountShareRatio * 100) / 100;
 
-    // Manager-tier gate — checked BEFORE any write, same rule as Workstream 91's void gate.
-    if (accountPortionOfReturn > 0 && !hasPermission(req.user.role, 'SALES', 'REFUND')) {
-      return res.status(403).json({
-        error: 'This return reverses a customer\'s owed balance and requires management approval (SALES.REFUND)',
+    // Manager-tier gate — checked BEFORE any write, same rule as Workstream 91's
+    // void gate. A balance-reversing return needs SALES.REFUND (management);
+    // a plain one only needs SALES.VOID (supervisor). Either bar can be met
+    // by already having the role, OR by a consumed manager-PIN authorization
+    // (POST /manager-auth/verify) — the working replacement for the
+    // previously-nonexistent /auth/verify-manager flow (found live 2026-07-31).
+    const requiredPermission = accountPortionOfReturn > 0 ? 'REFUND' : 'VOID';
+    if (!hasPermission(req.user.role, 'SALES', requiredPermission)) {
+      const authResult = await consumeManagerAuthorization({
+        companyId: req.companyId, tillSessionId: till_session_id, actionType: 'return',
       });
+      if (!authResult.ok) {
+        return res.status(403).json({
+          error: accountPortionOfReturn > 0
+            ? 'This return reverses a customer\'s owed balance and requires management approval (SALES.REFUND) or manager PIN authorization'
+            : 'Returns require manager PIN authorization',
+        });
+      }
     }
 
     // Record in pos_returns

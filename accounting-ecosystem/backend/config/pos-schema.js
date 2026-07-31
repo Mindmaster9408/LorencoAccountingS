@@ -91,6 +91,32 @@ async function ensurePosSchema(pool) {
         ON customer_product_discounts(company_id, customer_id)
     `);
 
+    // ── pos_manager_authorizations ──────────────────────────────────────────
+    // Short-lived proof that a management-tier user approved a specific
+    // cashier-initiated action (a manual checkout discount, or a return) by
+    // entering their PIN. Not a token — a DB row, consistent with how the
+    // rest of this codebase does audit/authorization state. Rows expire
+    // (expires_at) and are single-use (used_at set on consumption). See
+    // routes/managerAuth.js (creates rows) and sales.js (consumes them).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_manager_authorizations (
+        id               SERIAL PRIMARY KEY,
+        company_id       INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        till_session_id  INTEGER REFERENCES till_sessions(id),
+        action_type      VARCHAR(20) NOT NULL,
+        discount_percent DECIMAL(5,2),
+        authorized_by    INTEGER NOT NULL REFERENCES users(id),
+        expires_at       TIMESTAMPTZ NOT NULL,
+        used_at          TIMESTAMPTZ,
+        created_at       TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_manager_auth_lookup
+        ON pos_manager_authorizations(company_id, till_session_id, action_type)
+    `);
+
     // ── products: add columns the POS code expects but schema.sql omitted ────
     // Schema originally had product_name/unit_price. Code now uses those names.
     // Add sku and unit as optional columns that the backend accepts.

@@ -32,6 +32,7 @@ const reportsRoutes        = require('./routes/reports');
 const importRoutes         = require('./routes/import');
 const pinRoutes            = require('./routes/pin');
 const shortcutsRoutes      = require('./routes/shortcuts');
+const managerAuthRoutes    = require('./routes/managerAuth');
 
 const router = express.Router();
 
@@ -52,6 +53,7 @@ router.use('/sessions',   cashPaidOutsRoutes);
 router.use('/tills',      tillsRoutes);
 router.use('/till',       tillsRoutes);   // alias used by some frontend calls
 router.use('/discounts',  discountsRoutes);
+router.use('/manager-auth', managerAuthRoutes);
 router.use('/loyalty',    loyaltyRoutes);
 router.use('/settings',   settingsRoutes);
 router.use('/recovery',   recoveryRoutes);
