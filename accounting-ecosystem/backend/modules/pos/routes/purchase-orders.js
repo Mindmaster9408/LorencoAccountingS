@@ -629,7 +629,13 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
     const itemsById = new Map((deliveryItems || []).map(i => [i.id, i]));
 
     const lines = items
-      .map(i => ({ item_id: parseInt(i.item_id), quantity_received: parseInt(i.quantity_received) || 0, quantity_damaged: parseInt(i.quantity_damaged) || 0, quantity_rejected: parseInt(i.quantity_rejected) || 0 }))
+      .map(i => ({
+        item_id: parseInt(i.item_id), quantity_received: parseInt(i.quantity_received) || 0,
+        quantity_damaged: parseInt(i.quantity_damaged) || 0, quantity_rejected: parseInt(i.quantity_rejected) || 0,
+        // Serial Number Tracking (2026-07-31) — optional, only meaningful for
+        // track_serial products; validated below before any write happens.
+        serial_numbers: Array.isArray(i.serial_numbers) ? i.serial_numbers.filter(s => s && String(s).trim()) : [],
+      }))
       .filter(l => l.item_id > 0 && (l.quantity_received > 0 || l.quantity_damaged > 0 || l.quantity_rejected > 0));
     if (lines.length === 0) return res.status(400).json({ error: 'No items with a received/damaged/rejected quantity greater than zero' });
 
@@ -640,6 +646,36 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
       return claimed > (item.quantity_sent - item.quantity_received);
     });
     if (invalid.length > 0) return res.status(400).json({ error: 'Claimed quantity exceeds what remains outstanding for one or more items', invalid: invalid.map(l => l.item_id) });
+
+    // Serial Number Tracking (2026-07-31) — mirrors inventory.js's POST
+    // /receive exactly: validated up front, before any stock write, so a
+    // mismatched serial count never partially applies. Only products with
+    // track_serial=true require this; every other product is completely
+    // unaffected (serial_numbers is simply ignored if sent for them). This
+    // was the documented gap from the original Serial Number Tracking
+    // commit (9c86730) — Purchase Orders are the actual receiving path used
+    // day-to-day (confirmed with Ruan), so a serial-tracked product arriving
+    // via a PO previously got its stock incremented with zero serial
+    // records, meaning it could never be sold afterwards.
+    const receiverProductIds = [...new Set(lines.map(l => itemsById.get(l.item_id)?.receiver_product_id).filter(Boolean))];
+    let trackSerialMap = {};
+    if (receiverProductIds.length > 0) {
+      const { data: serialProducts } = await supabase
+        .from('products')
+        .select('id, track_serial')
+        .eq('company_id', req.companyId)
+        .in('id', receiverProductIds);
+      for (const p of (serialProducts || [])) trackSerialMap[p.id] = p.track_serial === true;
+    }
+    for (const line of lines) {
+      const item = itemsById.get(line.item_id);
+      const pid = item?.receiver_product_id;
+      if (pid && trackSerialMap[pid] && line.quantity_received > 0 && line.serial_numbers.length !== line.quantity_received) {
+        return res.status(400).json({
+          error: `Product ${pid} is serial-tracked — expected ${line.quantity_received} serial number(s), got ${line.serial_numbers.length}.`,
+        });
+      }
+    }
 
     let anyVariance = false;
     const discrepancies = [];
@@ -658,6 +694,27 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
             reason: 'po_delivery_received', notes: `Delivery #${delivery.delivery_number} for PO ${po.po_number} from company #${po.supplier_company_id}`,
           });
           posAuditFromReq(req, POS_EVENTS.STOCK_ADJUSTED, { productId: item.receiver_product_id, beforeSnapshot: { stock_quantity: result.oldQty }, afterSnapshot: { stock_quantity: result.newQty }, metadata: { quantity_change: line.quantity_received, reason: 'po_delivery_received', purchase_order_id: poId, delivery_id: deliveryId } });
+
+          // Serial Number Tracking — one row per unit, count already
+          // validated to match quantity_received above. A duplicate serial
+          // (unique company+product+serial) is logged but does not roll
+          // back the stock increment already applied via CAS — same
+          // best-effort-per-line convention inventory.js's /receive uses.
+          if (trackSerialMap[item.receiver_product_id] && line.serial_numbers.length > 0) {
+            const { error: serialErr } = await supabase.from('pos_product_serials').insert(
+              line.serial_numbers.map(s => ({
+                company_id: req.companyId,
+                product_id: item.receiver_product_id,
+                serial_number: String(s).trim(),
+                status: 'in_stock',
+                received_reference: `Delivery #${delivery.delivery_number} for PO ${po.po_number}`,
+                created_by_user_id: req.user.userId,
+              }))
+            );
+            if (serialErr) {
+              console.error('[purchase-orders] receive: serial insert failed for product', item.receiver_product_id, serialErr.message);
+            }
+          }
         }
       }
 

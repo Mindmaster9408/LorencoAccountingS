@@ -12584,6 +12584,24 @@
             return (raw || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
         }
 
+        // Serial Number Tracking on PO delivery receiving (2026-07-31) — the
+        // qty input and the serials textarea live in two adjacent <tr>s (the
+        // delivery table has a fixed 6-column layout per item), unlike the
+        // standalone Receive Stock screen where both are in the same row —
+        // so this walks to the sibling row instead of just closest('tr').
+        function updatePoReceiveSerialHint(el) {
+            const inSerialsRow = el.classList.contains('po-recv-serials');
+            const mainRow = inSerialsRow ? el.closest('tr').previousElementSibling : el.closest('tr');
+            const serialsRow = inSerialsRow ? el.closest('tr') : el.closest('tr').nextElementSibling;
+            if (!mainRow || !serialsRow) return;
+            const qty = parseInt(mainRow.querySelector('.po-recv-received')?.value) || 0;
+            const textarea = serialsRow.querySelector('.po-recv-serials');
+            const entered = parseReceiveSerials(textarea.value).length;
+            const hint = serialsRow.querySelector('.po-recv-serials-hint');
+            hint.textContent = `${entered} of ${qty} serial number(s) entered`;
+            hint.style.color = entered === qty ? '#2e7d32' : '#b45309';
+        }
+
         async function submitReceiveStock() {
             const supplier_name = document.getElementById('receiveSupplier').value.trim();
             if (!supplier_name) { showNotification('Supplier name is required', 'error'); return; }
@@ -16242,16 +16260,31 @@
                         ${canReceive ? '<th style="text-align:right;padding:3px;width:70px;">Receive</th><th style="text-align:right;padding:3px;width:70px;">Damaged</th><th style="text-align:right;padding:3px;width:70px;">Rejected</th>' : ''}
                         </tr></thead>
                         <tbody>
-                        ${(d.items || []).map(i => `
-                            <tr data-delivery-item-id="${i.id}">
+                        ${(d.items || []).map(i => {
+                            // Serial Number Tracking (2026-07-31) — only track_serial
+                            // products get the extra row; productsById is already fully
+                            // loaded client-side, no backend GET change needed. Same
+                            // parseReceiveSerials()/hint pattern as the standalone
+                            // Receive Stock screen (addReceiveRow()).
+                            const isSerialTracked = canReceive && productsById.get(i.receiver_product_id)?.track_serial === true;
+                            return `
+                            <tr data-delivery-item-id="${i.id}" data-receiver-product-id="${i.receiver_product_id || ''}">
                                 <td style="padding:3px;">${i.description}</td>
                                 <td style="padding:3px;text-align:right;">${i.quantity_sent}</td>
                                 <td style="padding:3px;text-align:right;">${i.quantity_received}</td>
                                 ${canReceive ? `
-                                    <td style="padding:3px;"><input type="number" min="0" value="0" class="po-recv-received" style="width:100%;padding:3px;text-align:right;"></td>
+                                    <td style="padding:3px;"><input type="number" min="0" value="0" class="po-recv-received" style="width:100%;padding:3px;text-align:right;" ${isSerialTracked ? 'oninput="updatePoReceiveSerialHint(this)"' : ''}></td>
                                     <td style="padding:3px;"><input type="number" min="0" value="0" class="po-recv-damaged" style="width:100%;padding:3px;text-align:right;"></td>
                                     <td style="padding:3px;"><input type="number" min="0" value="0" class="po-recv-rejected" style="width:100%;padding:3px;text-align:right;"></td>` : ''}
-                            </tr>`).join('')}
+                            </tr>
+                            ${isSerialTracked ? `
+                            <tr data-delivery-serial-row="${i.id}">
+                                <td colspan="6" style="padding:3px 3px 8px;">
+                                    <textarea class="po-recv-serials" rows="2" placeholder="Serial numbers for this line — one per line or comma-separated" style="width:100%;padding:4px;font-size:12px;border:1px solid #ddd;border-radius:4px;" oninput="updatePoReceiveSerialHint(this)"></textarea>
+                                    <div class="po-recv-serials-hint" style="font-size:11px;color:#666;margin-top:2px;">0 of 0 serial number(s) entered</div>
+                                </td>
+                            </tr>` : ''}`;
+                        }).join('')}
                         </tbody>
                     </table>
                     ${canReceive ? `<button class="btn btn-primary" style="margin-top:8px;font-size:12px;" onclick="submitReceiveDelivery(${po.id}, ${d.id})">✅ Receive Delivery</button>` : ''}
@@ -16351,14 +16384,32 @@
 
         async function submitReceiveDelivery(poId, deliveryId) {
             const items = [];
+            let serialMismatch = null;
             document.querySelectorAll(`[data-delivery-id="${deliveryId}"] tr[data-delivery-item-id]`).forEach(row => {
                 const itemId = parseInt(row.dataset.deliveryItemId);
                 const received = parseInt(row.querySelector('.po-recv-received')?.value) || 0;
                 const damaged = parseInt(row.querySelector('.po-recv-damaged')?.value) || 0;
                 const rejected = parseInt(row.querySelector('.po-recv-rejected')?.value) || 0;
-                if (received > 0 || damaged > 0 || rejected > 0) items.push({ item_id: itemId, quantity_received: received, quantity_damaged: damaged, quantity_rejected: rejected });
+                if (received > 0 || damaged > 0 || rejected > 0) {
+                    const item = { item_id: itemId, quantity_received: received, quantity_damaged: damaged, quantity_rejected: rejected };
+                    // Serial Number Tracking — the serials row (if this item is
+                    // track_serial) is the next sibling row, tagged
+                    // data-delivery-serial-row rather than reusing
+                    // data-delivery-item-id, so it's never matched by this same
+                    // tr[data-delivery-item-id] selector.
+                    const serialsRow = row.nextElementSibling;
+                    if (serialsRow && serialsRow.dataset.deliverySerialRow === String(row.dataset.deliveryItemId)) {
+                        const serials = parseReceiveSerials(serialsRow.querySelector('.po-recv-serials')?.value);
+                        item.serial_numbers = serials;
+                        if (received > 0 && serials.length !== received) {
+                            serialMismatch = `Item on row ${itemId}: expected ${received} serial number(s), got ${serials.length}`;
+                        }
+                    }
+                    items.push(item);
+                }
             });
             if (items.length === 0) { showNotification('Enter a received/damaged/rejected quantity for at least one item', 'error'); return; }
+            if (serialMismatch) { showNotification(serialMismatch, 'error'); return; }
 
             try {
                 const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/deliveries/${deliveryId}/receive`, {
