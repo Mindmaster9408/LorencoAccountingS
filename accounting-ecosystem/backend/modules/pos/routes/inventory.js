@@ -263,6 +263,9 @@ router.post('/return', requirePermission('INVENTORY.ADJUST'), async (req, res) =
         unit_cost:  i.unit_cost != null && i.unit_cost !== '' ? parseFloat(i.unit_cost) : null,
         reason:     RETURN_REASONS.has(i.reason) ? i.reason : 'other',
         notes:      i.notes ? String(i.notes).trim() : null,
+        // Serial Number Tracking (2026-07-31) — optional, only meaningful
+        // for track_serial products; validated below before any write.
+        serial_numbers: Array.isArray(i.serial_numbers) ? i.serial_numbers.filter(s => s && String(s).trim()).map(s => String(s).trim()) : [],
       }))
       .filter(l => l.product_id > 0 && l.quantity > 0);
 
@@ -271,7 +274,7 @@ router.post('/return', requirePermission('INVENTORY.ADJUST'), async (req, res) =
     const productIds = lines.map(l => l.product_id);
     const { data: dbProducts, error: prodErr } = await supabase
       .from('products')
-      .select('id, product_name, stock_quantity')
+      .select('id, product_name, stock_quantity, track_serial')
       .eq('company_id', req.companyId)
       .in('id', productIds);
     if (prodErr) return res.status(500).json({ error: prodErr.message });
@@ -293,6 +296,36 @@ router.post('/return', requirePermission('INVENTORY.ADJUST'), async (req, res) =
         return res.status(400).json({
           error: 'Return quantity exceeds current stock for one or more products',
           exceeding: exceeding.map(l => ({ product_id: l.product_id, product_name: l.product.product_name, requested: l.quantity, current_stock: l.product.stock_quantity })),
+        });
+      }
+    }
+
+    // Serial Number Tracking (2026-07-31) — validated up front, before any
+    // write, same "reject the whole request, nothing written" convention as
+    // the stock-exceeds check above. Mirrors POST /adjust's decrease-path
+    // validation: count must match exactly, and every named serial must
+    // currently be in_stock for that product (a supplier return can't write
+    // off a serial that's already sold or already removed). Closes the
+    // inverse of the return/cancel-order gap fixed earlier today — a
+    // serial-tracked unit sent back to a supplier must stop being sellable.
+    for (const line of lines) {
+      const product = byId.get(line.product_id);
+      if (!product?.track_serial) continue;
+      if (line.serial_numbers.length !== line.quantity) {
+        return res.status(400).json({
+          error: `"${product.product_name}" is serial-tracked — expected ${line.quantity} serial number(s), got ${line.serial_numbers.length}.`,
+        });
+      }
+      const { data: existing } = await supabase
+        .from('pos_product_serials')
+        .select('serial_number')
+        .eq('company_id', req.companyId)
+        .eq('product_id', line.product_id)
+        .eq('status', 'in_stock')
+        .in('serial_number', line.serial_numbers);
+      if (!existing || existing.length !== line.serial_numbers.length) {
+        return res.status(400).json({
+          error: `One or more serial numbers for "${product.product_name}" are not currently in stock.`,
         });
       }
     }
@@ -339,6 +372,22 @@ router.post('/return', requirePermission('INVENTORY.ADJUST'), async (req, res) =
       }
       const oldQty = result.ok ? result.oldQty : snapshotQty;
       const newQty = result.ok ? result.newQty : snapshotQty + clampedChange;
+
+      // Serial Number Tracking — write off the exact serials returned to the
+      // supplier now that the stock decrement has succeeded. Already
+      // validated (count + currently in_stock) before this loop started.
+      if (product.track_serial && line.serial_numbers.length > 0) {
+        const { error: serialErr } = await supabase
+          .from('pos_product_serials')
+          .update({ status: 'removed' })
+          .eq('company_id', req.companyId)
+          .eq('product_id', line.product_id)
+          .eq('status', 'in_stock')
+          .in('serial_number', line.serial_numbers);
+        if (serialErr) {
+          console.error('[inventory] return: serial removal failed for product', line.product_id, serialErr.message);
+        }
+      }
 
       await supabase.from('pos_supplier_return_items').insert({
         return_id: ret.id, company_id: req.companyId, product_id: line.product_id,

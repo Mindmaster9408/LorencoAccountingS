@@ -15075,12 +15075,17 @@
                 noProductsState.style.display = 'none'; table.style.display = 'table';
                 const reasonOptions = SUPPLIER_RETURN_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
                 const tbody = document.getElementById('supplierReturnItemsBody');
-                tbody.innerHTML = supplierReturnProducts.map(p => `
+                tbody.innerHTML = supplierReturnProducts.map(p => {
+                    // Serial Number Tracking (2026-07-31) — same pattern as this
+                    // morning's PO-receive addition: productsById is already fully
+                    // loaded client-side, no backend GET change needed here.
+                    const isSerialTracked = productsById.get(p.id)?.track_serial === true;
+                    return `
                     <tr style="border-bottom:1px solid #eee;" data-product-id="${p.id}">
                         <td style="padding:5px;">${p.product_name}</td>
                         <td style="padding:5px;text-align:right;">${parseFloat(p.stock_quantity || 0)}</td>
                         <td style="padding:5px;">
-                            <input type="number" min="0" value="0" class="srt-qty" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierReturnSummary()">
+                            <input type="number" min="0" value="0" class="srt-qty" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierReturnSummary()${isSerialTracked ? ';updateSupplierReturnSerialHint(this)' : ''}">
                         </td>
                         <td style="padding:5px;">
                             <input type="number" min="0" step="0.01" class="srt-cost" value="${p.last_purchase_price != null ? parseFloat(p.last_purchase_price).toFixed(2) : ''}" placeholder="0.00" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;">
@@ -15091,11 +15096,36 @@
                         <td style="padding:5px;">
                             <input type="text" class="srt-notes" placeholder="optional" style="width:100%;padding:4px;border:1px solid #ddd;border-radius:4px;">
                         </td>
-                    </tr>`).join('');
+                    </tr>
+                    ${isSerialTracked ? `
+                    <tr style="border-bottom:1px solid #eee;" data-serial-row-for="${p.id}">
+                        <td colspan="6" style="padding:3px 5px 8px;">
+                            <textarea class="srt-serials" rows="2" placeholder="Serial numbers being returned — one per line or comma-separated" style="width:100%;padding:4px;font-size:12px;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierReturnSerialHint(this)"></textarea>
+                            <div class="srt-serials-hint" style="font-size:11px;color:#666;margin-top:2px;">0 of 0 serial number(s) entered</div>
+                        </td>
+                    </tr>` : ''}`;
+                }).join('');
             } catch (e) {
                 console.log('Supplier products load error:', e);
                 table.style.display = 'none'; noProductsState.style.display = 'block';
             }
+        }
+
+        // Serial Number Tracking on Supplier Return (2026-07-31) — same
+        // sibling-row pairing as updatePoReceiveSerialHint(), adapted for
+        // this table (data-product-id / data-serial-row-for instead of the
+        // PO table's data-delivery-item-id / data-delivery-serial-row).
+        function updateSupplierReturnSerialHint(el) {
+            const inSerialsRow = el.classList.contains('srt-serials');
+            const mainRow = inSerialsRow ? el.closest('tr').previousElementSibling : el.closest('tr');
+            const serialsRow = inSerialsRow ? el.closest('tr') : el.closest('tr').nextElementSibling;
+            if (!mainRow || !serialsRow) return;
+            const qty = parseInt(mainRow.querySelector('.srt-qty')?.value) || 0;
+            const textarea = serialsRow.querySelector('.srt-serials');
+            const entered = parseReceiveSerials(textarea.value).length;
+            const hint = serialsRow.querySelector('.srt-serials-hint');
+            hint.textContent = `${entered} of ${qty} serial number(s) entered`;
+            hint.style.color = entered === qty ? '#2e7d32' : '#b45309';
         }
 
         function updateSupplierReturnSummary() {
@@ -15117,13 +15147,27 @@
             const override  = document.getElementById('supplierReturnOverride').checked;
 
             const items = [];
-            document.querySelectorAll('#supplierReturnItemsBody tr').forEach(row => {
+            let serialMismatch = null;
+            document.querySelectorAll('#supplierReturnItemsBody tr[data-product-id]').forEach(row => {
                 const pid = parseInt(row.dataset.productId);
                 const qty = parseInt(row.querySelector('.srt-qty')?.value) || 0;
                 if (qty > 0) {
                     const cost = row.querySelector('.srt-cost')?.value;
+                    // Serial Number Tracking — the serials row (if this product is
+                    // track_serial) is the next sibling row, tagged
+                    // data-serial-row-for rather than reusing data-product-id.
+                    const serialsRow = row.nextElementSibling;
+                    let serialNumbers;
+                    if (serialsRow && serialsRow.dataset.serialRowFor === String(pid)) {
+                        const serials = parseReceiveSerials(serialsRow.querySelector('.srt-serials')?.value);
+                        serialNumbers = serials;
+                        if (serials.length !== qty) {
+                            serialMismatch = `${row.querySelector('td')?.textContent || 'Item'}: expected ${qty} serial number(s), got ${serials.length}`;
+                        }
+                    }
                     items.push({
                         product_id: pid,
+                        serial_numbers: serialNumbers,
                         quantity:   qty,
                         unit_cost:  cost ? parseFloat(cost) : null,
                         reason:     row.querySelector('.srt-reason')?.value || 'other',
@@ -15132,6 +15176,7 @@
                 }
             });
             if (items.length === 0) { showNotification('Enter a quantity for at least one product', 'error'); return; }
+            if (serialMismatch) { showNotification(serialMismatch, 'error'); return; }
 
             try {
                 const res = await fetch(`${API_URL}/pos/inventory/return`, {
