@@ -2060,6 +2060,10 @@
                                     <span>Subtotal:</span>
                                     <span id="subtotal">R 0.00</span>
                                 </div>
+                                <div class="summary-row" id="customerDiscountRow" style="display:none;color:#2e7d32;">
+                                    <span id="customerDiscountLabel">Customer discount:</span>
+                                    <span id="customerDiscountAmount">−R 0.00</span>
+                                </div>
                                 <div class="summary-row">
                                     <span>VAT (15%):</span>
                                     <span id="vat">R 0.00</span>
@@ -2071,6 +2075,25 @@
                             </div>
 
                             <div class="checkout-section">
+                                <!-- Customer Selection (2026-07-31) — always visible, independent of
+                                     payment method. A customer's standard discount (if any) applies
+                                     whether they pay Cash, Card, or Account; Account payment still
+                                     additionally requires a customer to be selected (unchanged, see
+                                     checkout()'s validation). -->
+                                <div id="accountCustomerSection" style="display:block; background:#f0f4ff; padding:12px; border-radius:8px; margin-bottom:10px;">
+                                    <label style="font-weight:600;display:block;margin-bottom:5px;">Select Customer (optional)</label>
+                                    <div style="display:flex;gap:8px;">
+                                        <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" oninput="searchAccountCustomers(this.value)">
+                                    </div>
+                                    <div id="accountCustomerResults" style="max-height:120px;overflow-y:auto;margin-top:8px;"></div>
+                                    <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:white;border-radius:6px;border:2px solid #667eea;">
+                                        <span id="selectedAccountName" style="font-weight:600;"></span>
+                                        <span id="selectedAccountBalance" style="float:right;color:#666;font-size:13px;"></span>
+                                        <a onclick="clearSelectedCustomer()" style="float:right;margin-right:10px;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
+                                        <div id="selectedCustomerDiscountLine" style="display:none;clear:both;padding-top:6px;color:#2e7d32;font-weight:600;font-size:13px;"></div>
+                                    </div>
+                                </div>
+
                                 <!-- Workstream 76 — only the 4 standard methods show by default;
                                      EFT/SnapScan/Zapper/Gift Card moved behind "More" below. -->
                                 <div class="payment-methods payment-methods-primary">
@@ -2127,19 +2150,6 @@
                                     <label style="font-weight:600;color:var(--text);">Amount Received</label>
                                     <input type="number" id="cashTenderedAmount" step="0.01" min="0" placeholder="0.00" oninput="updateChangeDue()" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
                                     <div id="changeDueDisplay" style="font-weight:800;font-size:17px;color:var(--text-secondary);background:var(--surface);text-align:center;padding:8px;border-radius:6px;">Change: R 0.00</div>
-                                </div>
-
-                                <!-- Account Customer Selection (shown when ACCOUNT selected) -->
-                                <div id="accountCustomerSection" style="display:none; background:#f0f4ff; padding:12px; border-radius:8px; margin-bottom:10px;">
-                                    <label style="font-weight:600;display:block;margin-bottom:5px;">Select Account Customer</label>
-                                    <div style="display:flex;gap:8px;">
-                                        <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" oninput="searchAccountCustomers(this.value)">
-                                    </div>
-                                    <div id="accountCustomerResults" style="max-height:120px;overflow-y:auto;margin-top:8px;"></div>
-                                    <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:white;border-radius:6px;border:2px solid #667eea;">
-                                        <span id="selectedAccountName" style="font-weight:600;"></span>
-                                        <span id="selectedAccountBalance" style="float:right;color:#666;font-size:13px;"></span>
-                                    </div>
                                 </div>
 
                                 <button class="checkout-btn" id="checkoutBtn" onclick="checkout()" disabled>Complete Sale</button>
@@ -4553,6 +4563,12 @@
                 </div>
 
                 <div class="form-group">
+                    <label>Standard Discount (%)</label>
+                    <input type="number" id="customerDiscountPercentage" step="0.01" min="0" max="100" value="0" placeholder="0.00">
+                    <div style="font-size:11px;color:#666;margin-top:3px;">Applied to every sale for this customer, on any payment method. Management-only to change — the server rejects the save otherwise. Set to 0 for no discount.</div>
+                </div>
+
+                <div class="form-group">
                     <label>Contact Person</label>
                     <input type="text" id="customerContactPerson" placeholder="Contact person name">
                 </div>
@@ -5477,6 +5493,7 @@
                                 tillSessionId: sale.tillSessionId,
                                 items: sale.items,
                                 paymentMethod: sale.paymentMethod,
+                                customerId: sale.customerId,
                                 offlineCreatedAt: sale.createdAt,
                                 idempotencyKey: sale.idempotencyKey,
                                 cashTendered: sale.cashTendered,
@@ -8528,7 +8545,7 @@
         // that shows a cart/order total must call this rather than recomputing inline —
         // six independent reimplementations of this formula (all wrongly doing
         // `subtotal * 1.15`) is exactly how this bug shipped in the first place.
-        function calcCartTotals(items) {
+        function calcCartTotals(items, discountPercent) {
             let subtotal = 0;
             let vat = 0;
             (items || []).forEach(item => {
@@ -8538,9 +8555,16 @@
                     vat += linePrice * (item.vatRate / (100 + item.vatRate));
                 }
             });
-            // total === subtotal: VAT is already included in unit_price, so it is never
-            // added again. `vat` is informational only (shown as "VAT incl.").
-            return { subtotal, vat, total: subtotal };
+            // Customer standard discount (optional) — applied to the VAT-inclusive
+            // subtotal, same as the authoritative backend calc in sales.js. `vat`
+            // is scaled by the same ratio the subtotal was discounted so the
+            // on-screen "VAT incl." figure matches what's actually stored/charged
+            // (mirrors the vat_total_for_rpc fix in sales.js).
+            const pct = discountPercent || 0;
+            const discount = pct ? subtotal * pct / 100 : 0;
+            const total = Math.max(0, subtotal - discount);
+            const vatAfterDiscount = subtotal > 0 ? vat * (total / subtotal) : vat;
+            return { subtotal, vat: vatAfterDiscount, total, discount };
         }
 
         // Workstream 74 — single compact row (was: a header row with name+remove,
@@ -8625,12 +8649,23 @@
             }
 
             // Update totals
-            const { subtotal, vat, total } = calcCartTotals(cart);
+            const { subtotal, vat, total, discount } = calcCartTotals(cart, selectedCustomerDiscountPercent);
 
             document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
             document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
             document.getElementById('total').textContent = `R ${total.toFixed(2)}`;
             document.getElementById('cartItemCount').textContent = `${cart.length} items`;
+
+            const discountRow = document.getElementById('customerDiscountRow');
+            if (discountRow) {
+                if (discount > 0) {
+                    document.getElementById('customerDiscountLabel').textContent = `Customer discount (${selectedCustomerDiscountPercent}%):`;
+                    document.getElementById('customerDiscountAmount').textContent = `−R ${discount.toFixed(2)}`;
+                    discountRow.style.display = 'flex';
+                } else {
+                    discountRow.style.display = 'none';
+                }
+            }
 
             // Update split payment remaining if active
             if (splitPaymentMode) {
@@ -8691,6 +8726,12 @@
         }
 
         let selectedAccountCustomerId = null;
+        // Customer standard discount % for whoever is currently selected — read
+        // into calcCartTotals() everywhere it's called. Kept alongside
+        // selectedAccountCustomerId (name unchanged to avoid a mass rename across
+        // every existing call site) even though the picker itself is no longer
+        // Account-only — see selectPayment()/selectAccountCustomer() below.
+        let selectedCustomerDiscountPercent = 0;
 
         // Workstream 76 — secondary methods now live behind the "More" popover,
         // so selecting one still calls this same function (same selectedPayment
@@ -8746,16 +8787,16 @@
                 document.getElementById('splitPaymentBtn').classList.remove('selected');
             }
 
-            // Show/hide account customer selector
-            const accountSection = document.getElementById('accountCustomerSection');
-            if (method === 'ACCOUNT') {
-                accountSection.style.display = 'block';
-            } else {
-                accountSection.style.display = 'none';
-                selectedAccountCustomerId = null;
-                // Only for non-ACCOUNT methods — ACCOUNT reveals a customer search
-                // box the cashier is expected to type into next, so don't yank
-                // focus back to the barcode input in that case.
+            // Customer selector (2026-07-31): now always visible regardless of
+            // payment method — a customer's standard discount applies whether
+            // they pay Cash, Card, or Account, so switching method must NOT clear
+            // selectedAccountCustomerId/selectedCustomerDiscountPercent anymore
+            // (it used to wipe out the chosen customer, and their discount, the
+            // instant you picked Cash/Card after Account). Only refocus the
+            // scanner for non-ACCOUNT methods — ACCOUNT is the one case where the
+            // cashier is expected to type into the (already-visible) customer
+            // search box next.
+            if (method !== 'ACCOUNT') {
                 setTimeout(refocusScanner, 100);
             }
 
@@ -8773,7 +8814,7 @@
         }
 
         // Pure cashier convenience — never sent to the backend. The actual
-        // amount charged/recorded is always calcCartTotals(cart).total; this
+        // amount charged/recorded is always calcCartTotals()'s `.total`; this
         // just tells the cashier how much change to hand back.
         function updateChangeDue() {
             const tenderedInput = document.getElementById('cashTenderedAmount');
@@ -8781,7 +8822,7 @@
             if (!tenderedInput || !display) return;
 
             const tendered = parseFloat(tenderedInput.value) || 0;
-            const { total } = calcCartTotals(cart);
+            const { total } = calcCartTotals(cart, selectedCustomerDiscountPercent);
             const change = Math.round((tendered - total) * 100) / 100;
 
             // Solid fill blocks (not just colored text) so the amount stays
@@ -8825,11 +8866,11 @@
                     return;
                 }
                 container.innerHTML = customers.slice(0, 5).map(c => `
-                    <div onclick="selectAccountCustomer(${c.id}, '${(c.name || '').replace(/'/g, "\\'")}', ${c.current_balance || 0}, ${c.credit_limit || 0})"
+                    <div onclick="selectAccountCustomer(${c.id}, '${(c.name || '').replace(/'/g, "\\'")}', ${c.current_balance || 0}, ${c.credit_limit || 0}, ${c.discount_percentage || 0})"
                          style="padding:8px 10px;cursor:pointer;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;font-size:13px;"
                          onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background='transparent'">
                         <div><strong>${c.name}</strong> ${c.phone ? '(' + c.phone + ')' : ''}</div>
-                        <div style="color:#666;">Bal: R ${parseFloat(c.current_balance || 0).toFixed(2)} / R ${parseFloat(c.credit_limit || 0).toFixed(2)}</div>
+                        <div style="color:#666;">Bal: R ${parseFloat(c.current_balance || 0).toFixed(2)} / R ${parseFloat(c.credit_limit || 0).toFixed(2)}${c.discount_percentage > 0 ? ` · ${c.discount_percentage}% off` : ''}</div>
                     </div>
                 `).join('');
             } catch (e) {
@@ -8837,13 +8878,39 @@
             }
         }
 
-        function selectAccountCustomer(id, name, balance, limit) {
+        // Generalised (2026-07-31): this used to be Account-payment-only — now the
+        // same picker is always visible so a customer's standard discount applies
+        // regardless of payment method. Balance/credit-limit stays informational
+        // for every method; it's only actually enforced when paying by Account.
+        function selectAccountCustomer(id, name, balance, limit, discountPercentage) {
             selectedAccountCustomerId = id;
+            selectedCustomerDiscountPercent = parseFloat(discountPercentage) || 0;
             document.getElementById('accountCustomerResults').innerHTML = '';
             document.getElementById('accountCustomerSearch').value = '';
             document.getElementById('selectedAccountCustomer').style.display = 'block';
             document.getElementById('selectedAccountName').textContent = name;
             document.getElementById('selectedAccountBalance').textContent = `Balance: R ${parseFloat(balance).toFixed(2)} / Limit: R ${parseFloat(limit).toFixed(2)}`;
+            const discountEl = document.getElementById('selectedCustomerDiscountLine');
+            if (discountEl) {
+                if (selectedCustomerDiscountPercent > 0) {
+                    discountEl.textContent = `${selectedCustomerDiscountPercent}% standard discount applies`;
+                    discountEl.style.display = 'block';
+                } else {
+                    discountEl.style.display = 'none';
+                }
+            }
+            updateCart();
+        }
+
+        // Clears the selected customer (and their discount) without needing to
+        // switch payment method — the picker is no longer tied to Account.
+        function clearSelectedCustomer() {
+            selectedAccountCustomerId = null;
+            selectedCustomerDiscountPercent = 0;
+            document.getElementById('selectedAccountCustomer').style.display = 'none';
+            const discountEl = document.getElementById('selectedCustomerDiscountLine');
+            if (discountEl) discountEl.style.display = 'none';
+            updateCart();
         }
 
         let lastSaleId = null;
@@ -8878,7 +8945,7 @@
             }
 
             // Calculate totals for offline mode
-            const { subtotal, vat: vatAmount, total: totalAmount } = calcCartTotals(cart);
+            const { subtotal, vat: vatAmount, total: totalAmount } = calcCartTotals(cart, selectedCustomerDiscountPercent);
 
             // If the cashier entered an amount received for a cash sale, it must
             // actually cover the total — can't hand back negative change. Entering
@@ -8916,6 +8983,13 @@
                     ...(item.serialNumbers && item.serialNumbers.length > 0 ? { serial_numbers: item.serialNumbers } : {}),
                 })),
                 paymentMethod: selectedPayment,
+                // BUG FIX (found live, 2026-07-31, during customer-discount audit):
+                // saleData never carried customerId at all — an offline sale for an
+                // Account customer (or, now, any customer with a standard discount)
+                // lost that link the moment it went through the offline queue, since
+                // syncOfflineSales() below only ever forwarded a fixed field list that
+                // didn't include it either (fixed there too).
+                customerId: selectedAccountCustomerId || undefined,
                 subtotal,
                 vatAmount,
                 totalAmount,
@@ -11710,6 +11784,13 @@
 
         // Customer Management Functions
         let currentCustomerId = null;
+        // The discount value as loaded (0 for a brand-new customer) — saveCustomer()
+        // only includes discount_percentage in the save payload when it actually
+        // changed, so a non-manager editing other fields (allowed — CUSTOMERS.EDIT
+        // is SUPERVISOR_ROLES) doesn't get their whole save 403'd by the backend's
+        // management-only discount gate just because the field is present at its
+        // unchanged value.
+        let customerOriginalDiscountPercentage = 0;
 
         function showSettings(section, event) {
             if (event) {
@@ -11800,6 +11881,8 @@
             document.getElementById('customerDOB').value = '';
             document.getElementById('customerGroup').value = 'general';
             document.getElementById('customerCreditLimit').value = '0';
+            customerOriginalDiscountPercentage = 0;
+            document.getElementById('customerDiscountPercentage').value = '0';
             document.getElementById('customerAddress1').value = '';
             document.getElementById('customerAddress2').value = '';
             document.getElementById('customerSuburb').value = '';
@@ -11839,6 +11922,8 @@
                 document.getElementById('customerDOB').value = customer.date_of_birth || '';
                 document.getElementById('customerGroup').value = customer.customer_group || 'general';
                 document.getElementById('customerCreditLimit').value = customer.credit_limit || 0;
+                customerOriginalDiscountPercentage = parseFloat(customer.discount_percentage) || 0;
+                document.getElementById('customerDiscountPercentage').value = customerOriginalDiscountPercentage;
                 document.getElementById('customerAddress1').value = customer.address_line_1 || '';
                 document.getElementById('customerAddress2').value = customer.address_line_2 || '';
                 document.getElementById('customerSuburb').value = customer.suburb || '';
@@ -11899,6 +11984,13 @@
                 is_active: document.getElementById('customerActive').checked,
                 marketing_consent: document.getElementById('customerMarketingConsent').checked
             };
+
+            // Only sent when actually changed — see the comment on
+            // customerOriginalDiscountPercentage above for why.
+            const newDiscountPercentage = parseFloat(document.getElementById('customerDiscountPercentage').value) || 0;
+            if (newDiscountPercentage !== customerOriginalDiscountPercentage) {
+                customerData.discount_percentage = newDiscountPercentage;
+            }
 
             try {
                 const method = currentCustomerId ? 'PUT' : 'POST';
@@ -12035,7 +12127,7 @@
         }
 
         function updateSplitRemaining() {
-            const { total } = calcCartTotals(cart);
+            const { total } = calcCartTotals(cart, selectedCustomerDiscountPercent);
             let allocated = 0;
             document.querySelectorAll('.split-amount').forEach(input => {
                 allocated += parseFloat(input.value) || 0;
@@ -12933,7 +13025,7 @@
         }
 
         function updateTotals() {
-            const { subtotal, vat, total } = calcCartTotals(cart);
+            const { subtotal, vat, total } = calcCartTotals(cart, selectedCustomerDiscountPercent);
 
             document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
             document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
@@ -12974,7 +13066,7 @@
                     }
                 });
 
-                const { total } = calcCartTotals(cart);
+                const { total } = calcCartTotals(cart, selectedCustomerDiscountPercent);
                 const allocated = payments.reduce((sum, p) => sum + p.amount, 0);
 
                 if (Math.abs(allocated - total) > 0.01) {
@@ -18251,7 +18343,7 @@
                 return;
             }
 
-            const { subtotal, total } = calcCartTotals(cart);
+            const { subtotal, total } = calcCartTotals(cart, selectedCustomerDiscountPercent);
 
             let modal = document.getElementById('placeOrderModal');
             if (!modal) {

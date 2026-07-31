@@ -58,6 +58,43 @@ used.
   directly) was not re-verified live either, though it requires no code
   change and follows existing, unmodified logic.
 
+## Live debugging (same day, after initial fix shipped)
+
+Checked live with Ruan against Corrie's actual forgotten session:
+
+1. `GET /pos/sessions/pending-cashup` returned empty for the superuser too,
+   with no error (ruled out: stale deploy — confirmed latest deploy was
+   live and recent; permission — `super_admin` is in `MANAGEMENT_ROLES` so
+   `TILLS.MANAGE` passes; wrong store — same store confirmed).
+2. Checked Recovery tab → Session Health (`GET /pos/recovery/sessions`,
+   `recovery.js`), which queries `till_sessions` for `status IN ('open',
+   'closed')` company-wide with **no date/age filter at all** — this is a
+   strictly broader query than the pending-cashup fix above. Result: "All
+   sessions healthy — no open, stale, or uncashed sessions."
+3. Conclusion: there is no lingering `open` or `closed` row for this
+   company at all. Corrie's session must already be fully `status='cashed_up'`
+   — nothing was actually stuck. The original fix (still-open detection) is
+   still correct for the general bug class, it just isn't what happened in
+   this specific case. Sales-data safety was to be confirmed independently
+   via Reports → Sales Daily Summary for yesterday's date (queries `sales`
+   directly, unrelated to session bookkeeping) — not yet confirmed back by
+   Ruan as of this note.
+
+### Follow-on feature: Complete Cashup from Till Summary report
+
+Ruan asked to keep building so a manager can always reach "do yesterday's
+cashup" regardless of the pending-cashup list's date/status scoping. Added:
+
+| File | Change |
+|---|---|
+| `accounting-ecosystem/frontend-pos/index.html` | New `completeCashupForSession(session)` helper + a "Complete Cashup" button on any Till Summary report row with `status` `open` or `closed` (`renderTillSummaryReport`, `GET /reports/till-summary`). Reuses the existing `showPendingCashupModal()`/`completePendingCashup()` flow unchanged — no new backend endpoint. `completePendingCashup()` now also calls `loadCurrentReport()` when Till Summary is the active report, so the row updates immediately after completion. |
+
+`GET /reports/till-summary` (`reports.js`) already listed every session
+regardless of status, filtered only by the report's own date-range picker
+— this is the "any session, any date" view the Cash Up tab's pending list
+was never meant to be, so it's the right home for a general-purpose
+"complete cashup on this specific session" action.
+
 ## FOLLOW-UP NOTE
 
 - Area: POS Cash Up / till session lifecycle

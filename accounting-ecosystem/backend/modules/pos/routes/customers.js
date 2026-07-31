@@ -9,6 +9,20 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
+const { hasPermission } = require('../../../config/permissions');
+
+// Standard customer discount — 0 to 100, or undefined/null when not supplied.
+// Margin-affecting, so writing it requires CUSTOMERS.MANAGE_DISCOUNT
+// (management-role only) on top of whatever created/edited the rest of the
+// customer record — see the two call sites below.
+function validateDiscountPercentage(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, value: undefined };
+  const num = parseFloat(value);
+  if (isNaN(num) || num < 0 || num > 100) {
+    return { ok: false, error: 'discount_percentage must be a number between 0 and 100' };
+  }
+  return { ok: true, value: num };
+}
 
 const router = express.Router();
 
@@ -68,12 +82,18 @@ router.get('/:id', requirePermission('CUSTOMERS.VIEW'), async (req, res) => {
  */
 router.post('/', requirePermission('CUSTOMERS.CREATE'), async (req, res) => {
   try {
-    const { name, email, phone, address, id_number, customer_group, notes } = req.body;
+    const { name, email, phone, address, id_number, customer_group, notes, discount_percentage } = req.body;
 
     if (!name) return res.status(400).json({ error: 'name is required' });
 
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    const discountCheck = validateDiscountPercentage(discount_percentage);
+    if (!discountCheck.ok) return res.status(400).json({ error: discountCheck.error });
+    if (discountCheck.value !== undefined && !hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+      return res.status(403).json({ error: 'Only management can set a customer discount' });
     }
 
     const customerNumber = `C-${Date.now().toString(36).toUpperCase()}`;
@@ -92,6 +112,7 @@ router.post('/', requirePermission('CUSTOMERS.CREATE'), async (req, res) => {
         loyalty_points: 0,
         loyalty_tier: 'bronze',
         current_balance: 0,
+        discount_percentage: discountCheck.value ?? 0,
         notes,
         is_active: true
       })
@@ -117,6 +138,16 @@ router.put('/:id', requirePermission('CUSTOMERS.EDIT'), async (req, res) => {
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
+
+    const discountCheck = validateDiscountPercentage(req.body.discount_percentage);
+    if (!discountCheck.ok) return res.status(400).json({ error: discountCheck.error });
+    if (discountCheck.value !== undefined) {
+      if (!hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+        return res.status(403).json({ error: 'Only management can set a customer discount' });
+      }
+      updates.discount_percentage = discountCheck.value;
+    }
+
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase

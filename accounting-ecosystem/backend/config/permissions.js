@@ -104,6 +104,10 @@ const PERMISSIONS = {
     CREATE: SUPERVISOR_ROLES,
     EDIT: SUPERVISOR_ROLES,
     DELETE: MANAGEMENT_ROLES,
+    // Setting/changing a customer's standard discount percentage is
+    // margin-affecting — deliberately a stricter gate than general
+    // CUSTOMERS.EDIT (which includes shift supervisors).
+    MANAGE_DISCOUNT: MANAGEMENT_ROLES,
   },
   // ===== STOREHOUSE / INVENTORY MODULE (Codebox 11) =====
   // Each permission maps to the ecosystem roles allowed to perform that action.

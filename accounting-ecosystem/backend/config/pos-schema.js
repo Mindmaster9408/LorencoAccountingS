@@ -139,6 +139,9 @@ async function ensurePosSchema(pool) {
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS loyalty_points INTEGER DEFAULT 0`);
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS loyalty_tier VARCHAR(50) DEFAULT 'bronze'`);
     await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS current_balance DECIMAL(10,2) DEFAULT 0`);
+    // Standard customer discount — flat percentage applied to every sale for
+    // this customer, regardless of payment method (cash/card/account).
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS discount_percentage DECIMAL(5,2) DEFAULT 0`);
 
     // ── loyalty_programs ─────────────────────────────────────────────────────
     // One program config per company. Defines earn rate and redemption rules.

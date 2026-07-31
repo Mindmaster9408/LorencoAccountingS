@@ -471,6 +471,23 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     const productMap = {};
     for (const p of (productRows || [])) productMap[p.id] = p;
 
+    // ── 1b. Customer standard discount — server-derived, not client-trusted ──
+    // discount_percent (below) has always been accepted verbatim from the
+    // request body with no validation against anything; a customer's own
+    // discount_percentage is looked up here instead so a cashier/client can't
+    // apply an arbitrary discount by tampering with the request. Wins over
+    // any client-supplied discount_percent when the customer actually has one.
+    let customerDiscountPercent = 0;
+    if (customer_id) {
+      const { data: custRow } = await supabase
+        .from('customers')
+        .select('discount_percentage')
+        .eq('id', customer_id)
+        .eq('company_id', req.companyId)
+        .maybeSingle();
+      customerDiscountPercent = parseFloat(custRow?.discount_percentage) || 0;
+    }
+
     // ── 2a. Company stock policy — 60-second server-side cache ──────────────
     // DB remains authoritative; cache refreshes on every TTL expiry or miss.
     const allowNegativeStock = await getStockPolicy(req.companyId, supabase);
@@ -546,8 +563,16 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       return { ...item, product: prod, line_total: linePrice };
     });
 
-    const discount = discountAmt || (discount_percent ? subtotal * discount_percent / 100 : 0);
+    const effectiveDiscountPercent = customerDiscountPercent > 0 ? customerDiscountPercent : (discount_percent || 0);
+    const discount = discountAmt || (effectiveDiscountPercent ? subtotal * effectiveDiscountPercent / 100 : 0);
     const total_amount = Math.max(0, subtotal - discount);
+    // BUG FIX (found live, 2026-07-31, during customer-discount audit): vat_total
+    // above is computed from full pre-discount line prices — passing it straight
+    // to the RPC would overstate stored VAT on any discounted sale (this path was
+    // dormant until now, so it never manifested). Pro-rate it by the same ratio
+    // the subtotal was discounted, so the stored VAT reflects what was actually
+    // charged.
+    const vat_total_for_rpc = subtotal > 0 ? vat_total * (total_amount / subtotal) : vat_total;
 
     // ── 3b. Validate split payment total if provided ──────────────────────
     if (paymentsFromBody && paymentsFromBody.length > 0) {
@@ -596,7 +621,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       p_notes:                notes || null,
       p_subtotal:             subtotal,
       p_discount_amount:      discount,
-      p_vat_amount:           vat_total,
+      p_vat_amount:           vat_total_for_rpc,
       p_total_amount:         total_amount,
       p_idempotency_key:      idempotencyKey,
       p_allow_negative_stock: allowNegativeStock,
@@ -849,6 +874,19 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
     const productMap = {};
     for (const p of (productRows || [])) productMap[p.id] = p;
 
+    // Customer standard discount — same server-derived pattern as POST /
+    // above (never trust a client-supplied discount_percent for this).
+    let customerDiscountPercent = 0;
+    if (customer_id) {
+      const { data: custRow } = await supabase
+        .from('customers')
+        .select('discount_percentage')
+        .eq('id', customer_id)
+        .eq('company_id', req.companyId)
+        .maybeSingle();
+      customerDiscountPercent = parseFloat(custRow?.discount_percentage) || 0;
+    }
+
     const allowNegativeStock = await getStockPolicy(req.companyId, supabase);
 
     const stockErrors = [];
@@ -878,8 +916,11 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
       return { ...item, product: prod, line_total: linePrice };
     });
 
-    const discount = discountAmt || (discount_percent ? subtotal * discount_percent / 100 : 0);
+    const effectiveDiscountPercent = customerDiscountPercent > 0 ? customerDiscountPercent : (discount_percent || 0);
+    const discount = discountAmt || (effectiveDiscountPercent ? subtotal * effectiveDiscountPercent / 100 : 0);
     const total_amount = Math.max(0, subtotal - discount);
+    // Same VAT-proration fix as POST / above — see the comment there.
+    const vat_total_for_rpc = subtotal > 0 ? vat_total * (total_amount / subtotal) : vat_total;
 
     if (depositAmount > total_amount + 0.01) {
       return res.status(400).json({ error: 'deposit_amount cannot exceed the order total', total_amount, depositAmount });
@@ -903,7 +944,7 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
       p_notes:                notes || null,
       p_subtotal:             subtotal,
       p_discount_amount:      discount,
-      p_vat_amount:           vat_total,
+      p_vat_amount:           vat_total_for_rpc,
       p_total_amount:         total_amount,
       p_idempotency_key:      idempotencyKey,
       p_allow_negative_stock: allowNegativeStock,

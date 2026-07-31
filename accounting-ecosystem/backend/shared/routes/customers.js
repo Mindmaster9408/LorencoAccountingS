@@ -11,11 +11,26 @@ const express = require('express');
 const { supabase } = require('../../config/database');
 const { authenticateToken, requireCompany } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
+const { hasPermission } = require('../../config/permissions');
 
 const router = express.Router();
 
 router.use(authenticateToken);
 router.use(requireCompany);
+
+// Standard customer discount — 0 to 100, or undefined/null when not supplied.
+// Margin-affecting, so writing it requires CUSTOMERS.MANAGE_DISCOUNT
+// (management-role only), independent of whatever role can otherwise
+// create/edit a customer via this route (this router has no per-action
+// permission gate at all today — auth-only).
+function validateDiscountPercentage(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, value: undefined };
+  const num = parseFloat(value);
+  if (isNaN(num) || num < 0 || num > 100) {
+    return { ok: false, error: 'discount_percentage must be a number between 0 and 100' };
+  }
+  return { ok: true, value: num };
+}
 
 /**
  * GET /api/customers
@@ -56,9 +71,18 @@ router.get('/search', async (req, res) => {
     const { q } = req.query;
     if (!q || q.length < 2) return res.json({ customers: [] });
 
+    // credit_limit/discount_percentage added (found live, 2026-07-31, during
+    // customer-discount audit): the POS checkout picker (selectAccountCustomer)
+    // has always read c.credit_limit from this response and always got
+    // undefined — a pre-existing display bug (silently showed "R 0.00" limit
+    // regardless of the real value), fixed in passing since it's the same
+    // select(). discount_percentage is required for this feature: without it,
+    // the on-screen cart total wouldn't reflect a selected customer's discount
+    // even though the backend would still correctly apply and charge it —
+    // an on-screen-vs-charged mismatch, not just a display gap.
     const { data, error } = await supabase
       .from('customers')
-      .select('id, name, phone, email, customer_number, loyalty_points, current_balance')
+      .select('id, name, phone, email, customer_number, loyalty_points, current_balance, credit_limit, discount_percentage')
       .eq('company_id', req.companyId)
       .eq('is_active', true)
       .or(`name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,customer_number.ilike.%${q}%`)
@@ -96,8 +120,14 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
-    const { name, email, phone, address_line_1, id_number, customer_group, notes, contact_number } = req.body;
+    const { name, email, phone, address_line_1, id_number, customer_group, notes, contact_number, discount_percentage } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
+
+    const discountCheck = validateDiscountPercentage(discount_percentage);
+    if (!discountCheck.ok) return res.status(400).json({ error: discountCheck.error });
+    if (discountCheck.value !== undefined && !hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+      return res.status(403).json({ error: 'Only management can set a customer discount' });
+    }
 
     const customerNumber = `C-${Date.now().toString(36).toUpperCase()}`;
 
@@ -115,6 +145,7 @@ router.post('/', async (req, res) => {
         customer_group: customer_group || 'retail',
         loyalty_points: 0,
         current_balance: 0,
+        discount_percentage: discountCheck.value ?? 0,
         is_active: true
       })
       .select()
@@ -138,6 +169,15 @@ router.put('/:id', async (req, res) => {
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+
+    const discountCheck = validateDiscountPercentage(req.body.discount_percentage);
+    if (!discountCheck.ok) return res.status(400).json({ error: discountCheck.error });
+    if (discountCheck.value !== undefined) {
+      if (!hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+        return res.status(403).json({ error: 'Only management can set a customer discount' });
+      }
+      updates.discount_percentage = discountCheck.value;
     }
 
     const { data, error } = await supabase
