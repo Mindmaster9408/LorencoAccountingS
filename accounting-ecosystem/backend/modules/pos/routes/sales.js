@@ -116,6 +116,35 @@ async function resolveEffectivePrices({ companyId, productIds, productMap, custo
 }
 
 /**
+ * Release up to `quantity` 'sold' serials tied to this exact sale_item_id
+ * back to 'in_stock' — the return/cancel-order counterpart to migration
+ * 074's consumption at sale time (which sets sale_id/sale_item_id/sold_at
+ * on the specific serials it consumes). No-op for non-serial-tracked
+ * products — the query simply matches zero rows, same guarantee this
+ * feature keeps everywhere else. Picks any `quantity` matching serials,
+ * not a specific one the customer names — matches the granularity the
+ * return flow already operates at (quantity, not per-unit serial choice).
+ * Matched by sale_item_id (not just product_id) so a serial sold on a
+ * DIFFERENT sale of the same product can never be picked up by mistake.
+ */
+async function releaseSerialsForReturn({ companyId, productId, saleItemId, quantity }) {
+  if (!saleItemId || !quantity) return;
+  const { data: soldSerials } = await supabase
+    .from('pos_product_serials')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('product_id', productId)
+    .eq('sale_item_id', saleItemId)
+    .eq('status', 'sold')
+    .limit(quantity);
+  if (!soldSerials || soldSerials.length === 0) return;
+  await supabase
+    .from('pos_product_serials')
+    .update({ status: 'in_stock', sale_id: null, sale_item_id: null, sold_at: null })
+    .in('id', soldSerials.map(s => s.id));
+}
+
+/**
  * Find + consume (mark used) an unexpired, unused manager-PIN authorization
  * (POST /manager-auth/verify) for a given action. Shared by the manual-
  * discount check below and POST /:id/return's manager-tier gate — one real
@@ -1570,6 +1599,15 @@ router.post('/:id/return', async (req, res) => {
         console.warn('[Sales] restore_stock_for_return non-fatal error:',
           stockErr.message, '| product_id:', ri.product_id);
       }
+
+      // Serial Number Tracking (2026-07-31) — release the returned unit's
+      // serial back to 'in_stock' so it can be sold again. No-op for
+      // non-serial-tracked products. Same orig lookup refundAmount already
+      // does above (sale.sale_items row for this product on this sale).
+      const orig = sale.sale_items.find(si => si.product_id === ri.product_id);
+      await releaseSerialsForReturn({
+        companyId: req.companyId, productId: ri.product_id, saleItemId: orig?.id, quantity: ri.quantity,
+      });
     }
 
     await auditFromReq(req, 'RETURN', 'sale', sale.id, {
@@ -1811,6 +1849,13 @@ router.post('/:id/cancel-order', requirePermission('SALES.VOID'), async (req, re
       if (stockErr) {
         console.warn('[Sales] restore_stock_for_return (cancel-order) non-fatal error:', stockErr.message, '| product_id:', item.product_id);
       }
+
+      // Serial Number Tracking (2026-07-31) — same release as /return above.
+      // item here already IS the sale_item row, so item.id is the
+      // sale_item_id directly, no extra lookup needed.
+      await releaseSerialsForReturn({
+        companyId: req.companyId, productId: item.product_id, saleItemId: item.id, quantity: item.quantity,
+      });
     }
 
     await auditFromReq(req, 'VOID', 'sale', order.id, {
