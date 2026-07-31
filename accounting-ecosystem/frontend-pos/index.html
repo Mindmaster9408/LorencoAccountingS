@@ -7352,6 +7352,10 @@
                     });
 
                     await loadPendingCashups();
+                    // Also refresh the Till Summary report if that's where this
+                    // cashup was triggered from (completeCashupForSession), so the
+                    // row's status/figures update without a manual re-run.
+                    if (currentReport === 'till-summary') loadCurrentReport();
                 } else {
                     showNotification(result.error || 'Failed to complete cashup', 'error');
                 }
@@ -11181,6 +11185,26 @@
         // session object) can look a row back up by index.
         let currentTillSummarySessions = [];
 
+        // Complete Cashup from the Till Summary report — this is the general
+        // "find ANY session, any status, any date" view (GET /reports/till-summary
+        // has no date-cutoff or status filter beyond the report's own date range,
+        // unlike the Cash Up tab's pending-cashup list). Reuses the exact same
+        // modal/flow already built for the Cash Up tab's "Pending Cashups from
+        // Previous Days" section — an 'open' session gets closed first (via the
+        // existing /close endpoint) before /complete-cashup runs, same as there.
+        function completeCashupForSession(session) {
+            const tillName = session.till_name
+                ? `${session.till_name}${session.till_number ? ' #' + session.till_number : ''}`
+                : '';
+            showPendingCashupModal(
+                session.session_id,
+                session.expected_cash_in_drawer ?? session.expected_balance ?? 0,
+                tillName,
+                session.cashier || '',
+                session.status === 'open'
+            );
+        }
+
         function renderTillSummaryReport(data, container) {
             const { sessions, summary } = data;
             currentTillSummarySessions = sessions;
@@ -11276,6 +11300,7 @@
                         <td style="padding:7px;text-align:center;color:#222;">
                             ${statusBadge}
                             ${s.status === 'cashed_up' && s.has_snapshot ? `<button onclick="reprintCashupForSession(currentTillSummarySessions[${i}])" title="Reprint cashup slip" style="margin-left:6px;padding:2px 7px;font-size:11px;border:1px solid #ccc;border-radius:10px;background:#fff;color:#222;cursor:pointer;">🖨️ Reprint</button>` : ''}
+                            ${(s.status === 'open' || s.status === 'closed') ? `<button onclick="completeCashupForSession(currentTillSummarySessions[${i}])" title="Complete cashup for this session" style="margin-left:6px;padding:2px 7px;font-size:11px;border:1px solid #4caf50;border-radius:10px;background:#4caf50;color:#fff;cursor:pointer;">Complete Cashup</button>` : ''}
                         </td>
                     </tr>
                     ${s.is_consistent === false ? `<tr style="background:#fff8f8;"><td colspan="13" style="padding:4px 8px;font-size:11px;color:#c62828;">⚠ ${s.consistency_issue_count} consistency issue(s) detected on this session</td></tr>` : ''}
