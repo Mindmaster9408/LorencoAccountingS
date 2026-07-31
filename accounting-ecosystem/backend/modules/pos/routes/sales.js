@@ -902,7 +902,16 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
         sale_number:     rpcResult.sale_number,
         receipt_number:  rpcResult.receipt_number,
         total_amount:    rpcResult.total_amount,
-        subtotal,
+        // BUG FIX (found live, 2026-07-31, active incident): this referenced
+        // the old `subtotal` variable, removed this morning when the pricing
+        // engine was rewritten to grossSubtotal/netSubtotal per-line totals.
+        // That left a ReferenceError thrown AFTER create_sale_atomic had
+        // already committed — every normal checkout crashed while building
+        // this response, so the cashier saw "Server error" instead of the
+        // receipt/print modal even though the sale had genuinely gone
+        // through, and kept pressing Complete Sale, creating real duplicate
+        // sales (confirmed live: three identical R271 Card sales ~15s apart).
+        subtotal:        grossSubtotal,
         vat_amount:      vat_total,
         discount_amount: discount,
         payment_method,
