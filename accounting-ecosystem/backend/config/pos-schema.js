@@ -64,6 +64,33 @@ async function ensurePosSchema(pool) {
         ON pos_daily_discounts(company_id)
     `);
 
+    // ── customer_product_discounts ──────────────────────────────────────────
+    // Per-customer, per-product discount — e.g. "Customer X gets 20% off
+    // Product Y specifically", distinct from customers.discount_percentage
+    // (a flat rate across everything) and pos_daily_discounts (store-wide,
+    // any customer). discount_type reuses the same 'fixed'/'percent'
+    // vocabulary as pos_daily_discounts for consistency.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_product_discounts (
+        id             SERIAL PRIMARY KEY,
+        company_id     INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        customer_id    INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        product_id     INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        discount_type  VARCHAR(20) NOT NULL DEFAULT 'percent',
+        discount_value DECIMAL(10,2) NOT NULL,
+        is_active      BOOLEAN DEFAULT true,
+        created_by     INTEGER REFERENCES users(id),
+        created_at     TIMESTAMPTZ DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(customer_id, product_id)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_customer_product_discounts_lookup
+        ON customer_product_discounts(company_id, customer_id)
+    `);
+
     // ── products: add columns the POS code expects but schema.sql omitted ────
     // Schema originally had product_name/unit_price. Code now uses those names.
     // Add sku and unit as optional columns that the backend accepts.

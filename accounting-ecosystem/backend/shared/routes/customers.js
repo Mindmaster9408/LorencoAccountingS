@@ -336,4 +336,102 @@ router.post('/:id/account/payment', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/customers/:id/product-discounts
+ * List this customer's per-product discount overrides — distinct from the
+ * flat discount_percentage above. See sales.js for how these two (plus
+ * store-wide pos_daily_discounts) are reconciled at checkout.
+ */
+router.get('/:id/product-discounts', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('customer_product_discounts')
+      .select('*, products(product_name, unit_price)')
+      .eq('customer_id', req.params.id)
+      .eq('company_id', req.companyId)
+      .eq('is_active', true)
+      .order('id', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ discounts: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/customers/:id/product-discounts
+ * Add/replace a discount for one product for this customer. Management-only
+ * (CUSTOMERS.MANAGE_DISCOUNT — same gate as the flat discount_percentage,
+ * same reasoning: margin-affecting).
+ */
+router.post('/:id/product-discounts', async (req, res) => {
+  try {
+    if (!hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+      return res.status(403).json({ error: 'Only management can set a customer discount' });
+    }
+
+    const { product_id, discount_type, discount_value } = req.body;
+    if (!product_id) return res.status(400).json({ error: 'product_id is required' });
+    if (!['fixed', 'percent'].includes(discount_type)) {
+      return res.status(400).json({ error: "discount_type must be 'fixed' or 'percent'" });
+    }
+    const value = parseFloat(discount_value);
+    if (isNaN(value) || value < 0) {
+      return res.status(400).json({ error: 'discount_value must be a non-negative number' });
+    }
+    if (discount_type === 'percent' && value > 100) {
+      return res.status(400).json({ error: 'discount_value cannot exceed 100 for a percent discount' });
+    }
+
+    // One row per (customer, product) — upsert so re-adding the same product
+    // updates the existing override instead of erroring on the unique constraint.
+    const { data, error } = await supabase
+      .from('customer_product_discounts')
+      .upsert({
+        company_id: req.companyId,
+        customer_id: req.params.id,
+        product_id,
+        discount_type,
+        discount_value: value,
+        is_active: true,
+        created_by: req.user.userId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'customer_id,product_id' })
+      .select('*, products(product_name, unit_price)')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'CREATE', 'customer_product_discount', data.id, { module: 'pos', newValue: data });
+    res.status(201).json({ discount: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/customers/:id/product-discounts/:discountId
+ * Remove a product-specific discount override. Same management-only gate as create.
+ */
+router.delete('/:id/product-discounts/:discountId', async (req, res) => {
+  try {
+    if (!hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+      return res.status(403).json({ error: 'Only management can remove a customer discount' });
+    }
+
+    const { error } = await supabase
+      .from('customer_product_discounts')
+      .delete()
+      .eq('id', req.params.discountId)
+      .eq('customer_id', req.params.id)
+      .eq('company_id', req.companyId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

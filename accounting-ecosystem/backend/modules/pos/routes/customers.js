@@ -450,4 +450,98 @@ router.post('/:id/link-company', requirePermission('INVENTORY.ADJUST'), async (r
   }
 });
 
+// Mirrors the equivalent routes on backend/shared/routes/customers.js (the
+// one the POS frontend actually calls) — kept in sync here per the decision
+// documented in SESSION_HANDOFF_2026-07-31-pos-customer-discount.md rather
+// than resolving the duplication now.
+
+/**
+ * GET /api/pos/customers/:id/product-discounts
+ */
+router.get('/:id/product-discounts', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('customer_product_discounts')
+      .select('*, products(product_name, unit_price)')
+      .eq('customer_id', req.params.id)
+      .eq('company_id', req.companyId)
+      .eq('is_active', true)
+      .order('id', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ discounts: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/pos/customers/:id/product-discounts
+ */
+router.post('/:id/product-discounts', async (req, res) => {
+  try {
+    if (!hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+      return res.status(403).json({ error: 'Only management can set a customer discount' });
+    }
+
+    const { product_id, discount_type, discount_value } = req.body;
+    if (!product_id) return res.status(400).json({ error: 'product_id is required' });
+    if (!['fixed', 'percent'].includes(discount_type)) {
+      return res.status(400).json({ error: "discount_type must be 'fixed' or 'percent'" });
+    }
+    const value = parseFloat(discount_value);
+    if (isNaN(value) || value < 0) {
+      return res.status(400).json({ error: 'discount_value must be a non-negative number' });
+    }
+    if (discount_type === 'percent' && value > 100) {
+      return res.status(400).json({ error: 'discount_value cannot exceed 100 for a percent discount' });
+    }
+
+    const { data, error } = await supabase
+      .from('customer_product_discounts')
+      .upsert({
+        company_id: req.companyId,
+        customer_id: req.params.id,
+        product_id,
+        discount_type,
+        discount_value: value,
+        is_active: true,
+        created_by: req.user.userId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'customer_id,product_id' })
+      .select('*, products(product_name, unit_price)')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await auditFromReq(req, 'CREATE', 'customer_product_discount', data.id, { module: 'pos', newValue: data });
+    res.status(201).json({ discount: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/pos/customers/:id/product-discounts/:discountId
+ */
+router.delete('/:id/product-discounts/:discountId', async (req, res) => {
+  try {
+    if (!hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+      return res.status(403).json({ error: 'Only management can remove a customer discount' });
+    }
+
+    const { error } = await supabase
+      .from('customer_product_discounts')
+      .delete()
+      .eq('id', req.params.discountId)
+      .eq('customer_id', req.params.id)
+      .eq('company_id', req.companyId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

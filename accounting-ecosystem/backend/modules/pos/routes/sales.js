@@ -26,6 +26,7 @@ const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getStockPolicy } = require('../services/stockPolicyCache');
 const { hasPermission } = require('../../../config/permissions');
 const { syncAccountSaleToLinkedBuyerPO } = require('../services/accountSaleToPOSync');
+const { getBusinessDayBounds, activeDiscountOrFilter } = require('../services/discountWindow');
 
 const router = express.Router();
 
@@ -38,6 +39,80 @@ router.use(requireCompany);
 function generateSaleNumber() {
   const rand = Math.random().toString(36).substr(2, 4).toUpperCase();
   return `SAL-${Date.now()}-${rand}`;
+}
+
+/**
+ * Resolve the actual price to charge for each product in a sale, reconciling
+ * three independent discount sources (customer-discount feature,
+ * 2026-07-31 — see that session's handoff for the confirmed precedence):
+ *   - a store-wide Daily Discount (pos_daily_discounts, applies to any
+ *     customer) — BUG FIX: previously attached to GET /products for on-screen
+ *     display only; sales.js never read it, so the amount actually charged
+ *     ignored any active promotion entirely. Now authoritative here too.
+ *   - this customer's override for that exact product (wins over their
+ *     blanket rate for that line — never stacks with it)
+ *   - this customer's blanket discount_percentage (only when no
+ *     product-specific override exists for that product)
+ * Whichever applicable candidate is LOWEST wins — a customer is never worse
+ * off than the public Daily Discount promotion.
+ *
+ * @returns {Promise<Map<number, number>>} product_id -> effective unit price
+ */
+async function resolveEffectivePrices({ companyId, productIds, productMap, customerId, customerDiscountPercent }) {
+  const effectivePriceByProduct = new Map();
+  if (productIds.length === 0) return effectivePriceByProduct;
+
+  // Store-wide Daily Discount — same query/window as GET /api/pos/products
+  // (products.js) and discounts.js's default GET, shared via discountWindow.js
+  // so the three routes can't drift out of sync on what "active today" means.
+  const window = getBusinessDayBounds();
+  const { data: dailyDiscounts } = await supabase
+    .from('pos_daily_discounts')
+    .select('product_id, discount_type, discount_value')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .in('product_id', productIds)
+    .or(`valid_from.is.null,valid_from.lte.${window.day}`)
+    .or(activeDiscountOrFilter(window));
+  const dailyDiscountByProduct = new Map((dailyDiscounts || []).map(d => [d.product_id, d]));
+
+  // This customer's product-specific overrides (customer_product_discounts)
+  let customerProductDiscountByProduct = new Map();
+  if (customerId) {
+    const { data: rows } = await supabase
+      .from('customer_product_discounts')
+      .select('product_id, discount_type, discount_value')
+      .eq('company_id', companyId)
+      .eq('customer_id', customerId)
+      .eq('is_active', true)
+      .in('product_id', productIds);
+    customerProductDiscountByProduct = new Map((rows || []).map(d => [d.product_id, d]));
+  }
+
+  for (const productId of productIds) {
+    const prod = productMap[productId];
+    if (!prod) continue;
+    const original = parseFloat(prod.unit_price) || 0;
+    const candidates = [original];
+
+    const daily = dailyDiscountByProduct.get(productId);
+    if (daily) {
+      const value = parseFloat(daily.discount_value) || 0;
+      candidates.push(daily.discount_type === 'percent' ? original * (1 - value / 100) : original - value);
+    }
+
+    const customerOverride = customerProductDiscountByProduct.get(productId);
+    if (customerOverride) {
+      const value = parseFloat(customerOverride.discount_value) || 0;
+      candidates.push(customerOverride.discount_type === 'percent' ? original * (1 - value / 100) : original - value);
+    } else if (customerDiscountPercent > 0) {
+      candidates.push(original * (1 - customerDiscountPercent / 100));
+    }
+
+    effectivePriceByProduct.set(productId, Math.max(0, Math.round(Math.min(...candidates) * 100) / 100));
+  }
+
+  return effectivePriceByProduct;
 }
 
 /**
@@ -420,8 +495,12 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       items,
       till_session_id,
       customer_id,
+      // discount_amount kept as an optional manual override on top of the
+      // server-derived per-line pricing below (resolveEffectivePrices) — see
+      // that function's comment. discount_percent is no longer read here:
+      // the customer's actual discount_percentage is looked up server-side
+      // instead (never trust a client-supplied discount rate).
       discount_amount: discountAmt,
-      discount_percent,
       notes,
       payment_method,
       payments: paymentsFromBody,
@@ -548,31 +627,62 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       });
     }
 
-    // ── 3. Calculate totals using DB prices (cannot be spoofed) ──────────
-    let subtotal  = 0;
-    let vat_total = 0;
-
-    const enrichedItems = normItems.map(item => {
-      const prod      = productMap[item.product_id];
-      const linePrice = prod.unit_price * item.quantity;
-      subtotal += linePrice;
-      if (prod.requires_vat && prod.vat_rate) {
-        // VAT is inclusive in unit_price — extract it
-        vat_total += linePrice * (prod.vat_rate / (100 + prod.vat_rate));
-      }
-      return { ...item, product: prod, line_total: linePrice };
+    // ── 1c. Resolve effective per-line prices ──────────────────────────────
+    // Reconciles Daily Discount, this customer's product-specific override,
+    // and their blanket discount_percentage per line — see
+    // resolveEffectivePrices() above for the precedence rules.
+    const effectivePriceByProduct = await resolveEffectivePrices({
+      companyId: req.companyId,
+      productIds,
+      productMap,
+      customerId: customer_id,
+      customerDiscountPercent,
     });
 
-    const effectiveDiscountPercent = customerDiscountPercent > 0 ? customerDiscountPercent : (discount_percent || 0);
-    const discount = discountAmt || (effectiveDiscountPercent ? subtotal * effectiveDiscountPercent / 100 : 0);
-    const total_amount = Math.max(0, subtotal - discount);
-    // BUG FIX (found live, 2026-07-31, during customer-discount audit): vat_total
-    // above is computed from full pre-discount line prices — passing it straight
-    // to the RPC would overstate stored VAT on any discounted sale (this path was
-    // dormant until now, so it never manifested). Pro-rate it by the same ratio
-    // the subtotal was discounted, so the stored VAT reflects what was actually
-    // charged.
-    const vat_total_for_rpc = subtotal > 0 ? vat_total * (total_amount / subtotal) : vat_total;
+    // ── 3. Calculate totals from effective (already-discounted) prices ────
+    // grossSubtotal is the pre-discount reference total (what it would have
+    // cost with zero discounts) — used only to derive the "Discount" figure
+    // shown/stored. netSubtotal (→ total_amount) and vat_total are both
+    // computed directly from what's actually charged per line, so no
+    // proportional post-hoc VAT scaling is needed — this replaces this
+    // morning's whole-cart-percentage approach, which couldn't express a
+    // line being exempt from the blanket rate because it has its own
+    // customer-specific override.
+    let grossSubtotal = 0;
+    let netSubtotal   = 0;
+    let vat_total     = 0;
+
+    const enrichedItems = normItems.map(item => {
+      const prod           = productMap[item.product_id];
+      const originalPrice  = parseFloat(prod.unit_price) || 0;
+      const effectivePrice = effectivePriceByProduct.get(item.product_id) ?? originalPrice;
+      const lineOriginal   = originalPrice * item.quantity;
+      const lineEffective  = effectivePrice * item.quantity;
+      grossSubtotal += lineOriginal;
+      netSubtotal   += lineEffective;
+      if (prod.requires_vat && prod.vat_rate) {
+        // VAT is inclusive in unit_price — extract it from the EFFECTIVE
+        // (already-discounted) line price, so it always matches what the
+        // customer is actually being charged for this line.
+        vat_total += lineEffective * (prod.vat_rate / (100 + prod.vat_rate));
+      }
+      return {
+        ...item,
+        product:         prod,
+        original_price:  originalPrice,
+        effective_price: effectivePrice,
+        line_total:      Math.round(lineEffective * 100) / 100,
+        line_discount:   Math.max(0, Math.round((lineOriginal - lineEffective) * 100) / 100),
+      };
+    });
+
+    // discountAmt (client-supplied flat amount) has never had a real caller
+    // (no frontend UI sends it — confirmed this morning) but is kept as an
+    // optional manual override ON TOP of the per-line calculation above,
+    // for backward compatibility with that dormant field.
+    const total_amount = Math.max(0, Math.round(((discountAmt ? netSubtotal - discountAmt : netSubtotal)) * 100) / 100);
+    const discount      = Math.max(0, Math.round((grossSubtotal - total_amount) * 100) / 100);
+    const vat_total_for_rpc = Math.round(vat_total * 100) / 100;
 
     // ── 3b. Validate split payment total if provided ──────────────────────
     if (paymentsFromBody && paymentsFromBody.length > 0) {
@@ -619,7 +729,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       p_customer_id:          customer_id || null,
       p_payment_method:       payment_method || 'cash',
       p_notes:                notes || null,
-      p_subtotal:             subtotal,
+      p_subtotal:             grossSubtotal,
       p_discount_amount:      discount,
       p_vat_amount:           vat_total_for_rpc,
       p_total_amount:         total_amount,
@@ -629,10 +739,10 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
         product_id:      item.product_id,
         product_name:    item.product.product_name,
         quantity:        item.quantity,
-        unit_price:      item.product.unit_price,
+        unit_price:      item.original_price,
         vat_rate:        item.product.vat_rate || 15,
         line_total:      item.line_total,
-        discount_amount: 0,
+        discount_amount: item.line_discount,
         // Serial Number Tracking — key omitted entirely (not sent as null) when
         // absent, since create_sale_atomic checks key EXISTENCE (`v_item ?
         // 'serial_numbers'`), not truthiness, to stay backward compatible.
@@ -833,8 +943,9 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
  */
 router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
   try {
+    // discount_percent not read here — see the identical note in POST / above.
     const {
-      items, till_session_id, customer_id, discount_amount: discountAmt, discount_percent,
+      items, till_session_id, customer_id, discount_amount: discountAmt,
       notes, payment_method, idempotency_key: clientIdempotencyKey, source,
     } = normaliseSaleBody(req.body);
     const depositAmount = Math.round((parseFloat(req.body.deposit_amount ?? req.body.depositAmount ?? 0) || 0) * 100) / 100;
@@ -904,23 +1015,46 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
       return res.status(422).json({ error: 'Stock check failed', details: stockErrors });
     }
 
-    let subtotal = 0;
-    let vat_total = 0;
-    const enrichedItems = normItems.map(item => {
-      const prod = productMap[item.product_id];
-      const linePrice = prod.unit_price * item.quantity;
-      subtotal += linePrice;
-      if (prod.requires_vat && prod.vat_rate) {
-        vat_total += linePrice * (prod.vat_rate / (100 + prod.vat_rate));
-      }
-      return { ...item, product: prod, line_total: linePrice };
+    // Resolve effective per-line prices — same precedence rules as POST /
+    // above (resolveEffectivePrices doc comment).
+    const effectivePriceByProduct = await resolveEffectivePrices({
+      companyId: req.companyId,
+      productIds,
+      productMap,
+      customerId: customer_id,
+      customerDiscountPercent,
     });
 
-    const effectiveDiscountPercent = customerDiscountPercent > 0 ? customerDiscountPercent : (discount_percent || 0);
-    const discount = discountAmt || (effectiveDiscountPercent ? subtotal * effectiveDiscountPercent / 100 : 0);
-    const total_amount = Math.max(0, subtotal - discount);
-    // Same VAT-proration fix as POST / above — see the comment there.
-    const vat_total_for_rpc = subtotal > 0 ? vat_total * (total_amount / subtotal) : vat_total;
+    let grossSubtotal = 0;
+    let netSubtotal   = 0;
+    let vat_total     = 0;
+
+    const enrichedItems = normItems.map(item => {
+      const prod           = productMap[item.product_id];
+      const originalPrice  = parseFloat(prod.unit_price) || 0;
+      const effectivePrice = effectivePriceByProduct.get(item.product_id) ?? originalPrice;
+      const lineOriginal   = originalPrice * item.quantity;
+      const lineEffective  = effectivePrice * item.quantity;
+      grossSubtotal += lineOriginal;
+      netSubtotal   += lineEffective;
+      if (prod.requires_vat && prod.vat_rate) {
+        vat_total += lineEffective * (prod.vat_rate / (100 + prod.vat_rate));
+      }
+      return {
+        ...item,
+        product:         prod,
+        original_price:  originalPrice,
+        effective_price: effectivePrice,
+        line_total:      Math.round(lineEffective * 100) / 100,
+        line_discount:   Math.max(0, Math.round((lineOriginal - lineEffective) * 100) / 100),
+      };
+    });
+
+    // Same handling as POST / above: discountAmt (dormant, no real caller)
+    // kept as an optional manual override on top of the per-line calc.
+    const total_amount = Math.max(0, Math.round(((discountAmt ? netSubtotal - discountAmt : netSubtotal)) * 100) / 100);
+    const discount      = Math.max(0, Math.round((grossSubtotal - total_amount) * 100) / 100);
+    const vat_total_for_rpc = Math.round(vat_total * 100) / 100;
 
     if (depositAmount > total_amount + 0.01) {
       return res.status(400).json({ error: 'deposit_amount cannot exceed the order total', total_amount, depositAmount });
@@ -942,7 +1076,7 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
       p_customer_id:          customer_id || null,
       p_payment_method:       payment_method || 'cash',
       p_notes:                notes || null,
-      p_subtotal:             subtotal,
+      p_subtotal:             grossSubtotal,
       p_discount_amount:      discount,
       p_vat_amount:           vat_total_for_rpc,
       p_total_amount:         total_amount,
@@ -952,10 +1086,10 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
         product_id:      item.product_id,
         product_name:    item.product.product_name,
         quantity:        item.quantity,
-        unit_price:      item.product.unit_price,
+        unit_price:      item.original_price,
         vat_rate:        item.product.vat_rate || 15,
         line_total:      item.line_total,
-        discount_amount: 0,
+        discount_amount: item.line_discount,
         ...(item.serial_numbers && item.serial_numbers.length > 0 ? { serial_numbers: item.serial_numbers } : {}),
       })),
       p_payments: [{ payment_method: payment_method || 'cash', amount: depositAmount, reference: null }],

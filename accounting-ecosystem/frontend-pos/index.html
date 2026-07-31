@@ -2080,15 +2080,15 @@
                                      whether they pay Cash, Card, or Account; Account payment still
                                      additionally requires a customer to be selected (unchanged, see
                                      checkout()'s validation). -->
-                                <div id="accountCustomerSection" style="display:block; background:#f0f4ff; padding:12px; border-radius:8px; margin-bottom:10px;">
-                                    <label style="font-weight:600;display:block;margin-bottom:5px;">Select Customer (optional)</label>
+                                <div id="accountCustomerSection" style="display:block; background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:10px;">
+                                    <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Select Customer (optional)</label>
                                     <div style="display:flex;gap:8px;">
-                                        <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" oninput="searchAccountCustomers(this.value)">
+                                        <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);" oninput="searchAccountCustomers(this.value)">
                                     </div>
                                     <div id="accountCustomerResults" style="max-height:120px;overflow-y:auto;margin-top:8px;"></div>
-                                    <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:white;border-radius:6px;border:2px solid #667eea;">
-                                        <span id="selectedAccountName" style="font-weight:600;"></span>
-                                        <span id="selectedAccountBalance" style="float:right;color:#666;font-size:13px;"></span>
+                                    <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:var(--surface);border-radius:6px;border:2px solid #667eea;">
+                                        <span id="selectedAccountName" style="font-weight:600;color:var(--text);"></span>
+                                        <span id="selectedAccountBalance" style="float:right;color:var(--text-secondary);font-size:13px;"></span>
                                         <a onclick="clearSelectedCustomer()" style="float:right;margin-right:10px;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
                                         <div id="selectedCustomerDiscountLine" style="display:none;clear:both;padding-top:6px;color:#2e7d32;font-weight:600;font-size:13px;"></div>
                                     </div>
@@ -8539,32 +8539,61 @@
             addToCart(product, raw);
         }
 
+        // Populated when a customer is selected (selectAccountCustomer()) via
+        // GET /customers/:id/product-discounts, keyed by product_id; cleared
+        // in clearSelectedCustomer(). Read directly by calcCartTotals() below
+        // rather than threaded through every call site as a parameter — same
+        // pattern as productsById/cart being implicit module-level context.
+        let selectedCustomerProductDiscounts = new Map();
+
         // Single source of truth for cart totals. unit_price is VAT-INCLUSIVE, so VAT is
         // EXTRACTED from the line price (never added on top) — mirrors the authoritative
         // backend calculation in backend/modules/pos/routes/sales.js exactly. Every screen
         // that shows a cart/order total must call this rather than recomputing inline —
         // six independent reimplementations of this formula (all wrongly doing
         // `subtotal * 1.15`) is exactly how this bug shipped in the first place.
+        //
+        // Per-line pricing (2026-07-31, per-product customer discount feature):
+        // for each line, the effective price is the LOWEST of: the original
+        // price, the Daily Discount price (item.price already reflects this —
+        // addToCart() bakes it in via product.discount_price ?? unit_price),
+        // and this customer's price for that product (their specific override
+        // if one exists for this product, else their blanket discountPercent).
+        // A product-specific override REPLACES the blanket rate for that line
+        // rather than stacking with it. Mirrors resolveEffectivePrices() in
+        // sales.js exactly — see that function for the full precedence
+        // rationale (confirmed with Ruan). `subtotal` returned is the
+        // PRE-discount reference total (for the "Subtotal" display row);
+        // `discount` is total savings; VAT is computed directly from each
+        // line's already-discounted price, so no proportional scaling is
+        // needed here (unlike this morning's whole-cart-percentage version).
         function calcCartTotals(items, discountPercent) {
-            let subtotal = 0;
+            let grossSubtotal = 0;
             let vat = 0;
+            let total = 0;
             (items || []).forEach(item => {
-                const linePrice = item.price * item.quantity;
-                subtotal += linePrice;
+                const original = productsById.get(item.productId)?.unit_price ?? item.price;
+                const candidates = [original, item.price];
+
+                const override = selectedCustomerProductDiscounts.get(item.productId);
+                if (override) {
+                    const value = parseFloat(override.discount_value) || 0;
+                    candidates.push(override.discount_type === 'percent' ? original * (1 - value / 100) : original - value);
+                } else if (discountPercent) {
+                    candidates.push(original * (1 - discountPercent / 100));
+                }
+
+                const effectivePrice = Math.max(0, Math.min(...candidates));
+                const lineOriginal  = original * item.quantity;
+                const lineEffective = effectivePrice * item.quantity;
+                grossSubtotal += lineOriginal;
+                total += lineEffective;
                 if (item.requiresVat && item.vatRate) {
-                    vat += linePrice * (item.vatRate / (100 + item.vatRate));
+                    vat += lineEffective * (item.vatRate / (100 + item.vatRate));
                 }
             });
-            // Customer standard discount (optional) — applied to the VAT-inclusive
-            // subtotal, same as the authoritative backend calc in sales.js. `vat`
-            // is scaled by the same ratio the subtotal was discounted so the
-            // on-screen "VAT incl." figure matches what's actually stored/charged
-            // (mirrors the vat_total_for_rpc fix in sales.js).
-            const pct = discountPercent || 0;
-            const discount = pct ? subtotal * pct / 100 : 0;
-            const total = Math.max(0, subtotal - discount);
-            const vatAfterDiscount = subtotal > 0 ? vat * (total / subtotal) : vat;
-            return { subtotal, vat: vatAfterDiscount, total, discount };
+            const discount = Math.max(0, grossSubtotal - total);
+            return { subtotal: grossSubtotal, vat, total, discount };
         }
 
         // Workstream 74 — single compact row (was: a header row with name+remove,
@@ -8659,7 +8688,11 @@
             const discountRow = document.getElementById('customerDiscountRow');
             if (discountRow) {
                 if (discount > 0) {
-                    document.getElementById('customerDiscountLabel').textContent = `Customer discount (${selectedCustomerDiscountPercent}%):`;
+                    // Generic label now — the total may reflect a Daily Discount, a
+                    // customer-specific product override, their blanket rate, or
+                    // whichever of those wins per line (calcCartTotals), not just
+                    // one flat percentage.
+                    document.getElementById('customerDiscountLabel').textContent = 'Discount:';
                     document.getElementById('customerDiscountAmount').textContent = `−R ${discount.toFixed(2)}`;
                     discountRow.style.display = 'flex';
                 } else {
@@ -8867,10 +8900,10 @@
                 }
                 container.innerHTML = customers.slice(0, 5).map(c => `
                     <div onclick="selectAccountCustomer(${c.id}, '${(c.name || '').replace(/'/g, "\\'")}', ${c.current_balance || 0}, ${c.credit_limit || 0}, ${c.discount_percentage || 0})"
-                         style="padding:8px 10px;cursor:pointer;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;font-size:13px;"
-                         onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background='transparent'">
+                         style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text);"
+                         onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background='transparent'">
                         <div><strong>${c.name}</strong> ${c.phone ? '(' + c.phone + ')' : ''}</div>
-                        <div style="color:#666;">Bal: R ${parseFloat(c.current_balance || 0).toFixed(2)} / R ${parseFloat(c.credit_limit || 0).toFixed(2)}${c.discount_percentage > 0 ? ` · ${c.discount_percentage}% off` : ''}</div>
+                        <div style="color:var(--text-secondary);">Bal: R ${parseFloat(c.current_balance || 0).toFixed(2)} / R ${parseFloat(c.credit_limit || 0).toFixed(2)}${c.discount_percentage > 0 ? ` · ${c.discount_percentage}% off` : ''}</div>
                     </div>
                 `).join('');
             } catch (e) {
@@ -8882,7 +8915,7 @@
         // same picker is always visible so a customer's standard discount applies
         // regardless of payment method. Balance/credit-limit stays informational
         // for every method; it's only actually enforced when paying by Account.
-        function selectAccountCustomer(id, name, balance, limit, discountPercentage) {
+        async function selectAccountCustomer(id, name, balance, limit, discountPercentage) {
             selectedAccountCustomerId = id;
             selectedCustomerDiscountPercent = parseFloat(discountPercentage) || 0;
             document.getElementById('accountCustomerResults').innerHTML = '';
@@ -8900,13 +8933,34 @@
                 }
             }
             updateCart();
+
+            // Per-product overrides for this customer — fetched fresh on every
+            // selection so a price set/changed after login is always current.
+            // Non-fatal on failure: the customer's blanket discount and Daily
+            // Discount still apply via calcCartTotals()'s other candidates; the
+            // backend independently re-derives the authoritative price anyway
+            // at checkout regardless of what this fetch returns.
+            selectedCustomerProductDiscounts = new Map();
+            try {
+                const res = await fetch(`${API_URL}/customers/${id}/product-discounts`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    (data.discounts || []).forEach(d => selectedCustomerProductDiscounts.set(d.product_id, d));
+                    updateCart();
+                }
+            } catch (e) {
+                console.warn('[Customer] Could not load product-specific discounts:', e.message);
+            }
         }
 
-        // Clears the selected customer (and their discount) without needing to
+        // Clears the selected customer (and their discounts) without needing to
         // switch payment method — the picker is no longer tied to Account.
         function clearSelectedCustomer() {
             selectedAccountCustomerId = null;
             selectedCustomerDiscountPercent = 0;
+            selectedCustomerProductDiscounts = new Map();
             document.getElementById('selectedAccountCustomer').style.display = 'none';
             const discountEl = document.getElementById('selectedCustomerDiscountLine');
             if (discountEl) discountEl.style.display = 'none';
@@ -19342,6 +19396,7 @@
                                 <button class="nav-tab" onclick="showCustomerSubTab('loyalty', this)" style="font-size:13px;padding:8px 15px;">Loyalty</button>
                                 <button class="nav-tab" onclick="showCustomerSubTab('account', this)" style="font-size:13px;padding:8px 15px;">Account</button>
                                 <button class="nav-tab" onclick="showCustomerSubTab('history', this)" style="font-size:13px;padding:8px 15px;">Sales</button>
+                                <button class="nav-tab" onclick="showCustomerSubTab('discounts', this)" style="font-size:13px;padding:8px 15px;">Discounts</button>
                             </div>
 
                             <!-- Info Tab -->
@@ -19380,6 +19435,27 @@
                             <div id="custDetailHistory" class="cust-detail-tab" style="display:none;">
                                 <div id="customerSalesHistory">Loading recent sales...</div>
                             </div>
+
+                            <!-- Product Discounts Tab (2026-07-31) — per-product overrides,
+                                 distinct from the flat discount_percentage set via Edit Customer.
+                                 Adding/removing is management-only (CUSTOMERS.MANAGE_DISCOUNT,
+                                 enforced server-side regardless of this client-side check) —
+                                 same list of roles as RECOVERY_ALLOWED_ROLES in
+                                 applyRoleBasedVisibility(), which mirrors backend MANAGEMENT_ROLES. -->
+                            <div id="custDetailDiscounts" class="cust-detail-tab" style="display:none;">
+                                ${['super_admin','business_owner','practice_manager','administrator','accountant','corporate_admin','store_manager','payroll_admin','admin'].includes(userRole) ? `
+                                <div style="display:flex;gap:8px;margin-bottom:15px;flex-wrap:wrap;align-items:center;">
+                                    <select id="newProductDiscountProductId" style="flex:1;min-width:180px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);"></select>
+                                    <select id="newProductDiscountType" style="padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                                        <option value="percent">% off</option>
+                                        <option value="fixed">R off</option>
+                                    </select>
+                                    <input type="number" id="newProductDiscountValue" step="0.01" min="0" placeholder="Value" style="width:90px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                                    <button class="btn btn-primary" onclick="addCustomerProductDiscount(${c.id})" style="padding:8px 15px;font-size:13px;">+ Add</button>
+                                </div>
+                                ` : ''}
+                                <div id="customerProductDiscountsList">Loading product discounts...</div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -19389,6 +19465,13 @@
                 loadCustomerLoyaltyHistory(customerId);
                 loadCustomerAccountHistory(customerId);
                 loadCustomerSalesHistory(customerId, data.recentSales);
+                loadCustomerProductDiscounts(customerId);
+
+                const productSelect = document.getElementById('newProductDiscountProductId');
+                if (productSelect) {
+                    productSelect.innerHTML = '<option value="">Select a product...</option>' +
+                        products.map(p => `<option value="${p.id}">${p.product_name} (R ${parseFloat(p.unit_price).toFixed(2)})</option>`).join('');
+                }
 
             } catch (e) {
                 showNotification('Error loading customer details', 'error');
@@ -19399,8 +19482,90 @@
             document.querySelectorAll('#customerDetailModal .cust-detail-tab').forEach(el => el.style.display = 'none');
             document.querySelectorAll('#customerDetailModal .nav-tab').forEach(el => el.classList.remove('active'));
             if (btnEl) btnEl.classList.add('active');
-            const tabMap = { info: 'custDetailInfo', loyalty: 'custDetailLoyalty', account: 'custDetailAccount', history: 'custDetailHistory' };
+            const tabMap = { info: 'custDetailInfo', loyalty: 'custDetailLoyalty', account: 'custDetailAccount', history: 'custDetailHistory', discounts: 'custDetailDiscounts' };
             document.getElementById(tabMap[tab]).style.display = 'block';
+        }
+
+        async function loadCustomerProductDiscounts(customerId) {
+            const container = document.getElementById('customerProductDiscountsList');
+            if (!container) return;
+            try {
+                const res = await fetch(`${API_URL}/customers/${customerId}/product-discounts`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const discounts = data.discounts || [];
+                if (discounts.length === 0) {
+                    container.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:15px;">No product-specific discounts for this customer.</p>';
+                    return;
+                }
+                container.innerHTML = discounts.map(d => {
+                    const original = parseFloat(d.products?.unit_price || 0);
+                    const discounted = d.discount_type === 'percent'
+                        ? original * (1 - parseFloat(d.discount_value) / 100)
+                        : original - parseFloat(d.discount_value);
+                    return `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);">
+                            <div style="color:var(--text);">
+                                <strong>${d.products?.product_name || `Product #${d.product_id}`}</strong>
+                                <span style="color:var(--text-secondary);font-size:12px;"> — R ${original.toFixed(2)} → R ${Math.max(0, discounted).toFixed(2)}
+                                (${d.discount_type === 'percent' ? d.discount_value + '%' : 'R' + d.discount_value} off)</span>
+                            </div>
+                            <button class="btn btn-sm btn-danger" onclick="removeCustomerProductDiscount(${customerId}, ${d.id})">Remove</button>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                container.innerHTML = '<p style="color:#c62828;text-align:center;padding:15px;">Could not load product discounts.</p>';
+            }
+        }
+
+        async function addCustomerProductDiscount(customerId) {
+            const productId = document.getElementById('newProductDiscountProductId').value;
+            const discountType = document.getElementById('newProductDiscountType').value;
+            const discountValue = document.getElementById('newProductDiscountValue').value;
+
+            if (!productId || discountValue === '') {
+                showNotification('Select a product and enter a discount value', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/customers/${customerId}/product-discounts`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: parseInt(productId, 10), discount_type: discountType, discount_value: parseFloat(discountValue) })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showNotification('Product discount added', 'success');
+                    document.getElementById('newProductDiscountProductId').value = '';
+                    document.getElementById('newProductDiscountValue').value = '';
+                    loadCustomerProductDiscounts(customerId);
+                } else {
+                    showNotification(data.error || 'Failed to add product discount', 'error');
+                }
+            } catch (e) {
+                showNotification('Error adding product discount', 'error');
+            }
+        }
+
+        async function removeCustomerProductDiscount(customerId, discountId) {
+            if (!confirm('Remove this product discount?')) return;
+            try {
+                const res = await fetch(`${API_URL}/customers/${customerId}/product-discounts/${discountId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    loadCustomerProductDiscounts(customerId);
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    showNotification(data.error || 'Failed to remove product discount', 'error');
+                }
+            } catch (e) {
+                showNotification('Error removing product discount', 'error');
+            }
         }
 
         async function loadCustomerLoyaltyHistory(customerId) {
