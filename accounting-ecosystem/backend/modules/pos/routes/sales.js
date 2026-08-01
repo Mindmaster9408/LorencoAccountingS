@@ -771,18 +771,18 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     // requester themselves being management-tier, or a matching manager-PIN
     // authorization (POST /manager-auth/verify) for this exact till session
     // and percentage.
-    if (discount_percent) {
+    if (manualDiscountPercent) {
       const authResult = await authorizeManualDiscount({
         companyId: req.companyId,
         tillSessionId: till_session_id,
         requesterRole: req.user.role,
-        discountPercent: discount_percent,
+        discountPercent: manualDiscountPercent,
       });
       if (!authResult.ok) {
         return res.status(403).json({ error: authResult.error });
       }
       const preManualTotal = total_amount;
-      total_amount = Math.max(0, Math.round(preManualTotal * (1 - discount_percent / 100) * 100) / 100);
+      total_amount = Math.max(0, Math.round(preManualTotal * (1 - manualDiscountPercent / 100) * 100) / 100);
       // Same proportional VAT scaling as this morning's whole-cart approach —
       // appropriate HERE because this discount really is a flat percentage
       // off everything, unlike the per-line pricing above.
