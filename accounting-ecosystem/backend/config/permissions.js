@@ -59,6 +59,15 @@ const MANAGEMENT_ROLES = ['super_admin', 'business_owner', 'practice_manager', '
 const SUPERVISOR_ROLES = [...MANAGEMENT_ROLES, 'leave_admin', 'regional_analyst', 'district_trainer', 'assistant_manager', 'shift_supervisor'];
 const ALL_ROLES = [...SUPERVISOR_ROLES, 'senior_cashier', 'cashier', 'trainee'];
 
+// Margin/tax-sensitive reports (VAT, Gross Profit, Forensic Audit, Sales
+// Audit Trail) — narrower than MANAGEMENT_ROLES. store_manager keeps every
+// other management right (REFUND, ADJUST, PO_APPROVE, EXPORT, etc.) but not
+// these specific reports — found live 2026-07-31, Ruan's call that margin/
+// ownership-tier data shouldn't be visible at store level. Derived from
+// MANAGEMENT_ROLES (not hand-written) so it can never drift the way
+// frontend-pos/index.html's role-mirror lists already had to be corrected.
+const REPORTS_FINANCIAL_ROLES = MANAGEMENT_ROLES.filter(r => r !== 'store_manager');
+
 const PERMISSIONS = {
   // ===== SHARED =====
   COMPANIES: {
@@ -198,6 +207,7 @@ const PERMISSIONS = {
   },
   REPORTS: {
     VIEW: SUPERVISOR_ROLES,
+    VIEW_FINANCIAL: REPORTS_FINANCIAL_ROLES,
     EXPORT: MANAGEMENT_ROLES,
   },
   SETTINGS: {

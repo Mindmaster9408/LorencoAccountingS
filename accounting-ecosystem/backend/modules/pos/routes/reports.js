@@ -84,12 +84,23 @@ router.use(requireCompany);
 // senior_cashier/trainee. This permission category already existed but was
 // never applied anywhere, so every "Reports" sidebar report was readable by
 // any authenticated POS user regardless of role (Workstream 71 audit
-// finding). Applied per-route (not router-wide) so /dashboard, /top-products,
-// and /inventory-value — none of which are part of the Reports sidebar, and
-// /dashboard specifically backs the separate Enterprise "Dashboard" tab that
-// is not currently role-restricted — are left exactly as they were, out of
-// scope for this workstream.
+// finding). Applied per-route (not router-wide) so /top-products and
+// /inventory-value — neither part of the Reports sidebar — are left exactly
+// as they were, out of scope for this workstream.
+//
+// /dashboard (below) WAS also left out deliberately at the time, on the
+// reasoning that the Enterprise Dashboard tab wasn't role-restricted either
+// — found live 2026-07-31 during a full permission audit that the frontend
+// tab gate was added since then (applyRoleBasedVisibility()) but this route
+// itself never got the matching backend check, so a cashier with a valid
+// token could still pull dashboard data directly. Gated now to match.
 const reportsViewGate = requirePermission('REPORTS.VIEW');
+
+// Margin/tax-sensitive reports only — VAT, Gross Profit, Forensic Audit,
+// Sales Audit Trail. Narrower than reportsViewGate: store_manager passes
+// REPORTS.VIEW (keeps Till Summary, Daily Summary, Payment Methods, etc.)
+// but not REPORTS.VIEW_FINANCIAL. See permissions.js's REPORTS_FINANCIAL_ROLES.
+const reportsFinancialGate = requirePermission('REPORTS.VIEW_FINANCIAL');
 
 // TRANSFERS.VIEW_REPORTS (Codebox 85) — the inter-store transfer reports
 // below use this dedicated gate rather than REPORTS.VIEW, per the ticket's
@@ -335,7 +346,7 @@ router.get('/inventory-value', async (req, res) => {
  * GET /api/analytics/dashboard
  * Dashboard summary data
  */
-router.get('/dashboard', async (req, res) => {
+router.get('/dashboard', reportsViewGate, async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -874,7 +885,7 @@ function dateRangeFromQuery(query) {
  * GET /api/reports/gross-profit
  * Per-sale gross profit — see cost-price note above.
  */
-router.get('/gross-profit', reportsViewGate, async (req, res) => {
+router.get('/gross-profit', reportsFinancialGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
     const { sales } = await fetchSalesWithProfit(req.companyId, start, end);
@@ -901,7 +912,7 @@ router.get('/gross-profit', reportsViewGate, async (req, res) => {
  * GET /api/reports/gross-profit-by-person
  * Same per-sale profit calculation, grouped by cashier.
  */
-router.get('/gross-profit-by-person', reportsViewGate, async (req, res) => {
+router.get('/gross-profit-by-person', reportsFinancialGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
     const { sales } = await fetchSalesWithProfit(req.companyId, start, end);
@@ -948,7 +959,7 @@ router.get('/gross-profit-by-person', reportsViewGate, async (req, res) => {
  * GET /api/reports/gross-profit-by-product
  * Same per-sale-item data, grouped by product.
  */
-router.get('/gross-profit-by-product', reportsViewGate, async (req, res) => {
+router.get('/gross-profit-by-product', reportsFinancialGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
     const { sales, productMeta } = await fetchSalesWithProfit(req.companyId, start, end);
@@ -1062,7 +1073,7 @@ router.get('/daily-summary', reportsViewGate, async (req, res) => {
  * derived from sale_payments: the single method if there's exactly one,
  * otherwise "Split".
  */
-router.get('/audit-trail', reportsViewGate, async (req, res) => {
+router.get('/audit-trail', reportsFinancialGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
     const { sales } = await fetchSalesWithProfit(req.companyId, start, end);
@@ -1130,7 +1141,7 @@ router.get('/audit-trail', reportsViewGate, async (req, res) => {
  * GET /api/reports/vat-detail
  * Line-item level VAT extraction — see VAT note above.
  */
-router.get('/vat-detail', reportsViewGate, async (req, res) => {
+router.get('/vat-detail', reportsFinancialGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
     let sales;
@@ -1187,7 +1198,7 @@ router.get('/vat-detail', reportsViewGate, async (req, res) => {
  * GET /api/reports/vat-summary
  * Same line-item VAT extraction, grouped by calendar day.
  */
-router.get('/vat-summary', reportsViewGate, async (req, res) => {
+router.get('/vat-summary', reportsFinancialGate, async (req, res) => {
   try {
     const { start, end } = dateRangeFromQuery(req.query);
     let sales;
@@ -1310,7 +1321,7 @@ router.get('/payment-methods', reportsViewGate, async (req, res) => {
  * separate display-name column for ilike filtering) — a known approximation,
  * not exact full_name matching.
  */
-router.get('/forensic-audit', reportsViewGate, async (req, res) => {
+router.get('/forensic-audit', reportsFinancialGate, async (req, res) => {
   try {
     const { action_type, entity_type, username, start_date, end_date, limit = 100 } = req.query;
     // No users embed — pos_audit_events has no FK to users (see
