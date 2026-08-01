@@ -1,7 +1,7 @@
 # CLAUDE.md — Lorenco Ecosystem Master Operating Standard
 
 > **This file is the primary persistent instruction file for all Claude sessions working in this repository.**  
-> Last updated: May 2026  
+> Last updated: 2026-07-31  
 > All rules in this file are permanent operating standards. They apply to every task, every session, every feature.
 
 ---
@@ -18,6 +18,7 @@
 8. [Part D — Absolute No Browser Storage Rule (PERMANENT — HARD CODING GATE)](#8-part-d--absolute-no-browser-storage-rule)
 9. [Part E — Paytime Stability Lock (PERMANENT — GOVERNED MODULE)](#9-part-e--paytime-stability-lock)
 10. [Part F — Super User Access Policy (PERMANENT — HARD RULE)](#10-part-f--super-user-access-policy)
+11. [Part G — Checkout Charlie Deployment Timing (PERMANENT — HARD RULE)](#11-part-g--checkout-charlie-deployment-timing)
 
 ---
 
@@ -979,6 +980,48 @@ Any code change that touches app visibility, access control, or permission logic
 - [ ] Does adding a new app to `APP_DEFS` automatically make it visible to super users without extra config?
 
 If any answer is no, the change must be corrected before it ships.
+
+---
+
+## 11. PART G — CHECKOUT CHARLIE DEPLOYMENT TIMING
+
+> **This section is permanent and non-negotiable.**
+> Root-caused and hard-won on 2026-07-31 — two separate live production incidents in one day, both caused by pushing backend changes to Checkout Charlie (POS) while cashiers were actively using the till mid-trading-day.
+
+---
+
+### RULE G1 — NEVER PUSH TO CHECKOUT CHARLIE DURING TRADING HOURS
+
+Any commit touching `accounting-ecosystem/backend/modules/pos/**` or `accounting-ecosystem/frontend-pos/**` must not be pushed to `origin/main` while the store is actively trading. Zeabur deploys from `main` automatically — a push during trading hours goes live in front of a cashier mid-sale, with a real customer standing at the till.
+
+Before pushing any Checkout Charlie change, Claude must explicitly confirm with the user whether the till is currently in active use. If the answer is "yes," it's during normal trading hours, or it's simply unconfirmed, the push must be held — even if the change is fully syntax-checked, linted, and believed correct. Static checking (`node -c`, ESLint) proves the absence of certain classes of bugs; it does not prove runtime correctness, and both 2026-07-31 incidents passed every static check available at the time.
+
+**What happened (why this rule exists):**
+
+- Incident 1: a variable rename (`subtotal` → `grossSubtotal`) left one dangling reference in the checkout success response. The bug only threw AFTER the sale had already been committed to the database — every "Complete Sale" click during the affected window appeared to fail, so the cashier repeatedly retried, creating real duplicate sales and (potentially) duplicate card charges.
+- Incident 2 (same day): a second, unrelated rename (`discount_percent` → `manualDiscountPercent`) left three dangling references in the same file. This one threw BEFORE the sale was written, so no duplicates were created — but checkout was completely broken for every sale, not just discounted ones, for the length of the affected window.
+
+Both bugs were the exact class of mistake Rule G2's linting now catches automatically — but linting alone would not have prevented the live customer-facing impact if either push had still landed during trading hours before anyone tested it. Timing discipline and static checking are both required; neither substitutes for the other.
+
+---
+
+### RULE G2 — LINT BEFORE EVERY BACKEND PUSH
+
+`accounting-ecosystem/backend/` has an ESLint config (`.eslintrc.json` + `.eslintignore`) scoped deliberately narrow: `no-undef` (error) and `no-unused-vars` (warning) only — not the full `eslint:recommended` set, which surfaces thousands of pre-existing, unrelated issues across a codebase that had never been linted before this rule was added. This is the exact, minimal safety net for the class of bug that caused both incidents above: a variable renamed in one place but still referenced under its old name elsewhere in the same scope.
+
+Before pushing any change to a `.js` file under `accounting-ecosystem/backend/`, run:
+
+```bash
+cd accounting-ecosystem/backend && npm run lint
+```
+
+Any `no-undef` error must be fixed before pushing — it means the code will throw a `ReferenceError` at runtime, guaranteed, the first time that line executes. `node -c` (syntax-only) is not a substitute — both incidents above passed `node -c` cleanly.
+
+---
+
+### RULE G3 — WHEN AN URGENT FIX IS ALREADY LIVE-BROKEN
+
+If Checkout Charlie is already broken in production RIGHT NOW (an active incident, not a planned deploy), Rule G1's "wait for downtime" does not apply — the till is already unusable, so a fix cannot make things worse by shipping immediately. Fix, lint (Rule G2), syntax-check, and push without waiting, exactly as both incidents above were handled. Rule G1 governs planned/routine deploys of new work; it does not mean waiting out a live outage.
 
 ---
 
