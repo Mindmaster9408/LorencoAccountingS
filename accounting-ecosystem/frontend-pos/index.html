@@ -129,7 +129,17 @@
         /* Main Container */
         .main-container {
             display: none;
-            height: calc(100vh - 50px);
+            /* Was calc(100vh - 50px) — but this container HOLDS the 50px
+               .top-nav plus tab content that's itself calc(100vh - 50px)
+               (or height:100% of this box), so the two summed to 100vh
+               inside a box only (100vh - 50px) tall. Result: overflow:hidden
+               clipped the bottom 50px of every tab's content, AND this box
+               fell 50px short of the viewport, exposing body's background
+               (the dark-theme purple gradient) as a band at the very bottom.
+               Found live 2026-08-01. The subtraction belongs on the content
+               panels only (already correct) — this container must be the
+               full viewport. */
+            height: 100vh;
             overflow: hidden;
         }
 
@@ -6373,21 +6383,31 @@
                 if (reportsTab) reportsTab.classList.add('role-hidden');
             }
 
-            // Hide settings for cashier
-            if (userRole === 'cashier') {
+            // Roles with backend SETTINGS.EDIT / MANAGEMENT_ROLES-gated access generally.
+            // Must match MANAGEMENT_ROLES in backend/config/permissions.js exactly — was
+            // found live 2026-08-01 (same audit as SUPERVISOR_TIER_ROLES above) missing
+            // corporate_finance, corporate_ops, regional_manager, district_manager, the
+            // same class of drift, now corrected. Shared by Recovery (unchanged) and
+            // Settings (tightened below) rather than each hand-listing roles.
+            const MANAGEMENT_TIER_ROLES = [
+                'super_admin', 'business_owner', 'practice_manager', 'administrator',
+                'accountant', 'corporate_admin', 'corporate_finance', 'corporate_ops',
+                'regional_manager', 'district_manager', 'store_manager', 'payroll_admin', 'admin',
+            ];
+
+            // Settings — tightened 2026-08-01 from "hide for cashier only" to strict
+            // management tier, Ruan's explicit call: shift_supervisor and
+            // assistant_manager lose the access they previously had (SUPERVISOR_ROLES
+            // is not enough here; every settings sub-area that actually does anything —
+            // Users, Companies, Tills, Suppliers config, etc. — already required
+            // MANAGEMENT_ROLES at the API, so this closes the "tab visible, every
+            // section 403s" confusing-UX gap the same way Reports/Dashboard were fixed).
+            if (!MANAGEMENT_TIER_ROLES.includes(userRole)) {
                 if (settingsTab) settingsTab.classList.add('role-hidden');
             }
 
             // Hide recovery panel for all roles without backend SETTINGS.EDIT access.
-            // Must match MANAGEMENT_ROLES in backend/config/permissions.js exactly.
-            // Intermediate roles (shift_supervisor, senior_cashier, assistant_manager,
-            // leave_admin) are in SUPERVISOR_ROLES but NOT MANAGEMENT_ROLES — they would
-            // see the tab but receive 403 from every recovery endpoint.
-            const RECOVERY_ALLOWED_ROLES = [
-                'super_admin', 'business_owner', 'practice_manager', 'administrator',
-                'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
-            ];
-            if (!RECOVERY_ALLOWED_ROLES.includes(userRole)) {
+            if (!MANAGEMENT_TIER_ROLES.includes(userRole)) {
                 if (recoveryTab) recoveryTab.classList.add('role-hidden');
             }
 
@@ -8889,6 +8909,12 @@
                 splitPaymentMode = false;
                 document.getElementById('splitPaymentSection').classList.remove('active');
                 document.getElementById('splitPaymentBtn').classList.remove('selected');
+                // BUG FIX (found live, 2026-08-01): toggleSplitPayment() hides
+                // accountCustomerSection on entering split mode but nothing ever
+                // restored it — not there, not here. Once a cashier clicked Split
+                // even once, "Select Customer" vanished for the rest of the
+                // session regardless of which payment method was picked after.
+                document.getElementById('accountCustomerSection').style.display = 'block';
             }
 
             // Customer selector (2026-07-31): now always visible regardless of
@@ -12298,6 +12324,8 @@
                 btn.classList.remove('selected');
                 // Reset all split amounts
                 document.querySelectorAll('.split-amount').forEach(input => input.value = '0');
+                // Restore "Select Customer" — see the matching fix in selectPayment().
+                document.getElementById('accountCustomerSection').style.display = 'block';
             }
         }
 
