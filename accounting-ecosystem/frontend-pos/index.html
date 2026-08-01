@@ -3041,11 +3041,13 @@
                     <button class="close-btn" onclick="closeDailyDiscount()">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <div class="form-group">
+                    <div class="form-group" style="position: relative;">
                         <label>Product</label>
-                        <select id="discountProductId" style="width: 100%;" onchange="loadProductPrice()">
-                            <option value="">Select a product...</option>
-                        </select>
+                        <input type="text" id="discountProductSearch" placeholder="Scan barcode or type product name/code..." autocomplete="off"
+                               oninput="filterDiscountProducts()" onkeydown="handleDiscountProductKeydown(event)"
+                               onblur="setTimeout(() => { const r = document.getElementById('discountProductResults'); if (r) r.style.display = 'none'; }, 150)">
+                        <input type="hidden" id="discountProductId">
+                        <div id="discountProductResults" style="display:none; position:absolute; left:0; right:0; top:100%; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 5px 5px; max-height:220px; overflow-y:auto; z-index:10; box-shadow:0 4px 10px rgba(0,0,0,0.15);"></div>
                     </div>
                     <div class="form-group">
                         <label>Original Price: <span id="originalPriceDisplay">R 0.00</span></label>
@@ -3106,18 +3108,18 @@
             <div class="settings-grid">
                 <div class="settings-sidebar">
                     <h3 style="padding: 15px; border-bottom: 1px solid #ddd; margin: 0;">Sales Reports</h3>
-                    <div class="settings-menu-item" onclick="showReport('gross-profit', event)">Gross Profit</div>
-                    <div class="settings-menu-item" onclick="showReport('gross-profit-by-person', event)">Gross Profit by Person</div>
-                    <div class="settings-menu-item" onclick="showReport('gross-profit-by-product', event)">Gross Profit by Product</div>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('gross-profit', event)">Gross Profit</div>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('gross-profit-by-person', event)">Gross Profit by Person</div>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('gross-profit-by-product', event)">Gross Profit by Product</div>
                     <div class="settings-menu-item" onclick="showReport('daily-summary', event)">Sales Daily Summary</div>
-                    <div class="settings-menu-item" onclick="showReport('audit-trail', event)">Sales Audit Trail</div>
-                    <div class="settings-menu-item" onclick="showReport('forensic-audit', event)">Forensic Audit Log</div>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('audit-trail', event)">Sales Audit Trail</div>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('forensic-audit', event)">Forensic Audit Log</div>
                     <div class="settings-menu-item" onclick="showReport('payment-methods', event)">Payment Methods</div>
                     <div class="settings-menu-item" onclick="showReport('suspicious-activity', event)">Suspicious Activity</div>
-                    
-                    <h3 style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">VAT Reports</h3>
-                    <div class="settings-menu-item" onclick="showReport('vat-detail', event)">VAT Detail</div>
-                    <div class="settings-menu-item" onclick="showReport('vat-summary', event)">VAT Summary</div>
+
+                    <h3 id="vatReportsHeader" style="padding: 15px 15px 10px; border-top: 1px solid #ddd; margin: 10px 0 0; color: #667eea;">VAT Reports</h3>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('vat-detail', event)">VAT Detail</div>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('vat-summary', event)">VAT Summary</div>
                     
                     <!-- Workstream 71: Inventory Sync / Accounting Sync hidden — no real
                          target system exists for either, so the only honest backend for
@@ -3981,7 +3983,7 @@
                 <div class="kpi-value" id="kpiTodaySales">R 0.00</div>
                 <div class="kpi-sub" id="kpiTodayTransactions">0 transactions</div>
             </div>
-            <div class="kpi-card green">
+            <div class="kpi-card green" id="kpiCardGrossProfit">
                 <div class="kpi-label">Gross Profit</div>
                 <div class="kpi-value" id="kpiGrossProfit">R 0.00</div>
                 <div class="kpi-sub" id="kpiProfitMargin">0% margin</div>
@@ -6343,18 +6345,24 @@
             const settingsTab  = document.querySelector('.nav-tab[onclick*="settings"]');
             const recoveryTab  = document.querySelector('.nav-tab[onclick*="recovery"]');
             const dashboardTab = document.querySelector('.nav-tab[onclick*="dashboard"]');
+            const stockTab     = document.querySelector('.nav-tab[onclick*="stock"]');
+            const loyaltyTab   = document.querySelector('.nav-tab[onclick*="loyalty"]');
 
             // Roles with backend REPORTS.VIEW / INVENTORY.VIEW / TRANSFERS.VIEW_REPORTS /
             // PURCHASE_ORDERS.VIEW access — all four permission categories resolve to the
-            // exact same SUPERVISOR_ROLES array in backend/config/permissions.js. Reports
-            // AND Dashboard both depend on this same set of endpoints, so they share one
-            // allow-list here rather than each hand-listing roles and risking the two
-            // silently drifting apart again (that drift is exactly how Reports still had
-            // the gap below until this fix, even after Dashboard was corrected).
+            // exact same SUPERVISOR_ROLES array in backend/config/permissions.js. Reports,
+            // Dashboard, Stock, and Loyalty all depend on this same set of endpoints, so
+            // they share one allow-list here rather than each hand-listing roles and
+            // risking them silently drifting apart (that drift is exactly how this list
+            // itself was found live 2026-07-31 to be missing 6 roles the backend's real
+            // SUPERVISOR_ROLES already had — corporate_finance, corporate_ops,
+            // regional_manager, district_manager, regional_analyst, district_trainer —
+            // now added below to match permissions.js exactly).
             const SUPERVISOR_TIER_ROLES = [
                 'super_admin', 'business_owner', 'practice_manager', 'administrator',
-                'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
-                'leave_admin', 'assistant_manager', 'shift_supervisor',
+                'accountant', 'corporate_admin', 'corporate_finance', 'corporate_ops',
+                'regional_manager', 'district_manager', 'store_manager', 'payroll_admin', 'admin',
+                'leave_admin', 'regional_analyst', 'district_trainer', 'assistant_manager', 'shift_supervisor',
             ];
 
             // Hide Reports for anyone outside that list — was previously only hidden for
@@ -6386,6 +6394,35 @@
             // Hide dashboard for the same reason and the same role list as Reports above.
             if (!SUPERVISOR_TIER_ROLES.includes(userRole)) {
                 if (dashboardTab) dashboardTab.classList.add('role-hidden');
+            }
+
+            // Hide Stock and Loyalty for the same list — found live 2026-07-31 that
+            // neither tab had ever been role-gated at all, so till-tier staff
+            // (cashier, senior_cashier, trainee) could see them despite the ask
+            // being "till staff only get Till and Cash Up." Same SUPERVISOR_TIER_ROLES
+            // list as Reports/Dashboard above — shift_supervisor and up keep both.
+            if (!SUPERVISOR_TIER_ROLES.includes(userRole)) {
+                if (stockTab) stockTab.classList.add('role-hidden');
+                if (loyaltyTab) loyaltyTab.classList.add('role-hidden');
+            }
+
+            // Margin/tax-sensitive reports (VAT, Gross Profit, Forensic Audit, Sales
+            // Audit Trail) plus the Dashboard's Gross Profit KPI card — narrower than
+            // SUPERVISOR_TIER_ROLES above. store_manager keeps Reports/Dashboard access
+            // generally but not this specific data. Must match backend
+            // REPORTS_FINANCIAL_ROLES (permissions.js) exactly: MANAGEMENT_ROLES minus
+            // store_manager.
+            const REPORTS_FINANCIAL_TIER_ROLES = [
+                'super_admin', 'business_owner', 'practice_manager', 'administrator',
+                'accountant', 'corporate_admin', 'corporate_finance', 'corporate_ops',
+                'regional_manager', 'district_manager', 'payroll_admin', 'admin',
+            ];
+            if (!REPORTS_FINANCIAL_TIER_ROLES.includes(userRole)) {
+                document.querySelectorAll('.report-financial-only').forEach(el => el.classList.add('role-hidden'));
+                const vatHeader = document.getElementById('vatReportsHeader');
+                if (vatHeader) vatHeader.classList.add('role-hidden');
+                const gpCard = document.getElementById('kpiCardGrossProfit');
+                if (gpCard) gpCard.classList.add('role-hidden');
             }
         }
 
@@ -12953,31 +12990,117 @@
         // ========== DAILY DISCOUNT FUNCTIONS ==========
 
         function showDailyDiscountModal() {
-            const select = document.getElementById('discountProductId');
-            select.innerHTML = '<option value="">Select a product...</option>' +
-                products.map(p => `<option value="${p.id}">${p.product_code} - ${p.product_name} (R ${parseFloat(p.unit_price).toFixed(2)})</option>`).join('');
-
+            document.getElementById('discountProductSearch').value = '';
+            document.getElementById('discountProductId').value = '';
+            document.getElementById('discountProductResults').style.display = 'none';
+            document.getElementById('discountProductResults').innerHTML = '';
             document.getElementById('originalPriceDisplay').textContent = 'R 0.00';
             document.getElementById('discountPrice').value = '';
             document.getElementById('discountReason').value = '';
             document.getElementById('discountEndDate').value = '';
             document.getElementById('dailyDiscountModal').style.display = 'flex';
+            // Focus after the modal is actually visible, not before —
+            // focusing a display:none field is a silent no-op in most browsers.
+            setTimeout(() => document.getElementById('discountProductSearch').focus(), 50);
         }
 
         function closeDailyDiscount() {
             document.getElementById('dailyDiscountModal').style.display = 'none';
         }
 
-        function loadProductPrice() {
-            const productId = document.getElementById('discountProductId').value;
-            if (!productId) {
+        // Product picker for Daily Discounts — was a single <select> dumping every
+        // product into one long dropdown, forcing a manual scroll/scan through the
+        // full catalog to find one item. Reuses the same barcodeMap/normalizeBarcode
+        // lookup the till's own barcode input (see initGlobalScanCapture) already
+        // relies on, so a physical scanner works here too, plus a live type-ahead
+        // filter by name/code/barcode so typing narrows the list instead of scrolling it.
+        let discountProductTimeout = null;
+
+        function filterDiscountProducts() {
+            clearTimeout(discountProductTimeout);
+            const term = document.getElementById('discountProductSearch').value.trim();
+            const resultsEl = document.getElementById('discountProductResults');
+
+            if (!term) {
+                resultsEl.style.display = 'none';
+                resultsEl.innerHTML = '';
+                document.getElementById('discountProductId').value = '';
                 document.getElementById('originalPriceDisplay').textContent = 'R 0.00';
                 return;
             }
 
-            const product = productsById.get(parseInt(productId, 10));
-            if (product) {
-                document.getElementById('originalPriceDisplay').textContent = `R ${parseFloat(product.unit_price).toFixed(2)}`;
+            discountProductTimeout = setTimeout(() => {
+                // Exact barcode/product_code scan match selects immediately,
+                // same as a scan at the till — no need to wait for a click.
+                const normalized = normalizeBarcode(term);
+                const exact = barcodeMap.get(term) || barcodeMap.get(normalized);
+                if (exact) {
+                    selectDiscountProduct(exact);
+                    return;
+                }
+
+                const q = term.toLowerCase();
+                const matches = (products || []).filter(p =>
+                    (p.product_name || '').toLowerCase().includes(q) ||
+                    (p.product_code || '').toLowerCase().includes(q) ||
+                    (p.barcode || '').toLowerCase().includes(q)
+                ).slice(0, 8);
+
+                renderDiscountProductResults(matches);
+            }, 150);
+        }
+
+        function renderDiscountProductResults(matches) {
+            const resultsEl = document.getElementById('discountProductResults');
+            if (matches.length === 0) {
+                resultsEl.innerHTML = '<div style="padding:10px;color:#999;">No matching products</div>';
+                resultsEl.style.display = 'block';
+                return;
+            }
+            resultsEl.innerHTML = matches.map(p => `
+                <div data-product-id="${p.id}" class="discount-product-result"
+                     style="padding:10px;cursor:pointer;border-bottom:1px solid #f0f0f0;"
+                     onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''"
+                     onmousedown="event.preventDefault(); selectDiscountProductById(${p.id});">
+                    ${p.product_code} - ${p.product_name} (R ${parseFloat(p.unit_price).toFixed(2)})
+                </div>`).join('');
+            resultsEl.style.display = 'block';
+        }
+
+        function selectDiscountProductById(id) {
+            const product = productsById.get(id);
+            if (product) selectDiscountProduct(product);
+        }
+
+        function selectDiscountProduct(product) {
+            document.getElementById('discountProductId').value = product.id;
+            document.getElementById('discountProductSearch').value = `${product.product_code} - ${product.product_name}`;
+            document.getElementById('originalPriceDisplay').textContent = `R ${parseFloat(product.unit_price).toFixed(2)}`;
+            document.getElementById('discountProductResults').style.display = 'none';
+            document.getElementById('discountProductResults').innerHTML = '';
+            document.getElementById('discountPrice').focus();
+        }
+
+        function handleDiscountProductKeydown(event) {
+            if (event.key === 'Enter') {
+                // Scanners terminate with Enter — resolve on the spot instead of
+                // waiting out the 150ms debounce meant for human typing.
+                event.preventDefault();
+                clearTimeout(discountProductTimeout);
+                const term = event.target.value.trim();
+                if (!term) return;
+                const normalized = normalizeBarcode(term);
+                const exact = barcodeMap.get(term) || barcodeMap.get(normalized);
+                if (exact) {
+                    selectDiscountProduct(exact);
+                    return;
+                }
+                // No exact scan match — Enter picks the top of the current
+                // filtered list, same as clicking the first suggestion.
+                const first = document.querySelector('#discountProductResults .discount-product-result');
+                if (first) selectDiscountProductById(parseInt(first.dataset.productId, 10));
+            } else if (event.key === 'Escape') {
+                document.getElementById('discountProductResults').style.display = 'none';
             }
         }
 
