@@ -91,6 +91,60 @@ async function ensurePosSchema(pool) {
         ON customer_product_discounts(company_id, customer_id)
     `);
 
+    // ── pos_promotions / pos_promotion_redemptions ──────────────────────────
+    // Cart-level, code-redeemed promotions — distinct from pos_daily_discounts
+    // (per-product, automatic, no code) and customer_product_discounts
+    // (per-customer-per-product, automatic). A promotion is entered by the
+    // cashier as a code at checkout and reduces the whole-sale total, the
+    // same architectural tier as the manual discretionary discount in
+    // sales.js, not another per-line pricing candidate.
+    // current_usage_count (denormalised, fast limit check at validation time)
+    // + pos_promotion_redemptions (audit trail, one row per sale that used a
+    // code) — the same dual pattern already used for
+    // customers.loyalty_points + loyalty_transactions.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_promotions (
+        id                  SERIAL PRIMARY KEY,
+        company_id          INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name                VARCHAR(150) NOT NULL,
+        code                VARCHAR(40) NOT NULL,
+        discount_type       VARCHAR(20) NOT NULL DEFAULT 'percent',
+        discount_value      DECIMAL(10,2) NOT NULL,
+        min_purchase_amount DECIMAL(10,2),
+        start_date          TIMESTAMPTZ,
+        end_date            TIMESTAMPTZ,
+        usage_limit         INTEGER,
+        current_usage_count INTEGER NOT NULL DEFAULT 0,
+        is_active           BOOLEAN DEFAULT true,
+        created_by          INTEGER REFERENCES users(id),
+        created_at          TIMESTAMPTZ DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, code)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_promotions_company
+        ON pos_promotions(company_id)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_promotion_redemptions (
+        id              SERIAL PRIMARY KEY,
+        company_id      INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        promotion_id    INTEGER NOT NULL REFERENCES pos_promotions(id) ON DELETE CASCADE,
+        sale_id         INTEGER REFERENCES sales(id),
+        customer_id     INTEGER REFERENCES customers(id),
+        discount_amount DECIMAL(10,2) NOT NULL,
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pos_promo_redemptions_promo
+        ON pos_promotion_redemptions(promotion_id)
+    `);
+
     // ── pos_manager_authorizations ──────────────────────────────────────────
     // Short-lived proof that a management-tier user approved a specific
     // cashier-initiated action (a manual checkout discount, or a return) by

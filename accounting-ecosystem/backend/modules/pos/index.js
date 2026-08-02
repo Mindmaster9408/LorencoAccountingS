@@ -17,6 +17,7 @@ const cashPaidOutsRoutes   = require('./routes/cashPaidOuts');
 const tillsRoutes          = require('./routes/tills');
 const kvRoutes             = require('./routes/kv');
 const discountsRoutes      = require('./routes/discounts');
+const promotionsRoutes     = require('./routes/promotions');
 const loyaltyRoutes        = require('./routes/loyalty');
 const settingsRoutes       = require('./routes/settings');
 const recoveryRoutes       = require('./routes/recovery');
@@ -55,6 +56,7 @@ router.use('/sessions',   cashPaidOutsRoutes);
 router.use('/tills',      tillsRoutes);
 router.use('/till',       tillsRoutes);   // alias used by some frontend calls
 router.use('/discounts',  discountsRoutes);
+router.use('/promotions', promotionsRoutes);
 router.use('/manager-auth', managerAuthRoutes);
 router.use('/loyalty',    loyaltyRoutes);
 router.use('/settings',   settingsRoutes);

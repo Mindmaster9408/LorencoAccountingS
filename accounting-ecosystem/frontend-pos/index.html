@@ -2119,6 +2119,24 @@
                                     </div>
                                 </div>
 
+                                <!-- Promotion code (2026-08-02) — cart-level, code-redeemed
+                                     discount. Not customer-dependent, unlike a customer's own
+                                     standard discount. Preview only — the server independently
+                                     re-validates and re-sizes the discount for real at checkout
+                                     via promotionService.previewPromotion(), same "never trust
+                                     the client for a money-affecting field" principle as every
+                                     other discount here. Never applied while offline — a code
+                                     needs a live usage-limit check. -->
+                                <div id="promoCodeSection" style="display:block; background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:10px;">
+                                    <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Promo Code</label>
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <input type="text" id="promoCodeInput" placeholder="e.g. SPRING10" style="width:120px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);text-transform:uppercase;" oninput="this.value = this.value.toUpperCase()">
+                                        <button class="btn btn-secondary" onclick="applyPromoCode()" style="padding:8px 15px;font-size:13px;">Apply</button>
+                                        <span id="promoCodeAppliedLine" style="display:none;color:#2e7d32;font-weight:600;font-size:13px;"></span>
+                                        <a id="promoCodeClear" onclick="clearPromoCode()" style="display:none;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
+                                    </div>
+                                </div>
+
                                 <!-- Workstream 76 — only the 4 standard methods show by default;
                                      EFT/SnapScan/Zapper/Gift Card moved behind "More" below. -->
                                 <div class="payment-methods payment-methods-primary">
@@ -2558,6 +2576,68 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeBrandEditModal()">Cancel</button>
                     <button class="btn btn-primary" onclick="saveBrandModal()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Promotion Add/Edit Modal (2026-08-02) -->
+        <div id="promotionEditModal" class="modal-overlay">
+            <div class="modal" style="max-width:480px;">
+                <div class="modal-header">
+                    <h2 id="promotionEditModalTitle">Add Promotion</h2>
+                    <button class="close-btn" onclick="closePromotionEditModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="promotionEditId" value="">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" id="promotionEditName" placeholder="e.g. Spring Sale" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                        <label>Code *</label>
+                        <input type="text" id="promotionEditCode" placeholder="e.g. SPRING10" style="width:100%;text-transform:uppercase;" oninput="this.value = this.value.toUpperCase()">
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div class="form-group">
+                            <label>Discount Type *</label>
+                            <select id="promotionEditType" style="width:100%;">
+                                <option value="percent">Percent (%)</option>
+                                <option value="fixed">Fixed (R)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Discount Value *</label>
+                            <input type="number" id="promotionEditValue" step="0.01" min="0.01" style="width:100%;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Minimum Purchase (optional)</label>
+                        <input type="number" id="promotionEditMinPurchase" step="0.01" min="0" placeholder="e.g. 200" style="width:100%;">
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div class="form-group">
+                            <label>Start Date (optional)</label>
+                            <input type="date" id="promotionEditStartDate" style="width:100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>End Date (optional)</label>
+                            <input type="date" id="promotionEditEndDate" style="width:100%;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Usage Limit (optional)</label>
+                        <input type="number" id="promotionEditUsageLimit" step="1" min="1" placeholder="Unlimited if blank" style="width:100%;">
+                    </div>
+                    <div class="form-group" id="promotionEditActiveGroup" style="display:none;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="promotionEditIsActive">
+                            Active
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closePromotionEditModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="savePromotionModal()">Save</button>
                 </div>
             </div>
         </div>
@@ -3444,6 +3524,7 @@
                     <div class="settings-menu-item" onclick="showSettings('receipt-printers', event)">Receipt Printers</div>
                     <div class="settings-menu-item" onclick="showSettings('categories', event)">Categories</div>
                     <div class="settings-menu-item" onclick="showSettings('brands', event)">Brands</div>
+                    <div class="settings-menu-item manager-only" onclick="showSettings('promotions', event)">Promotions</div>
                     <div class="settings-menu-item" onclick="showSettings('suppliers', event)">Suppliers</div>
                     <div class="settings-menu-item" onclick="showSettings('sites', event)">Sites</div>
                     <div class="settings-menu-item manager-only" onclick="showSettings('tills', event)">Tills</div>
@@ -3715,6 +3796,42 @@
                                 </thead>
                                 <tbody id="brandsTableBody">
                                     <tr><td colspan="4" style="text-align:center;color:#999;padding:20px;">Loading brands...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Promotions Section (2026-08-02) — cart-level, code-redeemed
+                         discounts. Replaces the decorative Loyalty-tab "Promotions"
+                         sub-tab (which called a hardcoded /api/promotions stub) —
+                         genuinely distinct from Daily Discount (per-product, automatic,
+                         no code, still lives under Settings → Products). -->
+                    <div id="promotionsSection" style="display: none;">
+                        <div class="products-header">
+                            <div class="search-box">
+                                <input type="text" id="promotionSearch" placeholder="Search promotions..." oninput="loadSettingsPromotions()">
+                                <span class="search-icon">🔍</span>
+                            </div>
+                            <div class="header-actions">
+                                <button class="btn btn-primary" onclick="showNewPromotionModal()">Add Promotion</button>
+                            </div>
+                        </div>
+                        <div class="products-container">
+                            <table class="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Code</th>
+                                        <th>Discount</th>
+                                        <th>Min Purchase</th>
+                                        <th>Window</th>
+                                        <th>Usage</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="promotionsTableBody">
+                                    <tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading promotions...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -4357,11 +4474,10 @@
 
     <!-- Loyalty Layout -->
     <div id="loyaltyLayout" class="enterprise-layout">
-        <h1>Customer Loyalty & Promotions</h1>
+        <h1>Customer Loyalty</h1>
         <div class="tab-sub-nav">
             <button class="sub-tab active" onclick="showLoyaltyTab('programs', event)">Programs</button>
             <button class="sub-tab" onclick="showLoyaltyTab('members', event)">Members</button>
-            <button class="sub-tab" onclick="showLoyaltyTab('promotions', event)">Promotions</button>
         </div>
 
         <div id="loyPrograms">
@@ -4407,40 +4523,6 @@
                     </thead>
                     <tbody id="loyaltyMembersBody">
                         <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading members...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div id="loyPromotions" style="display:none;">
-            <div class="enterprise-toolbar">
-                <div style="display:flex;gap:10px;">
-                    <input type="text" id="promoSearch" placeholder="Search promotions...">
-                    <select id="promoFilter">
-                        <option value="">All Promotions</option>
-                        <option value="active">Active</option>
-                        <option value="upcoming">Upcoming</option>
-                        <option value="expired">Expired</option>
-                    </select>
-                </div>
-                <button class="ent-btn ent-btn-primary" onclick="showNewPromotionModal()">+ New Promotion</button>
-            </div>
-            <div class="enterprise-section">
-                <table class="enterprise-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Code</th>
-                            <th>Type</th>
-                            <th>Discount</th>
-                            <th>Start</th>
-                            <th>End</th>
-                            <th>Usage</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="promotionsTableBody">
-                        <tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading promotions...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -5815,6 +5897,11 @@
             isOnline = false;
             updateOfflineBanner();
             showNotification('You are offline. Sales will be saved locally.', 'info');
+            // A promo code needs a live usage-limit check and is never sent on the
+            // offline-sale path (see checkout()) — drop any pending code so the
+            // on-screen total can't promise a discount the eventual synced sale
+            // won't actually apply.
+            if (typeof clearPromoCode === 'function') clearPromoCode();
         });
 
         // ── PWA Install Prompt ────────────────────────────────────────────────
@@ -8816,6 +8903,15 @@
                 total = Math.max(0, preManualTotal * (1 - manualDiscountPercent / 100));
                 vat = preManualTotal > 0 ? vat * (total / preManualTotal) : vat;
             }
+            // Promotion code (2026-08-02) — same flat rand-value layer sales.js
+            // applies server-side. Gated on isOnline: never shown/applied while
+            // offline, since a code needs a live usage-limit check and is never
+            // sent on that path (see checkout()).
+            if (appliedPromoDiscount > 0 && isOnline) {
+                const prePromoTotal = total;
+                total = Math.max(0, prePromoTotal - appliedPromoDiscount);
+                vat = prePromoTotal > 0 ? vat * (total / prePromoTotal) : vat;
+            }
             const discount = Math.max(0, grossSubtotal - total);
             return { subtotal: grossSubtotal, vat, total, discount };
         }
@@ -8981,6 +9077,7 @@
                 // checkout attempt — don't let it silently carry over to an
                 // unrelated new sale.
                 if (typeof clearManualDiscount === 'function') clearManualDiscount();
+                if (typeof clearPromoCode === 'function') clearPromoCode();
                 updateCart();
                 setTimeout(refocusScanner, 100);
             }
@@ -9253,6 +9350,57 @@
             updateCart();
         }
 
+        // ── Promotion code (2026-08-02) ─────────────────────────────────────────
+        // appliedPromoDiscount is a client-side PREVIEW only (from GET
+        // /pos/promotions/validate) so the on-screen total can show the discount
+        // before checkout — the server independently re-validates and re-sizes
+        // it for real in sales.js regardless of what this preview computed.
+        let appliedPromoCode = null;
+        let appliedPromoDiscount = 0;
+
+        async function applyPromoCode() {
+            if (!isOnline) {
+                showNotification('Promo codes need a live connection', 'error');
+                return;
+            }
+            const code = document.getElementById('promoCodeInput').value.trim().toUpperCase();
+            if (!code) {
+                showNotification('Enter a promo code', 'error');
+                return;
+            }
+            const { total: subtotalForPromo } = calcCartTotals(cart, selectedCustomerDiscountPercent);
+            try {
+                const res = await fetch(`${API_URL}/pos/promotions/validate?code=${encodeURIComponent(code)}&subtotal=${subtotalForPromo}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    showNotification(result.error || 'Invalid promo code', 'error');
+                    return;
+                }
+                appliedPromoCode = code;
+                appliedPromoDiscount = result.discountAmount;
+                document.getElementById('promoCodeAppliedLine').textContent = `${result.promotion.name}: −R ${appliedPromoDiscount.toFixed(2)}`;
+                document.getElementById('promoCodeAppliedLine').style.display = 'inline';
+                document.getElementById('promoCodeClear').style.display = 'inline';
+                updateCart();
+            } catch (error) {
+                showNotification('Error validating promo code: ' + error.message, 'error');
+            }
+        }
+
+        function clearPromoCode() {
+            appliedPromoCode = null;
+            appliedPromoDiscount = 0;
+            const input = document.getElementById('promoCodeInput');
+            if (input) input.value = '';
+            const appliedLine = document.getElementById('promoCodeAppliedLine');
+            const clearLink = document.getElementById('promoCodeClear');
+            if (appliedLine) appliedLine.style.display = 'none';
+            if (clearLink) clearLink.style.display = 'none';
+            updateCart();
+        }
+
         let lastSaleId = null;
         let autoPrintEnabled = false;
         // Defaults true to match company_settings' own default (open_drawer_on_sale
@@ -9371,6 +9519,7 @@
 
                     cart = [];
                     clearManualDiscount();
+                    clearPromoCode();
                     updateCart();
 
                     // Print receipt (browser dialog)
@@ -9401,6 +9550,10 @@
                         paymentMethod: selectedPayment,
                         customerId: selectedAccountCustomerId || undefined,
                         discountPercent: manualDiscountPercent || undefined,
+                        // Online-only (2026-08-02) — never sent on the offline saleData
+                        // path above; see calcCartTotals()'s isOnline gate and the
+                        // 'offline' listener that drops any pending promo code.
+                        promotionCode: appliedPromoCode || undefined,
                         idempotencyKey: saleData.idempotencyKey,
                         cashTendered: cashTenderedForSlip
                     })
@@ -9419,6 +9572,7 @@
 
                     cart = [];
                     clearManualDiscount();
+                    clearPromoCode();
                     updateCart();
 
                     // Decrement stock_quantity in memory for immediate tile/table display.
@@ -12195,6 +12349,7 @@
                 if (section === 'tills')      { loadSettingsTills(); }
                 if (section === 'categories') { loadSettingsCategories(); }
                 if (section === 'brands')     { loadSettingsBrands(); }
+                if (section === 'promotions') { loadSettingsPromotions(); }
             }
         }
 
@@ -12416,6 +12571,175 @@
                 }
             } catch (error) {
                 showNotification('Error deleting brand: ' + error.message, 'error');
+            }
+        }
+
+        // ── Promotions admin (2026-08-02) ───────────────────────────────────────
+        // Cart-level, code-redeemed discounts — replaces the decorative Loyalty-
+        // tab "Promotions" sub-tab (hardcoded /api/promotions stub, never real).
+        // Genuinely distinct from Daily Discount (Settings → Products, per-
+        // product, automatic, no code) — a promotion is a whole-sale reduction
+        // the cashier applies by entering a code at checkout (see
+        // #promoCodeSection on the till screen).
+        let cachedPromotionsList = [];
+
+        function promotionStatus(p) {
+            if (!p.is_active) return { label: 'Inactive', color: '#999' };
+            const now = new Date();
+            if (p.start_date && now < new Date(p.start_date)) return { label: 'Scheduled', color: '#f57c00' };
+            if (p.end_date && now > new Date(p.end_date)) return { label: 'Expired', color: '#c62828' };
+            if (p.usage_limit !== null && p.current_usage_count >= p.usage_limit) return { label: 'Limit Reached', color: '#c62828' };
+            return { label: 'Active', color: '#2e7d32' };
+        }
+
+        async function loadSettingsPromotions() {
+            const tbody = document.getElementById('promotionsTableBody');
+            try {
+                const search = document.getElementById('promotionSearch')?.value.trim().toLowerCase() || '';
+                const res = await fetch(`${API_URL}/pos/promotions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                cachedPromotionsList = result.promotions || [];
+                const filtered = search
+                    ? cachedPromotionsList.filter(p => (p.name || '').toLowerCase().includes(search) || (p.code || '').toLowerCase().includes(search))
+                    : cachedPromotionsList;
+
+                if (filtered.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">No promotions found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = filtered.map(p => {
+                    const status = promotionStatus(p);
+                    const discountLabel = p.discount_type === 'percent' ? `${parseFloat(p.discount_value)}%` : `R ${parseFloat(p.discount_value).toFixed(2)}`;
+                    const windowLabel = `${p.start_date ? new Date(p.start_date).toLocaleDateString() : 'Any'} – ${p.end_date ? new Date(p.end_date).toLocaleDateString() : 'No end'}`;
+                    const usageLabel = `${p.current_usage_count}${p.usage_limit ? '/' + p.usage_limit : ''}`;
+                    const minPurchaseLabel = p.min_purchase_amount ? `R ${parseFloat(p.min_purchase_amount).toFixed(2)}` : '-';
+                    return `
+                    <tr>
+                        <td>${escHtml(p.name)}</td>
+                        <td><code>${escHtml(p.code)}</code></td>
+                        <td>${discountLabel}</td>
+                        <td>${minPurchaseLabel}</td>
+                        <td>${windowLabel}</td>
+                        <td>${usageLabel}</td>
+                        <td><span style="color:${status.color};">${status.label}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="editPromotion(${p.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deletePromotion(${p.id})">Del</button>
+                        </td>
+                    </tr>
+                `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading promotions:', error);
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#c62828;padding:20px;">Error loading promotions</td></tr>';
+            }
+        }
+
+        function showNewPromotionModal() {
+            document.getElementById('promotionEditModalTitle').textContent = 'Add Promotion';
+            document.getElementById('promotionEditId').value = '';
+            document.getElementById('promotionEditName').value = '';
+            document.getElementById('promotionEditCode').value = '';
+            document.getElementById('promotionEditType').value = 'percent';
+            document.getElementById('promotionEditValue').value = '';
+            document.getElementById('promotionEditMinPurchase').value = '';
+            document.getElementById('promotionEditStartDate').value = '';
+            document.getElementById('promotionEditEndDate').value = '';
+            document.getElementById('promotionEditUsageLimit').value = '';
+            document.getElementById('promotionEditActiveGroup').style.display = 'none';
+            document.getElementById('promotionEditModal').style.display = 'flex';
+        }
+
+        function editPromotion(id) {
+            const p = cachedPromotionsList.find(x => x.id === id);
+            if (!p) return;
+            document.getElementById('promotionEditModalTitle').textContent = 'Edit Promotion';
+            document.getElementById('promotionEditId').value = p.id;
+            document.getElementById('promotionEditName').value = p.name || '';
+            document.getElementById('promotionEditCode').value = p.code || '';
+            document.getElementById('promotionEditType').value = p.discount_type || 'percent';
+            document.getElementById('promotionEditValue').value = p.discount_value ?? '';
+            document.getElementById('promotionEditMinPurchase').value = p.min_purchase_amount ?? '';
+            document.getElementById('promotionEditStartDate').value = p.start_date ? p.start_date.slice(0, 10) : '';
+            document.getElementById('promotionEditEndDate').value = p.end_date ? p.end_date.slice(0, 10) : '';
+            document.getElementById('promotionEditUsageLimit').value = p.usage_limit ?? '';
+            document.getElementById('promotionEditIsActive').checked = !!p.is_active;
+            document.getElementById('promotionEditActiveGroup').style.display = 'block';
+            document.getElementById('promotionEditModal').style.display = 'flex';
+        }
+
+        function closePromotionEditModal() {
+            document.getElementById('promotionEditModal').style.display = 'none';
+        }
+
+        async function savePromotionModal() {
+            const id = document.getElementById('promotionEditId').value;
+            const name = document.getElementById('promotionEditName').value.trim();
+            const code = document.getElementById('promotionEditCode').value.trim();
+            const discountValue = parseFloat(document.getElementById('promotionEditValue').value);
+            if (!name) { showNotification('Promotion name is required', 'error'); return; }
+            if (!code) { showNotification('Promotion code is required', 'error'); return; }
+            if (!(discountValue > 0)) { showNotification('Discount value must be a positive number', 'error'); return; }
+
+            const minPurchaseRaw = document.getElementById('promotionEditMinPurchase').value;
+            const usageLimitRaw  = document.getElementById('promotionEditUsageLimit').value;
+            const startDateRaw   = document.getElementById('promotionEditStartDate').value;
+            const endDateRaw     = document.getElementById('promotionEditEndDate').value;
+
+            const payload = {
+                name,
+                code,
+                discount_type:       document.getElementById('promotionEditType').value,
+                discount_value:      discountValue,
+                min_purchase_amount: minPurchaseRaw ? parseFloat(minPurchaseRaw) : null,
+                // Start of day / end of day — a promotion stays valid through the
+                // whole of its end date rather than expiring at local midnight.
+                start_date:          startDateRaw ? `${startDateRaw}T00:00:00` : null,
+                end_date:            endDateRaw   ? `${endDateRaw}T23:59:59`   : null,
+                usage_limit:         usageLimitRaw ? parseInt(usageLimitRaw, 10) : null,
+            };
+            if (id) {
+                payload.is_active = document.getElementById('promotionEditIsActive').checked;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/pos/promotions${id ? '/' + id : ''}`, {
+                    method: id ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(id ? 'Promotion updated' : 'Promotion added', 'success');
+                    closePromotionEditModal();
+                    loadSettingsPromotions();
+                } else {
+                    showNotification(result.error || 'Failed to save promotion', 'error');
+                }
+            } catch (error) {
+                showNotification('Error saving promotion: ' + error.message, 'error');
+            }
+        }
+
+        async function deletePromotion(id) {
+            const p = cachedPromotionsList.find(x => x.id === id);
+            if (!confirm(`Deactivate promotion "${p ? p.name : ''}"? Its code will stop working at checkout, but past redemptions stay on record.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/promotions/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    showNotification('Promotion deactivated', 'success');
+                    loadSettingsPromotions();
+                } else {
+                    const result = await res.json();
+                    showNotification(result.error || 'Failed to deactivate promotion', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deactivating promotion: ' + error.message, 'error');
             }
         }
 
@@ -17252,55 +17576,11 @@
 
             document.getElementById('loyPrograms').style.display = tab === 'programs' ? 'block' : 'none';
             document.getElementById('loyMembers').style.display = tab === 'members' ? 'block' : 'none';
-            document.getElementById('loyPromotions').style.display = tab === 'promotions' ? 'block' : 'none';
-
-            if (tab === 'promotions') loadPromotions();
-        }
-
-        async function loadPromotions() {
-            try {
-                const res = await fetch(`${API_URL}/promotions`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const promos = data.promotions || [];
-                    const tbody = document.getElementById('promotionsTableBody');
-                    if (promos.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">No promotions configured</td></tr>';
-                    } else {
-                        tbody.innerHTML = promos.map(p => {
-                            const now = new Date();
-                            const start = new Date(p.start_date);
-                            const end = new Date(p.end_date);
-                            let status = 'Active';
-                            let statusClass = 'active';
-                            if (now < start) { status = 'Upcoming'; statusClass = 'pending'; }
-                            if (now > end) { status = 'Expired'; statusClass = 'closed'; }
-                            if (!p.is_active) { status = 'Inactive'; statusClass = 'closed'; }
-
-                            return `<tr>
-                                <td><strong>${p.promotion_name}</strong></td>
-                                <td>${p.promotion_code || '-'}</td>
-                                <td>${p.promotion_type}</td>
-                                <td>${p.discount_percentage ? p.discount_percentage + '%' : p.discount_value ? 'R ' + p.discount_value : '-'}</td>
-                                <td>${start.toLocaleDateString()}</td>
-                                <td>${end.toLocaleDateString()}</td>
-                                <td>${p.current_usage_count || 0}${p.usage_limit ? '/' + p.usage_limit : ''}</td>
-                                <td><span class="status-badge ${statusClass}">${status}</span></td>
-                            </tr>`;
-                        }).join('');
-                    }
-                }
-            } catch (e) {
-                console.log('Promotions load error:', e);
-            }
         }
 
         function searchLoyaltyMembers() { /* placeholder */ }
         function showNewProgramModal() { showNotification('Program creation coming soon', 'info'); }
         function showEnrollCustomerModal() { showNotification('Customer enrollment coming soon', 'info'); }
-        function showNewPromotionModal() { showNotification('Promotion creation coming soon', 'info'); }
 
         // ========== COMPANY & USER MANAGEMENT ==========
 
