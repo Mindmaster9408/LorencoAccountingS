@@ -9574,7 +9574,7 @@
                     const soldItems = cart.map(item => ({ productId: item.productId, quantity: item.quantity }));
 
                     // Show sale complete modal with print option
-                    showSaleCompleteModal(result);
+                    showSaleCompleteModal(result, cashTenderedForSlip);
 
                     cart = [];
                     clearManualDiscount();
@@ -9687,11 +9687,23 @@
             document.body.appendChild(modal);
         }
 
-        function showSaleCompleteModal(sale) {
+        // cashTendered (2026-08-02) — the amount the cashier entered in the
+        // Amount Received box at checkout, passed through from checkout()'s
+        // cashTenderedForSlip so change due can be shown here without another
+        // round-trip. Only meaningful for a plain CASH sale where the cashier
+        // actually entered an amount — undefined/NaN for every other case.
+        function showSaleCompleteModal(sale, cashTendered) {
             const modal = document.createElement('div');
             modal.className = 'modal-overlay';
             modal.id = 'saleCompleteModal';
             modal.style.display = 'flex';
+            const showChange = selectedPayment === 'CASH' && typeof cashTendered === 'number' && !isNaN(cashTendered);
+            const changeGiven = showChange ? Math.max(0, cashTendered - sale.totalAmount) : 0;
+            const changeDueHtml = showChange ? `
+                        <div style="background:#eff8f0;border:1px solid #10b981;border-radius:10px;padding:12px;margin-bottom:15px;">
+                            <div style="font-size:13px;color:#555;">Tendered: R ${cashTendered.toFixed(2)}</div>
+                            <div style="font-size:22px;font-weight:800;color:#10b981;">Change Due: R ${changeGiven.toFixed(2)}</div>
+                        </div>` : '';
             modal.innerHTML = `
                 <div class="modal" style="max-width: 450px;">
                     <div class="modal-header" style="background: #10b981; color: white;">
@@ -9703,20 +9715,25 @@
                         <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">#${sale.saleNumber}</div>
                         <div style="font-size: 32px; font-weight: bold; color: #10b981; margin-bottom: 15px;">R ${sale.totalAmount.toFixed(2)}</div>
                         <div style="color: #666; margin-bottom: 20px;">Payment: ${selectedPayment}</div>
-                        
+                        ${changeDueHtml}
+
                         <div style="background:#f8f9fa;border-radius:10px;padding:15px;text-align:left;margin-bottom:15px;">
                             <div style="font-weight:600;margin-bottom:10px;color:#333;">Send Receipt</div>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                <button class="btn btn-primary" onclick="deliverReceipt(${sale.saleId}, 'print', ${selectedPayment === 'CASH'})" style="padding:10px;font-size:13px;">
+                                <button class="btn btn-primary" onclick="deliverReceipt(${sale.saleId}, 'print', ${selectedPayment === 'CASH'})" style="padding:10px;font-size:13px;grid-column:1 / -1;">
                                     &#128424; Print
                                 </button>
-                                <button class="btn btn-secondary" onclick="showEmailReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;">
+                                <!-- Email/SMS/WhatsApp (2026-08-02) — hidden, not removed: the
+                                     delivery integration isn't built yet. Code, handlers and the
+                                     backend /receipts/deliver call all stay in place so this is a
+                                     one-line re-enable (remove display:none) once that lands. -->
+                                <button class="btn btn-secondary" onclick="showEmailReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;display:none;">
                                     &#9993; Email
                                 </button>
-                                <button class="btn btn-secondary" onclick="showSmsReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;">
+                                <button class="btn btn-secondary" onclick="showSmsReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;display:none;">
                                     &#128172; SMS
                                 </button>
-                                <button class="btn btn-secondary" onclick="showWhatsAppReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;">
+                                <button class="btn btn-secondary" onclick="showWhatsAppReceiptInput(${sale.saleId})" style="padding:10px;font-size:13px;display:none;">
                                     &#128242; WhatsApp
                                 </button>
                             </div>
@@ -9839,7 +9856,9 @@
                     await printReceiptViaUsb(saleId);
                     if (openDrawerEnabled && isFreshCashSale) await kickUsbDrawer();
                     showNotification('Receipt printed!', 'success');
-                    closeSaleCompleteModal();
+                    // Sale Complete modal (2026-08-02) — printing no longer auto-closes it;
+                    // it must stay open (showing change due) until the cashier explicitly
+                    // clicks Done, confirming change was handed over and the customer left.
                     return;
                 } catch (e) {
                     console.warn('[Print] USB print failed, falling back to browser print:', e.message);
@@ -9880,12 +9899,12 @@
 
                 if (result.success && result.method === 'thermal') {
                     showNotification('Receipt sent to thermal printer!', 'success');
-                    closeSaleCompleteModal();
+                    // Modal stays open — see note above.
                 } else if (result.receiptHtml) {
                     // Use browser print dialog - shows all installed printers
                     showNotification('Opening print dialog...', 'info');
                     printBrowserReceipt(result.receiptHtml);
-                    closeSaleCompleteModal();
+                    // Modal stays open — see note above.
                 } else {
                     showNotification(result.error || 'Print failed', 'error');
                 }
@@ -9898,7 +9917,7 @@
                     if (previewResponse.ok) {
                         const preview = await previewResponse.json();
                         printBrowserReceipt(preview.receiptHtml);
-                        closeSaleCompleteModal();
+                        // Modal stays open — see note above.
                     } else {
                         showNotification('Print error: ' + error.message, 'error');
                     }
@@ -10240,7 +10259,8 @@
 
             const html = generateOfflineReceiptHtml(sale);
             printBrowserReceipt(html);
-            closeSaleCompleteModal();
+            // Same fix as the online Sale Complete modal (2026-08-02) — printing
+            // must not auto-close this; it stays open until Done is clicked.
         }
 
         function generateOfflineReceiptHtml(sale) {
