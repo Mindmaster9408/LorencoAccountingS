@@ -2049,7 +2049,7 @@
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                             <div id="cartItemCount">0 items</div>
                             <button onclick="showCashPaidOutModal()" title="Record cash removed from the drawer"
-                                style="padding:3px 10px;font-size:12px;border:1px solid #ddd;border-radius:12px;background:#fff;cursor:pointer;white-space:nowrap;">
+                                style="padding:3px 10px;font-size:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap;">
                                 💵 Paid Out
                             </button>
                         </div>
@@ -3191,7 +3191,7 @@
                                oninput="filterDiscountProducts()" onkeydown="handleDiscountProductKeydown(event)"
                                onblur="setTimeout(() => { const r = document.getElementById('discountProductResults'); if (r) r.style.display = 'none'; }, 150)">
                         <input type="hidden" id="discountProductId">
-                        <div id="discountProductResults" style="display:none; position:absolute; left:0; right:0; top:100%; background:#fff; border:1px solid #ddd; border-top:none; border-radius:0 0 5px 5px; max-height:220px; overflow-y:auto; z-index:10; box-shadow:0 4px 10px rgba(0,0,0,0.15);"></div>
+                        <div id="discountProductResults" style="display:none; position:absolute; left:0; right:0; top:100%; border:1px solid var(--border); border-top:none; border-radius:0 0 5px 5px; max-height:220px; overflow-y:auto; z-index:10; box-shadow:0 4px 10px rgba(0,0,0,0.3);"></div>
                     </div>
                     <div class="form-group">
                         <label>Original Price: <span id="originalPriceDisplay">R 0.00</span></label>
@@ -3990,7 +3990,7 @@
                                 For a printer/cash drawer plugged directly into this till's USB port.
                                 Pairing is per-computer — each till must pair its own printer once.
                             </p>
-                            <div id="usbPrinterStatus" style="padding:10px;border-radius:6px;background:#fff;border:1px solid #ddd;margin-bottom:12px;font-size:14px;">
+                            <div id="usbPrinterStatus" style="padding:10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text);margin-bottom:12px;font-size:14px;">
                                 Checking for a paired USB printer...
                             </div>
                             <div style="display:flex;gap:10px;">
@@ -4978,8 +4978,8 @@
                 <button class="close-btn" onclick="closeProductStockModal()">&times;</button>
             </div>
             <div class="modal-body" style="padding:20px;">
-                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    <div style="font-size: 18px; font-weight: bold;" id="stockProductName">Product Name</div>
+                <div style="background: var(--surface); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="font-size: 18px; font-weight: bold; color: var(--text);" id="stockProductName">Product Name</div>
                     <div style="color: #666;" id="stockProductCode">Code: ABC123</div>
                 </div>
 
@@ -8801,8 +8801,8 @@
             }
             list.innerHTML = available.map(s => `
                 <div onclick="document.getElementById('serialPickerInput').value=${JSON.stringify(s)}"
-                    style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;"
-                    onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">
+                    style="padding:6px 8px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;"
+                    onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''">
                     ${s.replace(/</g, '&lt;')}
                 </div>
             `).join('');
@@ -9996,7 +9996,7 @@
 
             if (!webUsbSupported()) {
                 statusEl.textContent = "⚠️ This browser doesn't support USB printing (WebUSB). Use Chrome or Edge on this till.";
-                statusEl.style.color = '#c62828';
+                statusEl.style.color = '#fca5a5';
                 testBtn.style.display = 'none';
                 forgetBtn.style.display = 'none';
                 return;
@@ -10006,12 +10006,12 @@
             cachedUsbPrinter = device;
             if (device) {
                 statusEl.textContent = `✅ Paired: ${device.productName || 'USB Printer'} (${device.manufacturerName || 'Unknown manufacturer'})`;
-                statusEl.style.color = '#2e7d32';
+                statusEl.style.color = '#6ee7b7';
                 testBtn.style.display = 'inline-block';
                 forgetBtn.style.display = 'inline-block';
             } else {
                 statusEl.textContent = 'No USB printer paired yet.';
-                statusEl.style.color = '#666';
+                statusEl.style.color = '';
                 testBtn.style.display = 'none';
                 forgetBtn.style.display = 'none';
             }
@@ -13645,7 +13645,7 @@
 
                 const content = document.getElementById('saleDetailContent');
                 content.innerHTML = `
-                    <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <div style="background: var(--surface); color: var(--text); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                             <div><strong>Sale #:</strong> ${result.sale.sale_number}</div>
                             <div><strong>Date:</strong> ${new Date(result.sale.created_at).toLocaleString()}</div>
@@ -13839,14 +13839,14 @@
         function renderDiscountProductResults(matches) {
             const resultsEl = document.getElementById('discountProductResults');
             if (matches.length === 0) {
-                resultsEl.innerHTML = '<div style="padding:10px;color:#999;">No matching products</div>';
+                resultsEl.innerHTML = '<div style="padding:10px;color:var(--text-muted);">No matching products</div>';
                 resultsEl.style.display = 'block';
                 return;
             }
             resultsEl.innerHTML = matches.map(p => `
                 <div data-product-id="${p.id}" class="discount-product-result"
-                     style="padding:10px;cursor:pointer;border-bottom:1px solid #f0f0f0;"
-                     onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''"
+                     style="padding:10px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);"
+                     onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
                      onmousedown="event.preventDefault(); selectDiscountProductById(${p.id});">
                     ${p.product_code} - ${p.product_name} (R ${parseFloat(p.unit_price).toFixed(2)})
                 </div>`).join('');
@@ -17169,7 +17169,7 @@
             }
             if (isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
                 html += `
-                    <div style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+                    <div style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
                         <h4 style="margin:0 0 8px;font-size:14px;">Dispatch a Delivery</h4>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                             <input type="text" id="poDeliveryTransportedBy" placeholder="Transported by (optional)" style="padding:6px;">
@@ -17207,7 +17207,7 @@
         function renderPoDeliveryBlock(d, po, isSupplier) {
             const canReceive = !isSupplier && ['sent', 'partially_received'].includes(d.status);
             let block = `
-                <div style="background:#f5f7fa;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;" data-delivery-id="${d.id}">
+                <div style="background:var(--surface);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;" data-delivery-id="${d.id}">
                     <strong>Delivery #${d.delivery_number}</strong> — ${d.transfer_number} — ${poStatusBadge(d.status === 'sent' ? 'submitted' : d.status)}
                     ${d.transported_by ? `<div style="color:#666;margin-top:4px;">Transported by: ${d.transported_by}</div>` : ''}
                     <table style="width:100%;border-collapse:collapse;margin-top:8px;">
@@ -17235,7 +17235,7 @@
                             ${isSerialTracked ? `
                             <tr data-delivery-serial-row="${i.id}">
                                 <td colspan="6" style="padding:3px 3px 8px;">
-                                    <textarea class="po-recv-serials" rows="2" placeholder="Serial numbers for this line — one per line or comma-separated" style="width:100%;padding:4px;font-size:12px;border:1px solid #ddd;border-radius:4px;" oninput="updatePoReceiveSerialHint(this)"></textarea>
+                                    <textarea class="po-recv-serials" rows="2" placeholder="Serial numbers for this line — one per line or comma-separated" style="width:100%;padding:4px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;" oninput="updatePoReceiveSerialHint(this)"></textarea>
                                     <div class="po-recv-serials-hint" style="font-size:11px;color:#666;margin-top:2px;">0 of 0 serial number(s) entered</div>
                                 </td>
                             </tr>` : ''}`;
@@ -17248,10 +17248,10 @@
             if (d.discrepancies && d.discrepancies.length > 0) {
                 const reasonOptions = PO_RESOLUTION_REASONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
                 block += d.discrepancies.map(disc => `
-                    <div style="background:${disc.resolution_reason ? '#f5f7fa' : '#ffebee'};border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;">
+                    <div style="background:${disc.resolution_reason ? 'var(--surface)' : 'rgba(198,40,40,0.15)'};border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;">
                         <strong>${disc.discrepancy_type}</strong> — variance ${disc.variance_quantity > 0 ? '+' : ''}${disc.variance_quantity}
                         ${disc.investigation_required ? ' 🚩' : ''}
-                        ${disc.resolution_reason ? `<div style="color:#2e7d32;margin-top:4px;">Resolved: ${disc.resolution_reason.replace(/_/g, ' ')} — ${disc.resolution_notes || ''}</div>` : (!isSupplier ? `
+                        ${disc.resolution_reason ? `<div style="color:#6ee7b7;margin-top:4px;">Resolved: ${disc.resolution_reason.replace(/_/g, ' ')} — ${disc.resolution_notes || ''}</div>` : (!isSupplier ? `
                             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                                 <select id="poResolveReason-${disc.id}" style="padding:5px;">${reasonOptions}</select>
                                 <input type="text" id="poResolveNotes-${disc.id}" placeholder="Resolution notes (required)" style="flex:1;min-width:200px;padding:5px;">

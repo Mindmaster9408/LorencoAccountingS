@@ -395,6 +395,7 @@ body {
 .stock-badge.out { background: rgba(198,40,40,0.2) !important; color: #fca5a5 !important; }
 .low-stock { background: rgba(255,152,0,0.1) !important; }
 .out-of-stock { background: rgba(244,67,54,0.1) !important; }
+.stock-zero-neg { background: rgba(230,81,0,0.2) !important; color: #fbbf24 !important; }
 
 /* ── Status Badges ──────────────────────────────────────────────────────────── */
 .status-badge.active { background: rgba(46,125,50,0.2) !important; color: #6ee7b7 !important; }
@@ -536,6 +537,15 @@ select optgroup {
 .close-btn { color: var(--text-muted) !important; }
 .modal-footer { border-top-color: var(--border) !important; }
 .modal-body { color: var(--text); }
+
+/* Daily Discount product-search dropdown (2026-08-02) — a floating
+   autocomplete positioned absolutely over the rest of the modal body, so it
+   needs the SAME solid, opaque per-theme background as .modal itself (not
+   the translucent --surface token other panels use) — otherwise the fields
+   underneath it show through. Found live: was hardcoded to a plain white
+   background, making its text invisible in dark mode. */
+#discountProductResults { background: #1e1b3a !important; }
+:root[data-theme="light"] #discountProductResults { background: #fff !important; }
 
 /* ── Notifications ──────────────────────────────────────────────────────────── */
 .notification {
@@ -804,6 +814,35 @@ select optgroup {
 }
 #generalSection h4 { color: var(--text) !important; }
 #generalSection p   { color: var(--text-secondary) !important; }
+
+/* GAP-5 (2026-08-02): Recovery Panel (#recoveryLayout, Workstream 4A) — the
+   whole panel was written with hardcoded light-theme CSS classes (not inline
+   styles), so none of the earlier GAP catch-alls above reach it — they only
+   match inline style="..." attributes. .queue-item's own headline text has no
+   explicit color and was invisible (white-on-white) — same bug class as the
+   discountProductResults dropdown. Same rgba/brightened-text mapping already
+   used for .stock-badge.*/.status-badge.* above. */
+.queue-item { background: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; }
+.queue-status-badge.pending          { background: rgba(59,130,246,0.2) !important; color: var(--accent-light) !important; }
+.queue-status-badge.failed           { background: rgba(198,40,40,0.2) !important; color: #fca5a5 !important; }
+.queue-status-badge.conflict_stock,
+.queue-status-badge.conflict_session { background: rgba(230,81,0,0.2) !important; color: #fbbf24 !important; }
+.queue-status-badge.abandoned        { background: var(--surface-hover) !important; color: var(--text-muted) !important; }
+.recovery-action-btn.retry   { background: rgba(46,125,50,0.2) !important; color: #6ee7b7 !important; }
+.recovery-action-btn.abandon { background: rgba(198,40,40,0.2) !important; color: #fca5a5 !important; }
+.recovery-action-btn.note    { background: rgba(106,27,154,0.2) !important; color: #d8b4fe !important; }
+.session-health-table th { background: var(--surface) !important; border-bottom-color: var(--border-strong) !important; color: var(--text-secondary) !important; }
+.session-health-table td { border-bottom-color: var(--border) !important; color: var(--text); }
+.session-health-badge.open           { background: rgba(46,125,50,0.2) !important; color: #6ee7b7 !important; }
+.session-health-badge.stale          { background: rgba(230,81,0,0.2) !important; color: #fbbf24 !important; }
+.session-health-badge.pending-cashup { background: rgba(136,14,79,0.2) !important; color: #f9a8d4 !important; }
+.override-reason-textarea { background: var(--surface) !important; border-color: var(--border-strong) !important; color: var(--text) !important; }
+
+/* GAP-5 continued: the "⋯ More" payment-method popover (Till checkout) —
+   readable in both themes (explicit blue text on white) but was a stray
+   un-themed white patch on an otherwise dark screen. */
+.payment-more-btn { background: var(--surface) !important; border-color: var(--border-strong) !important; }
+.payment-more-panel { background: var(--surface) !important; border-color: var(--border-strong) !important; }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
