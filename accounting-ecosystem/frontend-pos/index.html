@@ -2201,16 +2201,16 @@
                             <input type="checkbox" id="lowStockOnly" onchange="filterStock()">
                             Low Stock Only
                         </label>
-                        <button class="btn btn-primary" onclick="showStockTakeModal()">Stock Take</button>
-                        <button class="btn btn-secondary" onclick="showReceiveStockModal()">Receive Stock</button>
-                        <button class="btn btn-secondary" onclick="showSupplierReceiveModal()">Receive from Supplier</button>
-                        <button class="btn btn-secondary" onclick="showSupplierReturnModal()">Return to Supplier</button>
+                        <button class="btn btn-primary inventory-adjust-only" onclick="showStockTakeModal()">Stock Take</button>
+                        <button class="btn btn-secondary inventory-adjust-only" onclick="showReceiveStockModal()">Receive Stock</button>
+                        <button class="btn btn-secondary inventory-adjust-only" onclick="showSupplierReceiveModal()">Receive from Supplier</button>
+                        <button class="btn btn-secondary inventory-adjust-only" onclick="showSupplierReturnModal()">Return to Supplier</button>
                         <button class="btn btn-secondary" onclick="showCompanySendModal()">Send to Company</button>
                         <button class="btn btn-secondary" onclick="showCompanyTransfersModal()">Company Transfers</button>
                         <button class="btn btn-secondary" onclick="showStoreTransfersModal()">🔄 Inter-Store Transfers</button>
                         <button class="btn btn-secondary" onclick="showPurchaseOrdersModal()">📦 Purchase Orders</button>
                         <button class="btn btn-secondary" onclick="showTransferModal()">Record Transfer</button>
-                        <button class="btn btn-secondary" onclick="showStockAdjustModal()">Adjust Stock</button>
+                        <button class="btn btn-secondary inventory-adjust-only" onclick="showStockAdjustModal()">Adjust Stock</button>
                     </div>
                 </div>
 
@@ -6444,6 +6444,27 @@
                 const gpCard = document.getElementById('kpiCardGrossProfit');
                 if (gpCard) gpCard.classList.add('role-hidden');
             }
+
+            // Stock tab's mutating buttons (Stock Take, Receive Stock, Receive from
+            // Supplier, Return to Supplier, Adjust Stock) all POST to routes gated
+            // INVENTORY.ADJUST = MANAGEMENT_ROLES — stricter than the Stock tab
+            // itself (SUPERVISOR_TIER_ROLES, matches INVENTORY.VIEW). Found live
+            // 2026-08-01: shift_supervisor/assistant_manager/regional_analyst/
+            // district_trainer could see and click all five, always got a 403.
+            // Read-only Stock access (the product/stock-level table) is unaffected.
+            if (!MANAGEMENT_TIER_ROLES.includes(userRole)) {
+                document.querySelectorAll('.inventory-adjust-only').forEach(el => el.classList.add('role-hidden'));
+            }
+
+            // The `manager-only` class (2026-08-01) — existed on 6 elements
+            // (Supplier Return's "allow exceeding stock" checkbox, Cash Up's
+            // "Daily Reset" button, and 4 items inside Settings) but was pure
+            // decoration: no CSS rule, no JS ever read it, confirmed by the same
+            // audit that found the two gaps above. Wired to MANAGEMENT_TIER_ROLES
+            // here so it's finally real everywhere it's already used.
+            if (!MANAGEMENT_TIER_ROLES.includes(userRole)) {
+                document.querySelectorAll('.manager-only').forEach(el => el.classList.add('role-hidden'));
+            }
         }
 
         function logoutFromCompanySelector() {
@@ -9069,9 +9090,15 @@
         // it directly; anyone else is routed through the manager-PIN modal.
         // The backend independently re-derives/enforces this regardless (see
         // authorizeManualDiscount() in sales.js) — this is only a UX gate.
+        // Fixed 2026-08-01 — was missing corporate_finance/corporate_ops/
+        // regional_manager/district_manager relative to backend MANAGEMENT_ROLES,
+        // same drift class found and fixed elsewhere in applyRoleBasedVisibility()
+        // the same day. Harmless as it stood (those roles just fell through to
+        // the still-correct PIN path below), but corrected for consistency.
         const MANAGEMENT_TIER_ROLES_FOR_DISCOUNT = [
             'super_admin', 'business_owner', 'practice_manager', 'administrator',
-            'accountant', 'corporate_admin', 'store_manager', 'payroll_admin', 'admin',
+            'accountant', 'corporate_admin', 'corporate_finance', 'corporate_ops',
+            'regional_manager', 'district_manager', 'store_manager', 'payroll_admin', 'admin',
         ];
         let manualDiscountPercent = 0;
 
@@ -20096,11 +20123,30 @@
 
             if (!confirm('Are you sure you want to void this sale? Stock will be restored.')) return;
 
+            // Manager-PIN-authorized void (2026-08-01) — mirrors showReturnModal()
+            // exactly. Backend now accepts either the requester's own SUPERVISOR_ROLES
+            // (SALES.VOID)/MANAGEMENT_ROLES (SALES.REFUND, for an account sale) or a
+            // consumed manager-PIN authorization; this is only the client-side
+            // shortcut to skip the PIN prompt when it isn't needed, same disclaimer
+            // as SUPERVISOR_TIER_ROLES_FOR_RETURN — a mismatch here just means an
+            // unnecessary prompt or a clear 403, never a security gap.
+            if (!SUPERVISOR_TIER_ROLES_FOR_RETURN.includes(userRole)) {
+                requestManagerPinAuth({
+                    actionType: 'void',
+                    tillSessionId: currentSession?.id,
+                    onSuccess: () => processVoidSale(saleId, reason.trim()),
+                });
+            } else {
+                processVoidSale(saleId, reason.trim());
+            }
+        }
+
+        async function processVoidSale(saleId, reason) {
             try {
                 const res = await fetch(`${API_URL}/pos/sales/${saleId}/void`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ reason: reason.trim() })
+                    body: JSON.stringify({ reason, till_session_id: currentSession?.id })
                 });
                 const data = await res.json();
                 if (res.ok) {

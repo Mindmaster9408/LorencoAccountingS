@@ -84,16 +84,16 @@ router.use(requireCompany);
 // senior_cashier/trainee. This permission category already existed but was
 // never applied anywhere, so every "Reports" sidebar report was readable by
 // any authenticated POS user regardless of role (Workstream 71 audit
-// finding). Applied per-route (not router-wide) so /top-products and
-// /inventory-value — neither part of the Reports sidebar — are left exactly
-// as they were, out of scope for this workstream.
+// finding). Applied per-route (not router-wide).
 //
-// /dashboard (below) WAS also left out deliberately at the time, on the
-// reasoning that the Enterprise Dashboard tab wasn't role-restricted either
-// — found live 2026-07-31 during a full permission audit that the frontend
-// tab gate was added since then (applyRoleBasedVisibility()) but this route
-// itself never got the matching backend check, so a cashier with a valid
-// token could still pull dashboard data directly. Gated now to match.
+// /dashboard, /sales-summary, and /top-products were all left out
+// deliberately at the time (none are part of the Reports sidebar) — closed
+// 2026-08-01 during a full site-wide permission sweep. /dashboard's tab
+// gate already existed on the frontend but the route itself never got the
+// matching backend check; /sales-summary and /top-products had no frontend
+// caller at all (confirmed via grep) so gating them carries no regression
+// risk. /inventory-value (below) exposes cost_price/margin data — gated
+// with the stricter reportsFinancialGate instead, same tier as Gross Profit.
 const reportsViewGate = requirePermission('REPORTS.VIEW');
 
 // Margin/tax-sensitive reports only — VAT, Gross Profit, Forensic Audit,
@@ -115,7 +115,7 @@ const poReportsGate = requirePermission('PURCHASE_ORDERS.VIEW');
  * GET /api/reports/sales-summary
  * Daily/weekly/monthly sales summary
  */
-router.get('/sales-summary', async (req, res) => {
+router.get('/sales-summary', reportsViewGate, async (req, res) => {
   try {
     const { from, to, period } = req.query;
     const now = new Date();
@@ -164,7 +164,7 @@ router.get('/sales-summary', async (req, res) => {
  * GET /api/reports/top-products
  * Best-selling products
  */
-router.get('/top-products', async (req, res) => {
+router.get('/top-products', reportsViewGate, async (req, res) => {
   try {
     const { from, to, limit = 20 } = req.query;
     const now = new Date();
@@ -302,7 +302,7 @@ router.get('/cashier-performance', reportsViewGate, async (req, res) => {
  * GET /api/reports/inventory-value
  * Current inventory valuation
  */
-router.get('/inventory-value', async (req, res) => {
+router.get('/inventory-value', reportsFinancialGate, async (req, res) => {
   try {
     // Paged past Supabase/PostgREST's default 1000-row cap — same class of
     // bug found live 2026-07-28 in inventory.js's Stock Management listing.

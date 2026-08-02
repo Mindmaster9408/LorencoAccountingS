@@ -1334,9 +1334,15 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
  * safety net — even if the CAS window is somehow crossed, or the same void
  * request is retried after a network hiccup, the reversal is applied once.
  */
-router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
+// Void — found live 2026-08-01 (site-wide permission sweep) with a hard
+// requirePermission('SALES.VOID') gate and no PIN-fallback at all, unlike
+// /:id/return right below, which already lets a non-supervisor proceed via
+// a consumed manager-PIN authorization. Restructured to match that exact
+// pattern — a cashier is no longer just silently 403'd, they get the same
+// requestManagerPinAuth() prompt Return and the manual discount already use.
+router.post('/:id/void', async (req, res) => {
   try {
-    const { reason } = req.body;
+    const { reason, till_session_id } = req.body;
     if (!reason) return res.status(400).json({ error: 'Void reason is required' });
 
     const { data: old } = await supabase
@@ -1353,12 +1359,24 @@ router.post('/:id/void', requirePermission('SALES.VOID'), async (req, res) => {
       .filter(p => p.payment_method === 'account')
       .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0) * 100) / 100;
 
-    // Manager-tier gate — checked BEFORE any write, so a supervisor-only
+    // Manager-tier gate — checked BEFORE any write, so a non-supervisor
     // caller cannot partially void (sale flips to voided, reversal skipped).
-    if (accountAmount > 0 && !hasPermission(req.user.role, 'SALES', 'REFUND')) {
-      return res.status(403).json({
-        error: 'Voiding an account sale reverses a customer\'s owed balance and requires management approval (SALES.REFUND)',
+    // Same shape as /:id/return: a balance-reversing void needs SALES.REFUND
+    // (management), a plain one only needs SALES.VOID (supervisor); either
+    // bar can be met by already having the role, or by a consumed
+    // manager-PIN authorization (POST /manager-auth/verify, action_type='void').
+    const requiredPermission = accountAmount > 0 ? 'REFUND' : 'VOID';
+    if (!hasPermission(req.user.role, 'SALES', requiredPermission)) {
+      const authResult = await consumeManagerAuthorization({
+        companyId: req.companyId, tillSessionId: till_session_id, actionType: 'void',
       });
+      if (!authResult.ok) {
+        return res.status(403).json({
+          error: accountAmount > 0
+            ? 'Voiding an account sale reverses a customer\'s owed balance and requires management approval (SALES.REFUND) or manager PIN authorization'
+            : 'Voiding a sale requires manager PIN authorization',
+        });
+      }
     }
 
     // CAS-guarded status update — a concurrent second void request finds

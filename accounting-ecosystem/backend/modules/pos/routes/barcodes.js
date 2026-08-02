@@ -8,7 +8,7 @@
 
 const express = require('express');
 const { supabase } = require('../../../config/database');
-const { requireCompany } = require('../../../middleware/auth');
+const { requireCompany, requirePermission } = require('../../../middleware/auth');
 
 const router = express.Router();
 
@@ -54,7 +54,14 @@ router.post('/check/:barcode', async (req, res) => {
  * POST /api/barcode/generate
  * Generate a new unique barcode for the company
  */
-router.post('/generate', async (req, res) => {
+// Found live 2026-08-01 (site-wide permission sweep) — mutates the
+// company's shared barcode sequence with no gate at all. Its only caller,
+// generateBarcode() (frontend-pos/index.html), is reached solely from the
+// Products settings form, already management-only since Settings was
+// restricted earlier the same day — so this can't regress any cashier
+// flow. /check/:barcode (above) is left untouched — same caller context,
+// but read-only, no state to protect.
+router.post('/generate', requirePermission('PRODUCTS.CREATE'), async (req, res) => {
   try {
     const { type } = req.body;
 

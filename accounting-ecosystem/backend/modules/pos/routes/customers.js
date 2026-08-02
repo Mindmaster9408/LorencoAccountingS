@@ -460,6 +460,14 @@ router.post('/:id/link-company', requirePermission('INVENTORY.ADJUST'), async (r
  */
 router.get('/:id/product-discounts', async (req, res) => {
   try {
+    // Found live 2026-08-01 — the sibling POST/DELETE below both require
+    // CUSTOMERS.MANAGE_DISCOUNT, this GET was simply missed. Same inline
+    // check, matching this file's existing style rather than switching to
+    // requirePermission() middleware for just this one route.
+    if (!hasPermission(req.user.role, 'CUSTOMERS', 'MANAGE_DISCOUNT')) {
+      return res.status(403).json({ error: 'Only management can view customer discounts' });
+    }
+
     const { data, error } = await supabase
       .from('customer_product_discounts')
       .select('*, products(product_name, unit_price)')

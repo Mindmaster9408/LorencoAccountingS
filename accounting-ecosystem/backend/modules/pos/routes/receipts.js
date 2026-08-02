@@ -8,18 +8,29 @@
 
 const express = require('express');
 const { supabase } = require('../../../config/database');
-const { requireCompany } = require('../../../middleware/auth');
+const { requireCompany, requirePermission } = require('../../../middleware/auth');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
 
 router.use(requireCompany);
 
+// Found live 2026-08-01 (site-wide permission sweep): this entire file had
+// no requirePermission() at all — only requireCompany — and this router is
+// mounted BOTH under /api/pos/receipts and directly at /api/receipts (the
+// latter with no POS-module check whatsoever), so any authenticated user
+// anywhere in the ecosystem, not just POS staff, could read customer PII
+// off a receipt or rewrite the company's receipt header/footer. Reads use
+// SALES.VIEW (ALL_ROLES) — every cashier still previews/prints normally,
+// this only blocks someone with no POS role at all. The one write route
+// (PUT /settings) uses the stricter SETTINGS.EDIT.
+const receiptsViewGate = requirePermission('SALES.VIEW');
+
 /**
  * GET /api/receipts/preview/:saleId
  * Generate receipt preview data for a sale
  */
-router.get('/preview/:saleId', async (req, res) => {
+router.get('/preview/:saleId', receiptsViewGate, async (req, res) => {
   try {
     const { data: sale, error } = await supabase
       .from('sales')
@@ -93,7 +104,7 @@ router.get('/preview/:saleId', async (req, res) => {
  * POST /api/receipts/print/:saleId
  * Trigger print for a receipt (returns print-ready data)
  */
-router.post('/print/:saleId', async (req, res) => {
+router.post('/print/:saleId', receiptsViewGate, async (req, res) => {
   try {
     const { data: sale, error } = await supabase
       .from('sales')
@@ -141,7 +152,7 @@ router.post('/print/:saleId', async (req, res) => {
  * POST /api/receipts/deliver/:saleId
  * Send receipt via email/sms
  */
-router.post('/deliver/:saleId', async (req, res) => {
+router.post('/deliver/:saleId', receiptsViewGate, async (req, res) => {
   try {
     const { method, destination } = req.body;
     // Placeholder - actual delivery would use email/SMS service
@@ -159,7 +170,7 @@ router.post('/deliver/:saleId', async (req, res) => {
  * GET /api/receipts/settings
  * Get receipt/printer settings for the company
  */
-router.get('/settings', async (req, res) => {
+router.get('/settings', receiptsViewGate, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('company_settings')
@@ -178,7 +189,7 @@ router.get('/settings', async (req, res) => {
  * PUT /api/receipts/settings
  * Update receipt settings
  */
-router.put('/settings', async (req, res) => {
+router.put('/settings', requirePermission('SETTINGS.EDIT'), async (req, res) => {
   try {
     const { receipt_header, receipt_footer, receipt_prefix } = req.body;
     const updates = {};
@@ -220,21 +231,21 @@ router.put('/settings', async (req, res) => {
  * GET /api/receipts/printers
  * List available printers (stub - hardware dependent)
  */
-router.get('/printers', async (req, res) => {
+router.get('/printers', receiptsViewGate, async (req, res) => {
   res.json({ printers: [{ id: 'default', name: 'Default Printer', status: 'ready', type: 'thermal' }] });
 });
 
 /**
  * POST /api/receipts/printers/:id/test
  */
-router.post('/printers/:id/test', async (req, res) => {
+router.post('/printers/:id/test', receiptsViewGate, async (req, res) => {
   res.json({ success: true, message: 'Test page sent to printer' });
 });
 
 /**
  * PUT /api/receipts/printers/:id
  */
-router.put('/printers/:id', async (req, res) => {
+router.put('/printers/:id', requirePermission('SETTINGS.EDIT'), async (req, res) => {
   res.json({ success: true, printer: { id: req.params.id, ...req.body } });
 });
 

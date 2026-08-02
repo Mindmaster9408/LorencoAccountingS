@@ -20,11 +20,30 @@ router.use(requireCompany);
 
 /**
  * GET /api/pos/sessions
- * List sessions with optional status filter
+ * List sessions with optional status filter.
+ *
+ * No permission middleware — found live 2026-08-01 (site-wide permission
+ * sweep) with zero gate at all, exposing every cashier's opening balance/
+ * notes company-wide. Can't just add requirePermission('TILLS.MANAGE')
+ * though: checkSession() (frontend-pos/index.html) calls this exact route
+ * with ?status=open and no user_id filter as the core "do I have an open
+ * till" check on EVERY login for EVERY cashier — gating the whole route
+ * would break checkout for every non-manager. Fix instead: a non-manager's
+ * user_id is force-scoped to their own regardless of what they send (or
+ * don't send), so checkSession() keeps working unchanged and a cashier can
+ * no longer see anyone else's sessions by omitting/spoofing user_id.
+ * TILLS.MANAGE holders (matches /pending-cashup's existing gate) still see
+ * everyone's.
  */
 router.get('/', async (req, res) => {
   try {
-    const { status, user_id } = req.query;
+    const { status } = req.query;
+    let { user_id } = req.query;
+
+    if (!hasPermission(req.user.role, 'TILLS', 'MANAGE')) {
+      user_id = req.user.userId;
+    }
+
     let query = supabase
       .from('till_sessions')
       .select('*, tills(till_name, till_number, is_locked, locked_reason, is_printer_degraded, printer_degraded_reason), users:user_id(username, full_name)')
