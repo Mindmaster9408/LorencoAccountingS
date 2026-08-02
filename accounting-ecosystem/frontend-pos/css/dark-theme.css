@@ -842,7 +842,17 @@ select optgroup {
    readable in both themes (explicit blue text on white) but was a stray
    un-themed white patch on an otherwise dark screen. */
 .payment-more-btn { background: var(--surface) !important; border-color: var(--border-strong) !important; }
-.payment-more-panel { background: var(--surface) !important; border-color: var(--border-strong) !important; }
+/* Found live 2026-08-02: var(--surface) is a translucent overlay
+   (rgba(255,255,255,0.06) in dark mode), not enough to hide the primary
+   payment buttons this panel floats directly on top of -- both sets of
+   button text rendered simultaneously ("EFT" over "Cash", "SnapScan" over
+   "Card", etc.), completely illegible. Needs the SAME solid, opaque
+   per-theme background as .modal (same reasoning as the earlier
+   discountProductResults fix -- this is a floating overlay directly over
+   other content, not a panel sitting on its own within a container). */
+.payment-more-panel, .header-popover-panel { background: #1e1b3a !important; border-color: var(--border-strong) !important; }
+:root[data-theme="light"] .payment-more-panel,
+:root[data-theme="light"] .header-popover-panel { background: #fff !important; }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
