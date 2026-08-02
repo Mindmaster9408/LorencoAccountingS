@@ -117,12 +117,43 @@ async function ensurePosSchema(pool) {
         ON pos_manager_authorizations(company_id, till_session_id, action_type)
     `);
 
+    // ── categories: color column ─────────────────────────────────────────────
+    // routes/categories.js's INSERT/UPDATE have always referenced this column
+    // (default '#667eea') but schema.sql's original categories table never
+    // had it — found 2026-08-02 while building the Categories/Brands admin
+    // screens (nothing had ever actually called POST /api/pos/categories
+    // before, so this 500-on-first-use was never triggered).
+    await client.query(`ALTER TABLE categories ADD COLUMN IF NOT EXISTS color VARCHAR(20) DEFAULT '#667eea'`);
+
+    // ── brands ────────────────────────────────────────────────────────────────
+    // Same shape as categories, minus parent_id/sort_order — brands are a
+    // flat list, categories are hierarchical. See routes/brands.js.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS brands (
+        id         SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        name       VARCHAR(100) NOT NULL,
+        description TEXT,
+        is_active  BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, name)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_brands_company
+        ON brands(company_id)
+    `);
+
     // ── products: add columns the POS code expects but schema.sql omitted ────
     // Schema originally had product_name/unit_price. Code now uses those names.
     // Add sku and unit as optional columns that the backend accepts.
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(100)`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS unit VARCHAR(50) DEFAULT 'each'`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100)`);
+    // FK counterpart to the plain-text brand column above, mirroring the
+    // existing category/category_id pair — see routes/brands.js.
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id INTEGER REFERENCES brands(id)`);
 
     // ── sales: add cashier_id alias + notes ──────────────────────────────────
     // The code uses cashier_id (the acting user). Schema has user_id NOT NULL.

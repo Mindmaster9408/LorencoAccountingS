@@ -9,6 +9,7 @@ const productsRoutes       = require('./routes/products');
 const salesRoutes          = require('./routes/sales');
 const customersRoutes      = require('./routes/customers');
 const categoriesRoutes     = require('./routes/categories');
+const brandsRoutes         = require('./routes/brands');
 const inventoryRoutes      = require('./routes/inventory');
 const sessionsRoutes       = require('./routes/sessions');
 const reconciliationRoutes = require('./routes/reconciliation');
@@ -43,6 +44,7 @@ router.use('/products',   productsRoutes);
 router.use('/sales',      salesRoutes);
 router.use('/customers',  customersRoutes);
 router.use('/categories', categoriesRoutes);
+router.use('/brands', brandsRoutes);
 router.use('/inventory',  inventoryRoutes);
 router.use('/sessions',   sessionsRoutes);
 // Reconciliation routes — mounted after sessionsRoutes so session handlers take

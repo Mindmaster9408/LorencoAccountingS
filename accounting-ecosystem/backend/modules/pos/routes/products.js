@@ -178,7 +178,7 @@ router.post('/', requirePermission('PRODUCTS.CREATE'), async (req, res) => {
   try {
     const {
       product_name, product_code, description, barcode, sku,
-      category, category_id,
+      category, category_id, brand, brand_id,
       cost_price, unit_price,
       stock_quantity, min_stock_level,
       requires_vat, vat_rate, unit, track_serial
@@ -205,6 +205,8 @@ router.post('/', requirePermission('PRODUCTS.CREATE'), async (req, res) => {
         sku:             sku || null,
         category:        category || null,
         category_id:     category_id || null,
+        brand:           brand || null,
+        brand_id:        brand_id || null,
         cost_price:      cost_price != null ? cost_price : 0,
         unit_price,
         stock_quantity:  stock_quantity != null ? stock_quantity : 0,
@@ -262,7 +264,7 @@ router.put('/:id', requirePermission('PRODUCTS.EDIT'), async (req, res) => {
 
     const allowed = [
       'product_name', 'product_code', 'description', 'barcode', 'sku',
-      'category', 'category_id',
+      'category', 'category_id', 'brand', 'brand_id',
       'cost_price', 'unit_price',
       'stock_quantity', 'min_stock_level',
       'requires_vat', 'vat_rate', 'unit', 'is_active', 'track_serial'

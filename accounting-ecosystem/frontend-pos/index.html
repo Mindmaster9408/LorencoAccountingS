@@ -2508,6 +2508,60 @@
         </div>
 
         <!-- Add/Edit Supplier Modal (Workstream 80) -->
+        <!-- Category Add/Edit Modal (2026-08-02) -->
+        <div id="categoryEditModal" class="modal-overlay">
+            <div class="modal" style="max-width:420px;">
+                <div class="modal-header">
+                    <h2 id="categoryEditModalTitle">Add Category</h2>
+                    <button class="close-btn" onclick="closeCategoryEditModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="categoryEditId" value="">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" id="categoryEditName" placeholder="e.g. Phones" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <input type="text" id="categoryEditDescription" placeholder="optional" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                        <label>Color</label>
+                        <input type="color" id="categoryEditColor" value="#667eea" style="width:60px;height:34px;padding:2px;">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeCategoryEditModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveCategoryModal()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Brand Add/Edit Modal (2026-08-02) -->
+        <div id="brandEditModal" class="modal-overlay">
+            <div class="modal" style="max-width:420px;">
+                <div class="modal-header">
+                    <h2 id="brandEditModalTitle">Add Brand</h2>
+                    <button class="close-btn" onclick="closeBrandEditModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="brandEditId" value="">
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" id="brandEditName" placeholder="e.g. Nike" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <input type="text" id="brandEditDescription" placeholder="optional" style="width:100%;">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeBrandEditModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveBrandModal()">Save</button>
+                </div>
+            </div>
+        </div>
+
         <div id="supplierEditModal" class="modal-overlay">
             <div class="modal" style="max-width:560px;max-height:90vh;">
                 <div class="modal-header">
@@ -3599,6 +3653,68 @@
                                 </thead>
                                 <tbody id="customersTableBody">
                                     <!-- Customers will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Categories Section (2026-08-02) — repairs a pre-existing dead menu
+                         item: "Categories" had no section div and no showSettings() case
+                         (same class of bug the Suppliers/Sites sections had before their
+                         own fixes). Backend categories.js CRUD already existed but was
+                         never called by anything until now. -->
+                    <div id="categoriesSection" style="display: none;">
+                        <div class="products-header">
+                            <div class="search-box">
+                                <input type="text" id="categorySearch" placeholder="Search categories..." oninput="loadSettingsCategories()">
+                                <span class="search-icon">🔍</span>
+                            </div>
+                            <div class="header-actions">
+                                <button class="btn btn-primary" onclick="showNewCategoryModal()">Add Category</button>
+                            </div>
+                        </div>
+                        <div class="products-container">
+                            <table class="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Color</th>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="categoriesTableBody">
+                                    <tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">Loading categories...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Brands Section (2026-08-02) — same fix as Categories above; brands
+                         had no backend at all before today (new routes/brands.js). -->
+                    <div id="brandsSection" style="display: none;">
+                        <div class="products-header">
+                            <div class="search-box">
+                                <input type="text" id="brandSearch" placeholder="Search brands..." oninput="loadSettingsBrands()">
+                                <span class="search-icon">🔍</span>
+                            </div>
+                            <div class="header-actions">
+                                <button class="btn btn-primary" onclick="showNewBrandModal()">Add Brand</button>
+                            </div>
+                        </div>
+                        <div class="products-container">
+                            <table class="products-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="brandsTableBody">
+                                    <tr><td colspan="4" style="text-align:center;color:#999;padding:20px;">Loading brands...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -10145,6 +10261,7 @@
             document.getElementById('productTrackSerial').checked = false;
 
             document.getElementById('productModal').style.display = 'flex';
+            populateProductCategoryBrandDropdowns();
 
             // Auto-generate the product code
             await generateProductCode();
@@ -10219,7 +10336,9 @@
             document.getElementById('productDescription').value = product.product_name;
             document.getElementById('productSearchable').value = product.product_name;
             document.getElementById('productCategory').value = product.category || '';
-            document.getElementById('productBrand').value = '';
+            // BUG FIX (found live, 2026-08-02): was hardcoded to '' regardless of
+            // the product's actual brand — Brand never populated when editing.
+            document.getElementById('productBrand').value = product.brand || '';
             document.getElementById('productUnit').value = 'ea';
             document.getElementById('productTaxRate').value = '15';
             document.getElementById('productCost').value = parseFloat(product.cost_price || 0).toFixed(2);
@@ -10252,6 +10371,7 @@
             document.getElementById('productCost').dispatchEvent(event);
 
             document.getElementById('productModal').style.display = 'flex';
+            populateProductCategoryBrandDropdowns();
         }
 
         function closeProductModal() {
@@ -10294,11 +10414,23 @@
                 if (!confirmed) return;
             }
 
+            // Category/brand: value is the name (matches the existing denormalised
+            // products.category/brand columns); data-id on the selected <option>
+            // carries the FK (see populateProductCategoryBrandDropdowns()).
+            const categorySelect = document.getElementById('productCategory');
+            const brandSelect = document.getElementById('productBrand');
+
             // Collect all product data
             const productData = {
                 product_code: code,
                 product_name: description,
-                category: document.getElementById('productCategory').value,
+                category: categorySelect.value,
+                category_id: categorySelect.selectedOptions[0]?.dataset.id || null,
+                // brand (found live 2026-08-02): was never included in this payload
+                // at all — every product save silently dropped whatever was
+                // selected. brand_id is new, mirrors category_id.
+                brand: brandSelect.value,
+                brand_id: brandSelect.selectedOptions[0]?.dataset.id || null,
                 unit_price: parseFloat(document.getElementById('productPrice').value),
                 cost_price: parseFloat(document.getElementById('productCost').value),
                 is_active: nowActive ? 1 : 0,
@@ -12041,6 +12173,261 @@
                 if (section === 'suppliers')  { loadSettingsSuppliers(); loadMyInvitationCode(); loadPoInvoiceTiming(); }
                 if (section === 'sites')      { loadSettingsSites(); }
                 if (section === 'tills')      { loadSettingsTills(); }
+                if (section === 'categories') { loadSettingsCategories(); }
+                if (section === 'brands')     { loadSettingsBrands(); }
+            }
+        }
+
+        // ── Categories admin (2026-08-02) ─────────────────────────────────────
+        // Repairs the dead "Categories" settings menu item — categories.js's
+        // backend CRUD already existed but nothing ever called it. Follows the
+        // same load/show-modal/save/delete shape as Suppliers/Sites above.
+        let cachedCategoriesList = [];
+
+        async function loadSettingsCategories() {
+            const tbody = document.getElementById('categoriesTableBody');
+            try {
+                const search = document.getElementById('categorySearch')?.value.trim().toLowerCase() || '';
+                const res = await fetch(`${API_URL}/pos/categories`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                cachedCategoriesList = result.categories || [];
+                const filtered = search
+                    ? cachedCategoriesList.filter(c => (c.name || '').toLowerCase().includes(search))
+                    : cachedCategoriesList;
+
+                if (filtered.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">No categories found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = filtered.map(c => `
+                    <tr>
+                        <td><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${c.color || '#667eea'};"></span></td>
+                        <td>${escHtml(c.name)}</td>
+                        <td>${escHtml(c.description || '-')}</td>
+                        <td>${c.is_active ? '<span style="color:#2e7d32;">Active</span>' : '<span style="color:#999;">Inactive</span>'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="editCategory(${c.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteCategory(${c.id})">Del</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading categories:', error);
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#c62828;padding:20px;">Error loading categories</td></tr>';
+            }
+        }
+
+        function showNewCategoryModal() {
+            document.getElementById('categoryEditModalTitle').textContent = 'Add Category';
+            document.getElementById('categoryEditId').value = '';
+            document.getElementById('categoryEditName').value = '';
+            document.getElementById('categoryEditDescription').value = '';
+            document.getElementById('categoryEditColor').value = '#667eea';
+            document.getElementById('categoryEditModal').style.display = 'flex';
+        }
+
+        function editCategory(id) {
+            const c = cachedCategoriesList.find(x => x.id === id);
+            if (!c) return;
+            document.getElementById('categoryEditModalTitle').textContent = 'Edit Category';
+            document.getElementById('categoryEditId').value = c.id;
+            document.getElementById('categoryEditName').value = c.name || '';
+            document.getElementById('categoryEditDescription').value = c.description || '';
+            document.getElementById('categoryEditColor').value = c.color || '#667eea';
+            document.getElementById('categoryEditModal').style.display = 'flex';
+        }
+
+        function closeCategoryEditModal() {
+            document.getElementById('categoryEditModal').style.display = 'none';
+        }
+
+        async function saveCategoryModal() {
+            const id = document.getElementById('categoryEditId').value;
+            const name = document.getElementById('categoryEditName').value.trim();
+            if (!name) { showNotification('Category name is required', 'error'); return; }
+            const payload = {
+                name,
+                description: document.getElementById('categoryEditDescription').value.trim(),
+                color: document.getElementById('categoryEditColor').value,
+            };
+            try {
+                const res = await fetch(`${API_URL}/pos/categories${id ? '/' + id : ''}`, {
+                    method: id ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(id ? 'Category updated' : 'Category added', 'success');
+                    closeCategoryEditModal();
+                    loadSettingsCategories();
+                } else {
+                    showNotification(result.error || 'Failed to save category', 'error');
+                }
+            } catch (error) {
+                showNotification('Error saving category: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteCategory(id) {
+            const c = cachedCategoriesList.find(x => x.id === id);
+            if (!confirm(`Delete category "${c ? c.name : ''}"? Products already using it keep their category text, but it won't be selectable for new products.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/categories/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    showNotification('Category deleted', 'success');
+                    loadSettingsCategories();
+                } else {
+                    const result = await res.json();
+                    showNotification(result.error || 'Failed to delete category', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deleting category: ' + error.message, 'error');
+            }
+        }
+
+        // ── Brands admin (2026-08-02) ─────────────────────────────────────────
+        // Same shape as Categories above — new backend (routes/brands.js) built
+        // alongside this, since brands had no backend at all before today.
+        let cachedBrandsList = [];
+
+        async function loadSettingsBrands() {
+            const tbody = document.getElementById('brandsTableBody');
+            try {
+                const search = document.getElementById('brandSearch')?.value.trim().toLowerCase() || '';
+                const res = await fetch(`${API_URL}/pos/brands`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await res.json();
+                cachedBrandsList = result.brands || [];
+                const filtered = search
+                    ? cachedBrandsList.filter(b => (b.name || '').toLowerCase().includes(search))
+                    : cachedBrandsList;
+
+                if (filtered.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:20px;">No brands found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = filtered.map(b => `
+                    <tr>
+                        <td>${escHtml(b.name)}</td>
+                        <td>${escHtml(b.description || '-')}</td>
+                        <td>${b.is_active ? '<span style="color:#2e7d32;">Active</span>' : '<span style="color:#999;">Inactive</span>'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="editBrand(${b.id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteBrand(${b.id})">Del</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading brands:', error);
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#c62828;padding:20px;">Error loading brands</td></tr>';
+            }
+        }
+
+        function showNewBrandModal() {
+            document.getElementById('brandEditModalTitle').textContent = 'Add Brand';
+            document.getElementById('brandEditId').value = '';
+            document.getElementById('brandEditName').value = '';
+            document.getElementById('brandEditDescription').value = '';
+            document.getElementById('brandEditModal').style.display = 'flex';
+        }
+
+        function editBrand(id) {
+            const b = cachedBrandsList.find(x => x.id === id);
+            if (!b) return;
+            document.getElementById('brandEditModalTitle').textContent = 'Edit Brand';
+            document.getElementById('brandEditId').value = b.id;
+            document.getElementById('brandEditName').value = b.name || '';
+            document.getElementById('brandEditDescription').value = b.description || '';
+            document.getElementById('brandEditModal').style.display = 'flex';
+        }
+
+        function closeBrandEditModal() {
+            document.getElementById('brandEditModal').style.display = 'none';
+        }
+
+        async function saveBrandModal() {
+            const id = document.getElementById('brandEditId').value;
+            const name = document.getElementById('brandEditName').value.trim();
+            if (!name) { showNotification('Brand name is required', 'error'); return; }
+            const payload = {
+                name,
+                description: document.getElementById('brandEditDescription').value.trim(),
+            };
+            try {
+                const res = await fetch(`${API_URL}/pos/brands${id ? '/' + id : ''}`, {
+                    method: id ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(id ? 'Brand updated' : 'Brand added', 'success');
+                    closeBrandEditModal();
+                    loadSettingsBrands();
+                } else {
+                    showNotification(result.error || 'Failed to save brand', 'error');
+                }
+            } catch (error) {
+                showNotification('Error saving brand: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteBrand(id) {
+            const b = cachedBrandsList.find(x => x.id === id);
+            if (!confirm(`Delete brand "${b ? b.name : ''}"? Products already using it keep their brand text, but it won't be selectable for new products.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/brands/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    showNotification('Brand deleted', 'success');
+                    loadSettingsBrands();
+                } else {
+                    const result = await res.json();
+                    showNotification(result.error || 'Failed to delete brand', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deleting brand: ' + error.message, 'error');
+            }
+        }
+
+        // ── Categories/Brands dropdowns on the product form (2026-08-02) ──────
+        // Populates #productCategory/#productBrand from the real admin lists —
+        // both were previously a single hardcoded placeholder option, never
+        // populated from anywhere. Value stays the *name* string (matches the
+        // existing denormalised products.category/brand columns and keeps
+        // editProduct()'s existing `.value = product.category` assignment
+        // working unchanged); data-id carries the FK for category_id/brand_id.
+        async function populateProductCategoryBrandDropdowns() {
+            try {
+                const [catRes, brandRes] = await Promise.all([
+                    fetch(`${API_URL}/pos/categories`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/pos/brands`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                ]);
+                const catResult = await catRes.json();
+                const brandResult = await brandRes.json();
+
+                const categorySelect = document.getElementById('productCategory');
+                const currentCategory = categorySelect.value;
+                categorySelect.innerHTML = '<option value="">Select Category</option>' +
+                    (catResult.categories || []).map(c => `<option value="${escHtml(c.name)}" data-id="${c.id}">${escHtml(c.name)}</option>`).join('');
+                categorySelect.value = currentCategory;
+
+                const brandSelect = document.getElementById('productBrand');
+                const currentBrand = brandSelect.value;
+                brandSelect.innerHTML = '<option value="">Select Brand</option>' +
+                    (brandResult.brands || []).map(b => `<option value="${escHtml(b.name)}" data-id="${b.id}">${escHtml(b.name)}</option>`).join('');
+                brandSelect.value = currentBrand;
+            } catch (error) {
+                console.error('Error loading categories/brands for product form:', error);
             }
         }
 
