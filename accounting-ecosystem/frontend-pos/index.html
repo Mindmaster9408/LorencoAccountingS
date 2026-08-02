@@ -2119,25 +2119,6 @@
                                     </div>
                                 </div>
 
-                                <!-- Loyalty points redemption (2026-08-02 full rebuild) — only shown
-                                     once a customer is selected (see selectAccountCustomer()). Client-
-                                     side preview only; the server independently re-validates and re-sizes
-                                     the discount for real at checkout via loyaltyService.previewRedemption()
-                                     — same "never trust the client for a money-affecting field" principle
-                                     as every other discount here. Never sent (and never shown as applied)
-                                     while offline — redemption needs a live, authoritative balance check. -->
-                                <div id="loyaltyRedeemSection" style="display:none; background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:10px;">
-                                    <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">
-                                        Loyalty Points <span id="loyaltyRedeemBalanceLine" style="font-weight:400;color:var(--text-secondary);font-size:12px;"></span>
-                                    </label>
-                                    <div style="display:flex;gap:8px;align-items:center;">
-                                        <input type="number" id="loyaltyRedeemInput" step="1" min="0" placeholder="Points" style="width:100px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                                        <button class="btn btn-secondary" onclick="applyLoyaltyRedemption()" style="padding:8px 15px;font-size:13px;">Apply</button>
-                                        <span id="loyaltyRedeemAppliedLine" style="display:none;color:#2e7d32;font-weight:600;font-size:13px;"></span>
-                                        <a id="loyaltyRedeemClear" onclick="clearLoyaltyRedemption()" style="display:none;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
-                                    </div>
-                                </div>
-
                                 <!-- Workstream 76 — only the 4 standard methods show by default;
                                      EFT/SnapScan/Zapper/Gift Card moved behind "More" below. -->
                                 <div class="payment-methods payment-methods-primary">
@@ -2577,33 +2558,6 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeBrandEditModal()">Cancel</button>
                     <button class="btn btn-primary" onclick="saveBrandModal()">Save</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Loyalty Manual Adjustment Modal (2026-08-02 full rebuild) — the
-             management-tier-gated correction path, calls POST /pos/loyalty/adjust.
-             Positive points = add, negative = deduct. -->
-        <div id="loyaltyAdjustModal" class="modal-overlay">
-            <div class="modal" style="max-width:420px;">
-                <div class="modal-header">
-                    <h2>Manual Points Adjustment</h2>
-                    <button class="close-btn" onclick="closeLoyaltyAdjustModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p style="margin:0 0 14px;font-size:13px;color:#666;" id="loyaltyAdjustCustomerLabel">-</p>
-                    <div class="form-group">
-                        <label>Points (positive to add, negative to deduct)</label>
-                        <input type="number" id="loyaltyAdjustPoints" step="1" style="width:100%;">
-                    </div>
-                    <div class="form-group">
-                        <label>Reason / Notes</label>
-                        <input type="text" id="loyaltyAdjustNotes" placeholder="e.g. goodwill correction" style="width:100%;">
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeLoyaltyAdjustModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="saveLoyaltyAdjustment()">Save</button>
                 </div>
             </div>
         </div>
@@ -3493,7 +3447,6 @@
                     <div class="settings-menu-item" onclick="showSettings('suppliers', event)">Suppliers</div>
                     <div class="settings-menu-item" onclick="showSettings('sites', event)">Sites</div>
                     <div class="settings-menu-item manager-only" onclick="showSettings('tills', event)">Tills</div>
-                    <div class="settings-menu-item manager-only" onclick="showSettings('loyalty', event)">Loyalty</div>
                     <div class="settings-menu-item manager-only" id="deviceLockMenuItem" onclick="showSettings('device-lock', event)">🔒 Device Lock</div>
                 </div>
 
@@ -3859,49 +3812,6 @@
                                     <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading sites...</td></tr>
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-
-                    <!-- Loyalty Program Config Section (2026-08-02 full rebuild) — one
-                         program per company, not a list. Wired to the existing, previously
-                         dead-code GET/PUT /pos/loyalty/program. Member lookup/history/manual
-                         adjustment is operational, not config, and lives on the Loyalty tab
-                         instead — see #loyMembers. -->
-                    <div id="loyaltySettingsSection" style="display: none;">
-                        <div class="products-header">
-                            <h3 style="margin:0;">Loyalty Program</h3>
-                        </div>
-                        <p style="color:#666;margin:0 0 14px;font-size:13px;">
-                            One loyalty program per company. Customers earn points on every sale they're linked to,
-                            and can redeem points for a rand-value discount at checkout.
-                        </p>
-                        <div style="background:#f5f7fa;border-radius:8px;padding:16px;max-width:480px;">
-                            <div class="form-group">
-                                <label>Program Name</label>
-                                <input type="text" id="loyaltyProgramName" style="width:100%;" placeholder="Loyalty Program">
-                            </div>
-                            <div class="form-group">
-                                <label>Points earned per Rand spent</label>
-                                <input type="number" id="loyaltyPointsPerRand" step="0.01" min="0.01" style="width:100%;">
-                            </div>
-                            <div class="form-group">
-                                <label>Rand value per point redeemed</label>
-                                <input type="number" id="loyaltyRedemptionRate" step="0.001" min="0.001" style="width:100%;">
-                                <span style="font-size:12px;color:#888;">e.g. 0.01 = 100 points redeem for R1.00</span>
-                            </div>
-                            <div class="form-group">
-                                <label>Minimum points required to redeem</label>
-                                <input type="number" id="loyaltyMinRedemption" step="1" min="0" style="width:100%;">
-                            </div>
-                            <div class="form-group">
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                                    <input type="checkbox" id="loyaltyIsActive">
-                                    Program active
-                                </label>
-                                <span style="font-size:12px;color:#888;">Points are only earned/redeemable while active.</span>
-                            </div>
-                            <button class="btn btn-primary" onclick="saveLoyaltySettings()">Save</button>
-                            <span id="loyaltySettingsSavedMsg" style="display:none;color:#2e7d32;margin-left:10px;font-size:13px;">Saved</span>
                         </div>
                     </div>
 
@@ -4445,49 +4355,92 @@
         </div>
     </div>
 
-    <!-- Loyalty Layout (2026-08-02 full rebuild) — Programs config moved to
-         Settings → Loyalty (one program per company, not a list — see
-         #loyaltySettingsSection). Promotions had no backend at all
-         (/api/promotions doesn't exist anywhere) and is a genuinely separate,
-         unbuilt feature — removed rather than left as a fake placeholder.
-         This tab is now purely operational: member lookup, balance/history,
-         manual adjustment. -->
+    <!-- Loyalty Layout -->
     <div id="loyaltyLayout" class="enterprise-layout">
-        <h1>Customer Loyalty</h1>
-        <div class="enterprise-toolbar">
-            <input type="text" id="loyMemberSearch" placeholder="Search customers by name or phone..." onkeyup="searchLoyaltyMembers(event)">
+        <h1>Customer Loyalty & Promotions</h1>
+        <div class="tab-sub-nav">
+            <button class="sub-tab active" onclick="showLoyaltyTab('programs', event)">Programs</button>
+            <button class="sub-tab" onclick="showLoyaltyTab('members', event)">Members</button>
+            <button class="sub-tab" onclick="showLoyaltyTab('promotions', event)">Promotions</button>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px;align-items:start;">
+
+        <div id="loyPrograms">
+            <div class="enterprise-toolbar">
+                <h3 style="margin:0;">Loyalty Programs</h3>
+                <button class="ent-btn ent-btn-primary" onclick="showNewProgramModal()">+ New Program</button>
+            </div>
+            <div class="enterprise-section">
+                <table class="enterprise-table">
+                    <thead>
+                        <tr>
+                            <th>Program Name</th>
+                            <th>Points per R1</th>
+                            <th>Point Value</th>
+                            <th>Min Redemption</th>
+                            <th>Expiry</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="loyaltyProgramsBody">
+                        <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading programs...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="loyMembers" style="display:none;">
+            <div class="enterprise-toolbar">
+                <input type="text" id="loyMemberSearch" placeholder="Search members..." onkeyup="searchLoyaltyMembers()">
+                <button class="ent-btn ent-btn-primary" onclick="showEnrollCustomerModal()">+ Enroll Customer</button>
+            </div>
             <div class="enterprise-section">
                 <table class="enterprise-table">
                     <thead>
                         <tr>
                             <th>Customer</th>
+                            <th>Loyalty #</th>
+                            <th>Program</th>
                             <th>Tier</th>
-                            <th>Points</th>
+                            <th>Points Balance</th>
+                            <th>Lifetime Spend</th>
                         </tr>
                     </thead>
                     <tbody id="loyaltyMembersBody">
-                        <tr><td colspan="3" style="text-align:center;color:#999;padding:20px;">Search for a customer above</td></tr>
+                        <tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">Loading members...</td></tr>
                     </tbody>
                 </table>
             </div>
-            <div class="enterprise-section" id="loyMemberDetailPanel" style="display:none;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                    <h3 style="margin:0;" id="loyMemberDetailName">-</h3>
-                    <button class="ent-btn ent-btn-primary manager-only" onclick="showLoyaltyAdjustModal()">Manual Adjustment</button>
+        </div>
+
+        <div id="loyPromotions" style="display:none;">
+            <div class="enterprise-toolbar">
+                <div style="display:flex;gap:10px;">
+                    <input type="text" id="promoSearch" placeholder="Search promotions...">
+                    <select id="promoFilter">
+                        <option value="">All Promotions</option>
+                        <option value="active">Active</option>
+                        <option value="upcoming">Upcoming</option>
+                        <option value="expired">Expired</option>
+                    </select>
                 </div>
-                <p style="margin:0 0 14px;font-size:14px;">
-                    Tier: <strong id="loyMemberDetailTier">-</strong>
-                    &nbsp;•&nbsp;
-                    Balance: <strong id="loyMemberDetailBalance">-</strong> points
-                </p>
+                <button class="ent-btn ent-btn-primary" onclick="showNewPromotionModal()">+ New Promotion</button>
+            </div>
+            <div class="enterprise-section">
                 <table class="enterprise-table">
                     <thead>
-                        <tr><th>Date</th><th>Type</th><th>Points</th><th>Balance After</th><th>Notes</th></tr>
+                        <tr>
+                            <th>Name</th>
+                            <th>Code</th>
+                            <th>Type</th>
+                            <th>Discount</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Usage</th>
+                            <th>Status</th>
+                        </tr>
                     </thead>
-                    <tbody id="loyMemberHistoryBody">
-                        <tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">-</td></tr>
+                    <tbody id="promotionsTableBody">
+                        <tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">Loading promotions...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -5862,11 +5815,6 @@
             isOnline = false;
             updateOfflineBanner();
             showNotification('You are offline. Sales will be saved locally.', 'info');
-            // Loyalty redemption requires a live, authoritative balance check and
-            // is never sent on the offline-sale path (see checkout()) — drop any
-            // pending redemption so the on-screen total can't promise a discount
-            // the eventual synced sale won't actually apply.
-            if (typeof clearLoyaltyRedemption === 'function') clearLoyaltyRedemption();
         });
 
         // ── PWA Install Prompt ────────────────────────────────────────────────
@@ -8868,15 +8816,6 @@
                 total = Math.max(0, preManualTotal * (1 - manualDiscountPercent / 100));
                 vat = preManualTotal > 0 ? vat * (total / preManualTotal) : vat;
             }
-            // Loyalty points redemption (2026-08-02) — same flat rand-value layer
-            // sales.js applies server-side. Gated on isOnline: never shown/applied
-            // while offline, since the redemption is never sent on that path (see
-            // checkout()) and the eventual synced sale wouldn't honour it.
-            if (loyaltyRedeemPoints > 0 && isOnline) {
-                const preLoyaltyTotal = total;
-                total = Math.max(0, preLoyaltyTotal - loyaltyRedeemRandValue);
-                vat = preLoyaltyTotal > 0 ? vat * (total / preLoyaltyTotal) : vat;
-            }
             const discount = Math.max(0, grossSubtotal - total);
             return { subtotal: grossSubtotal, vat, total, discount };
         }
@@ -9042,7 +8981,6 @@
                 // checkout attempt — don't let it silently carry over to an
                 // unrelated new sale.
                 if (typeof clearManualDiscount === 'function') clearManualDiscount();
-                if (typeof clearLoyaltyRedemption === 'function') clearLoyaltyRedemption();
                 updateCart();
                 setTimeout(refocusScanner, 100);
             }
@@ -9249,11 +9187,6 @@
             } catch (e) {
                 console.warn('[Customer] Could not load product-specific discounts:', e.message);
             }
-
-            // Loyalty redemption control (2026-08-02) — shows once a customer is
-            // selected, mirrors the product-discounts fetch above: non-fatal on
-            // failure, best-effort UX only.
-            loadLoyaltyRedeemUiForCustomer(id);
         }
 
         // Clears the selected customer (and their discounts) without needing to
@@ -9265,9 +9198,6 @@
             document.getElementById('selectedAccountCustomer').style.display = 'none';
             const discountEl = document.getElementById('selectedCustomerDiscountLine');
             if (discountEl) discountEl.style.display = 'none';
-            // No customer selected means no valid redemption target — drop it.
-            document.getElementById('loyaltyRedeemSection').style.display = 'none';
-            clearLoyaltyRedemption();
             updateCart();
         }
 
@@ -9320,90 +9250,6 @@
             document.getElementById('manualDiscountInput').value = '';
             document.getElementById('manualDiscountAppliedLine').style.display = 'none';
             document.getElementById('manualDiscountClear').style.display = 'none';
-            updateCart();
-        }
-
-        // ── Loyalty points redemption (2026-08-02 full rebuild) ────────────────
-        // loyaltyProgramConfig is fetched once and cached — purely so the Apply
-        // button can reject an obviously-invalid amount (below min, above
-        // balance) before a round-trip. The server re-validates for real via
-        // loyaltyService.previewRedemption() regardless of what this UX layer
-        // computes or allows through.
-        let loyaltyProgramConfig = null;
-        let loyaltyCustomerBalance = 0;
-        let loyaltyRedeemPoints = 0;
-        let loyaltyRedeemRandValue = 0;
-
-        async function loadLoyaltyProgramConfigOnce() {
-            if (loyaltyProgramConfig) return loyaltyProgramConfig;
-            try {
-                const res = await fetch(`${API_URL}/pos/loyalty/program`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const data = await res.json();
-                loyaltyProgramConfig = data.program || null;
-            } catch (e) {
-                console.warn('[Loyalty] Could not load program config:', e.message);
-            }
-            return loyaltyProgramConfig;
-        }
-
-        // Called from selectAccountCustomer() once a customer is chosen — shows
-        // the redeem control and their real balance. Non-fatal on failure (same
-        // posture as the product-discount fetch alongside it): checkout still
-        // works, the customer just can't redeem points from this screen this time.
-        async function loadLoyaltyRedeemUiForCustomer(customerId) {
-            const section = document.getElementById('loyaltyRedeemSection');
-            const config = await loadLoyaltyProgramConfigOnce();
-            if (!config || !config.is_active) {
-                section.style.display = 'none';
-                return;
-            }
-            try {
-                const res = await fetch(`${API_URL}/pos/loyalty/customers/${customerId}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const data = await res.json();
-                loyaltyCustomerBalance = (data.customer && data.customer.loyalty_points) || 0;
-                document.getElementById('loyaltyRedeemBalanceLine').textContent = `(balance: ${loyaltyCustomerBalance} pts)`;
-                section.style.display = isOnline ? 'block' : 'none';
-            } catch (e) {
-                console.warn('[Loyalty] Could not load customer balance:', e.message);
-                section.style.display = 'none';
-            }
-        }
-
-        function applyLoyaltyRedemption() {
-            if (!isOnline) {
-                showNotification('Loyalty redemption needs a live connection', 'error');
-                return;
-            }
-            const points = parseInt(document.getElementById('loyaltyRedeemInput').value, 10);
-            if (isNaN(points) || points <= 0) {
-                showNotification('Enter a positive number of points', 'error');
-                return;
-            }
-            if (loyaltyProgramConfig && points < loyaltyProgramConfig.min_redemption_points) {
-                showNotification(`Minimum redemption is ${loyaltyProgramConfig.min_redemption_points} points`, 'error');
-                return;
-            }
-            if (points > loyaltyCustomerBalance) {
-                showNotification(`Customer only has ${loyaltyCustomerBalance} points`, 'error');
-                return;
-            }
-            loyaltyRedeemPoints = points;
-            loyaltyRedeemRandValue = loyaltyProgramConfig ? Math.round(points * loyaltyProgramConfig.redemption_rate * 100) / 100 : 0;
-            document.getElementById('loyaltyRedeemAppliedLine').textContent = `${points} pts (−R ${loyaltyRedeemRandValue.toFixed(2)})`;
-            document.getElementById('loyaltyRedeemAppliedLine').style.display = 'inline';
-            document.getElementById('loyaltyRedeemClear').style.display = 'inline';
-            updateCart();
-        }
-
-        function clearLoyaltyRedemption() {
-            loyaltyRedeemPoints = 0;
-            loyaltyRedeemRandValue = 0;
-            const input = document.getElementById('loyaltyRedeemInput');
-            if (input) input.value = '';
-            const appliedLine = document.getElementById('loyaltyRedeemAppliedLine');
-            const clearLink = document.getElementById('loyaltyRedeemClear');
-            if (appliedLine) appliedLine.style.display = 'none';
-            if (clearLink) clearLink.style.display = 'none';
             updateCart();
         }
 
@@ -9525,7 +9371,6 @@
 
                     cart = [];
                     clearManualDiscount();
-                    clearLoyaltyRedemption();
                     updateCart();
 
                     // Print receipt (browser dialog)
@@ -9556,10 +9401,6 @@
                         paymentMethod: selectedPayment,
                         customerId: selectedAccountCustomerId || undefined,
                         discountPercent: manualDiscountPercent || undefined,
-                        // Online-only (2026-08-02) — never sent on the offline saleData
-                        // path above; see calcCartTotals()'s isOnline gate and the
-                        // 'offline' listener that drops any pending redemption.
-                        loyaltyRedeemPoints: loyaltyRedeemPoints || undefined,
                         idempotencyKey: saleData.idempotencyKey,
                         cashTendered: cashTenderedForSlip
                     })
@@ -9578,13 +9419,7 @@
 
                     cart = [];
                     clearManualDiscount();
-                    clearLoyaltyRedemption();
                     updateCart();
-
-                    // Customer stays selected across sales (existing behaviour) — if so,
-                    // refresh their displayed balance so it doesn't show the pre-sale
-                    // figure after points were just earned/redeemed.
-                    if (selectedAccountCustomerId) loadLoyaltyRedeemUiForCustomer(selectedAccountCustomerId);
 
                     // Decrement stock_quantity in memory for immediate tile/table display.
                     // Server already committed the sale atomically — this is display-only.
@@ -10363,7 +10198,7 @@
                 loadDashboard();
             } else if (tab === 'loyalty') {
                 document.getElementById('loyaltyLayout').style.display = 'block';
-                resetLoyaltyMembersView();
+                loadLoyaltyPrograms();
             } else if (tab === 'recovery') {
                 document.getElementById('recoveryLayout').style.display = 'block';
                 loadRecovery();
@@ -12360,7 +12195,6 @@
                 if (section === 'tills')      { loadSettingsTills(); }
                 if (section === 'categories') { loadSettingsCategories(); }
                 if (section === 'brands')     { loadSettingsBrands(); }
-                if (section === 'loyalty')    { loadLoyaltySettings(); }
             }
         }
 
@@ -12614,63 +12448,6 @@
                 brandSelect.value = currentBrand;
             } catch (error) {
                 console.error('Error loading categories/brands for product form:', error);
-            }
-        }
-
-        // ── Loyalty program config (2026-08-02 full rebuild) ──────────────────
-        // One program per company — GET/PUT /pos/loyalty/program already existed
-        // (loyalty.js) but had zero real callers until now. Member lookup/
-        // history/manual adjustment live on the Loyalty tab, not here — see
-        // loadLoyaltyMembers() etc. below.
-        async function loadLoyaltySettings() {
-            try {
-                const res = await fetch(`${API_URL}/pos/loyalty/program`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const result = await res.json();
-                const p = result.program || {};
-                document.getElementById('loyaltyProgramName').value = p.name ?? 'Loyalty Program';
-                document.getElementById('loyaltyPointsPerRand').value = p.points_per_rand ?? 1;
-                document.getElementById('loyaltyRedemptionRate').value = p.redemption_rate ?? 0.01;
-                document.getElementById('loyaltyMinRedemption').value = p.min_redemption_points ?? 100;
-                document.getElementById('loyaltyIsActive').checked = !!p.is_active;
-            } catch (error) {
-                console.error('Error loading loyalty program settings:', error);
-                showNotification('Error loading loyalty settings: ' + error.message, 'error');
-            }
-        }
-
-        async function saveLoyaltySettings() {
-            const pointsPerRand = parseFloat(document.getElementById('loyaltyPointsPerRand').value);
-            const redemptionRate = parseFloat(document.getElementById('loyaltyRedemptionRate').value);
-            const minRedemption = parseInt(document.getElementById('loyaltyMinRedemption').value, 10);
-            if (!(pointsPerRand > 0)) { showNotification('Points per Rand must be a positive number', 'error'); return; }
-            if (!(redemptionRate > 0)) { showNotification('Redemption rate must be a positive number', 'error'); return; }
-            if (!(minRedemption >= 0)) { showNotification('Minimum redemption must be zero or more', 'error'); return; }
-
-            const payload = {
-                name:                   document.getElementById('loyaltyProgramName').value.trim() || 'Loyalty Program',
-                points_per_rand:        pointsPerRand,
-                redemption_rate:        redemptionRate,
-                min_redemption_points:  minRedemption,
-                is_active:              document.getElementById('loyaltyIsActive').checked,
-            };
-            try {
-                const res = await fetch(`${API_URL}/pos/loyalty/program`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify(payload)
-                });
-                const result = await res.json();
-                if (res.ok) {
-                    const msg = document.getElementById('loyaltySettingsSavedMsg');
-                    msg.style.display = 'inline';
-                    setTimeout(() => { msg.style.display = 'none'; }, 2500);
-                } else {
-                    showNotification(result.error || 'Failed to save loyalty settings', 'error');
-                }
-            } catch (error) {
-                showNotification('Error saving loyalty settings: ' + error.message, 'error');
             }
         }
 
@@ -17439,144 +17216,91 @@
         function showNewEmployeeModal() { showNotification('Employee creation coming soon', 'info'); }
         function showNewShiftModal() { showNotification('Shift creation coming soon', 'info'); }
 
-        // ── Loyalty tab — Members (2026-08-02 full rebuild) ────────────────────
-        // Programs config moved to Settings → Loyalty (one program per company —
-        // see loadLoyaltySettings()/saveLoyaltySettings() above). Promotions had
-        // no backend at all (/api/promotions never existed) and was removed
-        // rather than left as a fake "coming soon" placeholder — genuinely a
-        // separate, unbuilt feature. This tab is now purely operational: search
-        // a customer, view real balance/tier/history via the previously dead
-        // GET /pos/loyalty/customers/:id, and (management-tier only) post a
-        // manual correction via POST /pos/loyalty/adjust.
-        let loyaltyMembersSearchTimeout = null;
-        let selectedLoyaltyCustomerId = null;
-
-        function resetLoyaltyMembersView() {
-            const searchInput = document.getElementById('loyMemberSearch');
-            if (searchInput) searchInput.value = '';
-            document.getElementById('loyaltyMembersBody').innerHTML =
-                '<tr><td colspan="3" style="text-align:center;color:#999;padding:20px;">Search for a customer above</td></tr>';
-            document.getElementById('loyMemberDetailPanel').style.display = 'none';
-            selectedLoyaltyCustomerId = null;
-        }
-
-        function searchLoyaltyMembers() {
-            clearTimeout(loyaltyMembersSearchTimeout);
-            loyaltyMembersSearchTimeout = setTimeout(runLoyaltyMemberSearch, 300);
-        }
-
-        async function runLoyaltyMemberSearch() {
-            const query = document.getElementById('loyMemberSearch').value.trim();
-            const tbody = document.getElementById('loyaltyMembersBody');
-            if (query.length < 2) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:20px;">Search for a customer above</td></tr>';
-                return;
-            }
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:20px;">Searching...</td></tr>';
+        // Loyalty
+        async function loadLoyaltyPrograms() {
             try {
-                const res = await fetch(`${API_URL}/customers/search?q=${encodeURIComponent(query)}`, {
+                const res = await fetch(`${API_URL}/loyalty/programs`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const data = await res.json();
-                const customers = (data.customers || []).slice(0, 10);
-                if (customers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;padding:20px;">No customers found</td></tr>';
-                    return;
-                }
-                // /customers/search doesn't carry loyalty fields — fetch each
-                // match's real balance/tier in parallel from the loyalty endpoint.
-                const details = await Promise.all(customers.map(async c => {
-                    try {
-                        const r = await fetch(`${API_URL}/pos/loyalty/customers/${c.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                        const d = await r.json();
-                        return { id: c.id, name: c.name, tier: (d.customer && d.customer.loyalty_tier) || 'bronze', points: (d.customer && d.customer.loyalty_points) || 0 };
-                    } catch (e) {
-                        return { id: c.id, name: c.name, tier: '-', points: '-' };
-                    }
-                }));
-                tbody.innerHTML = details.map(m => `
-                    <tr onclick="selectLoyaltyMember(${m.id})" style="cursor:pointer;">
-                        <td>${escHtml(m.name)}</td>
-                        <td style="text-transform:capitalize;">${m.tier}</td>
-                        <td>${m.points}</td>
-                    </tr>
-                `).join('');
-            } catch (error) {
-                console.error('Error searching loyalty members:', error);
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#c62828;padding:20px;">Error searching customers</td></tr>';
-            }
-        }
-
-        async function selectLoyaltyMember(customerId) {
-            selectedLoyaltyCustomerId = customerId;
-            document.getElementById('loyMemberDetailPanel').style.display = 'block';
-            document.getElementById('loyMemberDetailName').textContent = 'Loading...';
-            try {
-                const res = await fetch(`${API_URL}/pos/loyalty/customers/${customerId}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                const data = await res.json();
-                if (!res.ok) { showNotification(data.error || 'Failed to load customer loyalty', 'error'); return; }
-
-                document.getElementById('loyMemberDetailName').textContent = data.customer.name;
-                document.getElementById('loyMemberDetailTier').textContent = data.customer.loyalty_tier || 'bronze';
-                document.getElementById('loyMemberDetailBalance').textContent = data.customer.loyalty_points || 0;
-
-                const historyBody = document.getElementById('loyMemberHistoryBody');
-                const txs = data.transactions || [];
-                if (txs.length === 0) {
-                    historyBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">No transactions yet</td></tr>';
-                } else {
-                    historyBody.innerHTML = txs.map(t => `
-                        <tr>
-                            <td>${new Date(t.created_at).toLocaleString()}</td>
-                            <td style="text-transform:capitalize;">${t.type}</td>
-                            <td>${t.points > 0 ? '+' : ''}${t.points}</td>
-                            <td>${t.balance_after}</td>
-                            <td>${escHtml(t.notes || '-')}</td>
-                        </tr>
-                    `).join('');
-                }
-            } catch (error) {
-                console.error('Error loading loyalty member detail:', error);
-                showNotification('Error loading customer loyalty: ' + error.message, 'error');
-            }
-        }
-
-        function showLoyaltyAdjustModal() {
-            if (!selectedLoyaltyCustomerId) return;
-            const name = document.getElementById('loyMemberDetailName').textContent;
-            document.getElementById('loyaltyAdjustCustomerLabel').textContent = `Customer: ${name}`;
-            document.getElementById('loyaltyAdjustPoints').value = '';
-            document.getElementById('loyaltyAdjustNotes').value = '';
-            document.getElementById('loyaltyAdjustModal').style.display = 'flex';
-        }
-
-        function closeLoyaltyAdjustModal() {
-            document.getElementById('loyaltyAdjustModal').style.display = 'none';
-        }
-
-        async function saveLoyaltyAdjustment() {
-            const points = parseInt(document.getElementById('loyaltyAdjustPoints').value, 10);
-            if (!points) { showNotification('Enter a non-zero points value', 'error'); return; }
-            const notes = document.getElementById('loyaltyAdjustNotes').value.trim();
-            try {
-                const res = await fetch(`${API_URL}/pos/loyalty/adjust`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ customer_id: selectedLoyaltyCustomerId, points, notes })
-                });
-                const result = await res.json();
                 if (res.ok) {
-                    showNotification('Loyalty points adjusted', 'success');
-                    closeLoyaltyAdjustModal();
-                    selectLoyaltyMember(selectedLoyaltyCustomerId);
-                    runLoyaltyMemberSearch();
-                } else {
-                    showNotification(result.error || 'Failed to adjust points', 'error');
+                    const data = await res.json();
+                    const programs = data.programs || [];
+                    const tbody = document.getElementById('loyaltyProgramsBody');
+                    if (programs.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">No loyalty programs configured. Create one to get started.</td></tr>';
+                    } else {
+                        tbody.innerHTML = programs.map(p => `
+                            <tr>
+                                <td><strong>${p.program_name}</strong></td>
+                                <td>${p.points_per_currency}</td>
+                                <td>R ${parseFloat(p.points_value || 0).toFixed(2)}</td>
+                                <td>${p.minimum_redemption} pts</td>
+                                <td>${p.points_expiry_months ? p.points_expiry_months + ' months' : 'Never'}</td>
+                                <td><span class="status-badge ${p.is_active ? 'active' : 'closed'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
+                            </tr>
+                        `).join('');
+                    }
                 }
-            } catch (error) {
-                showNotification('Error adjusting points: ' + error.message, 'error');
+            } catch (e) {
+                console.log('Loyalty programs load error:', e);
             }
         }
+
+        function showLoyaltyTab(tab, evt) {
+            document.querySelectorAll('#loyaltyLayout .sub-tab').forEach(t => t.classList.remove('active'));
+            if (evt && evt.target) evt.target.classList.add('active');
+
+            document.getElementById('loyPrograms').style.display = tab === 'programs' ? 'block' : 'none';
+            document.getElementById('loyMembers').style.display = tab === 'members' ? 'block' : 'none';
+            document.getElementById('loyPromotions').style.display = tab === 'promotions' ? 'block' : 'none';
+
+            if (tab === 'promotions') loadPromotions();
+        }
+
+        async function loadPromotions() {
+            try {
+                const res = await fetch(`${API_URL}/promotions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const promos = data.promotions || [];
+                    const tbody = document.getElementById('promotionsTableBody');
+                    if (promos.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px;">No promotions configured</td></tr>';
+                    } else {
+                        tbody.innerHTML = promos.map(p => {
+                            const now = new Date();
+                            const start = new Date(p.start_date);
+                            const end = new Date(p.end_date);
+                            let status = 'Active';
+                            let statusClass = 'active';
+                            if (now < start) { status = 'Upcoming'; statusClass = 'pending'; }
+                            if (now > end) { status = 'Expired'; statusClass = 'closed'; }
+                            if (!p.is_active) { status = 'Inactive'; statusClass = 'closed'; }
+
+                            return `<tr>
+                                <td><strong>${p.promotion_name}</strong></td>
+                                <td>${p.promotion_code || '-'}</td>
+                                <td>${p.promotion_type}</td>
+                                <td>${p.discount_percentage ? p.discount_percentage + '%' : p.discount_value ? 'R ' + p.discount_value : '-'}</td>
+                                <td>${start.toLocaleDateString()}</td>
+                                <td>${end.toLocaleDateString()}</td>
+                                <td>${p.current_usage_count || 0}${p.usage_limit ? '/' + p.usage_limit : ''}</td>
+                                <td><span class="status-badge ${statusClass}">${status}</span></td>
+                            </tr>`;
+                        }).join('');
+                    }
+                }
+            } catch (e) {
+                console.log('Promotions load error:', e);
+            }
+        }
+
+        function searchLoyaltyMembers() { /* placeholder */ }
+        function showNewProgramModal() { showNotification('Program creation coming soon', 'info'); }
+        function showEnrollCustomerModal() { showNotification('Customer enrollment coming soon', 'info'); }
+        function showNewPromotionModal() { showNotification('Promotion creation coming soon', 'info'); }
 
         // ========== COMPANY & USER MANAGEMENT ==========
 
@@ -20650,29 +20374,24 @@
 
         async function loadCustomerLoyaltyHistory(customerId) {
             try {
-                // Redirected 2026-08-02 (full rebuild) — was calling
-                // shared/routes/customers.js's dead GET /:id/loyalty (never
-                // recorded transactions, ignored the real program config).
-                // Now points at the real, previously-dead pos/loyalty router.
-                const res = await fetch(`${API_URL}/pos/loyalty/customers/${customerId}`, {
+                const res = await fetch(`${API_URL}/customers/${customerId}/loyalty`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
                 const container = document.getElementById('loyaltyHistoryList');
                 const txns = data.transactions || [];
-                const customer = data.customer || {};
 
                 container.innerHTML = `
-                    <div style="margin-bottom:10px;font-weight:600;">Balance: ${customer.loyalty_points || 0} points | Tier: ${customer.loyalty_tier || 'bronze'}</div>
+                    <div style="margin-bottom:10px;font-weight:600;">Balance: ${data.loyalty_points || 0} points | Tier: ${data.loyalty_tier || 'bronze'}</div>
                     ${txns.length === 0 ? '<div style="color:#999;padding:10px;">No loyalty transactions yet</div>' : `
                     <table class="products-table" style="font-size:12px;">
-                        <thead><tr><th>Date</th><th>Type</th><th>Points</th><th>Notes</th></tr></thead>
+                        <thead><tr><th>Date</th><th>Type</th><th>Points</th><th>Reference</th></tr></thead>
                         <tbody>
                             ${txns.map(t => `<tr>
                                 <td>${new Date(t.created_at).toLocaleString('en-ZA')}</td>
-                                <td><span style="color:${t.type === 'earn' ? '#10b981' : '#dc3545'};">${t.type}</span></td>
+                                <td><span style="color:${t.transaction_type === 'earn' ? '#10b981' : '#dc3545'};">${t.transaction_type}</span></td>
                                 <td style="font-weight:600;color:${t.points > 0 ? '#10b981' : '#dc3545'};">${t.points > 0 ? '+' : ''}${t.points}</td>
-                                <td style="color:#666;">${t.notes || '-'}</td>
+                                <td style="color:#666;">${t.reference || '-'}</td>
                             </tr>`).join('')}
                         </tbody>
                     </table>`}
@@ -20734,55 +20453,47 @@
             `;
         }
 
-        // Redirected 2026-08-02 (full rebuild) — these are manual-correction
-        // buttons on a customer's record, not a purchase, so they're a better
-        // semantic fit for POST /pos/loyalty/adjust (positive/negative points)
-        // than the purchase-shaped /earn or /redeem endpoints. The old
-        // shared/routes/customers.js /:id/loyalty/earn|redeem this used to call
-        // never recorded a real transaction and ignored the actual program
-        // config (hardcoded "1 point per R10" here in the prompt). UX (the
-        // prompt() flow) is unchanged.
         async function earnLoyaltyPoints(customerId) {
-            const points = prompt('Enter points to add:');
-            if (!points || isNaN(points) || parseInt(points, 10) <= 0) return;
+            const amount = prompt('Enter sale amount to earn points (1 point per R10):');
+            if (!amount || isNaN(amount)) return;
 
             try {
-                const res = await fetch(`${API_URL}/pos/loyalty/adjust`, {
+                const res = await fetch(`${API_URL}/customers/${customerId}/loyalty/earn`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ customer_id: customerId, points: parseInt(points, 10), notes: 'Manual earn (customer record)' })
+                    body: JSON.stringify({ sale_amount: parseFloat(amount), reference: 'Manual earn' })
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    showNotification(`Points added! New balance: ${data.new_balance}`, 'success');
+                    showNotification(`${data.points_earned} points earned! New balance: ${data.new_balance}`, 'success');
                     loadCustomerLoyaltyHistory(customerId);
                 } else {
-                    showNotification(data.error || 'Failed to add points', 'error');
+                    showNotification(data.error || 'Failed to earn points', 'error');
                 }
             } catch (e) {
-                showNotification('Error adding points', 'error');
+                showNotification('Error earning points', 'error');
             }
         }
 
         async function redeemLoyaltyPoints(customerId) {
-            const points = prompt('Enter points to deduct:');
-            if (!points || isNaN(points) || parseInt(points, 10) <= 0) return;
+            const points = prompt('Enter points to redeem (100 points = R10):');
+            if (!points || isNaN(points)) return;
 
             try {
-                const res = await fetch(`${API_URL}/pos/loyalty/adjust`, {
+                const res = await fetch(`${API_URL}/customers/${customerId}/loyalty/redeem`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ customer_id: customerId, points: -parseInt(points, 10), notes: 'Manual redeem (customer record)' })
+                    body: JSON.stringify({ points: parseInt(points), reference: 'Manual redeem' })
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    showNotification(`Points deducted! New balance: ${data.new_balance}`, 'success');
+                    showNotification(`${data.points_redeemed} points redeemed! Discount: R ${data.discount_amount}`, 'success');
                     loadCustomerLoyaltyHistory(customerId);
                 } else {
-                    showNotification(data.error || 'Failed to deduct points', 'error');
+                    showNotification(data.error || 'Failed to redeem points', 'error');
                 }
             } catch (e) {
-                showNotification('Error deducting points', 'error');
+                showNotification('Error redeeming points', 'error');
             }
         }
 

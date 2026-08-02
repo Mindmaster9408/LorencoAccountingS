@@ -196,6 +196,31 @@ router.put('/:id', async (req, res) => {
 });
 
 /**
+ * GET /api/customers/:id/loyalty
+ * Get loyalty info for a customer
+ */
+router.get('/:id/loyalty', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('id, name, loyalty_points, customer_group')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (error || !data) return res.status(404).json({ error: 'Customer not found' });
+
+    let tier = 'bronze';
+    if (data.loyalty_points >= 5000) tier = 'gold';
+    else if (data.loyalty_points >= 1000) tier = 'silver';
+
+    res.json({ loyalty: { ...data, tier } });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * GET /api/customers/:id/account
  * Get account balance for a customer
  */
@@ -210,6 +235,71 @@ router.get('/:id/account', async (req, res) => {
 
     if (error || !data) return res.status(404).json({ error: 'Customer not found' });
     res.json({ account: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/customers/:id/loyalty/earn
+ * Add loyalty points
+ */
+router.post('/:id/loyalty/earn', async (req, res) => {
+  try {
+    const { points } = req.body;
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('loyalty_points')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const newPoints = (customer.loyalty_points || 0) + (points || 0);
+    const { data, error } = await supabase
+      .from('customers')
+      .update({ loyalty_points: newPoints })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ customer: data, points_earned: points, total_points: newPoints });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/customers/:id/loyalty/redeem
+ * Redeem loyalty points
+ */
+router.post('/:id/loyalty/redeem', async (req, res) => {
+  try {
+    const { points } = req.body;
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('loyalty_points')
+      .eq('id', req.params.id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+    if ((customer.loyalty_points || 0) < points) {
+      return res.status(400).json({ error: 'Insufficient loyalty points' });
+    }
+
+    const newPoints = customer.loyalty_points - points;
+    const { data, error } = await supabase
+      .from('customers')
+      .update({ loyalty_points: newPoints })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ customer: data, points_redeemed: points, total_points: newPoints });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

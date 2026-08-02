@@ -23,12 +23,20 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
-const loyaltyService = require('../services/loyaltyService');
 
 const router = express.Router();
 
 router.use(authenticateToken);
 router.use(requireCompany);
+
+// ── Tier helpers ─────────────────────────────────────────────────────────────
+
+function getTier(points) {
+  if (points >= 5000) return 'platinum';
+  if (points >= 2000) return 'gold';
+  if (points >= 500)  return 'silver';
+  return 'bronze';
+}
 
 // ── Program Config ────────────────────────────────────────────────────────────
 
@@ -186,19 +194,61 @@ router.post('/earn', requirePermission('SALES.CREATE'), async (req, res) => {
       return res.status(400).json({ error: 'amount_spent must be non-negative' });
     }
 
-    // Thin wrapper (2026-08-02) — same logic now shared with sales.js's
-    // automatic post-checkout earn call, see services/loyaltyService.js.
-    const result = await loyaltyService.awardPoints({
-      companyId: req.companyId, customerId: customer_id, saleId: sale_id,
-      amountSpent: amount_spent, notes, userId: req.user.userId,
-    });
-    if (!result.ok) return res.status(result.error === 'Customer not found' ? 404 : 400).json({ error: result.error });
+    // Get program config
+    const { data: program } = await supabase
+      .from('loyalty_programs')
+      .select('points_per_rand, is_active')
+      .eq('company_id', req.companyId)
+      .maybeSingle();
+
+    if (!program || !program.is_active) {
+      return res.status(400).json({ error: 'Loyalty program is not active for this company' });
+    }
+
+    // Verify customer belongs to company
+    const { data: customer, error: custErr } = await supabase
+      .from('customers')
+      .select('id, loyalty_points')
+      .eq('id', customer_id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (custErr || !customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const pointsEarned  = Math.floor(amount_spent * program.points_per_rand);
+    const newBalance    = (customer.loyalty_points || 0) + pointsEarned;
+    const newTier       = getTier(newBalance);
+
+    // Update customer balance + tier
+    await supabase
+      .from('customers')
+      .update({ loyalty_points: newBalance, loyalty_tier: newTier })
+      .eq('id', customer_id)
+      .eq('company_id', req.companyId);
+
+    // Record transaction
+    const { data: tx, error: txErr } = await supabase
+      .from('loyalty_transactions')
+      .insert({
+        company_id:    req.companyId,
+        customer_id,
+        sale_id:       sale_id || null,
+        type:          'earn',
+        points:        pointsEarned,
+        balance_after: newBalance,
+        notes:         notes || null,
+        created_by:    req.user.userId,
+      })
+      .select()
+      .single();
+
+    if (txErr) return res.status(500).json({ error: txErr.message });
 
     res.status(201).json({
-      transaction:    result.transaction,
-      points_earned:  result.points_earned,
-      new_balance:    result.new_balance,
-      new_tier:       result.new_tier,
+      transaction:    tx,
+      points_earned:  pointsEarned,
+      new_balance:    newBalance,
+      new_tier:       newTier,
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -223,24 +273,76 @@ router.post('/redeem', requirePermission('SALES.CREATE'), async (req, res) => {
       return res.status(400).json({ error: 'points_to_redeem must be positive' });
     }
 
-    // Thin wrapper (2026-08-02) — same write now shared with sales.js's
-    // post-checkout redemption call, see services/loyaltyService.js.
-    const result = await loyaltyService.redeemPoints({
-      companyId: req.companyId, customerId: customer_id, saleId: sale_id,
-      pointsToRedeem: points_to_redeem, notes, userId: req.user.userId,
-    });
-    if (!result.ok) {
-      const status = result.error === 'Customer not found' ? 404
-        : result.error === 'Insufficient loyalty points' ? 422 : 400;
-      return res.status(status).json({ error: result.error, available: result.available });
+    // Get program config
+    const { data: program } = await supabase
+      .from('loyalty_programs')
+      .select('redemption_rate, min_redemption_points, is_active')
+      .eq('company_id', req.companyId)
+      .maybeSingle();
+
+    if (!program || !program.is_active) {
+      return res.status(400).json({ error: 'Loyalty program is not active for this company' });
     }
 
+    if (points_to_redeem < program.min_redemption_points) {
+      return res.status(400).json({
+        error: `Minimum redemption is ${program.min_redemption_points} points`
+      });
+    }
+
+    // Verify customer and check balance
+    const { data: customer, error: custErr } = await supabase
+      .from('customers')
+      .select('id, loyalty_points')
+      .eq('id', customer_id)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (custErr || !customer) return res.status(404).json({ error: 'Customer not found' });
+
+    if ((customer.loyalty_points || 0) < points_to_redeem) {
+      return res.status(422).json({
+        error:     'Insufficient loyalty points',
+        available: customer.loyalty_points || 0,
+        requested: points_to_redeem,
+      });
+    }
+
+    const newBalance    = customer.loyalty_points - points_to_redeem;
+    const newTier       = getTier(newBalance);
+    const randValue     = parseFloat((points_to_redeem * program.redemption_rate).toFixed(2));
+
+    // Update customer balance + tier
+    await supabase
+      .from('customers')
+      .update({ loyalty_points: newBalance, loyalty_tier: newTier })
+      .eq('id', customer_id)
+      .eq('company_id', req.companyId);
+
+    // Record transaction
+    const { data: tx, error: txErr } = await supabase
+      .from('loyalty_transactions')
+      .insert({
+        company_id:    req.companyId,
+        customer_id,
+        sale_id:       sale_id || null,
+        type:          'redeem',
+        points:        -points_to_redeem,
+        balance_after: newBalance,
+        notes:         notes || null,
+        created_by:    req.user.userId,
+      })
+      .select()
+      .single();
+
+    if (txErr) return res.status(500).json({ error: txErr.message });
+
     res.status(201).json({
-      transaction:      result.transaction,
-      points_redeemed:  result.points_redeemed,
-      rand_value:       result.rand_value,
-      new_balance:      result.new_balance,
-      new_tier:         result.new_tier,
+      transaction:      tx,
+      points_redeemed:  points_to_redeem,
+      rand_value:       randValue,
+      new_balance:      newBalance,
+      new_tier:         newTier,
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -271,7 +373,7 @@ router.post('/adjust', requirePermission('PRODUCTS.EDIT'), async (req, res) => {
     if (custErr || !customer) return res.status(404).json({ error: 'Customer not found' });
 
     const newBalance = Math.max(0, (customer.loyalty_points || 0) + points);
-    const newTier    = loyaltyService.getTier(newBalance);
+    const newTier    = getTier(newBalance);
 
     await supabase
       .from('customers')
