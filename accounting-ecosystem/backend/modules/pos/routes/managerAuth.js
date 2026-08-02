@@ -9,6 +9,10 @@
  *   - a void, when the cashier processing it isn't management-tier
  *     (added 2026-08-01, same site-wide permission sweep that found the
  *     void route had no PIN-fallback at all — only a hard role gate)
+ *   - a cash paid-out, when the cashier recording it isn't supervisor-tier
+ *     (added 2026-08-02 — previously any non-trainee role could record one
+ *     with zero approval; TILLS.PAID_OUT itself stays broad, this layers
+ *     PIN-auth on top exactly like the discount does for SALES.CREATE)
  *
  * Replaces the previous mechanism (frontend managerAuthModal calling
  * POST /auth/verify-manager), which never had a real backend endpoint at
@@ -36,7 +40,7 @@ const router = express.Router();
 router.use(requireCompany);
 
 const AUTHORIZATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const ACTION_TYPES = new Set(['discount', 'return', 'void']);
+const ACTION_TYPES = new Set(['discount', 'return', 'void', 'payout']);
 
 // Timing protection: always run one bcrypt.compare even when no PIN row
 // could possibly match, so response time doesn't leak whether ANY manager
@@ -45,7 +49,7 @@ const _PIN_TIMING_DUMMY = bcrypt.hashSync('__cc_manager_auth_timing_dummy__', 10
 
 /**
  * POST /api/pos/manager-auth/verify
- * Body: { pin, action_type: 'discount'|'return'|'void', till_session_id, discount_percent? }
+ * Body: { pin, action_type: 'discount'|'return'|'void'|'payout', till_session_id, discount_percent? }
  */
 router.post('/verify', async (req, res) => {
   try {
@@ -55,7 +59,7 @@ router.post('/verify', async (req, res) => {
       return res.status(400).json({ error: 'A valid PIN is required' });
     }
     if (!ACTION_TYPES.has(action_type)) {
-      return res.status(400).json({ error: "action_type must be 'discount', 'return', or 'void'" });
+      return res.status(400).json({ error: "action_type must be 'discount', 'return', 'void', or 'payout'" });
     }
     let discountPercentValue = null;
     if (action_type === 'discount') {

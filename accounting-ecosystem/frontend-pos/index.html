@@ -536,6 +536,46 @@
         .payment-more-panel.open {
             display: grid;
         }
+        /* Discount/Customer header popovers (2026-08-02) — same click-to-expand
+           pattern as payment-more-btn/payment-more-panel above, but anchored to
+           the TOP of the cart panel, so this one opens downward (top: 100%)
+           instead of upward. Written dark-native (var()) from the start,
+           unlike payment-more-btn/panel above which still carry their original
+           hardcoded light colors from before this file's dark-theme retrofit. */
+        .header-popover-wrap {
+            position: relative;
+        }
+        .header-popover-btn {
+            padding: 3px 10px;
+            font-size: 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+            color: var(--text);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: border-color 0.2s;
+        }
+        .header-popover-btn:hover {
+            border-color: var(--accent);
+        }
+        .header-popover-panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            width: 300px;
+            max-width: 90vw;
+            background: var(--surface);
+            border: 1px solid var(--border-strong);
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+            padding: 12px;
+            z-index: 50;
+        }
+        .header-popover-panel.open {
+            display: block;
+        }
         .payment-btn {
             padding: 8px 4px;
             border: 2px solid #e0e0e0;
@@ -2048,12 +2088,64 @@
                 <div class="cart-panel">
                     <div class="cart-header">
                         <h2>Current Sale</h2>
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                        <!-- Discount + Customer triggers (2026-08-02) — moved up here from
+                             further down the checkout column, in Paid Out's old spot (now
+                             relocated into the Manage Till menu — see showManageTillModal()).
+                             Same click-to-expand popover pattern as paymentMoreBtn/
+                             paymentMorePanel below, just opening downward (top: 100%)
+                             instead of upward, since this sits at the TOP of the panel. -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                             <div id="cartItemCount">0 items</div>
-                            <button onclick="showCashPaidOutModal()" title="Record cash removed from the drawer"
-                                style="padding:3px 10px;font-size:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);cursor:pointer;white-space:nowrap;">
-                                💵 Paid Out
-                            </button>
+                            <div style="display:flex;gap:6px;">
+                                <div class="header-popover-wrap" id="discountPopoverWrap">
+                                    <button type="button" class="header-popover-btn" onclick="toggleDiscountPopover(event)">
+                                        <span id="discountPopoverLabel">🏷️ Discount</span>
+                                    </button>
+                                    <div class="header-popover-panel" id="discountPopoverPanel">
+                                        <!-- Manual discretionary discount (2026-07-31) — a manager can give
+                                             any % on the spot; anyone else needs a manager's PIN
+                                             (managerPinAuthModal). Distinct from the customer/product/
+                                             Daily-Discount pricing — this stacks on top as a final
+                                             whole-sale reduction (see calcCartTotals()). -->
+                                        <div id="manualDiscountSection" style="display:block;">
+                                            <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Discount %</label>
+                                            <div style="display:flex;gap:8px;align-items:center;">
+                                                <input type="number" id="manualDiscountInput" step="0.01" min="0" max="100" placeholder="0" style="width:80px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                                                <button class="btn btn-secondary" onclick="applyManualDiscount()" style="padding:8px 15px;font-size:13px;">Apply</button>
+                                            </div>
+                                            <div style="margin-top:8px;">
+                                                <span id="manualDiscountAppliedLine" style="display:none;color:#2e7d32;font-weight:600;font-size:13px;"></span>
+                                                <a id="manualDiscountClear" onclick="clearManualDiscount()" style="display:none;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="header-popover-wrap" id="customerPopoverWrap">
+                                    <button type="button" class="header-popover-btn" onclick="toggleCustomerPopover(event)">
+                                        <span id="customerPopoverLabel">👤 Customer</span>
+                                    </button>
+                                    <div class="header-popover-panel" id="customerPopoverPanel">
+                                        <!-- Customer Selection (2026-07-31) — always visible, independent of
+                                             payment method. A customer's standard discount (if any) applies
+                                             whether they pay Cash, Card, or Account; Account payment still
+                                             additionally requires a customer to be selected (unchanged, see
+                                             checkout()'s validation). -->
+                                        <div id="accountCustomerSection" style="display:block;">
+                                            <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Select Customer (optional)</label>
+                                            <div style="display:flex;gap:8px;">
+                                                <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);" oninput="searchAccountCustomers(this.value)">
+                                            </div>
+                                            <div id="accountCustomerResults" style="max-height:120px;overflow-y:auto;margin-top:8px;"></div>
+                                            <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:var(--surface);border-radius:6px;border:2px solid #667eea;">
+                                                <span id="selectedAccountName" style="font-weight:600;color:var(--text);"></span>
+                                                <span id="selectedAccountBalance" style="float:right;color:var(--text-secondary);font-size:13px;"></span>
+                                                <a onclick="clearSelectedCustomer()" style="float:right;margin-right:10px;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
+                                                <div id="selectedCustomerDiscountLine" style="display:none;clear:both;padding-top:6px;color:#2e7d32;font-weight:600;font-size:13px;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -2088,39 +2180,6 @@
                             </div>
 
                             <div class="checkout-section">
-                                <!-- Customer Selection (2026-07-31) — always visible, independent of
-                                     payment method. A customer's standard discount (if any) applies
-                                     whether they pay Cash, Card, or Account; Account payment still
-                                     additionally requires a customer to be selected (unchanged, see
-                                     checkout()'s validation). -->
-                                <div id="accountCustomerSection" style="display:block; background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:10px;">
-                                    <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Select Customer (optional)</label>
-                                    <div style="display:flex;gap:8px;">
-                                        <input type="text" id="accountCustomerSearch" placeholder="Search by name or phone..." style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);" oninput="searchAccountCustomers(this.value)">
-                                    </div>
-                                    <div id="accountCustomerResults" style="max-height:120px;overflow-y:auto;margin-top:8px;"></div>
-                                    <div id="selectedAccountCustomer" style="display:none;margin-top:8px;padding:8px;background:var(--surface);border-radius:6px;border:2px solid #667eea;">
-                                        <span id="selectedAccountName" style="font-weight:600;color:var(--text);"></span>
-                                        <span id="selectedAccountBalance" style="float:right;color:var(--text-secondary);font-size:13px;"></span>
-                                        <a onclick="clearSelectedCustomer()" style="float:right;margin-right:10px;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
-                                        <div id="selectedCustomerDiscountLine" style="display:none;clear:both;padding-top:6px;color:#2e7d32;font-weight:600;font-size:13px;"></div>
-                                    </div>
-                                </div>
-
-                                <!-- Manual discretionary discount (2026-07-31) — a manager can give any
-                                     % on the spot; anyone else needs a manager's PIN (managerPinAuthModal).
-                                     Distinct from the customer/product/Daily-Discount pricing above — this
-                                     stacks on top as a final whole-sale reduction (see calcCartTotals()). -->
-                                <div id="manualDiscountSection" style="display:block; background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:10px;">
-                                    <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Discount %</label>
-                                    <div style="display:flex;gap:8px;align-items:center;">
-                                        <input type="number" id="manualDiscountInput" step="0.01" min="0" max="100" placeholder="0" style="width:80px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                                        <button class="btn btn-secondary" onclick="applyManualDiscount()" style="padding:8px 15px;font-size:13px;">Apply</button>
-                                        <span id="manualDiscountAppliedLine" style="display:none;color:#2e7d32;font-weight:600;font-size:13px;"></span>
-                                        <a id="manualDiscountClear" onclick="clearManualDiscount()" style="display:none;color:#c62828;font-size:12px;cursor:pointer;">✕ Clear</a>
-                                    </div>
-                                </div>
-
                                 <!-- Promotion code (2026-08-02) — cart-level, code-redeemed
                                      discount. Not customer-dependent, unlike a customer's own
                                      standard discount. Preview only — the server independently
@@ -6729,34 +6788,11 @@
 
         async function manageSession() {
             if (currentSession) {
-                const close = confirm('Close current till session?');
-                if (close) {
-                    const balance = prompt('Enter closing balance:');
-                    if (balance !== null) {
-                        try {
-                            const response = await fetch(`${API_URL}/pos/sessions/${currentSession.id}/close`, {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': `Bearer ${token}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({ closingBalance: parseFloat(balance), notes: 'Manual close' })
-                            });
-
-                            const result = await response.json();
-                            if (response.ok) {
-                                showNotification(`Session closed. Variance: R ${result.variance.toFixed(2)}`, 'success');
-                                currentSession = null;
-                                document.getElementById('sessionStatus').textContent = 'No Session';
-                                document.getElementById('checkoutBtn').disabled = true;
-                            } else {
-                                showNotification(result.error || 'Error closing session', 'error');
-                            }
-                        } catch (error) {
-                            showNotification('Error closing session', 'error');
-                        }
-                    }
-                }
+                // A session is already open — show the Manage Till menu (Close
+                // Till / Record Payout) instead of immediately confirming a
+                // close. Added 2026-08-02 so Payout has a home here instead of
+                // sitting as an unrestricted button on the till screen itself.
+                showManageTillModal();
             } else {
                 const balance = prompt('Enter opening balance:', '0');
                 if (balance !== null) {
@@ -6794,6 +6830,90 @@
                         showNotification('Error opening session', 'error');
                     }
                 }
+            }
+        }
+
+        // ── Manage Till menu (2026-08-02) ───────────────────────────────────────
+        // Shown by manageSession() once a session is already open — hosts the
+        // actions that used to be a bare "Close Till" confirm() plus the new
+        // Record Payout entry point (previously an unrestricted button on the
+        // till screen itself; see startPayoutFromManageTill() below for the
+        // manager-PIN gate).
+        function showManageTillModal() {
+            let modal = document.getElementById('manageTillModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'manageTillModal';
+                modal.className = 'modal-overlay';
+                document.body.appendChild(modal);
+            }
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 380px;">
+                    <div class="modal-header">
+                        <h2>Manage Till</h2>
+                        <button class="close-btn" onclick="closeManageTillModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px; display:flex; flex-direction:column; gap:10px;">
+                        <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;" onclick="startPayoutFromManageTill()">💰 Record Payout</button>
+                        <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;" onclick="closeTillFromManageModal()">🔒 Close Till</button>
+                    </div>
+                </div>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function closeManageTillModal() {
+            const modal = document.getElementById('manageTillModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        // Same role-check-then-PIN-fallback shape already used for the manual
+        // discount and Void/Return — a supervisor-tier requester self-authorizes
+        // (they ARE the manager); anyone else needs a matching PIN approval,
+        // consumed server-side in cashPaidOuts.js.
+        function startPayoutFromManageTill() {
+            closeManageTillModal();
+            if (SUPERVISOR_TIER_ROLES_FOR_RETURN.includes(userRole)) {
+                showCashPaidOutModal();
+            } else {
+                requestManagerPinAuth({
+                    actionType: 'payout',
+                    tillSessionId: currentSession?.id,
+                    onSuccess: () => showCashPaidOutModal(),
+                });
+            }
+        }
+
+        // The exact close-session flow manageSession() used to fire immediately
+        // — unchanged, just moved behind the Manage Till menu's "Close Till"
+        // button instead of auto-firing the instant the button is clicked.
+        async function closeTillFromManageModal() {
+            closeManageTillModal();
+            const close = confirm('Close current till session?');
+            if (!close) return;
+            const balance = prompt('Enter closing balance:');
+            if (balance === null) return;
+            try {
+                const response = await fetch(`${API_URL}/pos/sessions/${currentSession.id}/close`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ closingBalance: parseFloat(balance), notes: 'Manual close' })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    showNotification(`Session closed. Variance: R ${result.variance.toFixed(2)}`, 'success');
+                    currentSession = null;
+                    document.getElementById('sessionStatus').textContent = 'No Session';
+                    document.getElementById('checkoutBtn').disabled = true;
+                } else {
+                    showNotification(result.error || 'Error closing session', 'error');
+                }
+            } catch (error) {
+                showNotification('Error closing session', 'error');
             }
         }
 
@@ -8929,7 +9049,9 @@
                     <div class="qty-controls">
                         <button class="qty-btn" onclick="updateQty(${item.productId}, -1)">-</button>
                         <span class="qty-display">${item.quantity}</span>
-                        <button class="qty-btn" onclick="updateQty(${item.productId}, 1)">+</button>
+                        <button class="qty-btn" onclick="handleQtyPlusClick(event, ${item.productId})"
+                            onmousedown="startQtyHold(${item.productId})" onmouseup="cancelQtyHold()" onmouseleave="cancelQtyHold()"
+                            ontouchstart="startQtyHold(${item.productId})" ontouchend="cancelQtyHold()" ontouchcancel="cancelQtyHold()">+</button>
                     </div>
                     <div class="item-total">R ${(item.price * item.quantity).toFixed(2)}</div>
                     <button class="item-remove" onclick="removeItem(${item.productId})">✕</button>
@@ -9067,6 +9189,68 @@
             updateCart();
         }
 
+        // ── Long-press "+" to type a quantity (2026-08-02) ─────────────────────
+        // Press-and-hold the qty "+" button instead of tapping it repeatedly.
+        // No existing long-press pattern anywhere in this file — built from
+        // scratch, but reuses updateCart()'s existing patch-in-place logic
+        // (it re-reads item.quantity regardless of how it was mutated) and the
+        // app's existing "type a number" convention, a plain prompt() — used
+        // everywhere else in this file (till balances, loyalty points, account
+        // payments) — rather than a new modal component.
+        let qtyHoldTimer = null;
+        let qtyHoldFired = false;
+        const QTY_HOLD_MS = 550;
+
+        function startQtyHold(productId) {
+            qtyHoldFired = false;
+            clearTimeout(qtyHoldTimer);
+            qtyHoldTimer = setTimeout(() => {
+                qtyHoldFired = true;
+                promptQuantity(productId);
+            }, QTY_HOLD_MS);
+        }
+
+        function cancelQtyHold() {
+            clearTimeout(qtyHoldTimer);
+        }
+
+        // The normal tap still goes through updateQty(+1) — this only
+        // swallows the click that follows a long-press (touchend/mouseup
+        // still fire a synthetic click) so a held "+" doesn't ALSO add one.
+        function handleQtyPlusClick(event, productId) {
+            if (qtyHoldFired) {
+                event.preventDefault();
+                qtyHoldFired = false;
+                return;
+            }
+            updateQty(productId, 1);
+        }
+
+        function promptQuantity(productId) {
+            const item = cart.find(i => i.productId === productId);
+            if (!item) return;
+            // Serial-tracked lines: quantity is derived from scanned serials,
+            // not a free-standing number — same guard updateQty() already
+            // applies to its own "+"/"-" handling. Long-press is a no-op here;
+            // the normal tap still opens the serial picker as usual.
+            if (item.serialNumbers) return;
+
+            const input = prompt('Enter quantity:', item.quantity);
+            if (input === null) return;
+            const qty = parseInt(input, 10);
+            if (isNaN(qty) || qty <= 0) {
+                showNotification('Enter a valid quantity', 'error');
+                return;
+            }
+            if (qty > item.maxStock) {
+                item.quantity = item.maxStock;
+                showNotification('Maximum stock reached', 'error');
+            } else {
+                item.quantity = qty;
+            }
+            updateCart();
+        }
+
         function removeItem(productId) {
             cart = cart.filter(item => item.productId !== productId);
             updateCart();
@@ -9120,6 +9304,25 @@
             if (panel) panel.classList.toggle('open');
         }
 
+        // Discount/Customer header popovers (2026-08-02) — same toggle shape as
+        // toggleMorePayments() above; each closes the other so only one is open
+        // at a time (the header is narrow, two open panels would overlap).
+        function toggleDiscountPopover(e) {
+            if (e) e.stopPropagation();
+            const panel = document.getElementById('discountPopoverPanel');
+            const custPanel = document.getElementById('customerPopoverPanel');
+            if (custPanel) custPanel.classList.remove('open');
+            if (panel) panel.classList.toggle('open');
+        }
+
+        function toggleCustomerPopover(e) {
+            if (e) e.stopPropagation();
+            const panel = document.getElementById('customerPopoverPanel');
+            const discPanel = document.getElementById('discountPopoverPanel');
+            if (discPanel) discPanel.classList.remove('open');
+            if (panel) panel.classList.toggle('open');
+        }
+
         // Closes the popover on any click outside it — same "close on outside
         // click" convention already used elsewhere in this file for dropdowns.
         document.addEventListener('click', function(e) {
@@ -9127,6 +9330,16 @@
             const panel = document.getElementById('paymentMorePanel');
             if (panel && panel.classList.contains('open') && wrap && !wrap.contains(e.target)) {
                 panel.classList.remove('open');
+            }
+            const discWrap = document.getElementById('discountPopoverWrap');
+            const discPanel = document.getElementById('discountPopoverPanel');
+            if (discPanel && discPanel.classList.contains('open') && discWrap && !discWrap.contains(e.target)) {
+                discPanel.classList.remove('open');
+            }
+            const custWrap = document.getElementById('customerPopoverWrap');
+            const custPanel = document.getElementById('customerPopoverPanel');
+            if (custPanel && custPanel.classList.contains('open') && custWrap && !custWrap.contains(e.target)) {
+                custPanel.classList.remove('open');
             }
         });
 
@@ -9256,6 +9469,9 @@
             document.getElementById('selectedAccountCustomer').style.display = 'block';
             document.getElementById('selectedAccountName').textContent = name;
             document.getElementById('selectedAccountBalance').textContent = `Balance: R ${parseFloat(balance).toFixed(2)} / Limit: R ${parseFloat(limit).toFixed(2)}`;
+            // Collapsed header trigger (2026-08-02) — shows the selected
+            // customer's name at a glance without needing to open the popover.
+            document.getElementById('customerPopoverLabel').textContent = `👤 ${name}`;
             const discountEl = document.getElementById('selectedCustomerDiscountLine');
             if (discountEl) {
                 if (selectedCustomerDiscountPercent > 0) {
@@ -9297,6 +9513,7 @@
             document.getElementById('selectedAccountCustomer').style.display = 'none';
             const discountEl = document.getElementById('selectedCustomerDiscountLine');
             if (discountEl) discountEl.style.display = 'none';
+            document.getElementById('customerPopoverLabel').textContent = '👤 Customer';
             updateCart();
         }
 
@@ -9341,6 +9558,9 @@
             document.getElementById('manualDiscountAppliedLine').textContent = `${value}% applied`;
             document.getElementById('manualDiscountAppliedLine').style.display = 'inline';
             document.getElementById('manualDiscountClear').style.display = 'inline';
+            // Collapsed header trigger (2026-08-02) — shows the applied % at a
+            // glance without needing to open the popover.
+            document.getElementById('discountPopoverLabel').textContent = `🏷️ ${value}% off`;
             updateCart();
         }
 
@@ -9349,6 +9569,7 @@
             document.getElementById('manualDiscountInput').value = '';
             document.getElementById('manualDiscountAppliedLine').style.display = 'none';
             document.getElementById('manualDiscountClear').style.display = 'none';
+            document.getElementById('discountPopoverLabel').textContent = '🏷️ Discount';
             updateCart();
         }
 
@@ -13970,6 +14191,8 @@
             document.getElementById('managerPinAuthDescription').textContent =
                 actionType === 'discount'
                     ? `A manager must enter their PIN to approve a ${discountPercent}% discount.`
+                    : actionType === 'payout'
+                    ? 'A manager must enter their PIN to approve this cash paid-out.'
                     : 'A manager must enter their PIN to approve this return.';
             document.getElementById('managerPinInput').value = '';
             document.getElementById('managerPinAuthError').style.display = 'none';

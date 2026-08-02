@@ -22,6 +22,8 @@
 const express = require('express');
 const { supabase } = require('../../../config/database');
 const { requireCompany, requirePermission } = require('../../../middleware/auth');
+const { SUPERVISOR_ROLES } = require('../../../config/permissions');
+const { consumeManagerAuthorization } = require('../services/managerAuthConsumer');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 
 const router = express.Router();
@@ -55,6 +57,22 @@ router.post('/:id/paid-out', requirePermission('TILLS.PAID_OUT'), async (req, re
     // closed there's no more physical drawer activity left to record.
     if (session.status !== 'open') {
       return res.status(409).json({ error: `Session must be open to record a paid-out (current status: ${session.status})` });
+    }
+
+    // TILLS.PAID_OUT itself stays broad (any non-trainee role) — this layers
+    // manager-PIN authorization on top, mirroring authorizeManualDiscount()
+    // in sales.js exactly: a supervisor-tier requester self-authorizes (they
+    // ARE the manager); anyone else needs a matching unused, unexpired
+    // pos_manager_authorizations row from POST /manager-auth/verify. Added
+    // 2026-08-02 — previously any non-trainee cashier could record a payout
+    // with zero approval.
+    if (!SUPERVISOR_ROLES.includes(req.user.role)) {
+      const authResult = await consumeManagerAuthorization({
+        companyId, tillSessionId: sessionId, actionType: 'payout',
+      });
+      if (!authResult.ok) {
+        return res.status(403).json({ error: 'This requires manager PIN authorization' });
+      }
     }
 
     const { data, error } = await supabase

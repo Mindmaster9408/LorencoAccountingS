@@ -28,6 +28,7 @@ const { hasPermission, MANAGEMENT_ROLES } = require('../../../config/permissions
 const { syncAccountSaleToLinkedBuyerPO } = require('../services/accountSaleToPOSync');
 const { getBusinessDayBounds, activeDiscountOrFilter } = require('../services/discountWindow');
 const promotionService = require('../services/promotionService');
+const { consumeManagerAuthorization } = require('../services/managerAuthConsumer');
 
 const router = express.Router();
 
@@ -143,36 +144,6 @@ async function releaseSerialsForReturn({ companyId, productId, saleItemId, quant
     .from('pos_product_serials')
     .update({ status: 'in_stock', sale_id: null, sale_item_id: null, sold_at: null })
     .in('id', soldSerials.map(s => s.id));
-}
-
-/**
- * Find + consume (mark used) an unexpired, unused manager-PIN authorization
- * (POST /manager-auth/verify) for a given action. Shared by the manual-
- * discount check below and POST /:id/return's manager-tier gate — one real
- * "was this actually approved" check instead of two, since the PIN modal
- * feeds the same pos_manager_authorizations table for both.
- *
- * @returns {Promise<{ok:true}|{ok:false}>}
- */
-async function consumeManagerAuthorization({ companyId, tillSessionId, actionType, discountPercent }) {
-  let query = supabase
-    .from('pos_manager_authorizations')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('till_session_id', tillSessionId)
-    .eq('action_type', actionType)
-    .is('used_at', null)
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
-    .limit(1);
-  if (actionType === 'discount') query = query.eq('discount_percent', discountPercent);
-
-  const { data: authRow } = await query.maybeSingle();
-  if (!authRow) return { ok: false };
-
-  // Single-use — a second sale/return can't silently reuse the same approval.
-  await supabase.from('pos_manager_authorizations').update({ used_at: new Date().toISOString() }).eq('id', authRow.id);
-  return { ok: true };
 }
 
 /**
