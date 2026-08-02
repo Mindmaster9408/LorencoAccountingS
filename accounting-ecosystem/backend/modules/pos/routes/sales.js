@@ -27,6 +27,7 @@ const { getStockPolicy } = require('../services/stockPolicyCache');
 const { hasPermission, MANAGEMENT_ROLES } = require('../../../config/permissions');
 const { syncAccountSaleToLinkedBuyerPO } = require('../services/accountSaleToPOSync');
 const { getBusinessDayBounds, activeDiscountOrFilter } = require('../services/discountWindow');
+const loyaltyService = require('../services/loyaltyService');
 
 const router = express.Router();
 
@@ -363,6 +364,9 @@ function normaliseSaleBody(body) {
     // the cash-tendered box on the till is not mandatory. See POST / below,
     // where this drives a follow-up UPDATE on the cash sale_payments row.
     cash_tendered:   body.cash_tendered  ?? body.cashTendered ?? null,
+    // Points to redeem for a discount on this sale — validated server-side
+    // in POST / via loyaltyService.previewRedemption() before any write.
+    loyalty_redeem_points: body.loyalty_redeem_points ?? body.loyaltyRedeemPoints ?? 0,
   };
 }
 
@@ -589,6 +593,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       idempotency_key: clientIdempotencyKey,
       source,
       cash_tendered,
+      loyalty_redeem_points: loyaltyRedeemPoints,
     } = normaliseSaleBody(req.body);
 
     // Use client-supplied key (online checkout or offline sync replay) or
@@ -787,6 +792,30 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       // appropriate HERE because this discount really is a flat percentage
       // off everything, unlike the per-line pricing above.
       vat_total_for_rpc = preManualTotal > 0 ? Math.round(vat_total_for_rpc * (total_amount / preManualTotal) * 100) / 100 : vat_total_for_rpc;
+    }
+
+    // ── 3d. Loyalty points redemption ───────────────────────────────────────
+    // Validate-and-size only (no write) — the actual point deduction happens
+    // after create_sale_atomic succeeds below, with the real sale_id, via
+    // loyaltyService.redeemPoints(). Rejecting here means the sale is never
+    // created at all on an invalid redemption, same "validate before any
+    // write" convention as every other pre-check in this route.
+    let loyaltyPointsToRedeem = 0;
+    if (loyaltyRedeemPoints && customer_id) {
+      const redemptionPreview = await loyaltyService.previewRedemption({
+        companyId:      req.companyId,
+        customerId:     customer_id,
+        pointsToRedeem: loyaltyRedeemPoints,
+      });
+      if (!redemptionPreview.ok) {
+        return res.status(400).json({ error: redemptionPreview.error });
+      }
+      loyaltyPointsToRedeem = loyaltyRedeemPoints;
+      const preLoyaltyTotal = total_amount;
+      total_amount = Math.max(0, Math.round((preLoyaltyTotal - redemptionPreview.randValue) * 100) / 100);
+      // Same proportional VAT scaling as the manual discretionary discount
+      // above — the redemption is a flat rand-value reduction off the total.
+      vat_total_for_rpc = preLoyaltyTotal > 0 ? Math.round(vat_total_for_rpc * (total_amount / preLoyaltyTotal) * 100) / 100 : vat_total_for_rpc;
     }
 
     const discount = Math.max(0, Math.round((grossSubtotal - total_amount) * 100) / 100);
@@ -999,6 +1028,33 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
             saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
             metadata: { sale_number: saleNumber, customer_id, amount: accountAmount, error: chargeResult.error },
           });
+        }
+      }
+
+      // Loyalty: award points earned on this sale + apply any redemption
+      // validated during pricing (3d above). Same non-blocking, logged-loudly-
+      // on-failure pattern as account-charge-posting — the sale itself has
+      // already succeeded and must never be rolled back for either of these.
+      if (customer_id) {
+        const awardResult = await loyaltyService.awardPoints({
+          companyId: req.companyId, customerId: customer_id, saleId: rpcResult.sale_id,
+          amountSpent: total_amount, userId: req.user.userId,
+        });
+        if (!awardResult.ok) {
+          console.error('[Sales] Loyalty points award failed after sale succeeded:', rpcResult.sale_id, awardResult.error);
+        }
+
+        if (loyaltyPointsToRedeem > 0) {
+          const redeemResult = await loyaltyService.redeemPoints({
+            companyId: req.companyId, customerId: customer_id, saleId: rpcResult.sale_id,
+            pointsToRedeem: loyaltyPointsToRedeem, userId: req.user.userId,
+          });
+          if (!redeemResult.ok) {
+            // CRITICAL: the sale already succeeded with the redemption discount
+            // already applied to its total — this must never throw and roll
+            // back a completed sale. Logged loudly for manual follow-up instead.
+            console.error('[Sales] CRITICAL: loyalty points redemption failed after sale succeeded:', rpcResult.sale_id, redeemResult.error);
+          }
         }
       }
     }
