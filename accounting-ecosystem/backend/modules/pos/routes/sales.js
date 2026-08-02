@@ -27,7 +27,6 @@ const { getStockPolicy } = require('../services/stockPolicyCache');
 const { hasPermission, MANAGEMENT_ROLES } = require('../../../config/permissions');
 const { syncAccountSaleToLinkedBuyerPO } = require('../services/accountSaleToPOSync');
 const { getBusinessDayBounds, activeDiscountOrFilter } = require('../services/discountWindow');
-const promotionService = require('../services/promotionService');
 const { consumeManagerAuthorization } = require('../services/managerAuthConsumer');
 
 const router = express.Router();
@@ -335,9 +334,6 @@ function normaliseSaleBody(body) {
     // the cash-tendered box on the till is not mandatory. See POST / below,
     // where this drives a follow-up UPDATE on the cash sale_payments row.
     cash_tendered:   body.cash_tendered  ?? body.cashTendered ?? null,
-    // Cart-level promo code — validated server-side in POST / via
-    // promotionService.previewPromotion() before any write.
-    promotion_code:  body.promotion_code ?? body.promotionCode ?? null,
   };
 }
 
@@ -564,7 +560,6 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       idempotency_key: clientIdempotencyKey,
       source,
       cash_tendered,
-      promotion_code,
     } = normaliseSaleBody(req.body);
 
     // Use client-supplied key (online checkout or offline sync replay) or
@@ -763,32 +758,6 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       // appropriate HERE because this discount really is a flat percentage
       // off everything, unlike the per-line pricing above.
       vat_total_for_rpc = preManualTotal > 0 ? Math.round(vat_total_for_rpc * (total_amount / preManualTotal) * 100) / 100 : vat_total_for_rpc;
-    }
-
-    // ── 3d. Cart-level promotion code ───────────────────────────────────────
-    // Validate-and-size only (no write) — the real redemption (usage-limit
-    // increment + audit row) happens after create_sale_atomic succeeds below,
-    // with the real sale_id, via promotionService.redeemPromotion(). Rejecting
-    // here means the sale is never created at all on an invalid code, same
-    // "validate before any write" convention as every other pre-check above.
-    let appliedPromotionId = null;
-    let appliedPromotionDiscount = 0;
-    if (promotion_code) {
-      const promoPreview = await promotionService.previewPromotion({
-        companyId:    req.companyId,
-        code:         promotion_code,
-        cartSubtotal: total_amount,
-      });
-      if (!promoPreview.ok) {
-        return res.status(400).json({ error: promoPreview.error });
-      }
-      appliedPromotionId = promoPreview.promotion.id;
-      appliedPromotionDiscount = promoPreview.discountAmount;
-      const prePromoTotal = total_amount;
-      total_amount = Math.max(0, Math.round((prePromoTotal - appliedPromotionDiscount) * 100) / 100);
-      // Same proportional VAT scaling as the manual discretionary discount
-      // above — a promotion is a flat rand-value reduction off the total.
-      vat_total_for_rpc = prePromoTotal > 0 ? Math.round(vat_total_for_rpc * (total_amount / prePromoTotal) * 100) / 100 : vat_total_for_rpc;
     }
 
     const discount = Math.max(0, Math.round((grossSubtotal - total_amount) * 100) / 100);
@@ -1001,21 +970,6 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
             saleId: rpcResult.sale_id, tillSessionId: till_session_id, source,
             metadata: { sale_number: saleNumber, customer_id, amount: accountAmount, error: chargeResult.error },
           });
-        }
-      }
-
-      // Promotion redemption (3d above validated it and already applied the
-      // discount to total_amount) — the real write happens now, with the
-      // actual sale_id. Non-blocking, logged loudly on failure: the sale
-      // already succeeded with the discount already applied to its total,
-      // so this must never throw and roll back a completed sale.
-      if (appliedPromotionId) {
-        const redeemResult = await promotionService.redeemPromotion({
-          companyId: req.companyId, promotionId: appliedPromotionId, saleId: rpcResult.sale_id,
-          customerId: customer_id || null, discountAmount: appliedPromotionDiscount,
-        });
-        if (!redeemResult.ok) {
-          console.error('[Sales] CRITICAL: promotion redemption failed after sale succeeded:', rpcResult.sale_id, redeemResult.error);
         }
       }
     }

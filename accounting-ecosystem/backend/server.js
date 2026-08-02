@@ -281,8 +281,9 @@ app.get('/api/transfers', authenticateToken, (req, res) => res.json({ transfers:
 app.get('/api/purchase-orders', authenticateToken, (req, res) => res.json({ purchase_orders: [] }));
 app.get('/api/suppliers', authenticateToken, (req, res) => res.json({ suppliers: [] }));
 app.get('/api/loyalty/programs', authenticateToken, (req, res) => res.json({ programs: [] }));
-// /api/promotions stub removed 2026-08-02 — replaced by the real,
-// company-scoped Promotions feature at /api/pos/promotions (routes/promotions.js).
+// /api/promotions stub removed 2026-08-02 — replaced by the real, company-
+// scoped Promotion Campaigns feature at /api/pos/promotion-campaigns
+// (routes/promotionCampaigns.js), grouping per-product Daily Discount rows.
 app.get('/api/scheduling/shifts', authenticateToken, (req, res) => res.json({ shifts: [] }));
 app.get('/api/scheduling/time/status', authenticateToken, (req, res) => res.json({ status: 'not_clocked_in' }));
 app.post('/api/scheduling/time/clock-in', authenticateToken, (req, res) => res.json({ success: true, clocked_in_at: new Date().toISOString() }));
