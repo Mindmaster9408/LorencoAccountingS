@@ -2761,21 +2761,21 @@
                     </div>
 
                     <!-- Company Link (Workstream 80 — Turkstra/Pennygrow foundation) -->
-                    <div id="supplierEditLinkSection" style="display:none;border-top:1px solid #eee;padding-top:14px;margin-top:4px;">
-                        <h4 style="margin:0 0 8px;font-size:14px;">Company Link</h4>
-                        <p style="font-size:12px;color:#888;margin:0 0 10px;">Optionally link this supplier to another Checkout Charlie company using their invitation code. Nothing is shared until they approve.</p>
+                    <div id="supplierEditLinkSection" style="display:none;border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
+                        <h4 style="margin:0 0 8px;font-size:14px;color:var(--text);">Company Link</h4>
+                        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Optionally link this supplier to another Checkout Charlie company using their invitation code. Nothing is shared until they approve.</p>
 
                         <div id="supplierEditLinkNone">
                             <div style="display:flex;gap:8px;">
-                                <input type="text" id="supplierEditLinkCode" placeholder="Enter invitation code (e.g. IC-A1B2C3D4)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                                <input type="text" id="supplierEditLinkCode" placeholder="Enter invitation code (e.g. IC-A1B2C3D4)" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
                                 <button class="btn btn-secondary" onclick="requestSupplierCompanyLink()">Link</button>
                             </div>
                         </div>
 
-                        <div id="supplierEditLinkActive" style="display:none;background:#f5f7fa;border-radius:8px;padding:10px 12px;">
+                        <div id="supplierEditLinkActive" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
                             <div style="display:flex;justify-content:space-between;align-items:center;">
                                 <div>
-                                    <strong id="supplierEditLinkCompanyName">—</strong>
+                                    <strong id="supplierEditLinkCompanyName" style="color:var(--text);">—</strong>
                                     <span id="supplierEditLinkStatusBadge" class="status-badge" style="margin-left:8px;"></span>
                                 </div>
                                 <div style="display:flex;gap:6px;">
@@ -2783,23 +2783,23 @@
                                     <button id="supplierEditLinkRevokeBtn" class="btn btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="revokeSupplierCompanyLink()">Revoke</button>
                                 </div>
                             </div>
-                            <p id="supplierEditLinkStatusNote" style="font-size:12px;color:#888;margin:6px 0 0;"></p>
-                            <div id="supplierEditLinkPermissions" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #e0e0e0;">
-                                <p style="font-size:11px;color:#999;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Stock Transfer (Workstream 81)</p>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                            <p id="supplierEditLinkStatusNote" style="font-size:12px;color:var(--text-muted);margin:6px 0 0;"></p>
+                            <div id="supplierEditLinkPermissions" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+                                <p style="font-size:11px;color:var(--text-muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Stock Transfer (Workstream 81)</p>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;color:var(--text);">
                                     <input type="checkbox" id="permStockTransfer" onchange="updateCompanyLinkPermission('stock_transfer', this.checked)"> Allow sending stock to this company
                                 </label>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;color:var(--text);">
                                     <input type="checkbox" id="permReceiveTransfer" onchange="updateCompanyLinkPermission('receive_transfer', this.checked)"> Allow receiving stock from this company
                                 </label>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;color:var(--text);">
                                     <input type="checkbox" id="permReturnTransfer" onchange="updateCompanyLinkPermission('return_transfer', this.checked)"> Allow returning stock to this company
                                 </label>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;color:var(--text);">
                                     <input type="checkbox" id="permPricingVisible" onchange="updateCompanyLinkPermission('pricing_visible', this.checked)"> Show them our cost/selling price on transfers
                                 </label>
-                                <p style="font-size:11px;color:#999;margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Purchase Orders (Workstream 87)</p>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;">
+                                <p style="font-size:11px;color:var(--text-muted);margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Purchase Orders (Workstream 87)</p>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;cursor:pointer;color:var(--text);">
                                     <input type="checkbox" id="permPurchaseOrders" onchange="updateCompanyLinkPermission('purchase_orders', this.checked)"> Allow raising purchase orders against this company
                                 </label>
                             </div>
@@ -15248,6 +15248,32 @@
                 });
                 const result = await res.json();
                 if (res.ok) {
+                    // Company Link permission checkboxes are meant to auto-save on
+                    // their own onchange (updateCompanyLinkPermission), but that's a
+                    // silent, easy-to-miss save path with no visible confirmation tied
+                    // to the button the user actually clicks — found live 2026-08-03:
+                    // a checkbox tick never reached the server, "Save Supplier" gave
+                    // false confidence everything was saved, and the permission was
+                    // gone after a refresh. Belt-and-braces fix: re-send the current
+                    // checkbox state here too, so the one button the user trusts is
+                    // guaranteed to persist everything visible in this modal.
+                    if (currentLinkRelationshipId && document.getElementById('supplierEditLinkPermissions').style.display !== 'none') {
+                        try {
+                            await fetch(`${API_URL}/pos/company-links/${currentLinkRelationshipId}/permissions`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({
+                                    stock_transfer: document.getElementById('permStockTransfer').checked,
+                                    receive_transfer: document.getElementById('permReceiveTransfer').checked,
+                                    return_transfer: document.getElementById('permReturnTransfer').checked,
+                                    pricing_visible: document.getElementById('permPricingVisible').checked,
+                                    purchase_orders: document.getElementById('permPurchaseOrders').checked,
+                                })
+                            });
+                        } catch (permErr) {
+                            console.error('Error saving company link permissions:', permErr);
+                        }
+                    }
                     showNotification(`Supplier ${id ? 'updated' : 'created'}`, 'success');
                     closeSupplierEditModal();
                     loadSettingsSuppliers();
