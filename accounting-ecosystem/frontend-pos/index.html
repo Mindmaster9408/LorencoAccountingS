@@ -15258,6 +15258,13 @@
                     // checkbox state here too, so the one button the user trusts is
                     // guaranteed to persist everything visible in this modal.
                     let permSaveFailed = false;
+                    // TEMP DIAGNOSTIC (remove once the permission-save bug is found) —
+                    // shows exactly what the guard below sees, since several rounds of
+                    // testing showed no error yet the permission never persists. Uses
+                    // alert() deliberately (not showNotification) so it can't be
+                    // instantly overwritten by the next toast on the same shared
+                    // #notification element, and blocks so it's guaranteed to be read.
+                    alert(`DEBUG: relId=${currentLinkRelationshipId} permsDisplay="${document.getElementById('supplierEditLinkPermissions')?.style.display}"`);
                     if (currentLinkRelationshipId && document.getElementById('supplierEditLinkPermissions').style.display !== 'none') {
                         try {
                             const permRes = await fetch(`${API_URL}/pos/company-links/${currentLinkRelationshipId}/permissions`, {
