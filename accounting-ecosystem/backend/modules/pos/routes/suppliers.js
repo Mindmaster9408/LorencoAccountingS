@@ -61,7 +61,7 @@ router.get('/', requirePermission('INVENTORY.VIEW'), async (req, res) => {
 
     let query = supabase
       .from('suppliers')
-      .select('id, supplier_code, supplier_name, name, contact_name, contact_email, email, contact_phone, phone, address, payment_terms, notes, is_active, linked_company_id, link_status, created_at')
+      .select('id, supplier_code, supplier_name, name, contact_name, contact_email, email, contact_phone, phone, address, payment_terms, notes, is_active, linked_company_id, linked_relationship_id, link_status, created_at')
       .eq('company_id', req.companyId);
 
     if (include_inactive !== 'true') query = query.eq('is_active', true);
