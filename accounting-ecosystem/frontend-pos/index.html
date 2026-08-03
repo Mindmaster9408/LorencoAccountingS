@@ -3190,7 +3190,10 @@
                         <div id="poItemsSection" style="display:none;">
                             <h4 style="margin:0 0 8px;font-size:14px;">Items to Order</h4>
                             <div style="display:flex;gap:8px;margin-bottom:10px;">
-                                <input type="text" id="poBarcodeInput" placeholder="Scan barcode or search product, then Enter" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addPoItemByBarcode();}">
+                                <div style="position:relative;flex:1;">
+                                    <input type="text" id="poBarcodeInput" placeholder="Scan barcode or type product name/code, then Enter" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ddd;border-radius:6px;" oninput="filterPoProducts()" onkeydown="handlePoProductKeydown(event)" onblur="setTimeout(() => { const r = document.getElementById('poProductResults'); if (r) r.style.display = 'none'; }, 150)">
+                                    <div id="poProductResults" style="display:none;position:absolute;left:0;right:0;top:100%;border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;max-height:220px;overflow-y:auto;z-index:10;box-shadow:0 4px 10px rgba(0,0,0,0.3);"></div>
+                                </div>
                                 <button class="btn btn-secondary" onclick="addPoItemByBarcode()">Add</button>
                             </div>
                             <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -17054,18 +17057,30 @@
         }
 
         function addPoItemByBarcode() {
-            if (!poCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
             const input = document.getElementById('poBarcodeInput');
             const term = input.value.trim();
             if (!term) return;
             const product = (products || []).find(p => p.barcode === term) || (products || []).find(p => p.product_code === term) || (products || []).find(p => (p.product_name || '').toLowerCase().includes(term.toLowerCase()));
             if (!product) { showNotification('Product not found', 'error'); return; }
-            input.value = '';
+            addPoItemProduct(product);
+        }
+
+        // Adds/increments a specific product as a row in the PO items table —
+        // shared by the plain Enter/"Add" button path above and the live-filter
+        // dropdown (filterPoProducts/selectPoProductById) below, so every path
+        // to adding an item behaves identically instead of duplicating the
+        // row-build logic three times.
+        function addPoItemProduct(product) {
+            if (!poCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            document.getElementById('poBarcodeInput').value = '';
+            document.getElementById('poProductResults').style.display = 'none';
+            document.getElementById('poProductResults').innerHTML = '';
 
             const existingRow = document.querySelector(`#poItemsBody tr[data-product-id="${product.id}"]`);
             if (existingRow) {
                 const qtyInput = existingRow.querySelector('.po-qty');
                 qtyInput.value = (parseInt(qtyInput.value) || 0) + 1;
+                document.getElementById('poBarcodeInput').focus();
                 return;
             }
 
@@ -17078,6 +17093,94 @@
                 <td style="padding:5px;"><input type="number" min="0" step="0.01" value="${product.cost_price || 0}" class="po-cost" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"></td>
                 <td style="padding:5px;text-align:center;"><button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;">&times;</button></td>`;
             tbody.appendChild(tr);
+            document.getElementById('poBarcodeInput').focus();
+        }
+
+        // Live type-ahead filter for the "Items to Order" search — same pattern
+        // as filterDiscountProducts()/renderDiscountProductResults() (Daily
+        // Discount product picker): debounced substring match on name/code/
+        // barcode, exact barcode/code scan resolves immediately without
+        // waiting for the debounce, so typing narrows the list instead of
+        // requiring an exact Enter-match on the first attempt.
+        let poProductSearchTimeout = null;
+
+        function filterPoProducts() {
+            clearTimeout(poProductSearchTimeout);
+            const term = document.getElementById('poBarcodeInput').value.trim();
+            const resultsEl = document.getElementById('poProductResults');
+
+            if (!term) {
+                resultsEl.style.display = 'none';
+                resultsEl.innerHTML = '';
+                return;
+            }
+
+            poProductSearchTimeout = setTimeout(() => {
+                const normalized = normalizeBarcode(term);
+                const exact = barcodeMap.get(term) || barcodeMap.get(normalized);
+                if (exact) {
+                    addPoItemProduct(exact);
+                    return;
+                }
+
+                const q = term.toLowerCase();
+                const matches = (products || []).filter(p =>
+                    (p.product_name || '').toLowerCase().includes(q) ||
+                    (p.product_code || '').toLowerCase().includes(q) ||
+                    (p.barcode || '').toLowerCase().includes(q)
+                ).slice(0, 8);
+
+                renderPoProductResults(matches);
+            }, 150);
+        }
+
+        function renderPoProductResults(matches) {
+            const resultsEl = document.getElementById('poProductResults');
+            if (matches.length === 0) {
+                resultsEl.innerHTML = '<div style="padding:10px;color:var(--text-muted);">No matching products</div>';
+                resultsEl.style.display = 'block';
+                return;
+            }
+            resultsEl.innerHTML = matches.map(p => `
+                <div data-product-id="${p.id}" class="po-product-result"
+                     style="padding:10px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);"
+                     onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+                     onmousedown="event.preventDefault(); selectPoProductById(${p.id});">
+                    ${p.product_code} - ${p.product_name}
+                </div>`).join('');
+            resultsEl.style.display = 'block';
+        }
+
+        function selectPoProductById(id) {
+            const product = productsById.get(id);
+            if (product) addPoItemProduct(product);
+        }
+
+        function handlePoProductKeydown(event) {
+            if (event.key === 'Enter') {
+                // Scanners terminate with Enter — resolve on the spot instead of
+                // waiting out the 150ms debounce meant for human typing.
+                event.preventDefault();
+                clearTimeout(poProductSearchTimeout);
+                const term = event.target.value.trim();
+                if (!term) return;
+                const normalized = normalizeBarcode(term);
+                const exact = barcodeMap.get(term) || barcodeMap.get(normalized);
+                if (exact) {
+                    addPoItemProduct(exact);
+                    return;
+                }
+                // No exact scan match — Enter picks the top of the current
+                // filtered list, same as clicking the first suggestion.
+                const first = document.querySelector('#poProductResults .po-product-result');
+                if (first) {
+                    selectPoProductById(parseInt(first.dataset.productId, 10));
+                } else {
+                    addPoItemByBarcode();
+                }
+            } else if (event.key === 'Escape') {
+                document.getElementById('poProductResults').style.display = 'none';
+            }
         }
 
         function collectPoItems() {
