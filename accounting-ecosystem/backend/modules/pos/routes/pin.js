@@ -39,6 +39,7 @@ const PIN_ELIGIBLE_ROLES = new Set([
     'corporate_admin', 'corporate_finance', 'corporate_ops',
     'business_owner', 'accountant', 'administrator', 'admin',
     'practice_manager', 'payroll_admin', 'leave_admin', 'trainee', 'super_admin',
+    'receiving_clerk',
 ]);
 
 const WEAK_PINS = new Set([

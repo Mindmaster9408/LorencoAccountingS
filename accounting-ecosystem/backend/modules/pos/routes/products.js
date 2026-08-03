@@ -450,7 +450,7 @@ router.get('/serials/search', requirePermission('PRODUCTS.VIEW'), async (req, re
 
     const { data, error } = await supabase
       .from('pos_product_serials')
-      .select('id, serial_number, status, product_id, sale_id, sold_at, received_reference, created_at, products(product_name, product_code)')
+      .select('id, serial_number, status, product_id, sale_id, sold_at, received_reference, receive_id, transfer_id, created_at, products(product_name, product_code)')
       .eq('company_id', req.companyId)
       .ilike('serial_number', `%${serial.trim()}%`)
       .order('created_at', { ascending: false })
@@ -459,6 +459,153 @@ router.get('/serials/search', requirePermission('PRODUCTS.VIEW'), async (req, re
     if (error) return res.status(500).json({ error: error.message });
     res.json({ results: data || [] });
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/pos/products/serials/:id/history
+ * Full purchase-to-sale trail for one serial-tracked unit — backs the
+ * "Details" drill-down on the Serial Number Lookup report. Deliberately
+ * separate from /serials/search (which stays a fast, cheap list query):
+ * this does several extra round trips to resolve supplier, invoice, and
+ * customer identity, so it only runs for the one serial a user actually
+ * opens, not for every row in a search result.
+ *
+ * A serial's purchase origin is resolved via exactly one of two FKs added
+ * in migration 075 (receive_id -> pos_supplier_receives, transfer_id ->
+ * pos_company_transfers) depending on which path it was received through.
+ * Serials created before that migration have neither set — those fall
+ * back to the original free-text received_reference with no structured
+ * supplier/invoice/date/quantity, which is surfaced to the frontend as
+ * purchase: null rather than guessed at.
+ */
+router.get('/serials/:id/history', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
+  try {
+    const serialId = parseInt(req.params.id);
+    if (!serialId) return res.status(400).json({ error: 'Invalid serial id' });
+
+    const { data: serialRow, error: serialErr } = await supabase
+      .from('pos_product_serials')
+      .select('id, serial_number, status, product_id, sale_id, sold_at, received_reference, receive_id, transfer_id, created_at, products(product_name, product_code)')
+      .eq('company_id', req.companyId)
+      .eq('id', serialId)
+      .maybeSingle();
+    if (serialErr) return res.status(500).json({ error: serialErr.message });
+    if (!serialRow) return res.status(404).json({ error: 'Serial not found' });
+
+    let purchase = null;
+
+    if (serialRow.receive_id) {
+      const { data: receive } = await supabase
+        .from('pos_supplier_receives')
+        .select('id, supplier_name, reference, created_at')
+        .eq('company_id', req.companyId)
+        .eq('id', serialRow.receive_id)
+        .maybeSingle();
+      if (receive) {
+        const { data: receiveItem } = await supabase
+          .from('pos_supplier_receive_items')
+          .select('quantity')
+          .eq('receive_id', receive.id)
+          .eq('product_id', serialRow.product_id)
+          .maybeSingle();
+        purchase = {
+          source: 'supplier_receive',
+          supplier_name: receive.supplier_name,
+          invoice_number: receive.reference || null,
+          purchase_date: receive.created_at,
+          quantity_purchased: receiveItem ? receiveItem.quantity : null,
+        };
+      }
+    } else if (serialRow.transfer_id) {
+      const { data: transfer } = await supabase
+        .from('pos_company_transfers')
+        .select('id, purchase_order_id, received_at, created_at')
+        .eq('company_id', req.companyId)
+        .eq('id', serialRow.transfer_id)
+        .maybeSingle();
+      if (transfer) {
+        const { data: transferItem } = await supabase
+          .from('pos_company_transfer_items')
+          .select('quantity_received')
+          .eq('transfer_id', transfer.id)
+          .eq('receiver_product_id', serialRow.product_id)
+          .maybeSingle();
+
+        let supplierName = null;
+        let invoiceNumber = null;
+        if (transfer.purchase_order_id) {
+          const { data: po } = await supabase
+            .from('pos_purchase_orders')
+            .select('id, po_number, supplier_id, invoice_id, suppliers(name)')
+            .eq('id', transfer.purchase_order_id)
+            .maybeSingle();
+          if (po) {
+            supplierName = po.suppliers ? po.suppliers.name : null;
+            invoiceNumber = `PO ${po.po_number}`;
+            if (po.invoice_id) {
+              const { data: invoice } = await supabase
+                .from('inter_company_invoices')
+                .select('invoice_number')
+                .eq('id', po.invoice_id)
+                .maybeSingle();
+              if (invoice) invoiceNumber = invoice.invoice_number;
+            }
+          }
+        }
+
+        purchase = {
+          source: 'purchase_order',
+          supplier_name: supplierName,
+          invoice_number: invoiceNumber,
+          purchase_date: transfer.received_at || transfer.created_at,
+          quantity_purchased: transferItem ? transferItem.quantity_received : null,
+        };
+      }
+    }
+
+    let sale = null;
+    if (serialRow.sale_id) {
+      const { data: saleRow } = await supabase
+        .from('sales')
+        .select('id, sale_number, customer_id, created_at')
+        .eq('company_id', req.companyId)
+        .eq('id', serialRow.sale_id)
+        .maybeSingle();
+      if (saleRow) {
+        let customerName = 'Cash Sale Customer';
+        if (saleRow.customer_id) {
+          const { data: customer } = await supabase
+            .from('customers')
+            .select('name')
+            .eq('id', saleRow.customer_id)
+            .maybeSingle();
+          if (customer) customerName = customer.name;
+        }
+        sale = {
+          sale_id: saleRow.id,
+          sale_number: saleRow.sale_number,
+          customer_name: customerName,
+          sold_at: serialRow.sold_at || saleRow.created_at,
+        };
+      }
+    }
+
+    res.json({
+      serial: {
+        id: serialRow.id,
+        serial_number: serialRow.serial_number,
+        status: serialRow.status,
+        product_name: serialRow.products ? serialRow.products.product_name : null,
+        product_code: serialRow.products ? serialRow.products.product_code : null,
+        received_reference: serialRow.received_reference,
+      },
+      purchase,
+      sale,
+    });
+  } catch (err) {
+    console.error('[products] serials history:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

@@ -655,6 +655,7 @@ router.post('/receive', requirePermission('INVENTORY.ADJUST'), async (req, res) 
               serial_number: String(s).trim(),
               status: 'in_stock',
               received_reference: `Receive #${receive.id}${reference ? ' / ' + reference : ''}`,
+              receive_id: receive.id,
               created_by_user_id: req.user.userId,
             }))
           );

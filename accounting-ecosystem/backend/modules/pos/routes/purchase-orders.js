@@ -708,6 +708,7 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
                 serial_number: String(s).trim(),
                 status: 'in_stock',
                 received_reference: `Delivery #${delivery.delivery_number} for PO ${po.po_number}`,
+                transfer_id: deliveryId,
                 created_by_user_id: req.user.userId,
               }))
             );

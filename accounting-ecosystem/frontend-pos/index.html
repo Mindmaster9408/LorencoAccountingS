@@ -5137,6 +5137,7 @@
                                     <option value="shift_supervisor">Shift Supervisor</option>
                                     <option value="senior_cashier">Senior Cashier</option>
                                     <option value="cashier">Cashier</option>
+                                    <option value="receiving_clerk">Receiving Clerk (PO deliveries only — no Reports/Dashboard)</option>
                                     <option value="trainee">Trainee</option>
                                 </optgroup>
                                 <optgroup label="Special">
@@ -5202,6 +5203,7 @@
                                 <option value="shift_supervisor">Shift Supervisor</option>
                                 <option value="senior_cashier">Senior Cashier</option>
                                 <option value="cashier">Cashier</option>
+                                <option value="receiving_clerk">Receiving Clerk (PO deliveries only — no Reports/Dashboard)</option>
                                 <option value="trainee">Trainee</option>
                             </optgroup>
                             <optgroup label="Special">
@@ -5261,6 +5263,7 @@
                                     <option value="shift_supervisor">Shift Supervisor</option>
                                     <option value="senior_cashier">Senior Cashier</option>
                                     <option value="cashier">Cashier</option>
+                                    <option value="receiving_clerk">Receiving Clerk (PO deliveries only — no Reports/Dashboard)</option>
                                     <option value="trainee">Trainee</option>
                                 </optgroup>
                                 <optgroup label="Corporate">
@@ -6605,8 +6608,16 @@
             if (shortcutIds.size > 0) selectedCategory = '__shortcuts__';
             loadProducts();
             startProductAutoRefresh();
-            checkSession();
-            showTab('till');
+            // receiving_clerk has no Till/Sales access (see permissions.js) — land
+            // on Stock (where the Purchase Orders receiving flow lives) instead of
+            // Till, and skip checkSession()'s "Please open a till session" prompt,
+            // which is meaningless for a role that never opens a till.
+            if (userRole === 'receiving_clerk') {
+                showTab('stock');
+            } else {
+                checkSession();
+                showTab('till');
+            }
 
             // Workstream 82 — Flow 1: offer to activate this device right after a
             // manager's first login on it, so daily logins after this need only a PIN.
@@ -6682,14 +6693,26 @@
                 if (dashboardTab) dashboardTab.classList.add('role-hidden');
             }
 
-            // Hide Stock and Loyalty for the same list — found live 2026-07-31 that
-            // neither tab had ever been role-gated at all, so till-tier staff
-            // (cashier, senior_cashier, trainee) could see them despite the ask
-            // being "till staff only get Till and Cash Up." Same SUPERVISOR_TIER_ROLES
-            // list as Reports/Dashboard above — shift_supervisor and up keep both.
+            // Hide Loyalty for the same list — found live 2026-07-31 that neither
+            // tab had ever been role-gated at all, so till-tier staff (cashier,
+            // senior_cashier, trainee) could see them despite the ask being
+            // "till staff only get Till and Cash Up." Same SUPERVISOR_TIER_ROLES
+            // list as Reports/Dashboard above — shift_supervisor and up keep it.
             if (!SUPERVISOR_TIER_ROLES.includes(userRole)) {
-                if (stockTab) stockTab.classList.add('role-hidden');
                 if (loyaltyTab) loyaltyTab.classList.add('role-hidden');
+            }
+
+            // Stock — deliberately a SEPARATE list from Reports/Dashboard/Loyalty
+            // above (2026-08-03). receiving_clerk needs the Stock tab (backend
+            // INVENTORY.VIEW/PURCHASE_ORDERS.VIEW/RECEIVE all grant her explicit
+            // access — see permissions.js) purely to receive/book-in Purchase
+            // Order deliveries, but must NOT see Reports, Dashboard, or Loyalty —
+            // those stay gated to SUPERVISOR_TIER_ROLES only, which this role is
+            // intentionally not part of. Do not fold this back into
+            // SUPERVISOR_TIER_ROLES or she gains Reports/Dashboard access too.
+            const STOCK_TAB_ROLES = [...SUPERVISOR_TIER_ROLES, 'receiving_clerk'];
+            if (!STOCK_TAB_ROLES.includes(userRole)) {
+                if (stockTab) stockTab.classList.add('role-hidden');
             }
 
             // Margin/tax-sensitive reports (VAT, Gross Profit, Forensic Audit, Sales
@@ -17151,14 +17174,18 @@
                     </tbody>
                 </table>`;
 
-            // Actions
-            if (isSupplier && po.status === 'submitted') {
+            // Actions — receiving_clerk only ever has RECEIVE/VIEW at the backend
+            // (see permissions.js), never CREATE/APPROVE/DISPATCH/CLOSE, so none
+            // of Accept/Reject/Dispatch/Cancel/Force-Close would ever succeed for
+            // her; skip rendering them rather than showing a button that just 403s.
+            const poActionsAllowed = userRole !== 'receiving_clerk';
+            if (poActionsAllowed && isSupplier && po.status === 'submitted') {
                 html += `<div style="margin-bottom:14px;display:flex;gap:8px;">
                     <button class="btn btn-primary" onclick="acceptPo(${po.id})">✅ Accept Order</button>
                     <button class="btn btn-secondary" onclick="rejectPo(${po.id})">Reject Order</button>
                 </div>`;
             }
-            if (isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+            if (poActionsAllowed && isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
                 html += `
                     <div style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
                         <h4 style="margin:0 0 8px;font-size:14px;">Dispatch a Delivery</h4>
@@ -17169,10 +17196,10 @@
                         <button class="btn btn-primary" onclick="submitDispatchDelivery(${po.id})">🚚 Dispatch Delivery</button>
                     </div>`;
             }
-            if (!isSupplier && ['draft', 'submitted', 'accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+            if (poActionsAllowed && !isSupplier && ['draft', 'submitted', 'accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
                 html += `<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="cancelPo(${po.id})">Cancel Order</button></div>`;
             }
-            if (!isSupplier && ['partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+            if (poActionsAllowed && !isSupplier && ['partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
                 html += `<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="closePoForce(${po.id})">Force-Close (accept as final)</button></div>`;
             }
 
@@ -17242,7 +17269,7 @@
                     <div style="background:${disc.resolution_reason ? 'var(--surface)' : 'rgba(198,40,40,0.15)'};border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;">
                         <strong>${disc.discrepancy_type}</strong> — variance ${disc.variance_quantity > 0 ? '+' : ''}${disc.variance_quantity}
                         ${disc.investigation_required ? ' 🚩' : ''}
-                        ${disc.resolution_reason ? `<div style="color:#6ee7b7;margin-top:4px;">Resolved: ${disc.resolution_reason.replace(/_/g, ' ')} — ${disc.resolution_notes || ''}</div>` : (!isSupplier ? `
+                        ${disc.resolution_reason ? `<div style="color:#6ee7b7;margin-top:4px;">Resolved: ${disc.resolution_reason.replace(/_/g, ' ')} — ${disc.resolution_notes || ''}</div>` : (!isSupplier && userRole !== 'receiving_clerk' ? `
                             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                                 <select id="poResolveReason-${disc.id}" style="padding:5px;">${reasonOptions}</select>
                                 <input type="text" id="poResolveNotes-${disc.id}" placeholder="Resolution notes (required)" style="flex:1;min-width:200px;padding:5px;">
@@ -20572,7 +20599,7 @@
                                     <td style="padding:8px;color:#222;">${r.products ? r.products.product_name.replace(/</g, '&lt;') : '—'}</td>
                                     <td style="padding:8px;color:#222;text-transform:capitalize;">${r.status}</td>
                                     <td style="padding:8px;color:#222;">${r.sold_at ? new Date(r.sold_at).toLocaleString() : '—'}</td>
-                                    <td style="padding:8px;">${r.sale_id ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="viewSaleDetail(${r.sale_id})">View Sale</button>` : ''}</td>
+                                    <td style="padding:8px;"><button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="viewSerialHistory(${r.id})">Details</button></td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -20580,6 +20607,93 @@
                 `;
             } catch (e) {
                 resultsEl.innerHTML = `<p style="color:#f44336;">Error: ${e.message}</p>`;
+            }
+        }
+
+        // Serial history detail — the who-bought-it/who-sold-it drill-down for
+        // one unit. A separate call from the search list above (GET
+        // /serials/:id/history) since it does several extra joins (supplier,
+        // invoice, customer) that only need to run for the one row a user
+        // actually opens, not every row in a search result.
+        async function viewSerialHistory(serialId) {
+            const modalId = 'serialHistoryModal';
+            let modal = document.getElementById(modalId);
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = modalId;
+                modal.className = 'modal-overlay';
+                modal.innerHTML = `
+                    <div class="modal" style="max-width:480px;">
+                        <div class="modal-header">
+                            <h2>Serial History</h2>
+                            <button class="close-btn" onclick="document.getElementById('${modalId}').style.display='none'">&times;</button>
+                        </div>
+                        <div class="modal-body" id="serialHistoryBody">Loading...</div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').style.display='none'">Close</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+            }
+            modal.style.display = 'flex';
+            const bodyEl = document.getElementById('serialHistoryBody');
+            bodyEl.innerHTML = '<div style="text-align:center;padding:20px;color:#667eea;">Loading...</div>';
+
+            try {
+                const res = await fetch(`${API_URL}/pos/products/serials/${serialId}/history`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    bodyEl.innerHTML = `<p style="color:#f44336;">${data.error || 'Failed to load history'}</p>`;
+                    return;
+                }
+
+                const esc = s => (s == null ? '' : String(s)).replace(/</g, '&lt;');
+                const row = (label, value) => `
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;">
+                        <span style="color:#666;">${label}</span><span style="color:#222;font-weight:500;">${value}</span>
+                    </div>`;
+
+                let html = `
+                    <div style="margin-bottom:14px;">
+                        ${row('Product', esc(data.serial.product_name) + (data.serial.product_code ? ` (${esc(data.serial.product_code)})` : ''))}
+                        ${row('Serial Number', esc(data.serial.serial_number))}
+                        ${row('Status', `<span style="text-transform:capitalize;">${esc(data.serial.status)}</span>`)}
+                    </div>`;
+
+                html += '<h3 style="font-size:13px;color:#667eea;margin:10px 0 6px;">Purchase</h3>';
+                if (data.purchase) {
+                    html += `<div style="margin-bottom:14px;">
+                        ${row('Supplier', esc(data.purchase.supplier_name) || '—')}
+                        ${row('Invoice / Reference', esc(data.purchase.invoice_number) || '—')}
+                        ${row('Purchase Date', data.purchase.purchase_date ? new Date(data.purchase.purchase_date).toLocaleString() : '—')}
+                        ${row('Quantity Purchased', data.purchase.quantity_purchased != null ? data.purchase.quantity_purchased : '—')}
+                    </div>`;
+                } else {
+                    html += `<div style="margin-bottom:14px;color:#999;font-size:12px;">
+                        No structured purchase record on file for this unit (received before this history tracking was added).
+                        ${data.serial.received_reference ? `<div style="margin-top:4px;">Original note: ${esc(data.serial.received_reference)}</div>` : ''}
+                    </div>`;
+                }
+
+                html += '<h3 style="font-size:13px;color:#667eea;margin:10px 0 6px;">Sale</h3>';
+                if (data.sale) {
+                    html += `<div>
+                        ${row('Sold To', esc(data.sale.customer_name))}
+                        ${row('Sale Invoice / Receipt', esc(data.sale.sale_number))}
+                        ${row('Sale Date', data.sale.sold_at ? new Date(data.sale.sold_at).toLocaleString() : '—')}
+                    </div>
+                    <div style="margin-top:10px;">
+                        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="viewSaleDetail(${data.sale.sale_id})">View Full Sale</button>
+                    </div>`;
+                } else {
+                    html += '<div style="color:#999;font-size:12px;">Not sold yet — still in stock.</div>';
+                }
+
+                bodyEl.innerHTML = html;
+            } catch (e) {
+                bodyEl.innerHTML = `<p style="color:#f44336;">Error: ${e.message}</p>`;
             }
         }
 

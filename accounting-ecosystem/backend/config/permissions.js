@@ -19,6 +19,7 @@
  *   assistant_manager (50) — Limited management
  *   district_trainer (55)  — District training/support, not full management
  *   cashier (20)           — POS terminal only
+ *   receiving_clerk (25)   — PO delivery receiving only, no Reports/Dashboard
  *   trainee (5)            — Supervised access
  *
  * regional_manager/district_manager/corporate_finance/corporate_ops were
@@ -50,6 +51,13 @@ const ROLE_LEVELS = {
   shift_supervisor: 40,
   senior_cashier: 30,
   cashier: 20,
+  // Deliberately NOT in SUPERVISOR_ROLES/MANAGEMENT_ROLES/ALL_ROLES below —
+  // narrow-purpose role (2026-08-03) for staff who receive/book-in Purchase
+  // Order deliveries (including partial deliveries — Codebox 87) but must
+  // never see Reports, the Dashboard, or any sales/revenue figures, which
+  // are all gated by SUPERVISOR_ROLES elsewhere. Granted only the specific
+  // permissions it needs, explicitly, in the PERMISSIONS block below.
+  receiving_clerk: 25,
   trainee: 5,
   // Legacy mappings
   admin: 70,
@@ -95,7 +103,9 @@ const PERMISSIONS = {
 
   // ===== POS MODULE =====
   PRODUCTS: {
-    VIEW: ALL_ROLES,
+    // +receiving_clerk: needed so the base product list loads at login
+    // (used by the Till screen for every role); she has no Till/Sales access.
+    VIEW: [...ALL_ROLES, 'receiving_clerk'],
     CREATE: MANAGEMENT_ROLES,
     EDIT: MANAGEMENT_ROLES,
     DELETE: ['super_admin', 'business_owner', 'practice_manager', 'administrator', 'store_manager'],
@@ -125,7 +135,10 @@ const PERMISSIONS = {
   //   assistant_manager(50) > shift_supervisor(40) > ...
   INVENTORY: {
     // Basic read access — items, stock levels, movement history
-    VIEW:              SUPERVISOR_ROLES,
+    // +receiving_clerk: needs the Stock tab (quantities/value) to work
+    // Purchase Order receiving; does NOT grant Reports/Dashboard (separate
+    // REPORTS.VIEW permission, deliberately not extended to this role).
+    VIEW:              [...SUPERVISOR_ROLES, 'receiving_clerk'],
 
     // Receive stock (quick receive, PO receive)
     RECEIVE:           [...MANAGEMENT_ROLES, 'assistant_manager', 'shift_supervisor'],
@@ -194,9 +207,12 @@ const PERMISSIONS = {
     CREATE:  SUPERVISOR_ROLES,   // customer side: draft + submit a PO
     APPROVE: MANAGEMENT_ROLES,   // supplier side: accept/reject; customer side: cancel after acceptance
     DISPATCH: SUPERVISOR_ROLES,  // supplier side: dispatch a delivery against an accepted PO
-    RECEIVE:  SUPERVISOR_ROLES,  // customer side: receive a delivery
+    // +receiving_clerk: her one core job — receive/book-in deliveries against
+    // a PO already raised by someone else, including partial deliveries.
+    RECEIVE:  [...SUPERVISOR_ROLES, 'receiving_clerk'],
     CLOSE:    MANAGEMENT_ROLES,  // force-close a PO short of full quantity (accept partial as final)
-    VIEW:     SUPERVISOR_ROLES,
+    // +receiving_clerk: must be able to see the PO/delivery list to receive against it.
+    VIEW:     [...SUPERVISOR_ROLES, 'receiving_clerk'],
   },
   TILLS: {
     VIEW: ALL_ROLES,
@@ -211,7 +227,9 @@ const PERMISSIONS = {
     EXPORT: MANAGEMENT_ROLES,
   },
   SETTINGS: {
-    VIEW: ALL_ROLES,
+    // +receiving_clerk: read-only — needs company stock policy (e.g.
+    // allow-negative-stock) to receive deliveries correctly.
+    VIEW: [...ALL_ROLES, 'receiving_clerk'],
     EDIT: MANAGEMENT_ROLES,
   },
 
