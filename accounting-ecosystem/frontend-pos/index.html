@@ -15257,9 +15257,10 @@
                     // gone after a refresh. Belt-and-braces fix: re-send the current
                     // checkbox state here too, so the one button the user trusts is
                     // guaranteed to persist everything visible in this modal.
+                    let permSaveFailed = false;
                     if (currentLinkRelationshipId && document.getElementById('supplierEditLinkPermissions').style.display !== 'none') {
                         try {
-                            await fetch(`${API_URL}/pos/company-links/${currentLinkRelationshipId}/permissions`, {
+                            const permRes = await fetch(`${API_URL}/pos/company-links/${currentLinkRelationshipId}/permissions`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                                 body: JSON.stringify({
@@ -15270,11 +15271,19 @@
                                     purchase_orders: document.getElementById('permPurchaseOrders').checked,
                                 })
                             });
+                            if (!permRes.ok) {
+                                permSaveFailed = true;
+                                const permResult = await permRes.json().catch(() => ({}));
+                                console.error('Company link permission save failed:', permRes.status, permResult);
+                                showNotification(`Supplier saved, but link permissions failed: ${permResult.error || permRes.status}`, 'error');
+                            }
                         } catch (permErr) {
+                            permSaveFailed = true;
                             console.error('Error saving company link permissions:', permErr);
+                            showNotification(`Supplier saved, but link permissions failed: ${permErr.message}`, 'error');
                         }
                     }
-                    showNotification(`Supplier ${id ? 'updated' : 'created'}`, 'success');
+                    if (!permSaveFailed) showNotification(`Supplier ${id ? 'updated' : 'created'}`, 'success');
                     closeSupplierEditModal();
                     loadSettingsSuppliers();
                 } else {
