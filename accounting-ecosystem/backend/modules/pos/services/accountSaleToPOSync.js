@@ -11,11 +11,17 @@
  *
  * Deliberately a NEW, SELF-CONTAINED module rather than modifying the
  * existing Purchase Order engine (purchase-orders.js) — that engine is
- * already live-verified and proven (Workstreams 87-89); this file calls it
- * only for its exported generatePoInvoice() helper and otherwise re-derives
+ * already live-verified and proven (Workstreams 87-89); this file re-derives
  * the small subset of dispatch/receive logic it needs, adapted for the one
  * real difference: stock has ALREADY moved (the seller's side, via the POS
  * sale) — this only ever increments the BUYER's stock, never the seller's.
+ *
+ * Invoicing (2026-08-06 rework): the REAL account sale that triggered this
+ * whole sync (saleId/saleNumber, passed in below) IS this PO's invoice — it
+ * must never call purchase-orders.js's createAccountSaleFromPO() (formerly
+ * generatePoInvoice()) to generate a SECOND one, or the same transaction
+ * would be double-counted in the seller's Gross Profit/VAT/Sales Reports.
+ * This file only links pos_purchase_orders.sale_id to the existing saleId.
  *
  * Never allowed to fail or block the sale that triggered it — every call
  * site treats this as fire-and-forget-but-logged, exactly like
@@ -27,7 +33,6 @@ const crypto = require('crypto');
 const { supabase } = require('../../../config/database');
 const { posAuditFromReq, POS_EVENTS } = require('./posAuditLogger');
 const { adjustStockCAS } = require('./stockCAS');
-const { generatePoInvoice } = require('../routes/purchase-orders');
 
 const OPEN_PO_STATUSES = ['submitted', 'accepted', 'partially_fulfilled', 'awaiting_final_delivery'];
 
@@ -38,9 +43,9 @@ function generateDeliveryNumber() {
   return 'DEL-' + crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
-/** Synthetic req-like object so generatePoInvoice()/posAuditFromReq() can log
- * against the BUYER company, attributing the action to the real seller-side
- * user who triggered it (there is no real buyer-side user in this flow). */
+/** Synthetic req-like object so posAuditFromReq() can log against the BUYER
+ * company, attributing the action to the real seller-side user who
+ * triggered it (there is no real buyer-side user in this flow). */
 function buyerAuditContext(buyerCompanyId, sellerUserId) {
   return { companyId: buyerCompanyId, user: { userId: sellerUserId, email: 'auto-sync', role: 'system' }, ip: null, headers: {} };
 }
@@ -216,12 +221,16 @@ async function syncAccountSaleToLinkedBuyerPO({ companyId, customerId, saleId, s
       posAuditFromReq(buyerCtx, POS_EVENTS.PO_FINAL_DELIVERY, { entityType: 'purchase_order', entityId: po.id, metadata: { po_number: po.po_number, auto_synced_from_sale: saleNumber } });
     }
 
-    let invoice = null;
-    if (poCompleted && updatedPo.invoice_timing === 'after_final_delivery' && !updatedPo.invoice_id) {
-      invoice = await generatePoInvoice(updatedPo, 'received', buyerCtx);
+    // The invoice IS the real account sale that triggered this whole sync
+    // (saleId/saleNumber, passed in above) — link this PO to it directly
+    // rather than generating a second, duplicate sale the way
+    // purchase-orders.js's own 3 call sites do for a manually-created PO.
+    if (poCompleted && !updatedPo.sale_id) {
+      await supabase.from('pos_purchase_orders').update({ sale_id: saleId }).eq('id', po.id);
+      updatedPo.sale_id = saleId;
     }
 
-    return { synced: true, po: updatedPo, delivery, invoice, unmatched, isNewPO };
+    return { synced: true, po: updatedPo, delivery, saleId, unmatched, isNewPO };
   } catch (err) {
     console.error('[accountSaleToPOSync] unexpected error:', err.message);
     return { synced: false, reason: 'unexpected_error', error: err.message };

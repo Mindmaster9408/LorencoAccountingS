@@ -56,9 +56,8 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getStockPolicy } = require('../services/stockPolicyCache');
 const { adjustStockCAS } = require('../services/stockCAS');
-const { supabaseSeanStore } = require('../../../sean/supabase-store');
-const InvoiceSender = require('../../../inter-company/invoice-sender');
 const { hasPermission } = require('../../../config/permissions');
+const { generateSaleNumber, adjustCustomerAccountLedger } = require('./sales');
 
 const router = express.Router();
 
@@ -260,40 +259,143 @@ router.post('/:id/submit', requirePermission('PURCHASE_ORDERS.CREATE'), async (r
   }
 });
 
-/** Build InvoiceSender line items from purchase_order_items, billing `quantity` per line (ordered vs delivered chosen by caller). */
-async function buildInvoiceLineItems(poId, useField) {
-  const { data: items } = await supabase.from('pos_purchase_order_items').select('*').eq('purchase_order_id', poId);
-  return (items || []).map(i => ({
-    description: i.description,
-    quantity: useField === 'received' ? i.quantity_received : i.quantity_ordered,
-    unitPrice: i.unit_cost || 0,
-  })).filter(li => li.quantity > 0);
+/** Trivial supplier/customer display-name lookup — duplicated (not imported)
+ * from company-links.js's getCompanyDisplayName() deliberately: a 3-line,
+ * single-SELECT helper with no state, not worth adding a cross-file export
+ * for. Keep in sync if the fallback naming convention there ever changes. */
+async function getCompanyDisplayName(companyId) {
+  const { data } = await supabase.from('companies').select('company_name, trading_name').eq('id', companyId).maybeSingle();
+  return (data && (data.trading_name || data.company_name)) || `Company ${companyId}`;
 }
 
-async function generatePoInvoice(po, useField, req) {
-  const lineItems = await buildInvoiceLineItems(po.id, useField);
-  if (lineItems.length === 0) return null;
+/** Find (or create, for relationships that predate Workstream 100's auto-
+ * mirroring) the customer record at the SUPPLIER company representing the
+ * PO's customer company — required to bill the account sale below against. */
+async function findOrCreateCustomerForPO(po) {
+  const { data: existing } = await supabase
+    .from('customers').select('id')
+    .eq('company_id', po.supplier_company_id).eq('linked_company_id', po.company_id)
+    .maybeSingle();
+  if (existing) return existing.id;
 
-  const sender = new InvoiceSender(supabaseSeanStore);
-  const result = await sender.send({
-    senderCompanyId: po.supplier_company_id,
-    receiverCompanyId: po.company_id,
-    invoiceNumber: `INV-${po.po_number}`,
-    date: new Date().toISOString().split('T')[0],
-    lineItems,
-    notes: `Invoice for Purchase Order ${po.po_number}`,
+  const partnerName = await getCompanyDisplayName(po.company_id);
+  const { data: created, error } = await supabase.from('customers').insert({
+    company_id: po.supplier_company_id, name: partnerName,
+    customer_number: `C-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`,
+    customer_group: 'retail', loyalty_points: 0, loyalty_tier: 'bronze', current_balance: 0,
+    is_active: true, linked_company_id: po.company_id, linked_relationship_id: po.relationship_id || null,
+    link_status: 'active',
+  }).select('id').single();
+  if (error) throw new Error(`Could not create customer record for company ${po.company_id}: ${error.message}`);
+  return created.id;
+}
+
+/**
+ * Generates the PO's invoice as a REAL account sale on the supplier's side
+ * (Workstream 87 rework, 2026-08-06) — replaces the original design, which
+ * wrote to inter_company_invoices, a standalone table that never fed Gross
+ * Profit, VAT, or Customer Reports (all three read from sales/sale_items —
+ * confirmed live: a completed PO never showed up in any of them). One
+ * account sale per PO, matching "one PO, one invoice, many deliveries" —
+ * callers only invoke this once (guarded by `!po.sale_id` at each call site).
+ *
+ * Deliberately does NOT decrement stock — purchase_order_items.quantity_*
+ * and each delivery's adjustStockCAS() call already moved the supplier's
+ * stock at dispatch time (see POST /:id/deliveries above). Using
+ * create_sale_atomic here would decrement it a second time. Writes directly
+ * to sales/sale_items/sale_payments instead, mirroring exactly what that
+ * RPC would have written for these rows, then charges the customer ledger
+ * via adjustCustomerAccountLedger() — the same helper a real till "Account"
+ * sale uses (sales.js), so the resulting balance-owed and
+ * customer_account_transactions row are indistinguishable from a normal
+ * till sale.
+ */
+async function createAccountSaleFromPO(po, useField, req) {
+  const { data: items } = await supabase.from('pos_purchase_order_items').select('*').eq('purchase_order_id', po.id);
+  const lines = (items || [])
+    .map(i => ({ supplierProductId: i.supplier_product_id, quantity: useField === 'received' ? i.quantity_received : i.quantity_ordered, unitCost: i.unit_cost || 0 }))
+    .filter(l => l.quantity > 0);
+  if (lines.length === 0) return null;
+
+  const unresolved = lines.filter(l => !l.supplierProductId);
+  if (unresolved.length > 0) {
+    console.error('[purchase-orders] createAccountSaleFromPO: line(s) missing supplier_product_id, cannot invoice', po.po_number);
+    return null;
+  }
+
+  const productIds = [...new Set(lines.map(l => l.supplierProductId))];
+  const { data: dbProducts } = await supabase
+    .from('products').select('id, product_name, vat_rate, requires_vat')
+    .eq('company_id', po.supplier_company_id).in('id', productIds);
+  const productsById = new Map((dbProducts || []).map(p => [p.id, p]));
+
+  let subtotal = 0;
+  let vatAmount = 0;
+  const saleItems = [];
+  for (const line of lines) {
+    const product = productsById.get(line.supplierProductId);
+    if (!product) { console.error('[purchase-orders] createAccountSaleFromPO: supplier product not found', line.supplierProductId); continue; }
+    const lineTotal = Math.round(line.unitCost * line.quantity * 100) / 100;
+    subtotal += lineTotal;
+    if (product.requires_vat && product.vat_rate) {
+      vatAmount += lineTotal * (product.vat_rate / (100 + product.vat_rate));
+    }
+    saleItems.push({
+      product_id: line.supplierProductId, product_name: product.product_name,
+      quantity: line.quantity, unit_price: line.unitCost,
+      vat_rate: product.vat_rate || 15, line_total: lineTotal,
+    });
+  }
+  if (saleItems.length === 0) return null;
+  vatAmount = Math.round(vatAmount * 100) / 100;
+  const totalAmount = Math.round(subtotal * 100) / 100;
+
+  const customerId = await findOrCreateCustomerForPO(po);
+  const saleNumber = generateSaleNumber();
+  const receiptNumber = saleNumber.replace('SAL-', 'RC-');
+  const saleUserId = po.accepted_by || req.user.userId;
+
+  const { data: sale, error: saleErr } = await supabase.from('sales').insert({
+    company_id: po.supplier_company_id, sale_number: saleNumber, receipt_number: receiptNumber,
+    user_id: saleUserId, cashier_id: saleUserId, customer_id: customerId, till_session_id: null,
+    subtotal: totalAmount, discount_amount: 0, vat_amount: vatAmount, total_amount: totalAmount,
+    payment_method: 'account', payment_status: 'completed', status: 'completed',
+    notes: `Auto-generated from Purchase Order ${po.po_number}`,
+  }).select().single();
+  if (saleErr || !sale) { console.error('[purchase-orders] createAccountSaleFromPO: sale insert failed', saleErr && saleErr.message); return null; }
+
+  for (const item of saleItems) {
+    await supabase.from('sale_items').insert({
+      company_id: po.supplier_company_id, sale_id: sale.id, product_id: item.product_id, product_name: item.product_name,
+      quantity: item.quantity, unit_price: item.unit_price, discount_amount: 0,
+      vat_rate: item.vat_rate, line_total: item.line_total, total_price: item.line_total,
+    });
+  }
+  await supabase.from('sale_payments').insert({
+    company_id: po.supplier_company_id, sale_id: sale.id, payment_method: 'account', amount: totalAmount, reference: po.po_number,
   });
-  if (!result.success || !result.invoice || !result.invoice.id) return null;
 
-  await supabase.from('inter_company_invoices').update({ purchase_order_id: po.id }).eq('id', result.invoice.id);
-  await supabase.from('pos_purchase_orders').update({ invoice_id: result.invoice.id }).eq('id', po.id);
+  const ledgerResult = await adjustCustomerAccountLedger({
+    companyId: po.supplier_company_id, customerId, saleId: sale.id, amount: totalAmount, type: 'charge',
+    reference: po.po_number, notes: `Purchase Order ${po.po_number}`, userId: saleUserId,
+  });
+  if (!ledgerResult.ok) {
+    console.error('[purchase-orders] createAccountSaleFromPO: CRITICAL — customer ledger charge failed for sale', sale.id, ledgerResult.error);
+  }
 
-  posAuditFromReq(req, POS_EVENTS.PO_INVOICE_GENERATED, {
+  await supabase.from('pos_purchase_orders').update({ sale_id: sale.id }).eq('id', po.id);
+
+  // Audit under the SUPPLIER's company — the sale lives there — not
+  // req.companyId, which is whichever side's action (accept/close/receive)
+  // triggered this call and may be the customer's company instead. Same
+  // synthetic-context pattern as accountSaleToPOSync.js's buyerAuditContext().
+  const supplierAuditCtx = { companyId: po.supplier_company_id, user: { userId: saleUserId, email: req.user?.email || 'auto-invoice', role: req.user?.role || 'system' }, ip: req.ip || null, headers: req.headers || {} };
+  posAuditFromReq(supplierAuditCtx, POS_EVENTS.PO_INVOICE_GENERATED, {
     entityType: 'purchase_order', entityId: po.id,
-    metadata: { po_number: po.po_number, invoice_id: result.invoice.id, invoice_number: result.invoice.invoice_number, basis: useField },
+    metadata: { po_number: po.po_number, sale_id: sale.id, sale_number: saleNumber, total_amount: totalAmount, basis: useField, customer_company_id: po.company_id },
   });
 
-  return result.invoice;
+  return { id: sale.id, invoice_number: saleNumber, total: totalAmount };
 }
 
 // ── POST /:id/accept ───────────────────────────────────────────────────────
@@ -312,7 +414,7 @@ router.post('/:id/accept', requirePermission('PURCHASE_ORDERS.APPROVE'), async (
 
     let invoice = null;
     if (po.invoice_timing === 'immediate') {
-      invoice = await generatePoInvoice(updated, 'ordered', req);
+      invoice = await createAccountSaleFromPO(updated, 'ordered', req);
     }
 
     res.json({ purchaseOrder: updated, invoice });
@@ -400,8 +502,8 @@ router.post('/:id/close', requirePermission('PURCHASE_ORDERS.CLOSE'), async (req
     posAuditFromReq(req, POS_EVENTS.PO_CLOSED, { entityType: 'purchase_order', entityId: poId, metadata: { po_number: po.po_number, total_ordered_qty: po.total_ordered_qty, total_received_qty: po.total_received_qty } });
 
     let invoice = null;
-    if (po.invoice_timing === 'after_final_delivery' && !po.invoice_id) {
-      invoice = await generatePoInvoice(updated, 'received', req);
+    if (po.invoice_timing === 'after_final_delivery' && !po.sale_id) {
+      invoice = await createAccountSaleFromPO(updated, 'received', req);
     }
 
     res.json({ purchaseOrder: updated, invoice });
@@ -469,12 +571,16 @@ router.get('/:id', requirePermission('PURCHASE_ORDERS.VIEW'), async (req, res) =
     const { data: otherCompany } = await supabase.from('companies').select('id, company_name, trading_name').eq('id', otherCompanyId).maybeSingle();
 
     let invoiceSummary = null;
-    if (po.invoice_id) {
-      const invoice = await supabaseSeanStore.getInterCompanyInvoice(po.invoice_id);
-      if (invoice) {
+    if (po.sale_id) {
+      const { data: sale } = await supabase.from('sales').select('id, sale_number, total_amount').eq('id', po.sale_id).maybeSingle();
+      if (sale) {
+        // "unpaid" is a fixed label, not a live lookup — a per-sale paid/
+        // outstanding split would need to trace customer_account_transactions
+        // payment rows back to this specific sale_id, which nothing writes yet.
+        // The customer's overall running balance (Customer Reports/statement)
+        // is the accurate source for what they actually still owe.
         invoiceSummary = {
-          id: invoice.id, invoiceNumber: invoice.invoice_number, total: invoice.total,
-          paymentStatus: invoice.payment_status, senderStatus: invoice.sender_status, receiverStatus: invoice.receiver_status,
+          id: sale.id, invoiceNumber: sale.sale_number, total: sale.total_amount, paymentStatus: 'unpaid',
           ordered: po.total_ordered_qty, delivered: po.total_received_qty, outstanding: Math.max(0, po.total_ordered_qty - po.total_received_qty),
         };
       }
@@ -783,8 +889,8 @@ router.post('/:id/deliveries/:deliveryId/receive', requirePermission('PURCHASE_O
     }
 
     let invoice = null;
-    if (poCompleted && po.invoice_timing === 'after_final_delivery' && !po.invoice_id) {
-      invoice = await generatePoInvoice(updatedPo, 'received', req);
+    if (poCompleted && po.invoice_timing === 'after_final_delivery' && !po.sale_id) {
+      invoice = await createAccountSaleFromPO(updatedPo, 'received', req);
     }
 
     posAuditFromReq(req, POS_EVENTS.PO_DELIVERY_RECEIVED, { entityType: 'purchase_order', entityId: poId, metadata: { po_number: po.po_number, delivery_id: deliveryId } });
@@ -825,8 +931,3 @@ router.post('/:id/deliveries/:deliveryId/resolve-variance', requirePermission('P
 });
 
 module.exports = router;
-// Additive named export alongside the router — reused by
-// services/accountSaleToPOSync.js (Workstream 99) so an auto-completed
-// cross-company PO generates its invoice via the exact same, already-proven
-// code path a manually-completed PO uses. Zero change to router behaviour.
-module.exports.generatePoInvoice = generatePoInvoice;

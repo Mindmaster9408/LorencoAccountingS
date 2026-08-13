@@ -1896,3 +1896,10 @@ router.post('/:id/cancel-order', requirePermission('SALES.VOID'), async (req, re
 });
 
 module.exports = router;
+// Additive named exports alongside the router — reused by
+// purchase-orders.js's createAccountSaleFromPO() (Workstream 87 invoicing
+// rework) so a PO-generated account sale uses the exact same sale-number
+// format and customer-ledger-charge logic a manually-rung till sale does,
+// rather than duplicating either. Zero change to router behaviour.
+module.exports.generateSaleNumber = generateSaleNumber;
+module.exports.adjustCustomerAccountLedger = adjustCustomerAccountLedger;
