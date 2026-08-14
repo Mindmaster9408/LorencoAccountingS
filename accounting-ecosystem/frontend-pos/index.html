@@ -3192,7 +3192,7 @@
                             <div style="display:flex;gap:8px;margin-bottom:10px;">
                                 <div style="position:relative;flex:1;">
                                     <input type="text" id="poBarcodeInput" placeholder="Scan barcode or type product name/code, then Enter" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ddd;border-radius:6px;" oninput="filterPoProducts()" onkeydown="handlePoProductKeydown(event)" onblur="setTimeout(() => { const r = document.getElementById('poProductResults'); if (r) r.style.display = 'none'; }, 150)">
-                                    <div id="poProductResults" style="display:none;position:absolute;left:0;right:0;top:100%;border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;max-height:220px;overflow-y:auto;z-index:10;box-shadow:0 4px 10px rgba(0,0,0,0.3);"></div>
+                                    <div id="poProductResults" style="display:none;position:absolute;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;max-height:220px;overflow-y:auto;z-index:10;box-shadow:0 4px 10px rgba(0,0,0,0.3);"></div>
                                 </div>
                                 <button class="btn btn-secondary" onclick="addPoItemByBarcode()">Add</button>
                             </div>
