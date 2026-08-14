@@ -5140,7 +5140,7 @@
                                     <option value="shift_supervisor">Shift Supervisor</option>
                                     <option value="senior_cashier">Senior Cashier</option>
                                     <option value="cashier">Cashier</option>
-                                    <option value="receiving_clerk">Receiving Clerk (PO deliveries only — no Reports/Dashboard)</option>
+                                    <option value="receiving_clerk">Receiving Clerk (PO + Till — no Reports/Dashboard)</option>
                                     <option value="trainee">Trainee</option>
                                 </optgroup>
                                 <optgroup label="Special">
@@ -5206,7 +5206,7 @@
                                 <option value="shift_supervisor">Shift Supervisor</option>
                                 <option value="senior_cashier">Senior Cashier</option>
                                 <option value="cashier">Cashier</option>
-                                <option value="receiving_clerk">Receiving Clerk (PO deliveries only — no Reports/Dashboard)</option>
+                                <option value="receiving_clerk">Receiving Clerk (PO + Till — no Reports/Dashboard)</option>
                                 <option value="trainee">Trainee</option>
                             </optgroup>
                             <optgroup label="Special">
@@ -5266,7 +5266,7 @@
                                     <option value="shift_supervisor">Shift Supervisor</option>
                                     <option value="senior_cashier">Senior Cashier</option>
                                     <option value="cashier">Cashier</option>
-                                    <option value="receiving_clerk">Receiving Clerk (PO deliveries only — no Reports/Dashboard)</option>
+                                    <option value="receiving_clerk">Receiving Clerk (PO + Till — no Reports/Dashboard)</option>
                                     <option value="trainee">Trainee</option>
                                 </optgroup>
                                 <optgroup label="Corporate">
@@ -6611,16 +6611,8 @@
             if (shortcutIds.size > 0) selectedCategory = '__shortcuts__';
             loadProducts();
             startProductAutoRefresh();
-            // receiving_clerk has no Till/Sales access (see permissions.js) — land
-            // on Stock (where the Purchase Orders receiving flow lives) instead of
-            // Till, and skip checkSession()'s "Please open a till session" prompt,
-            // which is meaningless for a role that never opens a till.
-            if (userRole === 'receiving_clerk') {
-                showTab('stock');
-            } else {
-                checkSession();
-                showTab('till');
-            }
+            checkSession();
+            showTab('till');
 
             // Workstream 82 — Flow 1: offer to activate this device right after a
             // manager's first login on it, so daily logins after this need only a PIN.
@@ -6706,13 +6698,13 @@
             }
 
             // Stock — deliberately a SEPARATE list from Reports/Dashboard/Loyalty
-            // above (2026-08-03). receiving_clerk needs the Stock tab (backend
-            // INVENTORY.VIEW/PURCHASE_ORDERS.VIEW/RECEIVE all grant her explicit
-            // access — see permissions.js) purely to receive/book-in Purchase
-            // Order deliveries, but must NOT see Reports, Dashboard, or Loyalty —
-            // those stay gated to SUPERVISOR_TIER_ROLES only, which this role is
-            // intentionally not part of. Do not fold this back into
-            // SUPERVISOR_TIER_ROLES or she gains Reports/Dashboard access too.
+            // above (2026-08-03, widened 2026-08-06). receiving_clerk needs the
+            // Stock tab (backend INVENTORY.VIEW/PURCHASE_ORDERS.* all grant her
+            // explicit access — see permissions.js) to run the full PO lifecycle,
+            // but must NOT see Reports, Dashboard, or Loyalty — those stay gated
+            // to SUPERVISOR_TIER_ROLES only, which this role is intentionally not
+            // part of. Do not fold this back into SUPERVISOR_TIER_ROLES or she
+            // gains Reports/Dashboard access too.
             const STOCK_TAB_ROLES = [...SUPERVISOR_TIER_ROLES, 'receiving_clerk'];
             if (!STOCK_TAB_ROLES.includes(userRole)) {
                 if (stockTab) stockTab.classList.add('role-hidden');
@@ -17312,18 +17304,17 @@
                     </tbody>
                 </table>`;
 
-            // Actions — receiving_clerk only ever has RECEIVE/VIEW at the backend
-            // (see permissions.js), never CREATE/APPROVE/DISPATCH/CLOSE, so none
-            // of Accept/Reject/Dispatch/Cancel/Force-Close would ever succeed for
-            // her; skip rendering them rather than showing a button that just 403s.
-            const poActionsAllowed = userRole !== 'receiving_clerk';
-            if (poActionsAllowed && isSupplier && po.status === 'submitted') {
+            // Actions — receiving_clerk now has CREATE/APPROVE/DISPATCH/RECEIVE/
+            // CLOSE at the backend (widened 2026-08-06, see permissions.js), so
+            // no per-role guard needed here any more; every role that can see
+            // this screen at all can attempt whatever the backend allows for it.
+            if (isSupplier && po.status === 'submitted') {
                 html += `<div style="margin-bottom:14px;display:flex;gap:8px;">
                     <button class="btn btn-primary" onclick="acceptPo(${po.id})">✅ Accept Order</button>
                     <button class="btn btn-secondary" onclick="rejectPo(${po.id})">Reject Order</button>
                 </div>`;
             }
-            if (poActionsAllowed && isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+            if (isSupplier && ['accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
                 html += `
                     <div style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
                         <h4 style="margin:0 0 8px;font-size:14px;">Dispatch a Delivery</h4>
@@ -17334,10 +17325,10 @@
                         <button class="btn btn-primary" onclick="submitDispatchDelivery(${po.id})">🚚 Dispatch Delivery</button>
                     </div>`;
             }
-            if (poActionsAllowed && !isSupplier && ['draft', 'submitted', 'accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+            if (!isSupplier && ['draft', 'submitted', 'accepted', 'partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
                 html += `<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="cancelPo(${po.id})">Cancel Order</button></div>`;
             }
-            if (poActionsAllowed && !isSupplier && ['partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
+            if (!isSupplier && ['partially_fulfilled', 'awaiting_final_delivery'].includes(po.status)) {
                 html += `<div style="margin-bottom:14px;"><button class="btn btn-secondary" onclick="closePoForce(${po.id})">Force-Close (accept as final)</button></div>`;
             }
 
@@ -17407,7 +17398,7 @@
                     <div style="background:${disc.resolution_reason ? 'var(--surface)' : 'rgba(198,40,40,0.15)'};border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;">
                         <strong>${disc.discrepancy_type}</strong> — variance ${disc.variance_quantity > 0 ? '+' : ''}${disc.variance_quantity}
                         ${disc.investigation_required ? ' 🚩' : ''}
-                        ${disc.resolution_reason ? `<div style="color:#6ee7b7;margin-top:4px;">Resolved: ${disc.resolution_reason.replace(/_/g, ' ')} — ${disc.resolution_notes || ''}</div>` : (!isSupplier && userRole !== 'receiving_clerk' ? `
+                        ${disc.resolution_reason ? `<div style="color:#6ee7b7;margin-top:4px;">Resolved: ${disc.resolution_reason.replace(/_/g, ' ')} — ${disc.resolution_notes || ''}</div>` : (!isSupplier ? `
                             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                                 <select id="poResolveReason-${disc.id}" style="padding:5px;">${reasonOptions}</select>
                                 <input type="text" id="poResolveNotes-${disc.id}" placeholder="Resolution notes (required)" style="flex:1;min-width:200px;padding:5px;">

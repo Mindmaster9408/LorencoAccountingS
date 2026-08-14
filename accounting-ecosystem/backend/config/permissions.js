@@ -19,7 +19,7 @@
  *   assistant_manager (50) — Limited management
  *   district_trainer (55)  — District training/support, not full management
  *   cashier (20)           — POS terminal only
- *   receiving_clerk (25)   — PO delivery receiving only, no Reports/Dashboard
+ *   receiving_clerk (25)   — Full PO lifecycle + till, no Reports/Dashboard
  *   trainee (5)            — Supervised access
  *
  * regional_manager/district_manager/corporate_finance/corporate_ops were
@@ -52,11 +52,15 @@ const ROLE_LEVELS = {
   senior_cashier: 30,
   cashier: 20,
   // Deliberately NOT in SUPERVISOR_ROLES/MANAGEMENT_ROLES/ALL_ROLES below —
-  // narrow-purpose role (2026-08-03) for staff who receive/book-in Purchase
-  // Order deliveries (including partial deliveries — Codebox 87) but must
-  // never see Reports, the Dashboard, or any sales/revenue figures, which
-  // are all gated by SUPERVISOR_ROLES elsewhere. Granted only the specific
-  // permissions it needs, explicitly, in the PERMISSIONS block below.
+  // originally a narrow-purpose role (2026-08-03) for staff who receive/
+  // book-in Purchase Order deliveries only; widened 2026-08-06 to the full
+  // PO lifecycle (create/approve/dispatch/receive/close) plus basic till
+  // work, after live training turned up she couldn't accept an order with
+  // the receive-only version. Still must never see Reports, the Dashboard,
+  // or any sales/revenue figures — that's the one constraint that has NOT
+  // changed, so this role still stays out of SUPERVISOR_ROLES itself.
+  // Granted only the specific permissions it needs, explicitly, in the
+  // PERMISSIONS block below.
   receiving_clerk: 25,
   trainee: 5,
   // Legacy mappings
@@ -112,8 +116,10 @@ const PERMISSIONS = {
     PRICE_CHANGE: MANAGEMENT_ROLES,
   },
   SALES: {
-    VIEW: ALL_ROLES,
-    CREATE: ALL_ROLES.filter(r => r !== 'trainee'),
+    // +receiving_clerk (2026-08-06): can now help out at the till on request —
+    // base ring-up rights only, not VOID/REFUND/DISCOUNT (supervisor-tier).
+    VIEW: [...ALL_ROLES, 'receiving_clerk'],
+    CREATE: [...ALL_ROLES.filter(r => r !== 'trainee'), 'receiving_clerk'],
     VOID: SUPERVISOR_ROLES,
     REFUND: MANAGEMENT_ROLES,
     DISCOUNT: SUPERVISOR_ROLES,
@@ -204,21 +210,25 @@ const PERMISSIONS = {
   // own reasons would be a silent cross-feature regression, the same
   // reasoning documented for TRANSFERS vs INVENTORY.TRANSFER above.
   PURCHASE_ORDERS: {
-    CREATE:  SUPERVISOR_ROLES,   // customer side: draft + submit a PO
-    APPROVE: MANAGEMENT_ROLES,   // supplier side: accept/reject; customer side: cancel after acceptance
-    DISPATCH: SUPERVISOR_ROLES,  // supplier side: dispatch a delivery against an accepted PO
-    // +receiving_clerk: her one core job — receive/book-in deliveries against
-    // a PO already raised by someone else, including partial deliveries.
-    RECEIVE:  [...SUPERVISOR_ROLES, 'receiving_clerk'],
-    CLOSE:    MANAGEMENT_ROLES,  // force-close a PO short of full quantity (accept partial as final)
-    // +receiving_clerk: must be able to see the PO/delivery list to receive against it.
+    // +receiving_clerk (2026-08-06, widened from receive-only): now handles
+    // the full PO lifecycle end to end — Ruan's call after training turned
+    // up that she needed to accept an order and couldn't. Still excluded
+    // from SUPERVISOR_ROLES itself, so REPORTS/Dashboard stay closed.
+    CREATE:  [...SUPERVISOR_ROLES, 'receiving_clerk'],   // customer side: draft + submit a PO
+    APPROVE: [...MANAGEMENT_ROLES, 'receiving_clerk'],   // supplier side: accept/reject; customer side: cancel after acceptance
+    DISPATCH: [...SUPERVISOR_ROLES, 'receiving_clerk'],  // supplier side: dispatch a delivery against an accepted PO
+    RECEIVE:  [...SUPERVISOR_ROLES, 'receiving_clerk'],  // customer side: receive a delivery, including partial deliveries
+    CLOSE:    [...MANAGEMENT_ROLES, 'receiving_clerk'],  // force-close a PO short of full quantity (accept partial as final)
     VIEW:     [...SUPERVISOR_ROLES, 'receiving_clerk'],
   },
   TILLS: {
-    VIEW: ALL_ROLES,
-    OPEN: ALL_ROLES.filter(r => r !== 'trainee'),
-    CLOSE: ALL_ROLES.filter(r => r !== 'trainee'),
-    PAID_OUT: ALL_ROLES.filter(r => r !== 'trainee'), // recording cash removed from the drawer mid-shift — same trust level as closing a till
+    // +receiving_clerk: can open/close a till and record payouts when
+    // helping out at the till (2026-08-06) — not TILLS.MANAGE (reconciliation
+    // oversight), which stays management-only.
+    VIEW: [...ALL_ROLES, 'receiving_clerk'],
+    OPEN: [...ALL_ROLES.filter(r => r !== 'trainee'), 'receiving_clerk'],
+    CLOSE: [...ALL_ROLES.filter(r => r !== 'trainee'), 'receiving_clerk'],
+    PAID_OUT: [...ALL_ROLES.filter(r => r !== 'trainee'), 'receiving_clerk'], // recording cash removed from the drawer mid-shift — same trust level as closing a till
     MANAGE: MANAGEMENT_ROLES,
   },
   REPORTS: {
