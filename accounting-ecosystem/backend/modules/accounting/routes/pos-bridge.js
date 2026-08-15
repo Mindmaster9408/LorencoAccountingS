@@ -964,17 +964,23 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
       return res.status(403).json({ error: 'POS GL sync is not enabled for this company. Enable it in Settings first.', code: 'GL_SYNC_DISABLED' });
     }
 
-    // 'reference' is one of the customer_invoices columns PostgREST's schema
-    // cache cannot see on this table (confirmed live 2026-07-27, still
-    // unresolved — see the "customer_invoices PostgREST cache bug" note).
-    // The Supabase JS client (which goes through PostgREST) 42703s on it, so
-    // this dup-check and the insert below use a raw pg query via
-    // db.getClient() instead — the exact same workaround
-    // customer-invoices.js's own POST / route already uses for this table.
-    const reference = `CHARLIE-${date}`;
+    // Uses a raw pg query via db.getClient()/db.query() throughout this route
+    // rather than the Supabase JS client — confirmed live 2026-08-15 that
+    // customer_invoices/customer_invoice_lines' REAL live columns differ
+    // from what 012_accounting_schema.sql's CREATE TABLE IF NOT EXISTS
+    // describes (that migration never actually took effect — the tables
+    // already existed in an older shape, e.g. no customer_name/reference
+    // columns, invoice_date is actually "date", subtotal_ex_vat is actually
+    // "subtotal", etc. — see information_schema.columns). This also fixed a
+    // symptom that looked like a PostgREST schema-cache bug but wasn't.
+    //
+    // No 'reference' column exists to key a dup-check on, so this uses the
+    // natural key instead: one till invoice per company per day, identified
+    // by the auto-provisioned "Checkout Charlie - Sales" customer_id + date.
+    const customerId = await ensureCheckoutCharlieCustomer(companyId);
     const dupResult = await db.query(
-      `SELECT id FROM customer_invoices WHERE company_id = $1 AND reference = $2 AND status != 'void' LIMIT 1`,
-      [companyId, reference]
+      `SELECT id FROM customer_invoices WHERE company_id = $1 AND customer_id = $2 AND date = $3 AND status != 'void' LIMIT 1`,
+      [companyId, customerId, date]
     );
     if (dupResult.rows.length > 0) {
       return res.status(409).json({ error: `A till invoice for ${date} already exists`, code: 'ALREADY_GENERATED', existingInvoiceId: dupResult.rows[0].id });
@@ -1005,8 +1011,7 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
     }
 
     const revenueAccountId = await ensureCheckoutCharlieRevenueAccount(companyId);
-    const customerId       = await ensureCheckoutCharlieCustomer(companyId);
-    await ensurePettyCashBankAccount(companyId);
+    await ensurePettyCashBankAccount(companyId); // customerId already resolved above, for the dup-check
 
     const lineDefs = [];
     if (grouped.standard > 0)     lineDefs.push({ description: `Checkout Charlie till sales ${date} (standard-rated)`, totalIncVat: grouped.standard, vatRate: 15 });
@@ -1026,12 +1031,14 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
     const countResult = await db.query(`SELECT COUNT(*)::int AS count FROM customer_invoices WHERE company_id = $1`, [companyId]);
     const invoiceNumber = `INV-${String((countResult.rows[0].count || 0) + 1).padStart(4, '0')}`;
 
-    // Header + lines via raw SQL in one transaction — same reason as the
-    // dup-check above (PostgREST can't see several of this table's columns,
-    // including customer_name/reference/created_by_user_id/subtotal_ex_vat/
-    // total_inc_vat), and the same atomic-transaction shape
-    // customer-invoices.js's POST / route already uses for this exact pair
-    // of tables.
+    // Header + lines via raw SQL in one transaction, using the REAL live
+    // column names confirmed via information_schema.columns (2026-08-15):
+    // customer_invoices has date/subtotal/total_amount/balance_due/
+    // created_by (not invoice_date/subtotal_ex_vat/total_inc_vat/
+    // created_by_user_id, and no customer_name/reference at all);
+    // customer_invoice_lines has a single line_total (ex-VAT extended
+    // amount, qty x unit_price) rather than a separate subtotal_ex_vat/
+    // vat_amount/total_inc_vat/sort_order per line.
     const dbClient = await db.getClient();
     let invoice;
     try {
@@ -1039,15 +1046,14 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
 
       const hdrResult = await dbClient.query(
         `INSERT INTO customer_invoices
-           (company_id, customer_id, customer_name, invoice_number, reference,
-            invoice_date, status, vat_mode, subtotal_ex_vat, vat_amount, total_inc_vat,
-            amount_paid, notes, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           (company_id, customer_id, invoice_number, date, status, vat_mode,
+            subtotal, vat_amount, total_amount, amount_paid, balance_due, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          RETURNING *`,
         [
-          companyId, customerId, CHECKOUT_CHARLIE_CUSTOMER_NAME, invoiceNumber, reference,
-          date, 'draft', 'inclusive', totals.subtotalExVat, totals.vatAmount, totals.totalIncVat,
-          0, 'Auto-generated from Checkout Charlie till sales — review against the till count before sending.',
+          companyId, customerId, invoiceNumber, date, 'draft', 'inclusive',
+          totals.subtotalExVat, totals.vatAmount, totals.totalIncVat, 0, totals.totalIncVat,
+          'Auto-generated from Checkout Charlie till sales — review against the till count before sending.',
           req.user.id,
         ]
       );
@@ -1056,10 +1062,9 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
       for (const l of processedLines) {
         await dbClient.query(
           `INSERT INTO customer_invoice_lines
-             (invoice_id, description, account_id, line_type, quantity, unit_price,
-              vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-          [invoice.id, l.description, l.accountId, 'account', 1, l.subtotalExVat, l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder]
+             (invoice_id, description, account_id, line_type, quantity, unit_price, vat_rate, line_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [invoice.id, l.description, l.accountId, 'account', 1, l.subtotalExVat, l.vatRate, l.subtotalExVat]
         );
       }
 
