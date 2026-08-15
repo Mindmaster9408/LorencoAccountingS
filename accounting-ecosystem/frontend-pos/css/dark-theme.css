@@ -556,6 +556,12 @@ select optgroup {
 #poProductResults { background: #1e1b3a !important; }
 :root[data-theme="light"] #poProductResults { background: #fff !important; }
 
+/* Same fix, same reason, for the draft-detail "Edit Items" dropdown
+   (2026-08-15) — floats over the items table there too. Applied up front
+   this time instead of waiting for the same bug to be found live again. */
+#poDetailProductResults { background: #1e1b3a !important; }
+:root[data-theme="light"] #poDetailProductResults { background: #fff !important; }
+
 /* ── Notifications ──────────────────────────────────────────────────────────── */
 .notification {
     background: #1e1b3a !important;

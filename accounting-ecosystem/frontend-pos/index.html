@@ -17057,26 +17057,26 @@
             addPoItemProduct(product);
         }
 
-        // Adds/increments a specific product as a row in the PO items table —
-        // shared by the plain Enter/"Add" button path above and the live-filter
-        // dropdown (filterPoProducts/selectPoProductById) below, so every path
-        // to adding an item behaves identically instead of duplicating the
-        // row-build logic three times.
-        function addPoItemProduct(product) {
-            if (!poCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
-            document.getElementById('poBarcodeInput').value = '';
-            document.getElementById('poProductResults').style.display = 'none';
-            document.getElementById('poProductResults').innerHTML = '';
+        // Adds/increments a specific product as a row in a PO items table.
+        // Shared core used by both the "Create Order" tab's items UI and the
+        // draft-detail "Edit Items" UI (added 2026-08-15 so an existing draft
+        // opened via My Orders → View can be edited/submitted, not just
+        // cancelled) — same row-build logic, different target element IDs.
+        function addProductRowToPoTable(tbodyId, inputId, resultsId, product) {
+            const inputEl = document.getElementById(inputId);
+            if (inputEl) inputEl.value = '';
+            const resultsEl = document.getElementById(resultsId);
+            if (resultsEl) { resultsEl.style.display = 'none'; resultsEl.innerHTML = ''; }
 
-            const existingRow = document.querySelector(`#poItemsBody tr[data-product-id="${product.id}"]`);
+            const tbody = document.getElementById(tbodyId);
+            const existingRow = tbody.querySelector(`tr[data-product-id="${product.id}"]`);
             if (existingRow) {
                 const qtyInput = existingRow.querySelector('.po-qty');
                 qtyInput.value = (parseInt(qtyInput.value) || 0) + 1;
-                document.getElementById('poBarcodeInput').focus();
+                if (inputEl) inputEl.focus();
                 return;
             }
 
-            const tbody = document.getElementById('poItemsBody');
             const tr = document.createElement('tr');
             tr.dataset.productId = product.id;
             tr.innerHTML = `
@@ -17085,7 +17085,12 @@
                 <td style="padding:5px;"><input type="number" min="0" step="0.01" value="${product.cost_price || 0}" class="po-cost" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"></td>
                 <td style="padding:5px;text-align:center;"><button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;">&times;</button></td>`;
             tbody.appendChild(tr);
-            document.getElementById('poBarcodeInput').focus();
+            if (inputEl) inputEl.focus();
+        }
+
+        function addPoItemProduct(product) {
+            if (!poCurrentDraftId) { showNotification('Create a draft first', 'error'); return; }
+            addProductRowToPoTable('poItemsBody', 'poBarcodeInput', 'poProductResults', product);
         }
 
         // Live type-ahead filter for the "Items to Order" search — same pattern
@@ -17175,14 +17180,18 @@
             }
         }
 
-        function collectPoItems() {
+        function collectItemsFromPoTable(tbodyId) {
             const items = [];
-            document.querySelectorAll('#poItemsBody tr').forEach(row => {
+            document.querySelectorAll(`#${tbodyId} tr`).forEach(row => {
                 const qty = parseInt(row.querySelector('.po-qty')?.value) || 0;
                 const cost = parseFloat(row.querySelector('.po-cost')?.value);
                 if (qty > 0) items.push({ product_id: parseInt(row.dataset.productId), quantity: qty, unit_cost: isNaN(cost) ? undefined : cost });
             });
             return items;
+        }
+
+        function collectPoItems() {
+            return collectItemsFromPoTable('poItemsBody');
         }
 
         async function savePoItems() {
@@ -17211,6 +17220,125 @@
                     showNotification(`Order ${result.purchaseOrder.po_number} submitted`, 'success');
                     startNewPoDraft();
                     showPoTab('my-orders', null);
+                } else showNotification(result.error || 'Submit failed', 'error');
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); }
+        }
+
+        // ── Draft-detail "Edit Items" (2026-08-15) ───────────────────────────
+        // Lets an existing draft opened via My Orders → View be edited and
+        // submitted, not just cancelled — same search/add pattern as the
+        // Create Order tab above, targeting poDetailItemsBody/poDetailBarcodeInput/
+        // poDetailProductResults and poCurrentDetail's PO id instead of
+        // poCurrentDraftId, via the shared addProductRowToPoTable/
+        // collectItemsFromPoTable helpers.
+        let poDetailProductSearchTimeout = null;
+
+        function addPoDetailItemByBarcode() {
+            const input = document.getElementById('poDetailBarcodeInput');
+            const term = input.value.trim();
+            if (!term) return;
+            const product = (products || []).find(p => p.barcode === term) || (products || []).find(p => p.product_code === term) || (products || []).find(p => (p.product_name || '').toLowerCase().includes(term.toLowerCase()));
+            if (!product) { showNotification('Product not found', 'error'); return; }
+            addProductRowToPoTable('poDetailItemsBody', 'poDetailBarcodeInput', 'poDetailProductResults', product);
+        }
+
+        function filterPoDetailProducts() {
+            clearTimeout(poDetailProductSearchTimeout);
+            const term = document.getElementById('poDetailBarcodeInput').value.trim();
+            const resultsEl = document.getElementById('poDetailProductResults');
+
+            if (!term) {
+                resultsEl.style.display = 'none';
+                resultsEl.innerHTML = '';
+                return;
+            }
+
+            poDetailProductSearchTimeout = setTimeout(() => {
+                const normalized = normalizeBarcode(term);
+                const exact = barcodeMap.get(term) || barcodeMap.get(normalized);
+                if (exact) {
+                    addProductRowToPoTable('poDetailItemsBody', 'poDetailBarcodeInput', 'poDetailProductResults', exact);
+                    return;
+                }
+
+                const q = term.toLowerCase();
+                const matches = (products || []).filter(p =>
+                    (p.product_name || '').toLowerCase().includes(q) ||
+                    (p.product_code || '').toLowerCase().includes(q) ||
+                    (p.barcode || '').toLowerCase().includes(q)
+                ).slice(0, 8);
+
+                const resultsHtml = matches.length === 0
+                    ? '<div style="padding:10px;color:var(--text-muted);">No matching products</div>'
+                    : matches.map(p => `
+                        <div data-product-id="${p.id}" class="po-detail-product-result"
+                             style="padding:10px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);"
+                             onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
+                             onmousedown="event.preventDefault(); selectPoDetailProductById(${p.id});">
+                            ${p.product_code} - ${p.product_name}
+                        </div>`).join('');
+                resultsEl.innerHTML = resultsHtml;
+                resultsEl.style.display = 'block';
+            }, 150);
+        }
+
+        function selectPoDetailProductById(id) {
+            const product = productsById.get(id);
+            if (product) addProductRowToPoTable('poDetailItemsBody', 'poDetailBarcodeInput', 'poDetailProductResults', product);
+        }
+
+        function handlePoDetailProductKeydown(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                clearTimeout(poDetailProductSearchTimeout);
+                const term = event.target.value.trim();
+                if (!term) return;
+                const normalized = normalizeBarcode(term);
+                const exact = barcodeMap.get(term) || barcodeMap.get(normalized);
+                if (exact) {
+                    addProductRowToPoTable('poDetailItemsBody', 'poDetailBarcodeInput', 'poDetailProductResults', exact);
+                    return;
+                }
+                const first = document.querySelector('#poDetailProductResults .po-detail-product-result');
+                if (first) {
+                    selectPoDetailProductById(parseInt(first.dataset.productId, 10));
+                } else {
+                    addPoDetailItemByBarcode();
+                }
+            } else if (event.key === 'Escape') {
+                document.getElementById('poDetailProductResults').style.display = 'none';
+            }
+        }
+
+        async function savePoDetailItems() {
+            if (!poCurrentDetail) return;
+            const poId = poCurrentDetail.purchaseOrder.id;
+            const items = collectItemsFromPoTable('poDetailItemsBody');
+            if (items.length === 0) { showNotification('Add at least one item with a quantity', 'error'); return false; }
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/items`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ items })
+                });
+                const result = await res.json();
+                if (res.ok) { showNotification('Items saved', 'success'); return true; }
+                showNotification(result.error || 'Failed to save items', 'error');
+                return false;
+            } catch (err) { showNotification('Error: ' + err.message, 'error'); return false; }
+        }
+
+        async function submitPoDetailOrder() {
+            if (!poCurrentDetail) return;
+            const poId = poCurrentDetail.purchaseOrder.id;
+            const saved = await savePoDetailItems();
+            if (!saved) return;
+            if (!confirm('Submit this purchase order to the supplier?')) return;
+            try {
+                const res = await fetch(`${API_URL}/pos/purchase-orders/${poId}/submit`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                if (res.ok) {
+                    showNotification(`Order ${result.purchaseOrder.po_number} submitted`, 'success');
+                    await openPoDetail(poId);
                 } else showNotification(result.error || 'Submit failed', 'error');
             } catch (err) { showNotification('Error: ' + err.message, 'error'); }
         }
@@ -17303,6 +17431,47 @@
                             </tr>`).join('')}
                     </tbody>
                 </table>`;
+
+            // Edit Items (2026-08-15) — a draft opened via My Orders → View
+            // previously only offered Cancel; this lets the customer actually
+            // adjust quantities/items and submit it, reusing the same
+            // search-and-add pattern as the Create Order tab (see
+            // addProductRowToPoTable/collectItemsFromPoTable and the
+            // poDetail*/savePoDetailItems/submitPoDetailOrder functions).
+            if (!isSupplier && po.status === 'draft') {
+                html += `
+                    <div style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+                        <h4 style="margin:0 0 8px;font-size:14px;">Edit Items</h4>
+                        <div style="display:flex;gap:8px;margin-bottom:10px;">
+                            <div style="position:relative;flex:1;">
+                                <input type="text" id="poDetailBarcodeInput" placeholder="Scan barcode or type product name/code, then Enter" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);" oninput="filterPoDetailProducts()" onkeydown="handlePoDetailProductKeydown(event)" onblur="setTimeout(() => { const r = document.getElementById('poDetailProductResults'); if (r) r.style.display = 'none'; }, 150)">
+                                <div id="poDetailProductResults" style="display:none;position:absolute;left:0;right:0;top:100%;border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;max-height:220px;overflow-y:auto;z-index:10;box-shadow:0 4px 10px rgba(0,0,0,0.3);"></div>
+                            </div>
+                            <button class="btn btn-secondary" onclick="addPoDetailItemByBarcode()">Add</button>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead><tr style="background:#667eea;color:white;">
+                                <th style="padding:6px;text-align:left;">Product</th>
+                                <th style="padding:6px;text-align:right;width:90px;">Qty Ordered</th>
+                                <th style="padding:6px;text-align:right;width:100px;">Unit Cost</th>
+                                <th style="padding:6px;width:34px;"></th>
+                            </tr></thead>
+                            <tbody id="poDetailItemsBody">
+                                ${(items || []).map(i => `
+                                    <tr data-product-id="${i.product_id}">
+                                        <td style="padding:5px;">${i.description}</td>
+                                        <td style="padding:5px;"><input type="number" min="1" value="${i.quantity_ordered}" class="po-qty" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"></td>
+                                        <td style="padding:5px;"><input type="number" min="0" step="0.01" value="${i.unit_cost || 0}" class="po-cost" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;"></td>
+                                        <td style="padding:5px;text-align:center;"><button onclick="this.closest('tr').remove()" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:16px;">&times;</button></td>
+                                    </tr>`).join('')}
+                            </tbody>
+                        </table>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+                            <button class="btn btn-secondary" onclick="savePoDetailItems()">Save Items</button>
+                            <button class="btn btn-primary" onclick="submitPoDetailOrder()">📤 Submit Order</button>
+                        </div>
+                    </div>`;
+            }
 
             // Actions — receiving_clerk now has CREATE/APPROVE/DISPATCH/RECEIVE/
             // CLOSE at the backend (widened 2026-08-06, see permissions.js), so
