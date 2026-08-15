@@ -547,6 +547,15 @@ select optgroup {
 #discountProductResults { background: #1e1b3a !important; }
 :root[data-theme="light"] #discountProductResults { background: #fff !important; }
 
+/* Purchase Order item-search dropdown (2026-08-06) — same bug, same fix.
+   Floats directly over the "Items to Order" table below it; an earlier
+   attempt used background: var(--surface) (the translucent 6% token), which
+   wasn't enough to hide the table rows underneath, so dropdown suggestions
+   and table content rendered simultaneously, illegible — confirmed live via
+   screenshot. Needs the same solid, opaque per-theme background. */
+#poProductResults { background: #1e1b3a !important; }
+:root[data-theme="light"] #poProductResults { background: #fff !important; }
+
 /* ── Notifications ──────────────────────────────────────────────────────────── */
 .notification {
     background: #1e1b3a !important;
