@@ -19,6 +19,7 @@
 
 const express = require('express');
 const { supabase } = require('../../../config/database');
+const db = require('../config/database');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
@@ -963,14 +964,20 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
       return res.status(403).json({ error: 'POS GL sync is not enabled for this company. Enable it in Settings first.', code: 'GL_SYNC_DISABLED' });
     }
 
+    // 'reference' is one of the customer_invoices columns PostgREST's schema
+    // cache cannot see on this table (confirmed live 2026-07-27, still
+    // unresolved — see the "customer_invoices PostgREST cache bug" note).
+    // The Supabase JS client (which goes through PostgREST) 42703s on it, so
+    // this dup-check and the insert below use a raw pg query via
+    // db.getClient() instead — the exact same workaround
+    // customer-invoices.js's own POST / route already uses for this table.
     const reference = `CHARLIE-${date}`;
-    const { data: dup } = await supabase
-      .from('customer_invoices').select('id')
-      .eq('company_id', companyId).eq('reference', reference)
-      .not('status', 'in', '("void")')
-      .maybeSingle();
-    if (dup) {
-      return res.status(409).json({ error: `A till invoice for ${date} already exists`, code: 'ALREADY_GENERATED', existingInvoiceId: dup.id });
+    const dupResult = await db.query(
+      `SELECT id FROM customer_invoices WHERE company_id = $1 AND reference = $2 AND status != 'void' LIMIT 1`,
+      [companyId, reference]
+    );
+    if (dupResult.rows.length > 0) {
+      return res.status(409).json({ error: `A till invoice for ${date} already exists`, code: 'ALREADY_GENERATED', existingInvoiceId: dupResult.rows[0].id });
     }
 
     const { data: salesRows, error: salesError } = await supabase
@@ -1016,24 +1023,52 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
       totalIncVat:   acc.totalIncVat   + l.totalIncVat,
     }), { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 });
 
-    const { count } = await supabase.from('customer_invoices').select('id', { count: 'exact', head: true }).eq('company_id', companyId);
-    const invoiceNumber = `INV-${String((count || 0) + 1).padStart(4, '0')}`;
+    const countResult = await db.query(`SELECT COUNT(*)::int AS count FROM customer_invoices WHERE company_id = $1`, [companyId]);
+    const invoiceNumber = `INV-${String((countResult.rows[0].count || 0) + 1).padStart(4, '0')}`;
 
-    const { data: invoice, error: invErr } = await supabase.from('customer_invoices').insert({
-      company_id: companyId, customer_id: customerId, customer_name: CHECKOUT_CHARLIE_CUSTOMER_NAME,
-      invoice_number: invoiceNumber, reference, invoice_date: date, status: 'draft',
-      subtotal_ex_vat: totals.subtotalExVat, vat_amount: totals.vatAmount, total_inc_vat: totals.totalIncVat,
-      amount_paid: 0, notes: 'Auto-generated from Checkout Charlie till sales — review against the till count before sending.',
-      created_by_user_id: req.user.id,
-    }).select().single();
-    if (invErr || !invoice) throw new Error(invErr ? invErr.message : 'Invoice insert failed');
+    // Header + lines via raw SQL in one transaction — same reason as the
+    // dup-check above (PostgREST can't see several of this table's columns,
+    // including customer_name/reference/created_by_user_id/subtotal_ex_vat/
+    // total_inc_vat), and the same atomic-transaction shape
+    // customer-invoices.js's POST / route already uses for this exact pair
+    // of tables.
+    const dbClient = await db.getClient();
+    let invoice;
+    try {
+      await dbClient.query('BEGIN');
 
-    for (const l of processedLines) {
-      await supabase.from('customer_invoice_lines').insert({
-        invoice_id: invoice.id, description: l.description, account_id: l.accountId,
-        quantity: 1, unit_price: l.subtotalExVat, vat_rate: l.vatRate,
-        subtotal_ex_vat: l.subtotalExVat, vat_amount: l.vatAmount, total_inc_vat: l.totalIncVat, sort_order: l.sortOrder,
-      });
+      const hdrResult = await dbClient.query(
+        `INSERT INTO customer_invoices
+           (company_id, customer_id, customer_name, invoice_number, reference,
+            invoice_date, status, vat_mode, subtotal_ex_vat, vat_amount, total_inc_vat,
+            amount_paid, notes, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING *`,
+        [
+          companyId, customerId, CHECKOUT_CHARLIE_CUSTOMER_NAME, invoiceNumber, reference,
+          date, 'draft', 'inclusive', totals.subtotalExVat, totals.vatAmount, totals.totalIncVat,
+          0, 'Auto-generated from Checkout Charlie till sales — review against the till count before sending.',
+          req.user.id,
+        ]
+      );
+      invoice = hdrResult.rows[0];
+
+      for (const l of processedLines) {
+        await dbClient.query(
+          `INSERT INTO customer_invoice_lines
+             (invoice_id, description, account_id, line_type, quantity, unit_price,
+              vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [invoice.id, l.description, l.accountId, 'account', 1, l.subtotalExVat, l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder]
+        );
+      }
+
+      await dbClient.query('COMMIT');
+    } catch (txErr) {
+      await dbClient.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      dbClient.release();
     }
 
     await AuditLogger.logUserAction(
