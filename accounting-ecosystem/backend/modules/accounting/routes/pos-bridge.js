@@ -813,4 +813,240 @@ router.delete('/customers/:id', authenticate, hasPermission('pos.manage'), async
   }
 });
 
+// ============================================================================
+// GL Sync — opt-in daily till invoice generation (2026-08-15)
+// ============================================================================
+// Ruan's explicit requirement: pulling Charlie's sales into the books must
+// never happen automatically/silently — a company must opt in via
+// Accounting → Settings first. Gated by companies.pos_gl_sync_enabled
+// (migration 077), default false.
+//
+// When enabled, a bookkeeper can generate a DRAFT customer_invoice against a
+// dedicated "Checkout Charlie - Sales" debtor for one SA day's till takings.
+// It stays DRAFT — no journal, nothing hits the GL or VAT201 report — until
+// the bookkeeper reviews it against the actual till count and sends it via
+// the EXISTING customer-invoices.js POST /:id/send action, which already
+// correctly posts Dr AR / Cr Revenue / Cr VAT Output. This file deliberately
+// does not touch JournalService itself, to reuse that already-proven posting
+// path instead of duplicating it.
+//
+// Cash vs card is intentionally NOT split into separate lines here — the
+// invoice is one till-total debtor balance. The cash portion gets cleared
+// via the bookkeeper's normal till-count reconciliation (against the Petty
+// Cash bank account provisioned below); the card portion stays outstanding
+// on this same debtor until the card settlement bank deposit arrives and is
+// allocated against it — the existing customer-payment-allocation flow
+// handles that with no new code needed.
+
+const CHECKOUT_CHARLIE_CUSTOMER_NAME = 'Checkout Charlie - Sales';
+const CHECKOUT_CHARLIE_ACCOUNT_NAME  = 'Checkout Charlie - Sales';
+const PETTY_CASH_ACCOUNT_NAME        = 'Petty Cash';
+
+async function ensureCheckoutCharlieCustomer(companyId) {
+  const { data: existing } = await supabase
+    .from('customers').select('id')
+    .eq('company_id', companyId).eq('name', CHECKOUT_CHARLIE_CUSTOMER_NAME)
+    .maybeSingle();
+  if (existing) return existing.id;
+
+  const { data: created, error } = await supabase.from('customers').insert({
+    company_id: companyId, name: CHECKOUT_CHARLIE_CUSTOMER_NAME,
+    customer_number: `POS-${companyId}`, is_active: true, current_balance: 0,
+  }).select('id').single();
+  if (error) throw new Error(`Could not create "${CHECKOUT_CHARLIE_CUSTOMER_NAME}" customer: ${error.message}`);
+  return created.id;
+}
+
+// Picks a free account code starting at 4090 — clear of the standard chart
+// template's own 4000-4080 sales-revenue block (accounting-schema.js) so
+// this never collides with a company's existing seeded chart of accounts.
+async function ensureCheckoutCharlieRevenueAccount(companyId) {
+  const { data: existing } = await supabase
+    .from('accounts').select('id')
+    .eq('company_id', companyId).eq('name', CHECKOUT_CHARLIE_ACCOUNT_NAME)
+    .maybeSingle();
+  if (existing) return existing.id;
+
+  let code = 4090;
+  for (let i = 0; i < 20; i++) {
+    const { data: taken } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('code', String(code)).maybeSingle();
+    if (!taken) break;
+    code++;
+  }
+
+  const { data: created, error } = await supabase.from('accounts').insert({
+    company_id: companyId, code: String(code), name: CHECKOUT_CHARLIE_ACCOUNT_NAME,
+    type: 'income', sub_type: 'operating_income', reporting_group: 'operating_income',
+    description: 'Revenue from Checkout Charlie till sales', is_active: true,
+  }).select('id').single();
+  if (error) throw new Error(`Could not create "${CHECKOUT_CHARLIE_ACCOUNT_NAME}" account: ${error.message}`);
+  return created.id;
+}
+
+async function ensurePettyCashBankAccount(companyId) {
+  const { data: existing } = await supabase
+    .from('bank_accounts').select('id')
+    .eq('company_id', companyId).eq('name', PETTY_CASH_ACCOUNT_NAME)
+    .maybeSingle();
+  if (existing) return existing.id;
+
+  const { data: created, error } = await supabase.from('bank_accounts').insert({
+    company_id: companyId, name: PETTY_CASH_ACCOUNT_NAME, bank_name: 'Cash on Hand',
+    currency: 'ZAR', is_active: true,
+  }).select('id').single();
+  if (error) throw new Error(`Could not create "${PETTY_CASH_ACCOUNT_NAME}" bank account: ${error.message}`);
+  return created.id;
+}
+
+/** Same VAT-inclusive line math as customer-invoices.js's calcLineVAT — kept
+ * as a small local copy (pure function, no DB access) rather than a
+ * cross-file export for one three-line formula. */
+function calcInclusiveVat(totalIncVat, vatRate) {
+  const total = Math.round((parseFloat(totalIncVat) || 0) * 100) / 100;
+  const rate  = parseFloat(vatRate) || 0;
+  const subtotalExVat = Math.round((total / (1 + rate / 100)) * 100) / 100;
+  const vatAmount     = Math.round((total - subtotalExVat) * 100) / 100;
+  return { subtotalExVat, vatAmount, totalIncVat: total };
+}
+
+// ─── GET /api/accounting/pos/gl-sync/status ───────────────────────────────────
+router.get('/gl-sync/status', authenticate, hasPermission('pos.view'), async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('companies').select('pos_gl_sync_enabled').eq('id', req.user.companyId).maybeSingle();
+    if (error) throw new Error(error.message);
+    res.json({ enabled: !!(data && data.pos_gl_sync_enabled) });
+  } catch (err) {
+    console.error('[pos-bridge] gl-sync/status GET error:', err);
+    res.status(500).json({ error: 'Failed to load GL sync status' });
+  }
+});
+
+// ─── PUT /api/accounting/pos/gl-sync/status ───────────────────────────────────
+// Requires pos.manage — the same tier that already governs reconciliation
+// settlement config — since flipping this affects whether real GL-facing
+// draft invoices start getting generated for this company.
+router.put('/gl-sync/status', authenticate, hasPermission('pos.manage'), async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) is required' });
+  try {
+    const { error } = await supabase.from('companies').update({ pos_gl_sync_enabled: enabled }).eq('id', req.user.companyId);
+    if (error) throw new Error(error.message);
+    await AuditLogger.logUserAction(
+      req, enabled ? 'POS_GL_SYNC_ENABLED' : 'POS_GL_SYNC_DISABLED', 'COMPANY', req.user.companyId,
+      null, { enabled }, `POS GL sync ${enabled ? 'enabled' : 'disabled'}`
+    );
+    res.json({ enabled });
+  } catch (err) {
+    console.error('[pos-bridge] gl-sync/status PUT error:', err);
+    res.status(500).json({ error: 'Failed to update GL sync status' });
+  }
+});
+
+// ─── POST /api/accounting/pos/gl-sync/generate-invoice ────────────────────────
+/**
+ * Body: { date: 'YYYY-MM-DD' }
+ * Generates a DRAFT customer_invoice against the Checkout Charlie debtor for
+ * one SA calendar day's completed till sales, split into up to two lines by
+ * VAT treatment (standard-rated / zero-rated-or-exempt) so the invoice-level
+ * VAT is correct regardless of product mix. One invoice per day — refuses a
+ * second generation for the same date.
+ */
+router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconcile'), async (req, res) => {
+  const { date } = req.body;
+  if (!date) return res.status(400).json({ error: 'date is required' });
+
+  try {
+    const companyId = req.user.companyId;
+
+    const { data: company } = await supabase.from('companies').select('pos_gl_sync_enabled').eq('id', companyId).maybeSingle();
+    if (!company || !company.pos_gl_sync_enabled) {
+      return res.status(403).json({ error: 'POS GL sync is not enabled for this company. Enable it in Settings first.', code: 'GL_SYNC_DISABLED' });
+    }
+
+    const reference = `CHARLIE-${date}`;
+    const { data: dup } = await supabase
+      .from('customer_invoices').select('id')
+      .eq('company_id', companyId).eq('reference', reference)
+      .not('status', 'in', '("void")')
+      .maybeSingle();
+    if (dup) {
+      return res.status(409).json({ error: `A till invoice for ${date} already exists`, code: 'ALREADY_GENERATED', existingInvoiceId: dup.id });
+    }
+
+    const { data: salesRows, error: salesError } = await supabase
+      .from('sales')
+      .select('id')
+      .eq('company_id', companyId).eq('status', 'completed')
+      .gte('created_at', saDateToUtcStart(date)).lte('created_at', saDateToUtcEnd(date));
+    if (salesError) throw new Error(salesError.message);
+    if (!salesRows || salesRows.length === 0) {
+      return res.status(404).json({ error: `No completed sales found for ${date}` });
+    }
+
+    const saleIds = salesRows.map(s => s.id);
+    const { data: items, error: itemsError } = await supabase
+      .from('sale_items')
+      .select('sale_id, line_total, vat_rate')
+      .in('sale_id', saleIds);
+    if (itemsError) throw new Error(itemsError.message);
+
+    const grouped = { standard: 0, zeroOrExempt: 0 };
+    for (const i of (items || [])) {
+      const lineTotal = parseFloat(i.line_total) || 0;
+      const rate = parseFloat(i.vat_rate) || 0;
+      if (rate > 0) grouped.standard += lineTotal; else grouped.zeroOrExempt += lineTotal;
+    }
+
+    const revenueAccountId = await ensureCheckoutCharlieRevenueAccount(companyId);
+    const customerId       = await ensureCheckoutCharlieCustomer(companyId);
+    await ensurePettyCashBankAccount(companyId);
+
+    const lineDefs = [];
+    if (grouped.standard > 0)     lineDefs.push({ description: `Checkout Charlie till sales ${date} (standard-rated)`, totalIncVat: grouped.standard, vatRate: 15 });
+    if (grouped.zeroOrExempt > 0) lineDefs.push({ description: `Checkout Charlie till sales ${date} (zero-rated/exempt)`, totalIncVat: grouped.zeroOrExempt, vatRate: 0 });
+    if (lineDefs.length === 0) return res.status(404).json({ error: `No sale line items found for ${date}` });
+
+    const processedLines = lineDefs.map((l, idx) => {
+      const { subtotalExVat, vatAmount, totalIncVat } = calcInclusiveVat(l.totalIncVat, l.vatRate);
+      return { description: l.description, accountId: revenueAccountId, vatRate: l.vatRate, subtotalExVat, vatAmount, totalIncVat, sortOrder: idx };
+    });
+    const totals = processedLines.reduce((acc, l) => ({
+      subtotalExVat: acc.subtotalExVat + l.subtotalExVat,
+      vatAmount:     acc.vatAmount     + l.vatAmount,
+      totalIncVat:   acc.totalIncVat   + l.totalIncVat,
+    }), { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 });
+
+    const { count } = await supabase.from('customer_invoices').select('id', { count: 'exact', head: true }).eq('company_id', companyId);
+    const invoiceNumber = `INV-${String((count || 0) + 1).padStart(4, '0')}`;
+
+    const { data: invoice, error: invErr } = await supabase.from('customer_invoices').insert({
+      company_id: companyId, customer_id: customerId, customer_name: CHECKOUT_CHARLIE_CUSTOMER_NAME,
+      invoice_number: invoiceNumber, reference, invoice_date: date, status: 'draft',
+      subtotal_ex_vat: totals.subtotalExVat, vat_amount: totals.vatAmount, total_inc_vat: totals.totalIncVat,
+      amount_paid: 0, notes: 'Auto-generated from Checkout Charlie till sales — review against the till count before sending.',
+      created_by_user_id: req.user.id,
+    }).select().single();
+    if (invErr || !invoice) throw new Error(invErr ? invErr.message : 'Invoice insert failed');
+
+    for (const l of processedLines) {
+      await supabase.from('customer_invoice_lines').insert({
+        invoice_id: invoice.id, description: l.description, account_id: l.accountId,
+        quantity: 1, unit_price: l.subtotalExVat, vat_rate: l.vatRate,
+        subtotal_ex_vat: l.subtotalExVat, vat_amount: l.vatAmount, total_inc_vat: l.totalIncVat, sort_order: l.sortOrder,
+      });
+    }
+
+    await AuditLogger.logUserAction(
+      req, 'POS_TILL_INVOICE_GENERATED', 'CUSTOMER_INVOICE', invoice.id,
+      null, { date, totalIncVat: totals.totalIncVat, salesCount: salesRows.length },
+      `Draft till invoice generated from ${salesRows.length} Checkout Charlie sale(s) for ${date}`
+    );
+
+    res.status(201).json({ invoice, salesCount: salesRows.length });
+  } catch (err) {
+    console.error('[pos-bridge] gl-sync/generate-invoice error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate till invoice' });
+  }
+});
+
 module.exports = router;

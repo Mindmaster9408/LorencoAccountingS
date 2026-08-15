@@ -88,6 +88,20 @@
             </div>
         </div>
 
+        <!-- Checkout Charlie Integration (2026-08-15) -->
+        <div class="settings-card">
+            <h2>Checkout Charlie Integration</h2>
+            <div class="card-desc">Pull Checkout Charlie (POS) till sales into these books — off by default, must be explicitly enabled</div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">🧾 GL Sync</div>
+                    <div class="setting-desc">Lets a bookkeeper generate a draft till invoice from Cash Reconciliation. Never happens automatically — nothing is pulled in unless this is on, and nothing posts to the GL until the draft is reviewed and sent.</div>
+                </div>
+                <div class="toggle-switch" id="posGlSyncToggle" onclick="togglePosGlSync()"></div>
+            </div>
+        </div>
+
         <!-- Business Defaults -->
         <div class="settings-card">
             <h2>Business Defaults</h2>
@@ -232,6 +246,43 @@
             showAlert(isActive ? 'Notifications disabled.' : 'Notifications enabled.', 'success');
         }
 
+        // ── Checkout Charlie GL Sync (2026-08-15) ──────────────────────────────
+        // Business-affecting setting — persisted via a real API/table
+        // (companies.pos_gl_sync_enabled), never localStorage, per CLAUDE.md
+        // Part D. Unlike the Sean AI/Notifications toggles above.
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'Content-Type': 'application/json' };
+        }
+
+        function loadPosGlSync() {
+            fetch('/api/accounting/pos/gl-sync/status', { headers: authHeaders() })
+                .then(r => r.ok ? r.json() : { enabled: false })
+                .then(data => {
+                    if (data.enabled) document.getElementById('posGlSyncToggle').classList.add('active');
+                })
+                .catch(() => {});
+        }
+
+        function togglePosGlSync() {
+            const toggle = document.getElementById('posGlSyncToggle');
+            const wasActive = toggle.classList.contains('active');
+            const nextState = !wasActive;
+            toggle.classList.toggle('active');
+
+            fetch('/api/accounting/pos/gl-sync/status', {
+                method: 'PUT', headers: authHeaders(),
+                body: JSON.stringify({ enabled: nextState }),
+            })
+                .then(r => r.ok ? r.json() : Promise.reject(new Error('Save failed')))
+                .then(() => {
+                    showAlert(nextState ? 'Checkout Charlie GL Sync enabled.' : 'Checkout Charlie GL Sync disabled.', 'success');
+                })
+                .catch(() => {
+                    toggle.classList.toggle('active'); // revert on failure
+                    showAlert('Could not save this setting. Please try again.', 'error');
+                });
+        }
+
         // ── Business Defaults ─────────────────────────────────────────────────
         function loadDefaults() {
             const currency    = localStorage.getItem(settingsKey('currency'))    || 'ZAR';
@@ -284,6 +335,7 @@
         loadCompanyName();
         loadDefaults();
         loadReportPrefs();
+        loadPosGlSync();
     </script>
 </body>
 </html>

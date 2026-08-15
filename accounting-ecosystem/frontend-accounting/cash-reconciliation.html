@@ -183,7 +183,15 @@
 
     <!-- Reconciliation Panel (shown when a day is selected) -->
     <div id="reconDetail" style="display: none;">
-      <h2 style="margin-bottom: 15px; color: #333;" id="reconDateTitle">Reconciliation: --</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px;">
+        <h2 style="color: #333;" id="reconDateTitle">Reconciliation: --</h2>
+        <!-- GL Sync (2026-08-15) — hidden entirely unless the company has
+             opted in via Settings (companies.pos_gl_sync_enabled). Generates
+             a DRAFT customer invoice against "Checkout Charlie - Sales" for
+             this day's till takings; nothing posts to the GL until it's
+             reviewed and sent from the normal Customer Invoices screen. -->
+        <button id="generateTillInvoiceBtn" class="btn btn-primary btn-sm" style="display:none;" onclick="generateTillInvoice()">📒 Generate Till Invoice</button>
+      </div>
 
       <div class="recon-panel">
         <!-- Cash Section -->
@@ -300,6 +308,7 @@
 
     let selectedDate = null;
     let dailyTotals = [];
+    let glSyncEnabled = false;
 
     async function init() {
       const today = new Date();
@@ -307,7 +316,47 @@
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       document.getElementById('reconFromDate').value = thirtyDaysAgo.toISOString().split('T')[0];
       document.getElementById('reconToDate').value = today.toISOString().split('T')[0];
+      await loadGlSyncStatus();
       await loadReconciliation();
+    }
+
+    // GL Sync (2026-08-15) — the "Generate Till Invoice" button only ever
+    // appears if this company has explicitly opted in via Settings. Never
+    // shown by default; see companies.pos_gl_sync_enabled (migration 077).
+    async function loadGlSyncStatus() {
+      try {
+        const res = await fetch('/api/accounting/pos/gl-sync/status', { headers: authH() });
+        if (res.ok) {
+          const data = await res.json();
+          glSyncEnabled = !!data.enabled;
+        }
+      } catch (_) { glSyncEnabled = false; }
+    }
+
+    async function generateTillInvoice() {
+      if (!selectedDate) return;
+      if (!confirm(`Generate a draft till invoice for ${formatDate(selectedDate)}? It will not post to the GL until you review and send it from Customer Invoices.`)) return;
+
+      const btn = document.getElementById('generateTillInvoiceBtn');
+      btn.disabled = true; btn.textContent = 'Generating…';
+      try {
+        const res = await fetch('/api/accounting/pos/gl-sync/generate-invoice', {
+          method: 'POST', headers: authH(),
+          body: JSON.stringify({ date: selectedDate }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Draft invoice ${data.invoice.invoice_number} created for ${data.salesCount} sale(s) — review it under Customer Invoices before sending.`);
+        } else if (data.code === 'ALREADY_GENERATED') {
+          alert('A till invoice for this date already exists (invoice #' + data.existingInvoiceId + ').');
+        } else {
+          alert(data.error || 'Failed to generate till invoice');
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = '📒 Generate Till Invoice';
+      }
     }
 
     async function loadReconciliation() {
@@ -404,6 +453,7 @@
 
       document.getElementById('reconDateTitle').textContent       = 'Reconciliation: ' + formatDate(date);
       document.getElementById('dayTransactionsTitle').textContent = 'Transactions for ' + formatDate(date);
+      document.getElementById('generateTillInvoiceBtn').style.display = glSyncEnabled ? 'inline-block' : 'none';
 
       // Fetch day sales (cash + card) for counts and transaction list
       let cashSales = [], cardSales = [];
