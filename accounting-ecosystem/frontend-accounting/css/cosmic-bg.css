@@ -51,7 +51,7 @@ body {
 .pt-bg-glow.g1 {
     width: 560px; height: 560px;
     top: -120px; left: -140px;
-    background: rgba(91, 61, 245, 0.10);
+    background: rgba(91, 61, 245, 0.045);
     animation: ptGlowPulse 8s ease-in-out infinite;
     animation-delay: 0s;
 }
@@ -59,7 +59,7 @@ body {
 .pt-bg-glow.g2 {
     width: 500px; height: 500px;
     bottom: -100px; right: -120px;
-    background: rgba(61, 165, 255, 0.08);
+    background: rgba(61, 165, 255, 0.035);
     animation: ptGlowPulse 8s ease-in-out infinite;
     animation-delay: -4s;
 }
@@ -67,7 +67,7 @@ body {
 .pt-bg-glow.g3 {
     width: 360px; height: 360px;
     top: 40%; left: 50%;
-    background: rgba(91, 61, 245, 0.04);
+    background: rgba(91, 61, 245, 0.018);
     animation: ptGlowPulseCenter 8s ease-in-out infinite;
     animation-delay: -2s;
 }
