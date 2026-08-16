@@ -971,13 +971,12 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
   const companyId = req.user.companyId;
 
   // Everything from here through COMMIT runs on ONE checked-out pg client —
-  // see the comment above ensureCheckoutCharlieCustomer() for why: handing
-  // provisioning and the invoice insert to two different connections (even
-  // two different raw-pg ones, db.query() vs db.getClient()) let a FK
-  // violation on customer_invoice_lines.account_id slip through live
-  // 2026-08-16 despite an earlier fix (commit 59021cd) that moved both onto
-  // raw pg but not onto the SAME connection. One client end-to-end closes
-  // that gap regardless of its exact cause.
+  // provisioning and the invoice insert used to go through separate
+  // connections, which was a real inconsistency worth fixing on its own
+  // even though it turned out not to be the cause of the FK violation
+  // hunted down on 2026-08-16 (see migration 142's comment for the actual
+  // root cause: customer_invoice_lines_account_id_fkey was pointing at the
+  // dead legacy chart_of_accounts table, not accounts).
   //
   // Uses raw pg rather than the Supabase JS client for customer_invoices/
   // customer_invoice_lines — confirmed live 2026-08-15 that those tables'
@@ -996,27 +995,6 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
     }
 
     await dbClient.query('BEGIN');
-
-    // RLS policies exist on accounts/customer_invoice_lines (migrations
-    // 091/138) built around app_company_id()/app_is_super_admin(), which
-    // read current_setting('app.company_id'/'app.is_super_admin') —
-    // session-local variables the migrations' own comments say the backend
-    // "will" set via set_config() before each query, once RLS enforcement
-    // moves past its documented "Phase 1: completely inert" state. This
-    // raw-pg connection never did that. If the connecting Postgres role
-    // does NOT carry BYPASSRLS (unlike the Supabase service-role key, which
-    // definitely does), those variables are permanently NULL here, RLS's
-    // `company_id = app_company_id()` never matches any row — including
-    // one this exact transaction just inserted — and the FK check on the
-    // subsequent customer_invoice_lines insert sees no row to reference.
-    // This is the real explanation for the FK violation persisting live
-    // 2026-08-16 even after moving provisioning onto one single
-    // transaction (commit 231ff2c) — that fix closed a real inconsistency
-    // but was never the actual cause. Setting these now, unconditionally
-    // and harmlessly if RLS turns out not to be enforced on this
-    // connection after all.
-    await dbClient.query(`SELECT set_config('app.company_id', $1, true), set_config('app.is_super_admin', $2, true)`,
-      [String(companyId), String(!!req.user.isSuperAdmin)]);
 
     // No 'reference' column exists to key a dup-check on, so this uses the
     // natural key instead: one till invoice per company per day, identified
@@ -1056,32 +1034,6 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
 
     const revenueAccountId = await ensureCheckoutCharlieRevenueAccount(dbClient, companyId);
     await ensurePettyCashBankAccount(dbClient, companyId); // customerId already resolved above, for the dup-check
-
-    // TEMPORARY diagnostics — three fix attempts (cross-client, single
-    // transaction, RLS set_config) have not resolved a recurring FK
-    // violation on customer_invoice_lines.account_id. Rather than guess a
-    // fourth time, this proves directly, on the exact connection about to
-    // do the insert: (a) whether this role bypasses RLS at all — if it
-    // does, none of the RLS theory applies and something else entirely is
-    // wrong; (b) whether the account row this transaction just
-    // created/found is actually SELECT-visible on this same connection
-    // right before the insert that's failing. Remove once root-caused.
-    try {
-      const diag = await dbClient.query(
-        `SELECT current_user AS role,
-                current_setting('app.company_id', true) AS app_company_id,
-                (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass_rls`
-      );
-      const verify = await dbClient.query(
-        `SELECT id, company_id, name FROM accounts WHERE id = $1`,
-        [revenueAccountId]
-      );
-      console.log('[pos-bridge][DIAG] companyId=%s revenueAccountId=%s role=%s app_company_id=%s bypass_rls=%s accountVisibleOnThisConn=%s accountRow=%j',
-        companyId, revenueAccountId, diag.rows[0].role, diag.rows[0].app_company_id, diag.rows[0].bypass_rls,
-        verify.rows.length > 0, verify.rows[0] || null);
-    } catch (diagErr) {
-      console.error('[pos-bridge][DIAG] diagnostic query itself failed:', diagErr.message);
-    }
 
     const lineDefs = [];
     if (grouped.standard > 0)     lineDefs.push({ description: `Checkout Charlie till sales ${date} (standard-rated)`, totalIncVat: grouped.standard, vatRate: 15 });
