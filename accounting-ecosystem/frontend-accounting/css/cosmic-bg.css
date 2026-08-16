@@ -13,10 +13,15 @@ body {
 }
 
 /* ── Fixed background container (behind everything) ─────────────── */
+/* z-index: -1 (not 0) is deliberate — it lets this paint behind ALL
+   normal static content without needing to touch any existing page's
+   positioning/z-index. Accounting's nav dropdown (.main-nav .dropdown)
+   has no z-index of its own; a positive z-index here previously outranked
+   it and broke the Customers/Suppliers/etc. dropdown menus. */
 #pt-cosmic-bg {
     position: fixed;
     inset: 0;
-    z-index: 0;
+    z-index: -1;
     pointer-events: none;
     overflow: hidden;
 }
@@ -71,27 +76,8 @@ body {
     50%       { opacity: 1;   transform: translate(-50%, -50%) scale(1.06); }
 }
 
-/* ── Lift page content above background layer ─────────────────── */
-/* Accounting pages don't have one fixed top-level wrapper class name —
-   navigation.js injects .top-bar/.main-nav via body.insertAdjacentHTML
-   ('afterbegin'), and each page's own markup uses .content or
-   .main-content as its body child. Lift all of them explicitly rather
-   than relying on DOM order, since 'afterbegin' injection can land the
-   nav either side of the static #pt-cosmic-bg div depending on timing. */
-.top-bar,
-.main-nav,
-.content,
-.main-content,
-body > .wrapper,
-body > .container,
-body > .page-wrapper,
-body > .app-wrapper {
-    position: relative;
-    z-index: 1;
-}
-
-/* Mobile hamburger & overlay must also sit above the bg layer */
-body > #mobile-hamburger,
-body > #mobile-overlay {
-    z-index: 10;
-}
+/* No "lift content above background" rules needed — #pt-cosmic-bg's
+   z-index: -1 already keeps it behind every normal-flow element on the
+   page without changing any existing element's position/z-index, so
+   nothing here can shift a positioned descendant's containing block or
+   out-rank an existing dropdown/modal/popover's stacking. */
