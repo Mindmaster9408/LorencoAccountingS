@@ -8,6 +8,7 @@
     <script src="js/theme-guard.js"></script>
     <script src="js/polyfills.js"></script>
     <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/cosmic-bg.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -246,6 +247,13 @@
     </style>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
 
 <div id="nav-placeholder"></div>
 
@@ -477,5 +485,6 @@
     document.addEventListener('DOMContentLoaded', loadGL);
 </script>
 <script src="js/companyContextBadge.js"></script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

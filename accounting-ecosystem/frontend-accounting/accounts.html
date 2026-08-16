@@ -87,8 +87,16 @@
         .overlay-modal-body { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/cosmic-bg.css">
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
 
 <div class="main-content">
     <div class="page-header">
@@ -782,5 +790,6 @@
     // ── Init ──────────────────────────────────────────────────────────────────
     loadAccounts();
 </script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

@@ -48,9 +48,17 @@
         .coming-soon-badge { display: inline-block; font-size: 10px; font-weight: 600; background: #fff3cd; color: #856404; padding: 2px 7px; border-radius: 8px; margin-left: 8px; vertical-align: middle; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/cosmic-bg.css">
     <script src="js/polyfills.js"></script>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
     <div class="content">
         <div class="page-header">
             <h1>Company Settings</h1>
@@ -337,5 +345,6 @@
         loadReportPrefs();
         loadPosGlSync();
     </script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

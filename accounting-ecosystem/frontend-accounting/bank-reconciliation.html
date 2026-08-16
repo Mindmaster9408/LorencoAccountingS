@@ -709,9 +709,17 @@
         }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/cosmic-bg.css">
     <script src="js/polyfills.js"></script>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
 
     <!-- Notification banners -->
     <div id="errorBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ea4335;color:white;padding:12px 24px;font-size:14px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,0.2);"></div>
@@ -1236,5 +1244,6 @@
         loadAccounts();
     </script>
     <script src="js/companyContextBadge.js"></script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

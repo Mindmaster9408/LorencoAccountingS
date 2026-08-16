@@ -6,6 +6,7 @@
   <title>OCR Invoice Review — Lorenco Accounting</title>
   <script src="js/navigation.js"></script>
   <script src="js/theme-guard.js"></script>
+    <link rel="stylesheet" href="css/cosmic-bg.css">
   <script src="js/polyfills.js"></script>
   <style>
     /* ── Reset & layout ──────────────────────────────────────────────── */
@@ -213,6 +214,13 @@
   </style>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
 
 <div id="topbarPlaceholder"></div>
 
@@ -774,5 +782,6 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = S
 function escAttr(s) { return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 </script>
 
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

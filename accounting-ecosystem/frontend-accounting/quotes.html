@@ -6,6 +6,7 @@
   <title>Quotes — Lorenco Accounting</title>
   <script src="js/navigation.js"></script>
   <script src="js/theme-guard.js"></script>
+    <link rel="stylesheet" href="css/cosmic-bg.css">
   <script src="js/polyfills.js"></script>
   <style>
     /* ── Layout ───────────────────────────────────────────────────────── */
@@ -186,6 +187,13 @@
   </style>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
 <div class="main-content">
 
   <div class="page-header">
@@ -1080,5 +1088,6 @@ document.addEventListener('keydown', e => {
 
 document.addEventListener('DOMContentLoaded', init);
 </script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

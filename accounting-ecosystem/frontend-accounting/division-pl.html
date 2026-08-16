@@ -74,8 +74,16 @@
         }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/cosmic-bg.css">
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
     <div id="navigationContainer"></div>
 
     <div class="content">
@@ -252,5 +260,6 @@
             return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
     </script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

@@ -389,6 +389,7 @@
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 
+    <link rel="stylesheet" href="css/cosmic-bg.css">
 <!--[if gte mso 9]><xml>
 <mso:CustomDocumentProperties>
 <mso:Order msdt:dt="string">149800.000000000</mso:Order>
@@ -398,6 +399,13 @@
     <script src="js/polyfills.js"></script>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
     <div class="container">
         <div class="page-header">
             <h1>PAYE Management</h1>
@@ -573,5 +581,6 @@
             alert('This would submit the EMP201 to SARS eFiling system...');
         }
     </script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

@@ -207,6 +207,7 @@
   </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 
+    <link rel="stylesheet" href="css/cosmic-bg.css">
 <!--[if gte mso 9]><xml>
 <mso:CustomDocumentProperties>
 <mso:Order msdt:dt="string">147800.000000000</mso:Order>
@@ -215,6 +216,13 @@
 </xml><![endif]-->
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
   <div class="content">
     <div class="page-header">
       <h1>Company Profile</h1>
@@ -1462,5 +1470,6 @@
     // Initialize
     init();
   </script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

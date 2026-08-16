@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="js/theme-guard.js"></script>
+    <link rel="stylesheet" href="css/cosmic-bg.css">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Legacy GL Import | Lorenco Accounting</title>
@@ -189,6 +191,13 @@
   </style>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
 <div class="page-wrap">
   <div class="page-header">
     <div>
@@ -1059,5 +1068,6 @@ function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 </script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>

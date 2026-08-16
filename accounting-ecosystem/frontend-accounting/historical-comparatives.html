@@ -6,6 +6,7 @@
   <title>Historical Comparatives — Lorenco Accounting</title>
   <script src="js/navigation.js"></script>
   <script src="js/theme-guard.js"></script>
+    <link rel="stylesheet" href="css/cosmic-bg.css">
   <style>
     /* ── Page Layout ─────────────────────────────────────────────────── */
     .page-container {
@@ -541,6 +542,13 @@
   </style>
 </head>
 <body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
   <div class="page-container">
     <div class="page-header">
       <div>
@@ -2064,5 +2072,6 @@
     initReportsTab();
   </script>
     <script src="js/companyContextBadge.js"></script>
+    <script src="js/cosmic-bg.js"></script>
 </body>
 </html>
