@@ -60,6 +60,9 @@ const adminPanelRoutes   = require('./shared/routes/admin-panel');
 const qaHubRoutes        = require('./shared/routes/qa-hub.routes');
 // 2FA — dormant foundation (not enforced; TWO_FACTOR_AUTH_ENABLED=false by default)
 const twoFactorRoutes    = require('./shared/routes/twoFactor');
+// SEVCO Phase 2 — chat-driven Paytime actions (superuser-only, calls existing
+// validated payroll routes internally rather than writing payroll tables directly)
+const paytimeChatRoutes  = require('./modules/paytime-chat/routes');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
@@ -351,6 +354,11 @@ if (seanRoutes) {
   console.log('  ⬜ SEAN AI module — disabled');
 }
 
+// Paytime Sean Chat (SEVCO Phase 2) — superuser-only, deliberately outside
+// backend/modules/payroll/** so it is not covered by that CRITICAL protected
+// glob; requireSuperAdmin is applied inside paytimeChatRoutes itself.
+app.use('/api/paytime-chat', authenticateToken, requireCompany, paytimeChatRoutes);
+
 if (interCompanyRoutes) {
   app.use('/api/inter-company',
     authenticateToken,
@@ -458,6 +466,7 @@ app.use('/dashboard-v2', express.static(ecosystemFrontendPath, staticOptions));
 app.get('/dashboard-v2', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'dashboard-v2.html')));
 
 app.get('/admin',     (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'admin.html')));
+app.get('/sevco',     (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'sevco.html')));
 app.get('/qa-hub',    (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'ecosystem-qa-hub.html')));
 app.get('/client/:id', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'client-detail.html')));
 

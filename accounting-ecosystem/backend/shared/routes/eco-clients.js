@@ -1066,6 +1066,35 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // 6. Sync Paytime Sean Chat addon toggle → companies.modules_enabled
+    //    (Payroll add-on — see Control Panel APP_REGISTRY 'payroll' entry's second addon row)
+    if (changedFields.includes('addons') && updated.client_company_id) {
+      try {
+        const newAddons = updated.addons || [];
+        const oldAddons = old.addons || [];
+        const chatAdded   = newAddons.includes('paytime_chat') && !oldAddons.includes('paytime_chat');
+        const chatRemoved = !newAddons.includes('paytime_chat') && oldAddons.includes('paytime_chat');
+        if (chatAdded || chatRemoved) {
+          const { data: coData } = await supabase
+            .from('companies')
+            .select('modules_enabled')
+            .eq('id', updated.client_company_id)
+            .single();
+          if (coData) {
+            let mods = coData.modules_enabled || [];
+            if (chatAdded   && !mods.includes('paytime_chat')) mods = [...mods, 'paytime_chat'];
+            if (chatRemoved) mods = mods.filter(m => m !== 'paytime_chat');
+            await supabase
+              .from('companies')
+              .update({ modules_enabled: mods })
+              .eq('id', updated.client_company_id);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[eco-clients] Paytime Sean Chat addon sync to companies failed:', syncErr.message);
+      }
+    }
+
     // 5. Sync core contact fields → companies table (eco hub → accounting direction)
     // eco_clients.name ↔ companies.company_name
     // eco_clients.email ↔ companies.email

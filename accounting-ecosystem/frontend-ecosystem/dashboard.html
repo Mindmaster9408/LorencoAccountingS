@@ -402,6 +402,7 @@
         .app-card.payroll { --app-color: #10b981; --app-color-dark: #059669; }
         .app-card.accounting { --app-color: #f59e0b; --app-color-dark: #d97706; }
         .app-card.sean  { --app-color: #8b5cf6; --app-color-dark: #7c3aed; }
+        .app-card.sevco { --app-color: #ec4899; --app-color-dark: #db2777; }
         .app-card.coaching { --app-color: #f97316; --app-color-dark: #ea580c; }
         .app-card.inventory { --app-color: #22d3ee; --app-color-dark: #06b6d4; }
         .app-card.practice  { --app-color: #a78bfa; --app-color-dark: #7c3aed; }
@@ -410,6 +411,7 @@
         .app-card.payroll .app-icon { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
         .app-card.accounting .app-icon { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
         .app-card.sean .app-icon  { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+        .app-card.sevco .app-icon { background: rgba(236, 72, 153, 0.15); color: #f472b6; }
         .app-card.coaching .app-icon { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
         .app-card.inventory .app-icon { background: rgba(34, 211, 238, 0.15); color: #22d3ee; }
         .app-card.practice .app-icon  { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
@@ -1176,7 +1178,7 @@
                                 <label class="app-check" onclick="toggleAppCheck(this)">
                                     <input type="checkbox" name="apps" value="accounting">
                                     <span class="app-check-icon">📊</span>
-                                    <span class="app-check-label">Accounting</span>
+                                    <span class="app-check-label">Ledger Leo</span>
                                 </label>
                                 <label class="app-check" onclick="toggleAppCheck(this)">
                                     <input type="checkbox" name="apps" value="sean">
@@ -1293,7 +1295,7 @@
                     <label class="app-check" onclick="toggleAppCheck(this)">
                         <input type="checkbox" name="editApps" value="accounting">
                         <span class="app-check-icon">📊</span>
-                        <span class="app-check-label">Accounting</span>
+                        <span class="app-check-label">Ledger Leo</span>
                     </label>
                     <label class="app-check" onclick="toggleAppCheck(this)">
                         <input type="checkbox" name="editApps" value="sean">
@@ -1303,7 +1305,7 @@
                     <label class="app-check" id="editAppsInventoryWrap" style="display:none;" onclick="toggleAppCheck(this)" title="Only available for The Infinite Legacy clients">
                         <input type="checkbox" name="editApps" value="inventory">
                         <span class="app-check-icon">📦</span>
-                        <span class="app-check-label">Storehouse</span>
+                        <span class="app-check-label">Stockton</span>
                     </label>
                 </div>
                 <div class="form-actions" style="margin-top: 24px;">
@@ -1441,7 +1443,7 @@
                                 <label class="app-check" onclick="toggleAppCheck(this)">
                                     <input type="checkbox" name="auApps" value="accounting">
                                     <span class="app-check-icon">📊</span>
-                                    <span class="app-check-label">Accounting</span>
+                                    <span class="app-check-label">Ledger Leo</span>
                                 </label>
                                 <label class="app-check" onclick="toggleAppCheck(this)">
                                     <input type="checkbox" name="auApps" value="sean">
@@ -1504,7 +1506,7 @@
                             <label class="app-check" onclick="toggleAppCheck(this)">
                                 <input type="checkbox" name="euApps" value="accounting">
                                 <span class="app-check-icon">📊</span>
-                                <span class="app-check-label">Accounting</span>
+                                <span class="app-check-label">Ledger Leo</span>
                             </label>
                             <label class="app-check" onclick="toggleAppCheck(this)">
                                 <input type="checkbox" name="euApps" value="sean">
@@ -1745,7 +1747,7 @@
                                         <label class="app-check" onclick="toggleAppCheck(this)">
                                             <input type="checkbox" name="userApps" value="accounting">
                                             <span class="app-check-icon">📊</span>
-                                            <span class="app-check-label">Accounting</span>
+                                            <span class="app-check-label">Ledger Leo</span>
                                         </label>
                                         <label class="app-check" onclick="toggleAppCheck(this)">
                                             <input type="checkbox" name="userApps" value="sean">
@@ -1869,7 +1871,7 @@
             },
             {
                 key: 'accounting',
-                name: 'Lorenco Accounting',
+                name: 'Ledger Leo',
                 subtitle: 'General Ledger',
                 icon: '&#128200;',
                 desc: 'Chart of accounts, journals, bank reconciliation, VAT returns, financial reports.',
@@ -1886,6 +1888,15 @@
                 cssClass: 'sean',
             },
             {
+                key: 'sevco',
+                name: 'SEVCO',
+                subtitle: 'Sean Learning & Knowledge',
+                icon: '&#129504;',
+                desc: 'Superuser-only: what Sean has learned across every client, and what still needs review before it spreads.',
+                path: '/sevco',
+                cssClass: 'sevco',
+            },
+            {
                 key: 'coaching',
                 name: 'Coaching',
                 subtitle: 'Business Coaching',
@@ -1896,7 +1907,7 @@
             },
             {
                 key: 'inventory',
-                name: 'Lorenco Storehouse',
+                name: 'Stockton',
                 subtitle: 'Inventory Management',
                 icon: '&#128230;',
                 desc: 'Stock items, warehouses, movements, suppliers and purchase orders.',
@@ -1905,7 +1916,7 @@
             },
             {
                 key: 'practice',
-                name: 'Lorenco Practice',
+                name: 'Firmflow',
                 subtitle: 'Practice Management',
                 icon: '&#128203;',
                 desc: 'Client files, tasks, deadlines and time tracking for your accounting practice.',
@@ -2235,6 +2246,10 @@
                 // SEAN AI is only visible to super admins
                 if (app.key === 'sean' && !isSuperAdmin) return '';
 
+                // SEVCO (Sean's learning/knowledge brain) is superuser-only and must be
+                // completely absent from the DOM for everyone else — not just greyed out.
+                if (app.key === 'sevco' && !isSuperAdmin) return '';
+
                 // Check per-app access: if user has a restriction, enforce it.
                 // Coaching HARD LOCK: tile only ever shows when the authenticated user
                 // has hasCoachingAccess = true (sourced from login response / DB flag).
@@ -2322,6 +2337,14 @@
             const text = document.getElementById('launchText');
             overlay.classList.add('show');
             text.textContent = `Launching ${app.name}...`;
+
+            // SEVCO lives directly in frontend-ecosystem (same origin as this dashboard,
+            // same eco_token) — no separate sub-app login, so no SSO token exchange needed.
+            if (appKey === 'sevco') {
+                text.textContent = `Opening ${app.name}...`;
+                setTimeout(() => { window.location.href = app.path; }, 300);
+                return;
+            }
 
             // Coaching — use SSO like all other apps (bypass login screen)
             if (appKey === 'coaching') {
@@ -2514,7 +2537,7 @@
         let _importedClientData = null;
 
         const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖', inventory: '📦' };
-        const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Accounting', sean: 'SEAN AI', inventory: 'Storehouse' };
+        const APP_LABELS = { pos: 'POS', payroll: 'Payroll', accounting: 'Ledger Leo', sean: 'SEAN AI', inventory: 'Stockton' };
 
         // Returns true when the company is The Infinite Legacy — mirrors admin.html guard.
         function isTILCompany(co) {
@@ -3893,7 +3916,7 @@
         const DEMO_APPS = [
             { key: 'pos',        name: 'Checkout Charlie', subtitle: 'Point of Sale',      icon: '&#128722;', color: '#667eea' },
             { key: 'payroll',    name: 'Lorenco Paytime',  subtitle: 'Payroll Management',  icon: '&#128176;', color: '#f093fb' },
-            { key: 'accounting', name: 'Lorenco Accounting', subtitle: 'General Ledger',    icon: '&#128200;', color: '#4facfe' }
+            { key: 'accounting', name: 'Ledger Leo', subtitle: 'General Ledger',    icon: '&#128200;', color: '#4facfe' }
         ];
 
         function getDemos() {

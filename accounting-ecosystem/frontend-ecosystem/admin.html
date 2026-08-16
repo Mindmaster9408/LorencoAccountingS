@@ -1250,6 +1250,17 @@
             const seanSection = isActive && appDef.seanAddonKey
                 ? buildSeanAddonRow(c, appDef) : '';
 
+            // Paytime owns one more addon slot beyond its 'sean' row: Sean Chat
+            // (SEVCO Phase 2) — reuses buildSeanAddonRow's markup/toggle wiring
+            // via a second synthetic appDef rather than generalizing APP_REGISTRY
+            // to hold multiple addons per app (bigger refactor, not needed yet).
+            const paytimeChatSection = isActive && appDef.key === 'payroll'
+                ? buildSeanAddonRow(c, {
+                    seanAddonKey:   'paytime_chat',
+                    seanAddonLabel: 'Sean Chat for Paytime',
+                    seanAddonSub:   'Deterministic chat-driven payroll actions — superuser only',
+                }) : '';
+
             return `
             <div class="app-row" id="approw-${c.id}-${appDef.key}">
                 <div class="app-row-header">
@@ -1264,6 +1275,7 @@
                 </div>
                 ${billingSection}
                 ${seanSection}
+                ${paytimeChatSection}
             </div>`;
         }
 
