@@ -843,60 +843,74 @@ const CHECKOUT_CHARLIE_CUSTOMER_NAME = 'Checkout Charlie - Sales';
 const CHECKOUT_CHARLIE_ACCOUNT_NAME  = 'Checkout Charlie - Sales';
 const PETTY_CASH_ACCOUNT_NAME        = 'Petty Cash';
 
+// These three provisioning helpers were originally written against the
+// `supabase` (PostgREST/service-role) client, which auto-provisions the
+// customer/account/bank-account rows fine on its own — but the invoice
+// header+lines insert below runs through the raw `db` (pg Pool) connection
+// instead (required — see the comment above the transaction block for why).
+// Live testing 2026-08-16 hit "insert or update on table
+// customer_invoice_lines violates foreign key constraint
+// customer_invoice_lines_account_id_fkey" — the account row created via
+// `supabase` was not visible to the `db` connection's FK check. Root cause
+// not fully pinned down (RLS policies exist on `accounts`/
+// `customer_invoice_lines` per migrations 091/138 — those two connections
+// may authenticate as different Postgres roles with different RLS
+// exposure), but the fix is correct regardless of the exact mechanism:
+// provisioning and the row that references it must go through the SAME
+// connection. Switched all three to `db.query()` to match.
 async function ensureCheckoutCharlieCustomer(companyId) {
-  const { data: existing } = await supabase
-    .from('customers').select('id')
-    .eq('company_id', companyId).eq('name', CHECKOUT_CHARLIE_CUSTOMER_NAME)
-    .maybeSingle();
-  if (existing) return existing.id;
+  const existing = await db.query(
+    `SELECT id FROM customers WHERE company_id = $1 AND name = $2 LIMIT 1`,
+    [companyId, CHECKOUT_CHARLIE_CUSTOMER_NAME]
+  );
+  if (existing.rows.length > 0) return existing.rows[0].id;
 
-  const { data: created, error } = await supabase.from('customers').insert({
-    company_id: companyId, name: CHECKOUT_CHARLIE_CUSTOMER_NAME,
-    customer_number: `POS-${companyId}`, is_active: true, current_balance: 0,
-  }).select('id').single();
-  if (error) throw new Error(`Could not create "${CHECKOUT_CHARLIE_CUSTOMER_NAME}" customer: ${error.message}`);
-  return created.id;
+  const created = await db.query(
+    `INSERT INTO customers (company_id, name, customer_number, is_active, current_balance)
+     VALUES ($1, $2, $3, true, 0) RETURNING id`,
+    [companyId, CHECKOUT_CHARLIE_CUSTOMER_NAME, `POS-${companyId}`]
+  );
+  return created.rows[0].id;
 }
 
 // Picks a free account code starting at 4090 — clear of the standard chart
 // template's own 4000-4080 sales-revenue block (accounting-schema.js) so
 // this never collides with a company's existing seeded chart of accounts.
 async function ensureCheckoutCharlieRevenueAccount(companyId) {
-  const { data: existing } = await supabase
-    .from('accounts').select('id')
-    .eq('company_id', companyId).eq('name', CHECKOUT_CHARLIE_ACCOUNT_NAME)
-    .maybeSingle();
-  if (existing) return existing.id;
+  const existing = await db.query(
+    `SELECT id FROM accounts WHERE company_id = $1 AND name = $2 LIMIT 1`,
+    [companyId, CHECKOUT_CHARLIE_ACCOUNT_NAME]
+  );
+  if (existing.rows.length > 0) return existing.rows[0].id;
 
   let code = 4090;
   for (let i = 0; i < 20; i++) {
-    const { data: taken } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('code', String(code)).maybeSingle();
-    if (!taken) break;
+    const taken = await db.query(`SELECT id FROM accounts WHERE company_id = $1 AND code = $2 LIMIT 1`, [companyId, String(code)]);
+    if (taken.rows.length === 0) break;
     code++;
   }
 
-  const { data: created, error } = await supabase.from('accounts').insert({
-    company_id: companyId, code: String(code), name: CHECKOUT_CHARLIE_ACCOUNT_NAME,
-    type: 'income', sub_type: 'operating_income', reporting_group: 'operating_income',
-    description: 'Revenue from Checkout Charlie till sales', is_active: true,
-  }).select('id').single();
-  if (error) throw new Error(`Could not create "${CHECKOUT_CHARLIE_ACCOUNT_NAME}" account: ${error.message}`);
-  return created.id;
+  const created = await db.query(
+    `INSERT INTO accounts (company_id, code, name, type, sub_type, reporting_group, description, is_active)
+     VALUES ($1, $2, $3, 'income', 'operating_income', 'operating_income', $4, true) RETURNING id`,
+    [companyId, String(code), CHECKOUT_CHARLIE_ACCOUNT_NAME, 'Revenue from Checkout Charlie till sales']
+  );
+  return created.rows[0].id;
 }
 
 async function ensurePettyCashBankAccount(companyId) {
-  const { data: existing } = await supabase
-    .from('bank_accounts').select('id')
-    .eq('company_id', companyId).eq('name', PETTY_CASH_ACCOUNT_NAME)
-    .maybeSingle();
-  if (existing) return existing.id;
+  const existing = await db.query(
+    `SELECT id FROM bank_accounts WHERE company_id = $1 AND name = $2 LIMIT 1`,
+    [companyId, PETTY_CASH_ACCOUNT_NAME]
+  );
+  if (existing.rows.length > 0) return existing.rows[0].id;
 
-  const { data: created, error } = await supabase.from('bank_accounts').insert({
-    company_id: companyId, name: PETTY_CASH_ACCOUNT_NAME, bank_name: 'Cash on Hand',
-    currency: 'ZAR', is_active: true,
-  }).select('id').single();
-  if (error) throw new Error(`Could not create "${PETTY_CASH_ACCOUNT_NAME}" bank account: ${error.message}`);
-  return created.id;
+  const created = await db.query(
+    `INSERT INTO bank_accounts (company_id, name, bank_name, currency, is_active)
+     VALUES ($1, $2, 'Cash on Hand', 'ZAR', true) RETURNING id`,
+    [companyId, PETTY_CASH_ACCOUNT_NAME]
+  );
+  return created.rows[0].id;
 }
 
 /** Same VAT-inclusive line math as customer-invoices.js's calcLineVAT — kept
