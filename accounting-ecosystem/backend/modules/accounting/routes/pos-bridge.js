@@ -997,6 +997,27 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
 
     await dbClient.query('BEGIN');
 
+    // RLS policies exist on accounts/customer_invoice_lines (migrations
+    // 091/138) built around app_company_id()/app_is_super_admin(), which
+    // read current_setting('app.company_id'/'app.is_super_admin') —
+    // session-local variables the migrations' own comments say the backend
+    // "will" set via set_config() before each query, once RLS enforcement
+    // moves past its documented "Phase 1: completely inert" state. This
+    // raw-pg connection never did that. If the connecting Postgres role
+    // does NOT carry BYPASSRLS (unlike the Supabase service-role key, which
+    // definitely does), those variables are permanently NULL here, RLS's
+    // `company_id = app_company_id()` never matches any row — including
+    // one this exact transaction just inserted — and the FK check on the
+    // subsequent customer_invoice_lines insert sees no row to reference.
+    // This is the real explanation for the FK violation persisting live
+    // 2026-08-16 even after moving provisioning onto one single
+    // transaction (commit 231ff2c) — that fix closed a real inconsistency
+    // but was never the actual cause. Setting these now, unconditionally
+    // and harmlessly if RLS turns out not to be enforced on this
+    // connection after all.
+    await dbClient.query(`SELECT set_config('app.company_id', $1, true), set_config('app.is_super_admin', $2, true)`,
+      [String(companyId), String(!!req.user.isSuperAdmin)]);
+
     // No 'reference' column exists to key a dup-check on, so this uses the
     // natural key instead: one till invoice per company per day, identified
     // by the auto-provisioned "Checkout Charlie - Sales" customer_id + date.
