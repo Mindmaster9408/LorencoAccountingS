@@ -843,29 +843,27 @@ const CHECKOUT_CHARLIE_CUSTOMER_NAME = 'Checkout Charlie - Sales';
 const CHECKOUT_CHARLIE_ACCOUNT_NAME  = 'Checkout Charlie - Sales';
 const PETTY_CASH_ACCOUNT_NAME        = 'Petty Cash';
 
-// These three provisioning helpers were originally written against the
-// `supabase` (PostgREST/service-role) client, which auto-provisions the
-// customer/account/bank-account rows fine on its own — but the invoice
-// header+lines insert below runs through the raw `db` (pg Pool) connection
-// instead (required — see the comment above the transaction block for why).
-// Live testing 2026-08-16 hit "insert or update on table
-// customer_invoice_lines violates foreign key constraint
-// customer_invoice_lines_account_id_fkey" — the account row created via
-// `supabase` was not visible to the `db` connection's FK check. Root cause
-// not fully pinned down (RLS policies exist on `accounts`/
-// `customer_invoice_lines` per migrations 091/138 — those two connections
-// may authenticate as different Postgres roles with different RLS
-// exposure), but the fix is correct regardless of the exact mechanism:
-// provisioning and the row that references it must go through the SAME
-// connection. Switched all three to `db.query()` to match.
-async function ensureCheckoutCharlieCustomer(companyId) {
-  const existing = await db.query(
+// These three provisioning helpers take a `client` (a checked-out pg Pool
+// client, i.e. from db.getClient() — NOT the pool itself) and MUST be called
+// from inside the same BEGIN/COMMIT transaction as the invoice header+lines
+// insert below. Switching all three to db.query() (a previous fix attempt,
+// commit 59021cd) was not enough — it moved everything onto the raw pg pool,
+// but db.query() and db.getClient() can each hand out a *different* physical
+// connection from the pool, and the FK violation on customer_invoice_lines.
+// account_id recurred live 2026-08-16 even with both paths on raw pg. Using
+// one single client end-to-end (provisioning through COMMIT) removes any
+// possibility of a cross-connection visibility gap, regardless of its exact
+// cause (RLS policies exist on accounts/customer_invoice_lines per
+// migrations 091/138, which remains the leading theory, but this fix no
+// longer depends on that theory being correct).
+async function ensureCheckoutCharlieCustomer(client, companyId) {
+  const existing = await client.query(
     `SELECT id FROM customers WHERE company_id = $1 AND name = $2 LIMIT 1`,
     [companyId, CHECKOUT_CHARLIE_CUSTOMER_NAME]
   );
   if (existing.rows.length > 0) return existing.rows[0].id;
 
-  const created = await db.query(
+  const created = await client.query(
     `INSERT INTO customers (company_id, name, customer_number, is_active, current_balance)
      VALUES ($1, $2, $3, true, 0) RETURNING id`,
     [companyId, CHECKOUT_CHARLIE_CUSTOMER_NAME, `POS-${companyId}`]
@@ -876,8 +874,8 @@ async function ensureCheckoutCharlieCustomer(companyId) {
 // Picks a free account code starting at 4090 — clear of the standard chart
 // template's own 4000-4080 sales-revenue block (accounting-schema.js) so
 // this never collides with a company's existing seeded chart of accounts.
-async function ensureCheckoutCharlieRevenueAccount(companyId) {
-  const existing = await db.query(
+async function ensureCheckoutCharlieRevenueAccount(client, companyId) {
+  const existing = await client.query(
     `SELECT id FROM accounts WHERE company_id = $1 AND name = $2 LIMIT 1`,
     [companyId, CHECKOUT_CHARLIE_ACCOUNT_NAME]
   );
@@ -885,12 +883,12 @@ async function ensureCheckoutCharlieRevenueAccount(companyId) {
 
   let code = 4090;
   for (let i = 0; i < 20; i++) {
-    const taken = await db.query(`SELECT id FROM accounts WHERE company_id = $1 AND code = $2 LIMIT 1`, [companyId, String(code)]);
+    const taken = await client.query(`SELECT id FROM accounts WHERE company_id = $1 AND code = $2 LIMIT 1`, [companyId, String(code)]);
     if (taken.rows.length === 0) break;
     code++;
   }
 
-  const created = await db.query(
+  const created = await client.query(
     `INSERT INTO accounts (company_id, code, name, type, sub_type, reporting_group, description, is_active)
      VALUES ($1, $2, $3, 'income', 'operating_income', 'operating_income', $4, true) RETURNING id`,
     [companyId, String(code), CHECKOUT_CHARLIE_ACCOUNT_NAME, 'Revenue from Checkout Charlie till sales']
@@ -898,14 +896,14 @@ async function ensureCheckoutCharlieRevenueAccount(companyId) {
   return created.rows[0].id;
 }
 
-async function ensurePettyCashBankAccount(companyId) {
-  const existing = await db.query(
+async function ensurePettyCashBankAccount(client, companyId) {
+  const existing = await client.query(
     `SELECT id FROM bank_accounts WHERE company_id = $1 AND name = $2 LIMIT 1`,
     [companyId, PETTY_CASH_ACCOUNT_NAME]
   );
   if (existing.rows.length > 0) return existing.rows[0].id;
 
-  const created = await db.query(
+  const created = await client.query(
     `INSERT INTO bank_accounts (company_id, name, bank_name, currency, is_active)
      VALUES ($1, $2, 'Cash on Hand', 'ZAR', true) RETURNING id`,
     [companyId, PETTY_CASH_ACCOUNT_NAME]
@@ -970,29 +968,40 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
   const { date } = req.body;
   if (!date) return res.status(400).json({ error: 'date is required' });
 
-  try {
-    const companyId = req.user.companyId;
+  const companyId = req.user.companyId;
 
+  // Everything from here through COMMIT runs on ONE checked-out pg client —
+  // see the comment above ensureCheckoutCharlieCustomer() for why: handing
+  // provisioning and the invoice insert to two different connections (even
+  // two different raw-pg ones, db.query() vs db.getClient()) let a FK
+  // violation on customer_invoice_lines.account_id slip through live
+  // 2026-08-16 despite an earlier fix (commit 59021cd) that moved both onto
+  // raw pg but not onto the SAME connection. One client end-to-end closes
+  // that gap regardless of its exact cause.
+  //
+  // Uses raw pg rather than the Supabase JS client for customer_invoices/
+  // customer_invoice_lines — confirmed live 2026-08-15 that those tables'
+  // REAL live columns differ from what 012_accounting_schema.sql's CREATE
+  // TABLE IF NOT EXISTS describes (that migration never actually took
+  // effect — the tables already existed in an older shape, e.g. no
+  // customer_name/reference columns, invoice_date is actually "date",
+  // subtotal_ex_vat is actually "subtotal", etc. — see
+  // information_schema.columns).
+  const dbClient = await db.getClient();
+  let committed = false;
+  try {
     const { data: company } = await supabase.from('companies').select('pos_gl_sync_enabled').eq('id', companyId).maybeSingle();
     if (!company || !company.pos_gl_sync_enabled) {
       return res.status(403).json({ error: 'POS GL sync is not enabled for this company. Enable it in Settings first.', code: 'GL_SYNC_DISABLED' });
     }
 
-    // Uses a raw pg query via db.getClient()/db.query() throughout this route
-    // rather than the Supabase JS client — confirmed live 2026-08-15 that
-    // customer_invoices/customer_invoice_lines' REAL live columns differ
-    // from what 012_accounting_schema.sql's CREATE TABLE IF NOT EXISTS
-    // describes (that migration never actually took effect — the tables
-    // already existed in an older shape, e.g. no customer_name/reference
-    // columns, invoice_date is actually "date", subtotal_ex_vat is actually
-    // "subtotal", etc. — see information_schema.columns). This also fixed a
-    // symptom that looked like a PostgREST schema-cache bug but wasn't.
-    //
+    await dbClient.query('BEGIN');
+
     // No 'reference' column exists to key a dup-check on, so this uses the
     // natural key instead: one till invoice per company per day, identified
     // by the auto-provisioned "Checkout Charlie - Sales" customer_id + date.
-    const customerId = await ensureCheckoutCharlieCustomer(companyId);
-    const dupResult = await db.query(
+    const customerId = await ensureCheckoutCharlieCustomer(dbClient, companyId);
+    const dupResult = await dbClient.query(
       `SELECT id FROM customer_invoices WHERE company_id = $1 AND customer_id = $2 AND date = $3 AND status != 'void' LIMIT 1`,
       [companyId, customerId, date]
     );
@@ -1024,8 +1033,8 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
       if (rate > 0) grouped.standard += lineTotal; else grouped.zeroOrExempt += lineTotal;
     }
 
-    const revenueAccountId = await ensureCheckoutCharlieRevenueAccount(companyId);
-    await ensurePettyCashBankAccount(companyId); // customerId already resolved above, for the dup-check
+    const revenueAccountId = await ensureCheckoutCharlieRevenueAccount(dbClient, companyId);
+    await ensurePettyCashBankAccount(dbClient, companyId); // customerId already resolved above, for the dup-check
 
     const lineDefs = [];
     if (grouped.standard > 0)     lineDefs.push({ description: `Checkout Charlie till sales ${date} (standard-rated)`, totalIncVat: grouped.standard, vatRate: 15 });
@@ -1042,53 +1051,41 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
       totalIncVat:   acc.totalIncVat   + l.totalIncVat,
     }), { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 });
 
-    const countResult = await db.query(`SELECT COUNT(*)::int AS count FROM customer_invoices WHERE company_id = $1`, [companyId]);
+    const countResult = await dbClient.query(`SELECT COUNT(*)::int AS count FROM customer_invoices WHERE company_id = $1`, [companyId]);
     const invoiceNumber = `INV-${String((countResult.rows[0].count || 0) + 1).padStart(4, '0')}`;
 
-    // Header + lines via raw SQL in one transaction, using the REAL live
-    // column names confirmed via information_schema.columns (2026-08-15):
     // customer_invoices has date/subtotal/total_amount/balance_due/
     // created_by (not invoice_date/subtotal_ex_vat/total_inc_vat/
     // created_by_user_id, and no customer_name/reference at all);
     // customer_invoice_lines has a single line_total (ex-VAT extended
     // amount, qty x unit_price) rather than a separate subtotal_ex_vat/
     // vat_amount/total_inc_vat/sort_order per line.
-    const dbClient = await db.getClient();
-    let invoice;
-    try {
-      await dbClient.query('BEGIN');
+    const hdrResult = await dbClient.query(
+      `INSERT INTO customer_invoices
+         (company_id, customer_id, invoice_number, date, status, vat_mode,
+          subtotal, vat_amount, total_amount, amount_paid, balance_due, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING *`,
+      [
+        companyId, customerId, invoiceNumber, date, 'draft', 'inclusive',
+        totals.subtotalExVat, totals.vatAmount, totals.totalIncVat, 0, totals.totalIncVat,
+        'Auto-generated from Checkout Charlie till sales — review against the till count before sending.',
+        req.user.id,
+      ]
+    );
+    const invoice = hdrResult.rows[0];
 
-      const hdrResult = await dbClient.query(
-        `INSERT INTO customer_invoices
-           (company_id, customer_id, invoice_number, date, status, vat_mode,
-            subtotal, vat_amount, total_amount, amount_paid, balance_due, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         RETURNING *`,
-        [
-          companyId, customerId, invoiceNumber, date, 'draft', 'inclusive',
-          totals.subtotalExVat, totals.vatAmount, totals.totalIncVat, 0, totals.totalIncVat,
-          'Auto-generated from Checkout Charlie till sales — review against the till count before sending.',
-          req.user.id,
-        ]
+    for (const l of processedLines) {
+      await dbClient.query(
+        `INSERT INTO customer_invoice_lines
+           (invoice_id, description, account_id, line_type, quantity, unit_price, vat_rate, line_total)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [invoice.id, l.description, l.accountId, 'account', 1, l.subtotalExVat, l.vatRate, l.subtotalExVat]
       );
-      invoice = hdrResult.rows[0];
-
-      for (const l of processedLines) {
-        await dbClient.query(
-          `INSERT INTO customer_invoice_lines
-             (invoice_id, description, account_id, line_type, quantity, unit_price, vat_rate, line_total)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [invoice.id, l.description, l.accountId, 'account', 1, l.subtotalExVat, l.vatRate, l.subtotalExVat]
-        );
-      }
-
-      await dbClient.query('COMMIT');
-    } catch (txErr) {
-      await dbClient.query('ROLLBACK');
-      throw txErr;
-    } finally {
-      dbClient.release();
     }
+
+    await dbClient.query('COMMIT');
+    committed = true;
 
     await AuditLogger.logUserAction(
       req, 'POS_TILL_INVOICE_GENERATED', 'CUSTOMER_INVOICE', invoice.id,
@@ -1100,6 +1097,11 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
   } catch (err) {
     console.error('[pos-bridge] gl-sync/generate-invoice error:', err);
     res.status(500).json({ error: err.message || 'Failed to generate till invoice' });
+  } finally {
+    if (!committed) {
+      try { await dbClient.query('ROLLBACK'); } catch (_rollbackErr) { /* transaction may never have started (e.g. 403 before BEGIN) — safe to ignore */ }
+    }
+    dbClient.release();
   }
 });
 
