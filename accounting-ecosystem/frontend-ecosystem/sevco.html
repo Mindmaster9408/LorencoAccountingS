@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SEVCO — Lorenco Ecosystem</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0a0818;
+            --surface: rgba(255,255,255,0.05);
+            --surface-hover: rgba(255,255,255,0.09);
+            --border: rgba(255,255,255,0.08);
+            --text: #fff;
+            --text-muted: rgba(255,255,255,0.45);
+            --accent: #667eea;
+            --accent-glow: rgba(102, 126, 234, 0.25);
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0818 0%, #1a1535 50%, #0f0c29 100%);
+            min-height: 100vh;
+            color: var(--text);
+        }
+
+        .topbar {
+            background: rgba(0,0,0,0.4);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(34,211,238,0.15);
+            padding: 0 28px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 14px; }
+        .topbar-logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #22d3ee, #0891b2);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; color: white; font-weight: 800;
+        }
+        .topbar-title { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
+        .topbar-subtitle {
+            font-size: 0.72rem;
+            background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.2);
+            padding: 2px 8px; border-radius: 20px; color: #67e8f9;
+        }
+        .topbar-right { display: flex; align-items: center; gap: 10px; }
+        .btn-back, .btn-logout {
+            padding: 7px 14px; border-radius: 8px; font-size: 0.78rem;
+            cursor: pointer; transition: all 0.2s; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text);
+        }
+        .btn-back:hover  { background: var(--surface-hover); }
+
+        .main { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+        .page-header { margin-bottom: 24px; }
+        .page-header h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; }
+        .page-header h1 span { color: #22d3ee; }
+        .page-header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 6px; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 10px; margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 14px 12px; text-align: center;
+        }
+        .stat-value { font-size: 1.6rem; font-weight: 800; }
+        .stat-label { font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .section {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 14px; padding: 18px 20px; margin-bottom: 20px;
+        }
+        .section-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+        }
+        .section-header h2 { font-size: 1.05rem; font-weight: 700; }
+        .section-header .hint { font-size: 0.72rem; color: var(--text-muted); }
+
+        .btn {
+            padding: 7px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text);
+        }
+        .btn:hover { background: var(--surface-hover); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary {
+            border-color: rgba(102,126,234,0.4); background: rgba(102,126,234,0.15); color: #a5b4fc;
+        }
+        .btn-primary:hover { background: rgba(102,126,234,0.28); }
+        .btn-success {
+            border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.15); color: #6ee7b7;
+        }
+        .btn-success:hover { background: rgba(16,185,129,0.28); }
+        .btn-danger {
+            border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.15); color: #fca5a5;
+        }
+        .btn-danger:hover { background: rgba(239,68,68,0.28); }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        th {
+            text-align: left; padding: 8px 10px; color: var(--text-muted);
+            font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+            border-bottom: 1px solid var(--border);
+        }
+        td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+        tr:last-child td { border-bottom: none; }
+        .empty-row td { text-align: center; color: var(--text-muted); padding: 24px; }
+
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 20px;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
+        }
+        .badge-missing    { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-conflict   { background: rgba(239,68,68,0.15); color: #fca5a5; }
+        .badge-correct    { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+        .badge-applied    { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-skipped    { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+        .badge-exception  { background: rgba(239,68,68,0.15); color: #fca5a5; }
+        .badge-error      { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+        .confidence-bar {
+            width: 80px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08);
+            overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px;
+        }
+        .confidence-fill { height: 100%; background: linear-gradient(90deg, #22d3ee, #10b981); }
+
+        .action-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        .safety-note {
+            margin-top: 8px; padding: 8px 10px; border-radius: 8px; font-size: 0.76rem;
+            background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5;
+        }
+        .loading, .error-msg { padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.82rem; }
+        .error-msg { color: #fca5a5; }
+
+        select, input[type=text] {
+            padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);
+            background: rgba(255,255,255,0.04); color: var(--text); font-size: 0.78rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="topbar-logo">S</div>
+            <div class="topbar-title">SEVCO</div>
+            <div class="topbar-subtitle">Sean Learning &amp; Knowledge — Superuser Only</div>
+        </div>
+        <div class="topbar-right">
+            <button class="btn" onclick="window.location.href='/payroll/sean-chat.html'">Sean Chat (Paytime) &rarr;</button>
+            <button class="btn-back" onclick="window.location.href='/dashboard'">&larr; Dashboard</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="page-header">
+            <h1>SEVCO <span>/ Paytime IRP5 Learning</span></h1>
+            <p>What Sean has learned from real IRP5 code changes across every client, and what still needs your review before it spreads anywhere else.</p>
+        </div>
+
+        <div id="statsGrid" class="stats-grid">
+            <div class="loading">Loading stats…</div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Discovered Patterns</h2>
+                <div>
+                    <button class="btn" onclick="loadPatterns()">Refresh</button>
+                    <button class="btn btn-primary" onclick="runAnalyze()">Analyze Now</button>
+                </div>
+            </div>
+            <div id="patternsBody"><div class="loading">Loading patterns…</div></div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Proposals Awaiting Review</h2>
+                <span class="hint">Approve fills missing codes only. Sean never overwrites an existing code.</span>
+            </div>
+            <div id="proposalsBody"><div class="loading">Loading proposals…</div></div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Exception Lookup</h2>
+                <span class="hint">Clients with a different existing code — always excluded from propagation</span>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                <input type="text" id="excName" placeholder="Item name, e.g. Commission">
+                <input type="text" id="excCode" placeholder="Proposed code, e.g. 3606">
+                <button class="btn btn-primary" onclick="loadExceptions()">Look up</button>
+            </div>
+            <div id="exceptionsBody"><div class="loading" style="padding:8px;">Enter an item name and code above.</div></div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2>Propagation Audit Log</h2>
+                <button class="btn" onclick="loadLog()">Refresh</button>
+            </div>
+            <div id="logBody"><div class="loading">Loading log…</div></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const token = localStorage.getItem('eco_token');
+
+        function resolveIsSuperAdmin() {
+            if (!token) return false;
+            try { const p = JSON.parse(atob(token.split('.')[1])); return !!p.isSuperAdmin; } catch(e) { return false; }
+        }
+        if (!token || !resolveIsSuperAdmin()) {
+            window.location.href = '/dashboard';
+        }
+
+        function authHeaders() {
+            return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+        }
+
+        async function apiGet(path) {
+            const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `Request failed (${res.status})`);
+            }
+            return res.json();
+        }
+
+        async function apiPost(path, body) {
+            const res = await fetch(`${API_BASE}${path}`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify(body || {})
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `Request failed (${res.status})`);
+            }
+            return res.json();
+        }
+
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        // ── Stats ──
+        async function loadStats() {
+            const grid = document.getElementById('statsGrid');
+            try {
+                const stats = await apiGet('/api/sean/paytime/stats');
+                const cards = [
+                    ['Learning Events', stats.totalEvents ?? stats.total_events ?? '—'],
+                    ['Patterns Found', stats.totalPatterns ?? stats.total_patterns ?? '—'],
+                    ['Pending Proposals', stats.pendingProposals ?? stats.pending_proposals ?? '—'],
+                    ['Approved (not yet run)', stats.approvedProposals ?? stats.approved_proposals ?? '—'],
+                    ['Propagations Applied', stats.totalApplied ?? stats.total_applied ?? '—'],
+                    ['Exceptions Logged', stats.totalExceptions ?? stats.total_exceptions ?? '—'],
+                ];
+                grid.innerHTML = cards.map(([label, value]) => `
+                    <div class="stat-card">
+                        <div class="stat-value">${esc(value)}</div>
+                        <div class="stat-label">${esc(label)}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                grid.innerHTML = `<div class="error-msg">Could not load stats: ${esc(e.message)}</div>`;
+            }
+        }
+
+        // ── Patterns ──
+        async function loadPatterns() {
+            const body = document.getElementById('patternsBody');
+            body.innerHTML = '<div class="loading">Loading patterns…</div>';
+            try {
+                const data = await apiGet('/api/sean/paytime/patterns');
+                const patterns = data.patterns || [];
+                if (!patterns.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No patterns discovered yet.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = `
+                    <table>
+                        <tr><th>Item</th><th>Suggested Code</th><th>Confidence</th><th>Clients Observed</th><th>Status</th></tr>
+                        ${patterns.map(p => `
+                            <tr>
+                                <td>${esc(p.normalized_item_name || p.normalizedItemName)}</td>
+                                <td>${esc(p.suggested_irp5_code || p.suggestedIrp5Code)}</td>
+                                <td>
+                                    <span class="confidence-bar"><span class="confidence-fill" style="width:${Math.round((p.confidence_score ?? p.confidenceScore ?? 0))}%"></span></span>
+                                    ${Math.round(p.confidence_score ?? p.confidenceScore ?? 0)}%
+                                </td>
+                                <td>${esc(p.clients_observed ?? p.clientsObserved ?? '—')}</td>
+                                <td><span class="badge badge-correct">${esc(p.status)}</span></td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `;
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load patterns: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function runAnalyze() {
+            try {
+                await apiPost('/api/sean/paytime/analyze');
+                await Promise.all([loadPatterns(), loadProposals(), loadStats()]);
+            } catch (e) {
+                alert('Analyze failed: ' + e.message);
+            }
+        }
+
+        // ── Proposals ──
+        async function loadProposals() {
+            const body = document.getElementById('proposalsBody');
+            body.innerHTML = '<div class="loading">Loading proposals…</div>';
+            try {
+                const data = await apiGet('/api/sean/paytime/proposals');
+                const proposals = data.proposals || [];
+                if (!proposals.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No proposals awaiting review.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = proposals.map(p => renderProposalCard(p)).join('');
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load proposals: ${esc(e.message)}</div>`;
+            }
+        }
+
+        function renderProposalCard(p) {
+            const missing    = p.missing || p.missingClients || [];
+            const conflicting = p.conflicting || p.conflictingClients || [];
+            const correct    = p.alreadyCorrect || p.already_correct || [];
+            const status = p.status || 'pending';
+            const canDecide  = status === 'pending';
+            const canPropagate = status === 'approved';
+            return `
+                <div class="section" style="margin-bottom:14px; background:rgba(255,255,255,0.03);">
+                    <div class="section-header">
+                        <h2 style="font-size:0.95rem;">${esc(p.snapshot_normalized_name || p.normalizedName || p.itemName)} &rarr; ${esc(p.snapshot_irp5_code || p.irp5Code || p.suggestedCode)}</h2>
+                        <span class="badge badge-correct">${esc(status)}</span>
+                    </div>
+                    <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.78rem; margin-bottom:10px;">
+                        <span><span class="badge badge-missing">${missing.length}</span> missing (will be filled)</span>
+                        <span><span class="badge badge-conflict">${conflicting.length}</span> conflicting (never touched)</span>
+                        <span><span class="badge badge-correct">${correct.length}</span> already correct</span>
+                    </div>
+                    ${conflicting.length ? `<div class="safety-note">Conflicting clients: ${conflicting.map(c => esc(c.companyName || c.company_name || c.companyId || c.company_id)).join(', ')} — Sean will never overwrite these.</div>` : ''}
+                    <div class="action-row" style="margin-top:10px;">
+                        ${canDecide ? `
+                            <button class="btn btn-success" onclick="decideProposal(${p.id}, 'approve')">Approve</button>
+                            <button class="btn btn-danger" onclick="decideProposal(${p.id}, 'reject')">Reject</button>
+                        ` : ''}
+                        ${canPropagate ? `<button class="btn btn-primary" onclick="propagateProposal(${p.id})">Propagate to Missing Clients</button>` : ''}
+                    </div>
+                    <div id="propagateResult-${p.id}"></div>
+                </div>
+            `;
+        }
+
+        async function decideProposal(id, action) {
+            try {
+                if (action === 'reject') {
+                    const reason = prompt('Reason for rejecting this proposal (optional):') || '';
+                    await apiPost(`/api/sean/paytime/proposals/${id}/reject`, { reason });
+                } else {
+                    await apiPost(`/api/sean/paytime/proposals/${id}/approve`);
+                }
+                await Promise.all([loadProposals(), loadStats()]);
+            } catch (e) {
+                alert(`Could not ${action} proposal: ` + e.message);
+            }
+        }
+
+        async function propagateProposal(id) {
+            if (!confirm('Propagate this proposal now? This writes the IRP5 code to every client where it is currently missing. Clients with a conflicting code are never touched.')) return;
+            try {
+                const data = await apiPost(`/api/sean/paytime/proposals/${id}/propagate`);
+                const r = data.result || {};
+                const target = document.getElementById(`propagateResult-${id}`);
+                if (target) {
+                    target.innerHTML = `
+                        <div class="safety-note" style="background:rgba(16,185,129,0.1); border-color:rgba(16,185,129,0.2); color:#6ee7b7;">
+                            Applied: ${r.applied ?? 0} · Skipped (already correct): ${r.skippedExisting ?? 0} · Exceptions: ${r.exceptions ?? 0} · Errors: ${r.errors ?? 0}
+                            ${data.safetyNote ? `<br>${esc(data.safetyNote)}` : ''}
+                        </div>
+                    `;
+                }
+                await Promise.all([loadProposals(), loadStats(), loadLog()]);
+            } catch (e) {
+                alert('Propagation failed: ' + e.message);
+            }
+        }
+
+        // ── Exceptions ──
+        async function loadExceptions() {
+            const name = document.getElementById('excName').value.trim();
+            const code = document.getElementById('excCode').value.trim();
+            const body = document.getElementById('exceptionsBody');
+            if (!name || !code) {
+                body.innerHTML = '<div class="loading" style="padding:8px;">Enter an item name and code above.</div>';
+                return;
+            }
+            body.innerHTML = '<div class="loading">Looking up…</div>';
+            try {
+                const data = await apiGet(`/api/sean/paytime/exceptions?name=${encodeURIComponent(name)}&code=${encodeURIComponent(code)}`);
+                const exceptions = data.exceptions || [];
+                if (!exceptions.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No conflicting clients found for this item/code.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = `
+                    <table>
+                        <tr><th>Client</th><th>Existing Code</th></tr>
+                        ${exceptions.map(x => `
+                            <tr>
+                                <td>${esc(x.companyName || x.company_name || x.companyId || x.company_id)}</td>
+                                <td><span class="badge badge-conflict">${esc(x.irp5Code || x.irp5_code)}</span></td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `;
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Lookup failed: ${esc(e.message)}</div>`;
+            }
+        }
+
+        // ── Audit Log ──
+        async function loadLog() {
+            const body = document.getElementById('logBody');
+            body.innerHTML = '<div class="loading">Loading log…</div>';
+            try {
+                const data = await apiGet('/api/sean/paytime/log?limit=50');
+                const log = data.log || [];
+                if (!log.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No propagation actions logged yet.</td></tr></table>';
+                    return;
+                }
+                const badgeClass = a => a === 'applied' ? 'badge-applied' : a === 'skipped_exception' ? 'badge-exception' : a === 'error' ? 'badge-error' : 'badge-skipped';
+                body.innerHTML = `
+                    <table>
+                        <tr><th>When</th><th>Item</th><th>Action</th><th>Code Written</th><th>Previous</th><th>Notes</th></tr>
+                        ${log.map(l => `
+                            <tr>
+                                <td>${esc(new Date(l.created_at).toLocaleString())}</td>
+                                <td>${esc(l.payroll_item_name)}</td>
+                                <td><span class="badge ${badgeClass(l.action)}">${esc(l.action)}</span></td>
+                                <td>${esc(l.irp5_code_written || '—')}</td>
+                                <td>${esc(l.previous_irp5_code || '—')}</td>
+                                <td>${esc(l.notes || '')}</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `;
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load log: ${esc(e.message)}</div>`;
+            }
+        }
+
+        // ── Init ──
+        (async function init() {
+            await Promise.all([loadStats(), loadPatterns(), loadProposals(), loadLog()]);
+        })();
+    </script>
+</body>
+</html>

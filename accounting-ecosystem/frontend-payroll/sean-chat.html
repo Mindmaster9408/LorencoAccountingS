@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sean Chat — Paytime</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0a0818;
+            --surface: rgba(255,255,255,0.05);
+            --surface-hover: rgba(255,255,255,0.09);
+            --border: rgba(255,255,255,0.08);
+            --text: #fff;
+            --text-muted: rgba(255,255,255,0.45);
+            --accent: #22d3ee;
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0818 0%, #1a1535 50%, #0f0c29 100%);
+            min-height: 100vh;
+            color: var(--text);
+        }
+
+        .topbar {
+            background: rgba(0,0,0,0.4);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(34,211,238,0.15);
+            padding: 0 28px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 14px; }
+        .topbar-logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #22d3ee, #0891b2);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; color: white; font-weight: 800;
+        }
+        .topbar-title { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
+        .topbar-subtitle {
+            font-size: 0.72rem;
+            background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.2);
+            padding: 2px 8px; border-radius: 20px; color: #67e8f9;
+        }
+        .topbar-right { display: flex; align-items: center; gap: 10px; }
+        .btn-back {
+            padding: 7px 14px; border-radius: 8px; font-size: 0.78rem;
+            cursor: pointer; transition: all 0.2s; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text);
+        }
+        .btn-back:hover { background: var(--surface-hover); }
+
+        select {
+            padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+            background: rgba(255,255,255,0.04); color: var(--text); font-size: 0.78rem;
+        }
+
+        .main { max-width: 820px; margin: 0 auto; padding: 28px 20px; }
+
+        .page-header { margin-bottom: 18px; }
+        .page-header h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+        .page-header h1 span { color: var(--accent); }
+        .page-header p { font-size: 0.82rem; color: var(--text-muted); margin-top: 6px; }
+
+        .chat-container {
+            background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+            display: flex; flex-direction: column; height: 60vh; min-height: 380px;
+        }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+        .msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 0.85rem; line-height: 1.4; }
+        .msg-user { align-self: flex-end; background: rgba(102,126,234,0.2); border: 1px solid rgba(102,126,234,0.3); }
+        .msg-bot { align-self: flex-start; background: rgba(255,255,255,0.06); border: 1px solid var(--border); }
+        .msg-bot.warn { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.08); }
+        .msg-bot.err { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); }
+        .msg-bot.ok { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.08); }
+
+        .confirm-card { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: rgba(0,0,0,0.25); border: 1px solid var(--border); font-size: 0.78rem; }
+        .confirm-card .row { display: flex; justify-content: space-between; padding: 3px 0; }
+        .confirm-card .warning-line { color: #fbbf24; margin-top: 6px; }
+        .confirm-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .btn { padding: 6px 12px; border-radius: 8px; font-size: 0.76rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+        .btn:hover { background: var(--surface-hover); }
+        .btn-success { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .btn-success:hover { background: rgba(16,185,129,0.28); }
+        .btn-danger { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.15); color: #fca5a5; }
+        .btn-danger:hover { background: rgba(239,68,68,0.28); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .chat-input-row { display: flex; gap: 8px; padding: 14px; border-top: 1px solid var(--border); }
+        .chat-input {
+            flex: 1; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+            background: rgba(255,255,255,0.04); color: var(--text); font-size: 0.85rem;
+        }
+        .btn-send {
+            padding: 10px 18px; border-radius: 10px; border: 1px solid rgba(34,211,238,0.4);
+            background: rgba(34,211,238,0.15); color: #67e8f9; font-weight: 700; cursor: pointer;
+        }
+        .btn-send:hover { background: rgba(34,211,238,0.28); }
+        .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .hint-row { margin-top: 10px; font-size: 0.72rem; color: var(--text-muted); }
+
+        .activate-banner {
+            display: none; align-items: center; justify-content: space-between; gap: 12px;
+            padding: 14px 16px; border-top: 1px solid var(--border);
+            background: rgba(245,158,11,0.08); color: #fbbf24; font-size: 0.82rem;
+        }
+        .btn-activate {
+            padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 0.78rem;
+            cursor: pointer; border: 1px solid rgba(16,185,129,0.4);
+            background: rgba(16,185,129,0.15); color: #6ee7b7; white-space: nowrap;
+        }
+        .btn-activate:hover { background: rgba(16,185,129,0.28); }
+        .btn-activate:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="topbar-logo">S</div>
+            <div class="topbar-title">Sean Chat</div>
+            <div class="topbar-subtitle">Paytime — Superuser Only</div>
+        </div>
+        <div class="topbar-right">
+            <select id="companySelect"></select>
+            <button class="btn-back" onclick="window.location.href='/sevco'">&larr; SEVCO</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="page-header">
+            <h1>Sean Chat <span>/ Paytime Actions</span></h1>
+            <p>Deterministic recipes only — no external AI is called. Kies eers 'n maatskappy hierbo, tik dan jou versoek. Elke aksie word bevestig voor dit regtig geskryf word.</p>
+        </div>
+
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="activate-banner" id="activateBanner">
+                <span>Sean Chat is nie vir hierdie maatskappy geaktiveer nie.</span>
+                <button class="btn-activate" id="activateBtn" onclick="activateChat()">Aktiveer vir hierdie maatskappy</button>
+            </div>
+            <div class="chat-input-row" id="chatInputRow">
+                <input type="text" id="chatInput" class="chat-input" placeholder="bv. gee Jan 5 ure oortyd"
+                       onkeydown="if(event.key==='Enter') sendMessage()">
+                <button class="btn-send" id="sendBtn" onclick="sendMessage()">Stuur</button>
+            </div>
+        </div>
+        <div class="hint-row">Voorbeelde: "gee Jan 5 ure oortyd" &middot; "10 ure kort tyd vir Jan" &middot; "bonus van R2000 vir Jan" &middot; "salaris vir Jan na R25000"</div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const token = localStorage.getItem('eco_token');
+
+        function resolveIsSuperAdmin() {
+            if (!token) return false;
+            try { const p = JSON.parse(atob(token.split('.')[1])); return !!p.isSuperAdmin; } catch(e) { return false; }
+        }
+        if (!token || !resolveIsSuperAdmin()) {
+            window.location.href = '/dashboard';
+        }
+
+        let selectedCompanyId = null;
+        let chatEnabled = false;
+        let pending = null; // { recipe, slots, employee, periodKey, text }
+
+        function authHeaders(extra) {
+            return Object.assign({
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-Company-Id': selectedCompanyId || '',
+            }, extra || {});
+        }
+
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        function appendMsg(text, cls, html) {
+            const list = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = `msg ${cls}`;
+            div.innerHTML = html !== undefined ? html : esc(text);
+            list.appendChild(div);
+            list.scrollTop = list.scrollHeight;
+            return div;
+        }
+
+        async function loadCompanies() {
+            const sel = document.getElementById('companySelect');
+            try {
+                const res = await fetch(`${API_BASE}/api/companies`, { headers: authHeaders() });
+                const data = await res.json();
+                const companies = data.companies || [];
+                sel.innerHTML = companies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+                if (companies.length) {
+                    selectedCompanyId = companies[0].id;
+                    sel.value = selectedCompanyId;
+                }
+                sel.onchange = async () => { selectedCompanyId = sel.value; await refreshChatStatus(); };
+            } catch (e) {
+                sel.innerHTML = '<option>Kon nie maatskappye laai nie</option>';
+            }
+        }
+
+        function applyChatStatusUI() {
+            document.getElementById('activateBanner').style.display = chatEnabled ? 'none' : 'flex';
+            document.getElementById('chatInputRow').style.display = chatEnabled ? 'flex' : 'none';
+        }
+
+        async function refreshChatStatus() {
+            if (!selectedCompanyId) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/paytime-chat/status`, { headers: authHeaders() });
+                const data = await res.json();
+                chatEnabled = !!(res.ok && data.enabled);
+            } catch (e) {
+                chatEnabled = false;
+            }
+            applyChatStatusUI();
+        }
+
+        async function activateChat() {
+            const btn = document.getElementById('activateBtn');
+            btn.disabled = true;
+            try {
+                const res = await fetch(`${API_BASE}/api/paytime-chat/activate`, { method: 'POST', headers: authHeaders() });
+                const data = await res.json();
+                if (!res.ok) {
+                    appendMsg(data.error || 'Kon nie aktiveer nie', 'msg-bot err');
+                    return;
+                }
+                chatEnabled = !!data.enabled;
+                applyChatStatusUI();
+                appendMsg('Sean Chat is nou geaktiveer vir hierdie maatskappy.', 'msg-bot ok');
+            } catch (e) {
+                appendMsg('Netwerkfout: ' + e.message, 'msg-bot err');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text || !selectedCompanyId || !chatEnabled) return;
+            appendMsg(text, 'msg-user');
+            input.value = '';
+            document.getElementById('sendBtn').disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/paytime-chat/parse`, {
+                    method: 'POST', headers: authHeaders(), body: JSON.stringify({ text })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    appendMsg(data.error || 'Fout met verwerking', 'msg-bot err');
+                    return;
+                }
+                if (!data.recipe) {
+                    appendMsg(data.message, 'msg-bot');
+                    return;
+                }
+                if (!data.employee) {
+                    const warn = (data.warnings || []).join(' ');
+                    appendMsg(warn || 'Kon nie werknemer vind nie.', 'msg-bot warn');
+                    return;
+                }
+
+                pending = {
+                    recipe: data.recipe, slots: data.slots, employee: data.employee,
+                    periodKey: data.periodKey, text,
+                };
+
+                const empName = `${data.employee.firstName} ${data.employee.lastName}`;
+                const slotLines = Object.entries(data.slots || {})
+                    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+                    .map(([k, v]) => `<div class="row"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('');
+                const warnLines = (data.warnings || [])
+                    .filter(w => !w.startsWith('Let wel') ? true : true)
+                    .map(w => `<div class="warning-line">&#9888; ${esc(w)}</div>`).join('');
+
+                appendMsg(null, 'msg-bot', `
+                    <div>Ek verstaan: <strong>${esc(data.recipe)}</strong> vir <strong>${esc(empName)}</strong> (${esc(data.periodKey)})</div>
+                    <div class="confirm-card">
+                        ${slotLines}
+                        ${warnLines}
+                        <div class="confirm-actions">
+                            <button class="btn btn-success" onclick="confirmExecute(this)">Bevestig</button>
+                            <button class="btn btn-danger" onclick="cancelPending(this)">Kanselleer</button>
+                        </div>
+                    </div>
+                `);
+            } catch (e) {
+                appendMsg('Netwerkfout: ' + e.message, 'msg-bot err');
+            } finally {
+                document.getElementById('sendBtn').disabled = false;
+            }
+        }
+
+        function cancelPending(btn) {
+            pending = null;
+            btn.closest('.confirm-card').innerHTML = '<em>Gekanselleer.</em>';
+        }
+
+        async function confirmExecute(btn) {
+            if (!pending) return;
+            btn.disabled = true;
+            const card = btn.closest('.confirm-card');
+            try {
+                const res = await fetch(`${API_BASE}/api/paytime-chat/execute`, {
+                    method: 'POST', headers: authHeaders(),
+                    body: JSON.stringify({
+                        text: pending.text, recipe: pending.recipe, employeeId: pending.employee.id,
+                        periodKey: pending.periodKey, slots: pending.slots,
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    card.innerHTML = `<span style="color:#fca5a5;">&#10007; ${esc(data.error || 'Kon nie uitvoer nie')}</span>`;
+                    return;
+                }
+                card.innerHTML = `<span style="color:#6ee7b7;">&#10003; Gedoen.</span>`;
+            } catch (e) {
+                card.innerHTML = `<span style="color:#fca5a5;">Netwerkfout: ${esc(e.message)}</span>`;
+            } finally {
+                pending = null;
+            }
+        }
+
+        (async function init() {
+            document.getElementById('chatInputRow').style.display = 'none';
+            await loadCompanies();
+            await refreshChatStatus();
+            appendMsg('Gereed. Kies \'n maatskappy en tik jou versoek.', 'msg-bot');
+        })();
+    </script>
+</body>
+</html>
