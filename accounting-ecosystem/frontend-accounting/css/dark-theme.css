@@ -1758,3 +1758,31 @@ tr.error-row th {
 .page-btn:disabled {
     opacity: 0.3 !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PILOT ACTION QUEUE (dashboard.html) — .action-item-* severity variants
+ * Inline styles used light pastel fills (#fff8f8/#fffaf5/#fffef5/#f5f9ff)
+ * meant for a light page — stood out as a stark white/cream bar once the
+ * cosmic-bg dark background actually took effect (2026-08-16).
+ * ══════════════════════════════════════════════════════════════════════════════ */
+.action-item {
+    background: var(--surface) !important;
+    border-left-color: var(--border-strong) !important;
+}
+.action-item-critical { background: rgba(229,57,53,0.12) !important; border-left-color: #e53935 !important; }
+.action-item-high     { background: rgba(251,140,0,0.12) !important; border-left-color: #fb8c00 !important; }
+.action-item-warning  { background: rgba(253,216,53,0.12) !important; border-left-color: #fdd835 !important; }
+.action-item-info     { background: rgba(30,136,229,0.12) !important; border-left-color: #1e88e5 !important; }
+.action-item-title {
+    color: var(--text) !important;
+}
+.action-item-desc {
+    color: var(--text-muted) !important;
+}
+.action-item-link {
+    color: var(--accent-light) !important;
+    border-color: var(--accent-glow) !important;
+}
+.action-item-link:hover {
+    background: var(--accent-subtle) !important;
+}
