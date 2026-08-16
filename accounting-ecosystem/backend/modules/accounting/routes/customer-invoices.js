@@ -103,40 +103,74 @@ async function validateLineAccountIds(companyId, lines) {
   return foreign.length > 0 ? foreign : null;
 }
 
+// ── customer_invoices schema-drift helpers (2026-08-16) ──────────────────────
+// The live customer_invoices table has no customer_name/reference columns and
+// uses date/subtotal/total_amount/created_by/balance_due, not
+// invoice_date/subtotal_ex_vat/total_inc_vat/created_by_user_id (confirmed
+// via information_schema.columns — 012_accounting_schema.sql's CREATE TABLE
+// IF NOT EXISTS never actually applied because the table already existed in
+// this older shape). customer_invoice_lines similarly has one line_total
+// column, not separate subtotal_ex_vat/vat_amount/total_inc_vat/sort_order.
+// See the [[project_customer_invoices_postgrest_cache_bug]] memory note.
+//
+// Resolves a customer_id to write against this schema's FK-only design.
+// Preserves the existing "type a name, no customerId required" API contract
+// (customers.js's inline-create pattern) by finding-or-creating a customers
+// row when only a name is given, rather than requiring every caller to be
+// rewritten to always pass a real customerId.
+async function resolveCustomerId(companyId, customerId, customerName) {
+  if (customerId) {
+    const parsed = parseInt(customerId);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  if (!customerName || !customerName.trim()) return null;
+
+  const name = customerName.trim();
+  const { data: existing } = await supabase
+    .from('customers').select('id')
+    .eq('company_id', companyId).ilike('name', name)
+    .maybeSingle();
+  if (existing) return existing.id;
+
+  const { data: created, error } = await supabase
+    .from('customers').insert({ company_id: companyId, name })
+    .select('id').single();
+  if (error) throw new Error(`Could not resolve/create customer "${name}": ${error.message}`);
+  return created.id;
+}
+
+// Batch-attaches a customer_name field to a list of invoice-like rows (or a
+// single row) for API-response backward compatibility, since the DB itself
+// no longer stores a name on the invoice row.
+async function attachCustomerNames(companyId, rows) {
+  const list = Array.isArray(rows) ? rows : [rows];
+  const ids = [...new Set(list.map(r => r.customer_id).filter(Boolean))];
+  let nameById = {};
+  if (ids.length > 0) {
+    const { data } = await supabase.from('customers').select('id, name').eq('company_id', companyId).in('id', ids);
+    nameById = Object.fromEntries((data || []).map(c => [c.id, c.name]));
+  }
+  for (const r of list) r.customer_name = r.customer_id ? (nameById[r.customer_id] || `Customer #${r.customer_id}`) : 'Unknown Customer';
+  return Array.isArray(rows) ? list : list[0];
+}
+
 // ─── Customer List (for dropdowns) ───────────────────────────────────────────
 
 router.get('/customers', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   try {
-    // Return distinct customer names from POS customers + existing invoices
-    const [posResult, invResult] = await Promise.all([
-      supabase
-        .from('customers')
-        .select('id, name, email, phone')
-        .eq('company_id', companyId)
-        .order('name')
-        .then(r => r.data || [])
-        .catch(() => []),
-      supabase
-        .from('customer_invoices')
-        .select('customer_name')
-        .eq('company_id', companyId)
-        .order('customer_name')
-        .then(r => r.data || []),
-    ]);
+    // customer_invoices has no customer_name column to merge in "invoice-only"
+    // names from (see the schema-drift note above) — every invoice now
+    // resolves to a real customers row via resolveCustomerId(), so the POS
+    // customers list alone is already the complete set.
+    const { data: posResult } = await supabase
+      .from('customers')
+      .select('id, name, email, phone')
+      .eq('company_id', companyId)
+      .order('name');
 
-    const posMap = new Map(posResult.map(c => [c.name.toLowerCase().trim(), c]));
-    const customers = [...posResult.map(c => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, source: 'pos' }))];
-    // Add invoice-only names not already in POS
-    const seen = new Set(posResult.map(c => c.name.toLowerCase().trim()));
-    for (const row of invResult) {
-      const key = row.customer_name.toLowerCase().trim();
-      if (!seen.has(key)) {
-        seen.add(key);
-        customers.push({ id: null, name: row.customer_name, source: 'invoice' });
-      }
-    }
+    const customers = (posResult || []).map(c => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, source: 'pos' }));
     res.json({ customers });
   } catch (err) {
     console.error('GET /customer-invoices/customers error:', err);
@@ -206,18 +240,18 @@ router.get('/', authenticate, hasPermission('ar.invoice.view'), async (req, res)
       .from('customer_invoices')
       .select('*')
       .eq('company_id', companyId)
-      .order('invoice_date', { ascending: false })
+      .order('date', { ascending: false })
       .order('id', { ascending: false })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
     if (status)     query = query.eq('status', status);
     if (customerId) query = query.eq('customer_id', parseInt(customerId));
-    if (fromDate)   query = query.gte('invoice_date', fromDate);
-    if (toDate)     query = query.lte('invoice_date', toDate);
+    if (fromDate)   query = query.gte('date', fromDate);
+    if (toDate)     query = query.lte('date', toDate);
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    res.json({ invoices: data || [] });
+    res.json({ invoices: await attachCustomerNames(companyId, data || []) });
   } catch (err) {
     console.error('GET /customer-invoices error:', err);
     res.status(500).json({ error: err.message });
@@ -245,7 +279,7 @@ router.get('/:id', authenticate, hasPermission('ar.invoice.view'), async (req, r
       .from('customer_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoiceId)
-      .order('sort_order');
+      .order('id');
 
     if (linesErr) throw new Error(linesErr.message);
 
@@ -257,7 +291,7 @@ router.get('/:id', authenticate, hasPermission('ar.invoice.view'), async (req, r
       accounts: undefined,
     }));
 
-    res.json({ invoice: { ...invoice, lines: flatLines } });
+    res.json({ invoice: { ...(await attachCustomerNames(companyId, invoice)), lines: flatLines } });
   } catch (err) {
     console.error('GET /customer-invoices/:id error:', err);
     res.status(500).json({ error: err.message });
@@ -270,11 +304,11 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const {
-    customerId, customerName, invoiceNumber, reference,
+    customerId, customerName, invoiceNumber,
     invoiceDate, dueDate, vatInclusive, lines, notes,
   } = req.body;
 
-  if (!customerName) return res.status(400).json({ error: 'Customer name is required' });
+  if (!customerId && !customerName) return res.status(400).json({ error: 'A customer is required — select an existing customer or provide a name.' });
   if (!invoiceDate)  return res.status(400).json({ error: 'Invoice date is required' });
   if (!lines || !lines.length) return res.status(400).json({ error: 'At least one line item is required' });
 
@@ -283,7 +317,6 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
     // These run before any expensive work so a bad payload is rejected cheaply.
 
     // Guard 1: if a customer_id is supplied it MUST belong to this company.
-    // A null/missing customer_id is valid (name-only invoices are supported).
     if (customerId) {
       const custOk = await validateCustomerId(companyId, customerId);
       if (custOk === false) {
@@ -302,6 +335,13 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
           errorCode: 'CUSTOMER_TENANT_VIOLATION',
         });
       }
+    }
+    // customer_invoices has no customer_name column (schema-drift note above)
+    // — resolves to a real customers row, creating one by name if the caller
+    // only sent a name (preserves the existing "name-only" form behaviour).
+    const resolvedCustomerId = await resolveCustomerId(companyId, customerId, customerName);
+    if (!resolvedCustomerId) {
+      return res.status(400).json({ error: 'A customer is required — select an existing customer or provide a name.' });
     }
 
     // Guard 2: every line account_id must belong to this company.
@@ -380,17 +420,14 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
 
       const hdrResult = await dbClient.query(
         `INSERT INTO customer_invoices
-           (company_id, customer_id, customer_name, invoice_number, reference,
-            invoice_date, due_date, status, vat_mode, subtotal_ex_vat, vat_amount, total_inc_vat,
-            amount_paid, notes, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           (company_id, customer_id, invoice_number, date, due_date, status, vat_mode,
+            subtotal, vat_amount, total_amount, amount_paid, balance_due, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING *`,
         [
           companyId,
-          customerId ? parseInt(customerId) : null,
-          customerName,
+          resolvedCustomerId,
           invNum,
-          reference || null,
           invoiceDate,
           dueDate || null,
           'draft',
@@ -399,27 +436,31 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
           totals.vatAmount,
           totals.totalIncVat,
           0,
+          totals.totalIncVat,
           notes || null,
           userId(req),
         ]
       );
       invoice = hdrResult.rows[0];
 
-      // Bulk-insert all lines in one statement
+      // Bulk-insert all lines in one statement. line_total is the ex-VAT
+      // extended amount (quantity x unit_price) -- there's no separate
+      // subtotal_ex_vat/vat_amount/total_inc_vat/sort_order per line in the
+      // real schema, only the invoice header carries those totals.
       const lineVals = [];
       const lineParams = [];
       let p = 1;
       for (const l of processedLines) {
-        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
         lineParams.push(
           invoice.id, l.description, l.accountId || null, l.lineType, l.itemId || null,
-          l.quantity, l.unitPrice, l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
+          l.quantity, l.unitPrice, l.vatRate, l.subtotalExVat
         );
       }
       await dbClient.query(
         `INSERT INTO customer_invoice_lines
            (invoice_id, description, account_id, line_type, item_id, quantity, unit_price,
-            vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
+            vat_rate, line_total)
          VALUES ${lineVals.join(',')}`,
         lineParams
       );
@@ -455,7 +496,7 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
       userAgent: req.get('user-agent'),
     });
 
-    res.status(201).json({ invoice: { ...invoice, lines: processedLines } });
+    res.status(201).json({ invoice: { ...(await attachCustomerNames(companyId, invoice)), lines: processedLines } });
   } catch (err) {
     console.error('POST /customer-invoices error:', err);
     res.status(500).json({ error: err.message });
@@ -469,7 +510,7 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);
   const {
-    customerName, invoiceNumber, reference, invoiceDate,
+    customerId, customerName, invoiceNumber, invoiceDate,
     dueDate, vatInclusive, lines, notes,
   } = req.body;
 
@@ -541,10 +582,16 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
       }
     }
 
-    // Resolve effective values for fields that are optional in the update payload
-    const effectiveCustomerName  = customerName  || existing.customer_name;
+    // Resolve effective values for fields that are optional in the update payload.
+    // customer_invoices has no customer_name column — resolve/create a real
+    // customers row the same way POST / does, falling back to the invoice's
+    // existing customer_id if neither customerId nor customerName was sent.
+    const effectiveCustomerId    = (customerId || customerName)
+      ? await resolveCustomerId(companyId, customerId, customerName)
+      : existing.customer_id;
     const effectiveInvoiceNumber = invoiceNumber || existing.invoice_number;
-    const effectiveInvoiceDate   = invoiceDate   || existing.invoice_date;
+    const effectiveInvoiceDate   = invoiceDate   || existing.date;
+    const effectiveBalanceDue    = Math.round((totals.totalIncVat - parseFloat(existing.amount_paid || 0)) * 100) / 100;
 
     // ── Atomic update: header + lines in a single pg transaction ─────────────
     // The header UPDATE and the line DELETE + INSERT are wrapped in one BEGIN/COMMIT.
@@ -556,27 +603,27 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
 
       await dbClient.query(
         `UPDATE customer_invoices
-         SET customer_name    = $1,
+         SET customer_id      = $1,
              invoice_number   = $2,
-             invoice_date     = $3,
+             date             = $3,
              vat_mode         = $4,
-             subtotal_ex_vat  = $5,
+             subtotal         = $5,
              vat_amount       = $6,
-             total_inc_vat    = $7,
-             reference        = $8,
+             total_amount     = $7,
+             balance_due      = $8,
              due_date         = $9,
              notes            = $10,
              updated_at       = $11
          WHERE id = $12 AND company_id = $13`,
         [
-          effectiveCustomerName,
+          effectiveCustomerId,
           effectiveInvoiceNumber,
           effectiveInvoiceDate,
           effectiveVatMode,
           totals.subtotalExVat,
           totals.vatAmount,
           totals.totalIncVat,
-          reference || null,
+          effectiveBalanceDue,
           dueDate || null,
           notes || null,
           new Date().toISOString(),
@@ -597,16 +644,16 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
           const lineParams = [];
           let p = 1;
           for (const l of processedLines) {
-            lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+            lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
             lineParams.push(
               invoiceId, l.description, l.accountId || null, l.lineType, l.itemId || null,
-              l.quantity, l.unitPrice, l.vatRate, l.subtotalExVat, l.vatAmount, l.totalIncVat, l.sortOrder
+              l.quantity, l.unitPrice, l.vatRate, l.subtotalExVat
             );
           }
           await dbClient.query(
             `INSERT INTO customer_invoice_lines
                (invoice_id, description, account_id, line_type, item_id, quantity, unit_price,
-                vat_rate, subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
+                vat_rate, line_total)
              VALUES ${lineVals.join(',')}`,
             lineParams
           );
@@ -635,7 +682,7 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
       .from('customer_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoiceId)
-      .order('sort_order');
+      .order('id');
     if (updLinesErr) throw new Error(updLinesErr.message);
 
     const flatLines = (updatedLines || []).map(l => ({
@@ -653,23 +700,23 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.edit'), async (req, r
       entityType: 'CUSTOMER_INVOICE',
       entityId: invoiceId,
       beforeJson: {
-        subtotalExVat: parseFloat(existing.subtotal_ex_vat || 0),
+        subtotalExVat: parseFloat(existing.subtotal || 0),
         vatAmount: parseFloat(existing.vat_amount || 0),
-        totalIncVat: parseFloat(existing.total_inc_vat || 0),
-        invoiceDate: existing.invoice_date,
+        totalIncVat: parseFloat(existing.total_amount || 0),
+        invoiceDate: existing.date,
       },
       afterJson: {
         subtotalExVat: totals.subtotalExVat,
         vatAmount: totals.vatAmount,
         totalIncVat: totals.totalIncVat,
-        invoiceDate: invoiceDate || existing.invoice_date,
+        invoiceDate: invoiceDate || existing.date,
       },
       reason: 'Customer invoice updated (draft)',
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
     });
 
-    res.json({ invoice: { ...updated, lines: flatLines } });
+    res.json({ invoice: { ...(await attachCustomerNames(companyId, updated)), lines: flatLines } });
   } catch (err) {
     console.error('PUT /customer-invoices/:id error:', err);
     res.status(500).json({ error: err.message });
@@ -730,8 +777,10 @@ router.post('/:id/post', authenticate, hasPermission('ar.invoice.post'), async (
       .from('customer_invoice_lines')
       .select('*')
       .eq('invoice_id', invoiceId)
-      .order('sort_order');
+      .order('id');
     if (linesErr) throw new Error(linesErr.message);
+
+    await attachCustomerNames(companyId, invoice);
 
     // Resolve required accounts
     const arAccountId = await findAccountByCode(companyId, '1100');
@@ -746,18 +795,18 @@ router.post('/:id/post', authenticate, hasPermission('ar.invoice.post'), async (
     // DR AR — full invoice amount
     glLines.push({
       accountId:   arAccountId,
-      debit:       parseFloat(invoice.total_inc_vat),
+      debit:       parseFloat(invoice.total_amount),
       credit:      0,
       description: `AR: ${invoice.customer_name} ${invoice.invoice_number}`,
     });
 
-    // CR Revenue lines
+    // CR Revenue lines (line_total is the ex-VAT extended amount)
     for (const l of (lines || [])) {
-      if (l && l.account_id && parseFloat(l.subtotal_ex_vat) > 0) {
+      if (l && l.account_id && parseFloat(l.line_total) > 0) {
         glLines.push({
           accountId:   l.account_id,
           debit:       0,
-          credit:      parseFloat(l.subtotal_ex_vat),
+          credit:      parseFloat(l.line_total),
           description: l.description || 'Revenue',
         });
       }
@@ -783,7 +832,7 @@ router.post('/:id/post', authenticate, hasPermission('ar.invoice.post'), async (
     // Create + post journal
     const glJournal = await JournalService.createDraftJournal({
       companyId,
-      date:             invoice.invoice_date,
+      date:             invoice.date,
       reference:        invoice.invoice_number,
       description:      `AR Invoice: ${invoice.customer_name}`,
       sourceType:       'customer_invoice',
@@ -850,7 +899,7 @@ router.post('/:id/post', authenticate, hasPermission('ar.invoice.post'), async (
       afterJson: {
         status: 'sent',
         journalId: glJournal.id,
-        totalIncVat: parseFloat(invoice.total_inc_vat),
+        totalIncVat: parseFloat(invoice.total_amount),
         customerName: invoice.customer_name,
       },
       reason: 'Customer invoice posted to GL',
@@ -1042,14 +1091,14 @@ router.post('/payments', authenticate, hasPermission('ar.payment.record'), async
         const allocAmount = parseFloat(alloc.amount);
         const { data: inv } = await supabase
           .from('customer_invoices')
-          .select('amount_paid, total_inc_vat, invoice_number')
+          .select('amount_paid, total_amount, invoice_number')
           .eq('id', parseInt(alloc.invoiceId))
           .eq('company_id', companyId)
           .maybeSingle();
         if (!inv) {
           return res.status(422).json({ error: `Invoice ${alloc.invoiceId} not found for this company.` });
         }
-        const remaining = parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid || 0);
+        const remaining = parseFloat(inv.total_amount) - parseFloat(inv.amount_paid || 0);
         if (allocAmount > remaining + 0.01) {
           return res.status(422).json({
             error: `Allocation of ${allocAmount.toFixed(2)} exceeds outstanding balance of ${remaining.toFixed(2)} on invoice ${inv.invoice_number || alloc.invoiceId}.`
@@ -1143,7 +1192,7 @@ router.post('/payments', authenticate, hasPermission('ar.payment.record'), async
           // Lock the invoice row — no other transaction can update amount_paid
           // for this invoice until this transaction commits or rolls back.
           const { rows: lockRows } = await allocClient.query(
-            `SELECT id, amount_paid, total_inc_vat
+            `SELECT id, amount_paid, total_amount
              FROM customer_invoices
              WHERE id = $1 AND company_id = $2
              FOR UPDATE`,
@@ -1157,7 +1206,7 @@ router.post('/payments', authenticate, hasPermission('ar.payment.record'), async
           const inv               = lockRows[0];
           const currentAmountPaid = parseFloat(inv.amount_paid || 0);
           const newAmountPaid     = Math.round((currentAmountPaid + allocAmount) * 100) / 100;
-          const totalIncVat       = parseFloat(inv.total_inc_vat);
+          const totalIncVat       = parseFloat(inv.total_amount);
 
           // Authoritative overpayment guard — checked with locked, current data.
           if (newAmountPaid > totalIncVat + 0.015) {
@@ -1175,9 +1224,9 @@ router.post('/payments', authenticate, hasPermission('ar.payment.record'), async
 
           await allocClient.query(
             `UPDATE customer_invoices
-             SET amount_paid = $1, status = $2, updated_at = NOW()
-             WHERE id = $3 AND company_id = $4`,
-            [newAmountPaid, newStatus, allocInvoiceId, companyId]
+             SET amount_paid = $1, balance_due = $2, status = $3, updated_at = NOW()
+             WHERE id = $4 AND company_id = $5`,
+            [newAmountPaid, Math.round((totalIncVat - newAmountPaid) * 100) / 100, newStatus, allocInvoiceId, companyId]
           );
 
           // Idempotent insert: ON CONFLICT replaces amount_applied so a replayed
@@ -1368,7 +1417,7 @@ router.get('/payments/:id', authenticate, hasPermission('ar.payment.record'), as
       const invoiceIds = [...new Set(rawAllocs.map(a => a.invoice_id))];
       const { data: invoices } = await supabase
         .from('customer_invoices')
-        .select('id, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid, status')
+        .select('id, invoice_number, date, due_date, total_amount, amount_paid, status')
         .eq('company_id', companyId)
         .in('id', invoiceIds);
 
@@ -1376,13 +1425,13 @@ router.get('/payments/:id', authenticate, hasPermission('ar.payment.record'), as
 
       allocations = rawAllocs.map(alloc => {
         const inv     = invMap.get(alloc.invoice_id) || {};
-        const total   = parseFloat(inv.total_inc_vat || 0);
+        const total   = parseFloat(inv.total_amount || 0);
         const paid    = parseFloat(inv.amount_paid   || 0);
         const applied = parseFloat(alloc.amount_applied || 0);
         return {
           invoiceId:         alloc.invoice_id,
           invoiceNumber:     inv.invoice_number     || `#${alloc.invoice_id}`,
-          invoiceDate:       inv.invoice_date       || null,
+          invoiceDate:       inv.date               || null,
           invoiceDueDate:    inv.due_date           || null,
           invoiceTotal:      total,
           invoiceAmountPaid: paid,
@@ -1558,7 +1607,7 @@ router.post('/payments/:id/void', authenticate, hasPermission('ar.payment.void')
         const allocInvId   = parseInt(alloc.invoice_id);
 
         const { rows: invLock } = await revClient.query(
-          `SELECT id, amount_paid, total_inc_vat
+          `SELECT id, amount_paid, total_amount
              FROM customer_invoices
             WHERE id = $1 AND company_id = $2
             FOR UPDATE`,
@@ -1571,16 +1620,16 @@ router.post('/payments/:id/void', authenticate, hasPermission('ar.payment.void')
           0,
           Math.round((parseFloat(inv.amount_paid) - allocAmount) * 100) / 100
         );
-        const totalIncVat   = parseFloat(inv.total_inc_vat);
+        const totalIncVat   = parseFloat(inv.total_amount);
         const newStatus     = newAmountPaid >= totalIncVat - 0.005 ? 'paid'
                             : newAmountPaid > 0                    ? 'part_paid'
                             : 'sent';
 
         await revClient.query(
           `UPDATE customer_invoices
-              SET amount_paid = $1, status = $2, updated_at = NOW()
-            WHERE id = $3 AND company_id = $4`,
-          [newAmountPaid, newStatus, allocInvId, companyId]
+              SET amount_paid = $1, balance_due = $2, status = $3, updated_at = NOW()
+            WHERE id = $4 AND company_id = $5`,
+          [newAmountPaid, Math.round((totalIncVat - newAmountPaid) * 100) / 100, newStatus, allocInvId, companyId]
         );
       }
 
@@ -1702,25 +1751,27 @@ router.get('/aging', authenticate, hasPermission('ar.invoice.view'), async (req,
   try {
     let q = supabase
       .from('customer_invoices')
-      .select('id, customer_id, customer_name, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid')
+      .select('id, customer_id, invoice_number, date, due_date, total_amount, amount_paid')
       .eq('company_id', companyId)
       .not('status', 'in', '("draft","void","cancelled")');
 
     if (customerIdFilter) q = q.eq('customer_id', customerIdFilter);
 
-    const { data: invoices, error } = await q;
+    const { data: rawInvoices, error } = await q;
     if (error) throw new Error(error.message);
+    const invoices = await attachCustomerNames(companyId, rawInvoices || []);
 
     const byCustomer = {};
 
-    for (const inv of (invoices || [])) {
-      const outstanding = Math.round((parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid || 0)) * 100) / 100;
+    for (const inv of invoices) {
+      const outstanding = Math.round((parseFloat(inv.total_amount) - parseFloat(inv.amount_paid || 0)) * 100) / 100;
       if (!includeZero && outstanding <= 0.005) continue;
 
-      // Group by customer_id when present, otherwise by normalised name
-      const groupKey = inv.customer_id
-        ? `id:${inv.customer_id}`
-        : `name:${(inv.customer_name || '').toLowerCase().trim()}`;
+      // Every invoice resolves to a real customer_id (resolveCustomerId at
+      // create/update time) — group by that; the name-fallback grouping key
+      // this used to need for "name-only" invoices no longer applies since
+      // there's no customer_name column left to fall back to.
+      const groupKey = inv.customer_id ? `id:${inv.customer_id}` : 'unknown';
 
       if (!byCustomer[groupKey]) {
         byCustomer[groupKey] = {
@@ -1782,6 +1833,14 @@ router.get('/aging', authenticate, hasPermission('ar.invoice.view'), async (req,
 // Mounted on customer-invoices so the invoice detail page can call
 //   GET /api/accounting/customer-invoices/:id/credit-notes
 // without any cross-router dependency.
+//
+// NOT verified against information_schema.columns during the 2026-08-16
+// customer_invoices/customer_invoice_lines schema-drift fix (see the note
+// above this file's other routes) — this queries a DIFFERENT table,
+// customer_credit_notes, which was untouched by that audit. If this route
+// errors with "column does not exist", check its real columns the same way
+// (SELECT column_name FROM information_schema.columns WHERE table_name =
+// 'customer_credit_notes') before assuming the fix — don't guess again.
 
 router.get('/:id/credit-notes', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
