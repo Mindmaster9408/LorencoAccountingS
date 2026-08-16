@@ -1057,6 +1057,32 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
     const revenueAccountId = await ensureCheckoutCharlieRevenueAccount(dbClient, companyId);
     await ensurePettyCashBankAccount(dbClient, companyId); // customerId already resolved above, for the dup-check
 
+    // TEMPORARY diagnostics — three fix attempts (cross-client, single
+    // transaction, RLS set_config) have not resolved a recurring FK
+    // violation on customer_invoice_lines.account_id. Rather than guess a
+    // fourth time, this proves directly, on the exact connection about to
+    // do the insert: (a) whether this role bypasses RLS at all — if it
+    // does, none of the RLS theory applies and something else entirely is
+    // wrong; (b) whether the account row this transaction just
+    // created/found is actually SELECT-visible on this same connection
+    // right before the insert that's failing. Remove once root-caused.
+    try {
+      const diag = await dbClient.query(
+        `SELECT current_user AS role,
+                current_setting('app.company_id', true) AS app_company_id,
+                (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass_rls`
+      );
+      const verify = await dbClient.query(
+        `SELECT id, company_id, name FROM accounts WHERE id = $1`,
+        [revenueAccountId]
+      );
+      console.log('[pos-bridge][DIAG] companyId=%s revenueAccountId=%s role=%s app_company_id=%s bypass_rls=%s accountVisibleOnThisConn=%s accountRow=%j',
+        companyId, revenueAccountId, diag.rows[0].role, diag.rows[0].app_company_id, diag.rows[0].bypass_rls,
+        verify.rows.length > 0, verify.rows[0] || null);
+    } catch (diagErr) {
+      console.error('[pos-bridge][DIAG] diagnostic query itself failed:', diagErr.message);
+    }
+
     const lineDefs = [];
     if (grouped.standard > 0)     lineDefs.push({ description: `Checkout Charlie till sales ${date} (standard-rated)`, totalIncVat: grouped.standard, vatRate: 15 });
     if (grouped.zeroOrExempt > 0) lineDefs.push({ description: `Checkout Charlie till sales ${date} (zero-rated/exempt)`, totalIncVat: grouped.zeroOrExempt, vatRate: 0 });
