@@ -4018,11 +4018,39 @@
                             <button class="btn btn-primary" onclick="saveReceiptSettings()" style="margin-top: 15px;">Save Settings</button>
                         </div>
 
+                        <!-- Local Print Relay — a small locally-run tool (local-print-relay/)
+                             that sends receipts to the printer through its normal SHARED
+                             Windows driver instead of WebUSB's exclusive claim. Added
+                             2026-08-16 so a fallback till system (e.g. Humble) can keep
+                             printing to the same physical printer without a conflict.
+                             Tried before USB — see printReceipt(). Optional: a till that
+                             never needs a fallback system can skip this and keep using
+                             USB pairing below exactly as before. -->
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <h4 style="margin: 0 0 5px 0;">Local Print Relay</h4>
+                            <p style="color:#666;font-size:13px;margin:0 0 15px;">
+                                Recommended if this till needs to fall back to another program (like Humble) that
+                                must also use this printer — avoids the USB-pairing conflict below entirely.
+                                Setup: see <code>local-print-relay/README.md</code> in the repo.
+                            </p>
+                            <div id="printRelayStatus" style="padding:10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text);margin-bottom:12px;font-size:14px;">
+                                Checking for a running print relay...
+                            </div>
+                            <div style="display:flex;gap:10px;">
+                                <button class="btn btn-secondary" onclick="refreshPrintRelayStatus()">🔄 Recheck</button>
+                                <button class="btn btn-secondary" id="printRelayTestBtn" onclick="testPrintRelay()" style="display:none;">Print Test Slip</button>
+                            </div>
+                        </div>
+
                         <!-- USB Receipt Printer — pairs directly with the browser via
                              WebUSB, so the receipt (and the cash drawer kick signal)
                              are sent straight from this till PC to the printer with no
                              separate software needed. Only supports Chrome/Edge (WebUSB
                              isn't available in Firefox/Safari) and requires HTTPS.
+                             NOTE: exclusively claims the USB device (via the Zadig/WinUSB
+                             fix) — if another program also needs to print to this same
+                             printer (e.g. Humble as a fallback till), use the Local Print
+                             Relay above instead, which doesn't have this conflict.
                              Network (IP-based) printers are a separate, not-yet-built
                              path — see the "Printers" table below for that. -->
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
@@ -6078,6 +6106,7 @@
             // login/company context, just a browser permission lookup, so this
             // doesn't need to wait for Settings to be opened first.
             cachedUsbPrinter = await getPairedUsbPrinter();
+            checkPrintRelay(); // fire-and-forget — sets relayAvailable before the first print of the day, avoiding a timeout on it
             isOnline = navigator.onLine;
             await updateOfflineBanner();
             await checkDeviceIdentity(); // Workstream 82 — validate this device against the backend before showing any login UI
@@ -10012,6 +10041,28 @@
         // account), not just cash — there was no gate on payment method at
         // all, only on the openDrawerEnabled setting.
         async function printReceipt(saleId, isFreshCashSale = false) {
+            // Local Print Relay — tried first if it's running on this till (see
+            // local-print-relay/README.md). Prints via the printer's normal
+            // shared Windows driver rather than WebUSB's exclusive claim, so a
+            // fallback till program (e.g. Humble) keeps working off the same
+            // printer. relayAvailable starts null (unchecked) so the first
+            // print of the session always tries; once it's known to be absent
+            // it's skipped from then on rather than eating a timeout every time.
+            if (relayAvailable !== false) {
+                try {
+                    await printReceiptViaRelay(saleId);
+                    relayAvailable = true;
+                    if (openDrawerEnabled && isFreshCashSale) {
+                        try { await kickDrawerViaRelay(); } catch (e) { console.warn('[Print] Relay drawer kick failed:', e.message); }
+                    }
+                    showNotification('Receipt printed!', 'success');
+                    return;
+                } catch (e) {
+                    console.warn('[Print] Relay not available, falling back:', e.message);
+                    relayAvailable = false;
+                }
+            }
+
             // A paired USB printer (WebUSB) is the one fully-working hardware
             // path today — it prints AND kicks the drawer directly from this
             // browser, no server round-trip needed. Takes priority over the
@@ -10131,6 +10182,100 @@
 
             // Clear after print dialog closes
             setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
+        }
+
+        // ========== LOCAL PRINT RELAY ==========
+        // Talks to a small locally-run tool (local-print-relay/) instead of the
+        // printer directly. Added 2026-08-16: pairing a printer with Charlie via
+        // WebUSB (below) makes Windows hand the printer exclusively to this
+        // browser, so any fallback till program (e.g. Humble) can no longer print
+        // to it at all — that's a real incident, not a hypothetical. This relay
+        // avoids the conflict by printing through the printer's normal SHARED
+        // Windows driver, the same way any other program does, so nothing ever
+        // claims it exclusively. Tried first in printReceipt(); if it's not
+        // running on a given till, requests fail fast (short timeout) and
+        // everything falls through to WebUSB/browser print exactly as before —
+        // migrating a till to the relay is opt-in, not a breaking change.
+        const PRINT_RELAY_URL = 'http://127.0.0.1:9123';
+        let relayAvailable = null; // null = not checked yet this session
+
+        async function relayFetch(path, options, timeoutMs) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                return await fetch(PRINT_RELAY_URL + path, Object.assign({}, options, { signal: controller.signal }));
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function checkPrintRelay() {
+            try {
+                const res = await relayFetch('/status', {}, 800);
+                if (!res.ok) throw new Error('bad status');
+                const data = await res.json();
+                relayAvailable = !!data.ok;
+                return data;
+            } catch (e) {
+                relayAvailable = false;
+                return null;
+            }
+        }
+
+        async function sendToPrintRelay(bytes, endpoint) {
+            const res = await relayFetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/octet-stream' },
+                body: bytes
+            }, 5000);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Print relay error');
+            }
+        }
+
+        async function printReceiptViaRelay(saleId) {
+            const bytes = await buildEscPosReceipt(saleId);
+            await sendToPrintRelay(bytes, '/print');
+        }
+
+        async function kickDrawerViaRelay() {
+            await sendToPrintRelay(escPosBytes([ESC_POS.INIT, ESC_POS.DRAWER_KICK]), '/drawer-kick');
+        }
+
+        async function refreshPrintRelayStatus() {
+            const statusEl = document.getElementById('printRelayStatus');
+            const testBtn = document.getElementById('printRelayTestBtn');
+            if (!statusEl) return;
+            statusEl.textContent = 'Checking for a running print relay...';
+            const data = await checkPrintRelay();
+            if (data && data.ok) {
+                if (data.printerShareName) {
+                    statusEl.textContent = `✅ Relay running — printer share: ${data.printerShareName}`;
+                    testBtn.style.display = 'inline-block';
+                } else {
+                    statusEl.textContent = '⚠️ Relay running, but no printer share configured yet — edit config.json (see README.md).';
+                    testBtn.style.display = 'none';
+                }
+            } else {
+                statusEl.textContent = 'Not running on this till. Optional — only needed if this till falls back to another print program. See local-print-relay/README.md.';
+                testBtn.style.display = 'none';
+            }
+        }
+
+        async function testPrintRelay() {
+            try {
+                const testBytes = escPosBytes([
+                    ESC_POS.INIT, ESC_POS.ALIGN_CENTER, ESC_POS.BOLD_ON,
+                    'PRINT RELAY TEST\n', ESC_POS.BOLD_OFF,
+                    '-'.repeat(32) + '\n', 'If you can read this, the\nrelay is printing correctly.\n\n\n',
+                    ESC_POS.CUT
+                ]);
+                await sendToPrintRelay(testBytes, '/print');
+                showNotification('Test slip sent to relay!', 'success');
+            } catch (e) {
+                showNotification('Relay test failed: ' + e.message, 'error');
+            }
         }
 
         // ========== USB THERMAL PRINTER (WebUSB) ==========
@@ -10575,6 +10720,7 @@
                 loadPrinters();
                 loadReceiptSettings();
                 refreshUsbPrinterStatus();
+                refreshPrintRelayStatus();
             } else if (section === 'general') {
                 document.getElementById('generalSection').style.display = 'block';
                 loadGeneralSettings();

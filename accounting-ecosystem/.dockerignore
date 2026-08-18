@@ -41,3 +41,6 @@ backend/tests/
 
 # Dev tooling
 .browserslistrc
+
+# Local-only till hardware tool — runs on the till PC, not the server
+local-print-relay/
