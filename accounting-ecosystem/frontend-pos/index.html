@@ -4031,15 +4031,20 @@
                             <p style="color:#666;font-size:13px;margin:0 0 15px;">
                                 Recommended if this till needs to fall back to another program (like Humble) that
                                 must also use this printer — avoids the USB-pairing conflict below entirely.
-                                Setup: see <code>local-print-relay/README.md</code> in the repo.
                             </p>
                             <div id="printRelayStatus" style="padding:10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);color:var(--text);margin-bottom:12px;font-size:14px;">
                                 Checking for a running print relay...
                             </div>
-                            <div style="display:flex;gap:10px;">
+                            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                                <a href="downloads/charlie-print-relay.zip" download class="btn btn-primary" style="text-decoration:none;">⬇ Download Print Relay</a>
                                 <button class="btn btn-secondary" onclick="refreshPrintRelayStatus()">🔄 Recheck</button>
                                 <button class="btn btn-secondary" id="printRelayTestBtn" onclick="testPrintRelay()" style="display:none;">Print Test Slip</button>
                             </div>
+                            <p style="color:#999;font-size:12px;margin:10px 0 0;">
+                                Right on this till: click Download, unzip it anywhere (e.g. Desktop), then open
+                                the unzipped folder's README.md and follow the setup steps — no USB stick or
+                                remote access needed, it's all on this browser already.
+                            </p>
                         </div>
 
                         <!-- USB Receipt Printer — pairs directly with the browser via

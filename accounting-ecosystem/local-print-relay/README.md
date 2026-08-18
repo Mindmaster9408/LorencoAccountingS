@@ -69,9 +69,18 @@ Print Relay" status alongside the existing USB printer status.
 
 ## Troubleshooting
 
-- **"copy to printer share failed"** — double check the share name in
-  `config.json` exactly matches Windows' Sharing tab (case doesn't matter,
-  but spelling does), and that the printer is actually shared and online.
+- **"copy to printer share failed"** — this is almost always leftover Zadig
+  from before. If step 1 above (undoing Zadig) wasn't done, or didn't fully
+  take, the printer is still bound to Windows as a raw WinUSB device instead
+  of a normal shared printer — it won't have a share name at all, so there's
+  nothing for `config.json` to point at. Check Device Manager: if the
+  printer is listed under **Universal Serial Bus devices** rather than
+  **Printers**, Zadig's fix is still in effect — redo step 1 (Uninstall
+  device, unplug/replug) until it shows up under Printers again and you can
+  actually find it in Devices and Printers to share it.
+  If it's already under Printers and this still fails, double check the
+  share name in `config.json` exactly matches Windows' Sharing tab (case
+  doesn't matter, but spelling does).
 - **Nothing happens when printing from Charlie** — make sure
   `start-relay.bat` is running (check for its window/taskbar icon), and that
   no firewall is blocking `127.0.0.1:9123` (it's localhost-only traffic, so
