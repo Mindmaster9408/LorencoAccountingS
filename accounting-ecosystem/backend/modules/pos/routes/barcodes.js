@@ -89,12 +89,46 @@ router.post('/generate', requirePermission('PRODUCTS.CREATE'), async (req, res) 
     }
 
     const prefix = settings.company_prefix || '600';
-    const sequence = settings.current_sequence || 1000;
-    const digits12 = (prefix + String(sequence).padStart(12 - prefix.length, '0')).slice(0, 12);
-    const checkDigit = ean13CheckDigit(digits12);
-    const barcode = digits12 + checkDigit;
 
-    // Increment sequence
+    // Advance the sequence until it lands on a barcode not already assigned
+    // to a product (found live 2026-08-20: the old version trusted
+    // current_sequence blindly and could hand out a barcode a product
+    // already had — e.g. after a manually-typed barcode landed inside the
+    // same numeric range, or the counter was ever reset/restored out of
+    // sync with products). Company-scoped, same as /check/:barcode above.
+    // Capped so a corrupted counter/runaway loop fails loudly instead of
+    // hanging the request.
+    let sequence = settings.current_sequence || 1000;
+    let barcode;
+    const MAX_ATTEMPTS = 1000;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const digits12 = (prefix + String(sequence).padStart(12 - prefix.length, '0')).slice(0, 12);
+      const checkDigit = ean13CheckDigit(digits12);
+      const candidate = digits12 + checkDigit;
+
+      const { data: existing, error: checkError } = await supabase
+        .from('products')
+        .select('id')
+        .eq('company_id', req.companyId)
+        .eq('barcode', candidate)
+        .limit(1);
+
+      if (checkError) return res.status(500).json({ error: checkError.message });
+
+      if (!existing || existing.length === 0) {
+        barcode = candidate;
+        break;
+      }
+      sequence++;
+    }
+
+    if (!barcode) {
+      return res.status(500).json({ error: 'Could not find an unused barcode — please check barcode_settings for this company.' });
+    }
+
+    // Persist the sequence one past the barcode just handed out, so the
+    // next call starts searching from there instead of re-checking the
+    // same already-assigned values every time.
     await supabase
       .from('barcode_settings')
       .update({
