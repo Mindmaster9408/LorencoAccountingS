@@ -2189,6 +2189,15 @@
                                     <button class="payment-btn" onclick="toggleSplitPayment()" id="splitPaymentBtn"><span class="pay-icon">✂️</span>Split</button>
                                 </div>
 
+                                <!-- Custom Amount — manager-PIN-gated cart line with no real product
+                                     behind it, e.g. "we know it's item 1 @ R120 but there's no product
+                                     for it yet". Explicit stopgap (2026-08-16, per Ruan) — a proper
+                                     "open item" design comes later, this just needs to work now.
+                                     See addCustomAmountItem()/promptCustomAmount() below. -->
+                                <div style="margin-top:8px;">
+                                    <button class="btn btn-secondary" style="width:100%;font-size:12px;padding:8px;" onclick="promptCustomAmount()">➕ Custom Amount (Manager)</button>
+                                </div>
+
                                 <div class="payment-more-wrap" id="paymentMoreWrap">
                                     <button type="button" class="payment-more-btn" id="paymentMoreBtn" onclick="toggleMorePayments(event)">
                                         <span id="paymentMoreLabel">⋯ More</span>
@@ -9049,6 +9058,26 @@
             let total = 0;
             (items || []).forEach(item => {
                 const original = productsById.get(item.productId)?.unit_price ?? item.price;
+
+                // Manager-authorized per-line override (2026-08-21) — the
+                // final word for this line, same as the whole-cart manual
+                // discount below is the final word for the total. Must NOT
+                // enter the candidates/Math.min blend further down: item.price
+                // IS already the exact manager-approved figure, and blending
+                // it with Daily Discount/customer candidates could silently
+                // apply a steeper unrelated discount instead of the specific
+                // amount the manager actually approved.
+                if (item.lineOverridePercent) {
+                    const lineOriginal  = original * item.quantity;
+                    const lineEffective = item.price * item.quantity;
+                    grossSubtotal += lineOriginal;
+                    total += lineEffective;
+                    if (item.requiresVat && item.vatRate) {
+                        vat += lineEffective * (item.vatRate / (100 + item.vatRate));
+                    }
+                    return;
+                }
+
                 const candidates = [original, item.price];
 
                 const override = selectedCustomerProductDiscounts.get(item.productId);
@@ -9087,9 +9116,22 @@
         // then a second row with qty+total). Same removeItem()/updateQty()
         // handlers, same item.name/quantity/price fields — only the markup shape
         // changed.
+        // Manager-authorized per-line override (2026-08-21) — tap the item
+        // name to type a new (lower) price for just this line; hold it down
+        // to apply a % discount to just this line instead, same long-press
+        // convention as the qty "+" button (startQtyHold/QTY_HOLD_MS above).
+        // A non-manager cashier gets the same PIN modal the whole-cart
+        // Discount field already uses — see requestLineOverrideAuth() below.
         function buildCartItemHtml(item) {
+            const overrideBadge = item.lineOverridePercent
+                ? ` <span title="Manager-approved price" style="font-size:11px;color:#10b981;">🏷️ -${item.lineOverridePercent}%</span>`
+                : '';
             return `
-                <div class="item-name" title="${item.name.replace(/"/g, '&quot;')}">${item.name}</div>
+                <div class="item-name" title="${item.name.replace(/"/g, '&quot;')} — tap to change price, hold for % off this item"
+                    onclick="handleItemNameClick(event, ${item.productId})"
+                    onmousedown="startItemHold(${item.productId})" onmouseup="cancelItemHold()" onmouseleave="cancelItemHold()"
+                    ontouchstart="startItemHold(${item.productId})" ontouchend="cancelItemHold()" ontouchcancel="cancelItemHold()"
+                    style="cursor:pointer;">${item.name}${overrideBadge}</div>
                 <div class="cart-item-controls">
                     <div class="qty-controls">
                         <button class="qty-btn" onclick="updateQty(${item.productId}, -1)">-</button>
@@ -9298,6 +9340,124 @@
 
         function removeItem(productId) {
             cart = cart.filter(item => item.productId !== productId);
+            updateCart();
+        }
+
+        // ── Per-line manager-authorized price override (2026-08-21) ────────────
+        // Two ways in, one shared authorization/apply path: tap the item name
+        // to type an exact new (lower) price, or hold it down to give a %
+        // off just that one item. Both end up calling requestLineOverrideAuth()
+        // with a computed percent, reusing the exact same manager-PIN modal
+        // (requestManagerPinAuth) the whole-cart Discount field already uses —
+        // see managerAuth.js's 'line_discount' action_type (backend) for the
+        // authorization side of this.
+        let itemHoldTimer = null;
+        let itemHoldFired = false;
+        const ITEM_HOLD_MS = 550;
+
+        function startItemHold(productId) {
+            itemHoldFired = false;
+            clearTimeout(itemHoldTimer);
+            itemHoldTimer = setTimeout(() => {
+                itemHoldFired = true;
+                promptLineDiscountPercent(productId);
+            }, ITEM_HOLD_MS);
+        }
+
+        function cancelItemHold() {
+            clearTimeout(itemHoldTimer);
+        }
+
+        // Same held-click swallow pattern as handleQtyPlusClick() above.
+        function handleItemNameClick(event, productId) {
+            if (itemHoldFired) {
+                event.preventDefault();
+                itemHoldFired = false;
+                return;
+            }
+            promptLineOverridePrice(productId);
+        }
+
+        // The "normal" price for a line — Daily Discount already applied if
+        // one is active, but never a previously-applied manager override.
+        // Always the comparison base, so overriding twice in a row compares
+        // against the true original both times instead of compounding.
+        function lineBasePrice(item) {
+            const product = productsById.get(item.productId);
+            return product ? (product.discount_price ?? product.unit_price) : item.price;
+        }
+
+        function promptLineOverridePrice(productId) {
+            const item = cart.find(i => i.productId === productId);
+            if (!item) return;
+            if (item.serialNumbers) {
+                showNotification('Price change is not available for serial-tracked items', 'error');
+                return;
+            }
+            const basePrice = lineBasePrice(item);
+            const current = item.lineOverridePercent ? item.price : basePrice;
+            const input = prompt(`New price for "${item.name}" (currently R${current.toFixed(2)}):`, current.toFixed(2));
+            if (input === null) return;
+            const newPrice = parseFloat(input);
+            if (isNaN(newPrice) || newPrice < 0) {
+                showNotification('Enter a valid price', 'error');
+                return;
+            }
+            if (newPrice >= basePrice) {
+                // Back to (or above) the normal price — nothing left to
+                // authorize; just clears any existing override.
+                clearLineOverride(productId);
+                return;
+            }
+            const pct = Math.round(((basePrice - newPrice) / basePrice) * 10000) / 100;
+            requestLineOverrideAuth(productId, pct);
+        }
+
+        function promptLineDiscountPercent(productId) {
+            const item = cart.find(i => i.productId === productId);
+            if (!item) return;
+            if (item.serialNumbers) {
+                showNotification('Discount is not available for serial-tracked items', 'error');
+                return;
+            }
+            const input = prompt(`Discount % for just "${item.name}" (this item only, not the whole cart):`, '');
+            if (input === null) return;
+            const pct = parseFloat(input);
+            if (isNaN(pct) || pct <= 0 || pct > 100) {
+                showNotification('Enter a discount between 0 and 100', 'error');
+                return;
+            }
+            requestLineOverrideAuth(productId, Math.round(pct * 100) / 100);
+        }
+
+        function requestLineOverrideAuth(productId, pct) {
+            if (MANAGEMENT_TIER_ROLES_FOR_DISCOUNT.includes(userRole)) {
+                applyLineOverride(productId, pct);
+            } else {
+                requestManagerPinAuth({
+                    actionType: 'line_discount',
+                    discountPercent: pct,
+                    tillSessionId: currentSession?.id,
+                    onSuccess: () => applyLineOverride(productId, pct),
+                });
+            }
+        }
+
+        function applyLineOverride(productId, pct) {
+            const item = cart.find(i => i.productId === productId);
+            if (!item) return;
+            const basePrice = lineBasePrice(item);
+            item.lineOverridePercent = pct;
+            item.price = Math.max(0, Math.round(basePrice * (1 - pct / 100) * 100) / 100);
+            showNotification(`${item.name}: R ${item.price.toFixed(2)} (manager-approved)`, 'success');
+            updateCart();
+        }
+
+        function clearLineOverride(productId) {
+            const item = cart.find(i => i.productId === productId);
+            if (!item || !item.lineOverridePercent) return;
+            item.price = lineBasePrice(item);
+            delete item.lineOverridePercent;
             updateCart();
         }
 
@@ -9686,6 +9846,9 @@
                     // Serial Number Tracking — only present on serial-tracked products
                     // (see addToCart()); absent for every other cart line.
                     ...(item.serialNumbers && item.serialNumbers.length > 0 ? { serial_numbers: item.serialNumbers } : {}),
+                    // Per-line manager-authorized override (2026-08-21) — see
+                    // applyLineOverride()/managerAuth.js 'line_discount'.
+                    ...(item.lineOverridePercent ? { lineOverridePercent: item.lineOverridePercent } : {}),
                 })),
                 paymentMethod: selectedPayment,
                 // BUG FIX (found live, 2026-07-31, during customer-discount audit):
@@ -9762,6 +9925,9 @@
                             productId: item.productId,
                             quantity: item.quantity,
                             ...(item.serialNumbers && item.serialNumbers.length > 0 ? { serial_numbers: item.serialNumbers } : {}),
+                            // Per-line manager-authorized override (2026-08-21) — see
+                            // applyLineOverride()/managerAuth.js 'line_discount'.
+                            ...(item.lineOverridePercent ? { lineOverridePercent: item.lineOverridePercent } : {}),
                         })),
                         paymentMethod: selectedPayment,
                         customerId: selectedAccountCustomerId || undefined,
@@ -9899,10 +10065,22 @@
             modal.style.display = 'flex';
             const showChange = selectedPayment === 'CASH' && typeof cashTendered === 'number' && !isNaN(cashTendered);
             const changeGiven = showChange ? Math.max(0, cashTendered - sale.totalAmount) : 0;
+            // Change Due is now the prominent figure on a cash sale with a
+            // tendered amount (2026-08-21, cashier request) — it's the number
+            // the cashier actually needs to act on (hand back change), not the
+            // sale total they already saw building up on the till screen. The
+            // sale total moves into the same box as Tendered, both secondary.
+            // Every other case (card/EFT/account, or cash with no tendered
+            // amount entered) is unaffected — there's no "change" concept
+            // there, so the total stays the one prominent figure exactly as
+            // before.
+            const primaryAmountHtml = showChange
+                ? `<div style="font-size: 36px; font-weight: 800; color: #10b981; margin-bottom: 4px;">Change: R ${changeGiven.toFixed(2)}</div>`
+                : `<div style="font-size: 32px; font-weight: bold; color: #10b981; margin-bottom: 15px;">R ${sale.totalAmount.toFixed(2)}</div>`;
             const changeDueHtml = showChange ? `
-                        <div style="background:#eff8f0;border:1px solid #10b981;border-radius:10px;padding:12px;margin-bottom:15px;">
-                            <div style="font-size:13px;color:#555;">Tendered: R ${cashTendered.toFixed(2)}</div>
-                            <div style="font-size:22px;font-weight:800;color:#10b981;">Change Due: R ${changeGiven.toFixed(2)}</div>
+                        <div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:10px;padding:10px;margin-bottom:15px;font-size:13px;color:#555;">
+                            <div>Sale Total: R ${sale.totalAmount.toFixed(2)}</div>
+                            <div>Tendered: R ${cashTendered.toFixed(2)}</div>
                         </div>` : '';
             modal.innerHTML = `
                 <div class="modal" style="max-width: 450px;">
@@ -9913,7 +10091,7 @@
                     <div class="modal-body" style="text-align: center; padding: 25px;">
                         <div style="font-size: 48px; margin-bottom: 10px;">&#10003;</div>
                         <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">#${sale.saleNumber}</div>
-                        <div style="font-size: 32px; font-weight: bold; color: #10b981; margin-bottom: 15px;">R ${sale.totalAmount.toFixed(2)}</div>
+                        ${primaryAmountHtml}
                         <div style="color: #666; margin-bottom: 20px;">Payment: ${selectedPayment}</div>
                         ${changeDueHtml}
 
@@ -13216,6 +13394,69 @@
             }
         }
 
+        // ========== CUSTOM AMOUNT (MANAGER) ==========
+        // Manager-PIN-gated cart line with no real product behind it — e.g.
+        // "it's item 1 @ R120 but there's no product for it yet". Explicit
+        // stopgap (2026-08-16, per Ruan) — a proper "open item" product design
+        // comes later; this just needs to work now. Reuses the same
+        // manager-PIN pattern as the manual discount flow (requestManagerPinAuth).
+        //
+        // Deliberately does NOT cache the backend call across multiple custom
+        // items in the same sale — POST /custom-item is also where the manager
+        // authorization actually gets consumed (single-use), so every custom
+        // amount needs its own fresh PIN approval, not just the first one.
+        function promptCustomAmount() {
+            requestManagerPinAuth({
+                actionType: 'custom_item',
+                tillSessionId: currentSession?.id,
+                onSuccess: () => {
+                    const raw = prompt('Enter the amount (R):');
+                    if (raw === null) return; // cancelled
+                    const amount = parseFloat(raw);
+                    if (isNaN(amount) || amount <= 0) {
+                        showNotification('Enter a valid amount greater than 0', 'error');
+                        return;
+                    }
+                    addCustomAmountItem(amount);
+                },
+            });
+        }
+
+        async function addCustomAmountItem(amount) {
+            try {
+                const res = await fetch(`${API_URL}/pos/products/custom-item`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ till_session_id: currentSession?.id })
+                });
+                const result = await res.json();
+                if (!res.ok || !result.product) {
+                    showNotification(result.error || 'Could not add custom amount item', 'error');
+                    return;
+                }
+
+                // Pushed directly rather than via addToCart() — that merges by
+                // matching productId and bumps quantity, which would wrongly
+                // combine two different manager-entered amounts (e.g. R50 then
+                // R120) into one "qty 2" line instead of two distinct amounts.
+                const itemNumber = cart.filter(i => i.productId === result.product.id).length + 1;
+                cart.push({
+                    productId: result.product.id,
+                    name: `Item ${itemNumber}`,
+                    price: amount,
+                    vatRate: result.product.vat_rate,
+                    requiresVat: result.product.requires_vat !== 0 && result.product.requires_vat !== false,
+                    quantity: 1,
+                    maxStock: 999999,
+                    isCustomAmount: true,
+                });
+                updateCart();
+                showNotification(`Custom amount added: R ${amount.toFixed(2)}`, 'success');
+            } catch (e) {
+                showNotification('Error adding custom amount: ' + e.message, 'error');
+            }
+        }
+
         // ========== SPLIT PAYMENT FUNCTIONS ==========
 
         let splitPaymentMode = false;
@@ -14126,6 +14367,8 @@
             document.getElementById('managerPinAuthDescription').textContent =
                 actionType === 'discount'
                     ? `A manager must enter their PIN to approve a ${discountPercent}% discount.`
+                    : actionType === 'line_discount'
+                    ? `A manager must enter their PIN to approve a ${discountPercent}% price change on this item.`
                     : actionType === 'payout'
                     ? 'A manager must enter their PIN to approve this cash paid-out.'
                     : 'A manager must enter their PIN to approve this return.';

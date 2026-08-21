@@ -141,7 +141,12 @@ async function handleStaticAsset(request) {
 
 async function refreshAsset(request) {
   try {
-    const response = await fetch(request);
+    // cache: 'no-store' forces a real network round-trip. Without this, the
+    // browser's own HTTP disk cache (Cache-Control: max-age on the server)
+    // can silently satisfy this fetch with stale bytes, which then get
+    // re-persisted into Cache Storage as if they were freshly revalidated —
+    // the root cause of the recurring Discount CSS regression.
+    const response = await fetch(request, { cache: 'no-store' });
     if (response.ok) {
       const cache = await caches.open(STATIC_CACHE);
       cache.put(request, response.clone());

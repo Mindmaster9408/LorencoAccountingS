@@ -13,6 +13,9 @@
  *     (added 2026-08-02 — previously any non-trainee role could record one
  *     with zero approval; TILLS.PAID_OUT itself stays broad, this layers
  *     PIN-auth on top exactly like the discount does for SALES.CREATE)
+ *   - a custom/manual-amount cart item with no real product behind it
+ *     (added 2026-08-16 — explicitly a stopgap per Ruan: a real "open item"
+ *     product design comes later, this just needs to work now)
  *
  * Replaces the previous mechanism (frontend managerAuthModal calling
  * POST /auth/verify-manager), which never had a real backend endpoint at
@@ -40,7 +43,14 @@ const router = express.Router();
 router.use(requireCompany);
 
 const AUTHORIZATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const ACTION_TYPES = new Set(['discount', 'return', 'void', 'payout']);
+// line_discount (2026-08-21): same mechanism as 'discount', but scoped to a
+// single cart line instead of the whole sale — a manager approving a cheaper
+// price on just one item, requested from the till screen either by typing a
+// new price or long-pressing one cart line for a %. Kept as its own
+// action_type (not reusing 'discount') so a whole-cart authorization can
+// never be mistaken for, or accidentally consumed by, a single-line one, or
+// vice versa — they're matched independently in consumeManagerAuthorization.
+const ACTION_TYPES = new Set(['discount', 'line_discount', 'return', 'void', 'payout', 'custom_item']);
 
 // Timing protection: always run one bcrypt.compare even when no PIN row
 // could possibly match, so response time doesn't leak whether ANY manager
@@ -59,10 +69,10 @@ router.post('/verify', async (req, res) => {
       return res.status(400).json({ error: 'A valid PIN is required' });
     }
     if (!ACTION_TYPES.has(action_type)) {
-      return res.status(400).json({ error: "action_type must be 'discount', 'return', 'void', or 'payout'" });
+      return res.status(400).json({ error: "action_type must be 'discount', 'line_discount', 'return', 'void', 'payout', or 'custom_item'" });
     }
     let discountPercentValue = null;
-    if (action_type === 'discount') {
+    if (action_type === 'discount' || action_type === 'line_discount') {
       discountPercentValue = parseFloat(discount_percent);
       if (isNaN(discountPercentValue) || discountPercentValue <= 0 || discountPercentValue > 100) {
         return res.status(400).json({ error: 'discount_percent must be a number greater than 0 and up to 100' });

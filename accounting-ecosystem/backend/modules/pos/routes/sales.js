@@ -578,6 +578,11 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       // Serial Number Tracking — optional, only present when the till collected
       // specific serials for a serial-tracked product. Absent for every other item.
       serial_numbers: Array.isArray(item.serial_numbers) ? item.serial_numbers : undefined,
+      // Per-line manager-authorized override (2026-08-21) — a discretionary
+      // discount on just THIS item, distinct from the whole-cart
+      // discount_percent above. See the authorization block below (after
+      // resolveEffectivePrices) for how this is verified before being applied.
+      line_override_percent: item.line_override_percent ?? item.lineOverridePercent ?? undefined,
     }));
 
     const productIds = [...new Set(normItems.map(i => i.product_id).filter(Boolean))];
@@ -691,6 +696,45 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       customerId: customer_id,
       customerDiscountPercent,
     });
+
+    // ── 1d. Per-line manager-authorized override (2026-08-21) ─────────────
+    // A discretionary discount on just ONE cart line (typed as a new price,
+    // or a % via long-press on that item — see requestManagerPinAuth() /
+    // promptLineOverridePrice() / promptLineDiscountPercent() in the
+    // frontend) — requested live: a cashier had a customer wanting one
+    // specific item cheaper and working out the % for the whole-cart
+    // discount field was too fiddly for a single line. Distinct from
+    // resolveEffectivePrices() above (Daily Discount / customer pricing,
+    // never needs a manager) and from the whole-cart manualDiscountPercent
+    // below (authorized once for the entire sale) — this is authorized and
+    // applied per product line, and is the FINAL word for that line: it
+    // replaces whatever resolveEffectivePrices() computed rather than
+    // stacking with it, same "manager override wins outright" precedent the
+    // whole-cart discount already sets.
+    for (const item of normItems) {
+      if (!item.line_override_percent) continue;
+      const pct = Math.round(parseFloat(item.line_override_percent) * 100) / 100;
+      if (isNaN(pct) || pct <= 0 || pct > 100) {
+        return res.status(400).json({ error: 'line_override_percent must be a number greater than 0 and up to 100' });
+      }
+      const prod = productMap[item.product_id];
+      if (!prod) continue; // already reported as a stock error above
+
+      if (!MANAGEMENT_ROLES.includes(req.user.role)) {
+        const authResult = await consumeManagerAuthorization({
+          companyId: req.companyId,
+          tillSessionId: till_session_id,
+          actionType: 'line_discount',
+          discountPercent: pct,
+        });
+        if (!authResult.ok) {
+          return res.status(403).json({ error: `"${prod.product_name}" price change requires manager PIN authorization` });
+        }
+      }
+
+      const base = effectivePriceByProduct.get(item.product_id) ?? (parseFloat(prod.unit_price) || 0);
+      effectivePriceByProduct.set(item.product_id, Math.max(0, Math.round(base * (1 - pct / 100) * 100) / 100));
+    }
 
     // ── 3. Calculate totals from effective (already-discounted) prices ────
     // grossSubtotal is the pre-discount reference total (what it would have
@@ -890,7 +934,19 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
 
     // Audit only for new sales; replayed duplicates already have an audit record.
     if (!rpcResult.was_duplicate) {
-      await auditFromReq(req, 'CREATE', 'sale', rpcResult.sale_id, {
+      // Fire-and-forget (found live 2026-08-21, checkout-speed audit): this was
+      // the only `await`ed logging call in the whole post-RPC section — every
+      // posAuditFromReq() call right below it is already fire-and-forget, and
+      // logAudit() (middleware/audit.js) already swallows its own errors
+      // internally and never throws, so awaiting it here bought no safety,
+      // only one extra sequential DB round-trip added to every single sale's
+      // response time, on top of the products lookup, discount lookup, the
+      // create_sale_atomic RPC itself, and (for cash sales) the tendered-
+      // amount update. The Print/Done modal only appears once this whole
+      // chain resolves, so cutting one full round-trip off it is a direct,
+      // safe win — the audit row still gets written, just without blocking
+      // the cashier-facing response on it.
+      auditFromReq(req, 'CREATE', 'sale', rpcResult.sale_id, {
         module:   'pos',
         newValue: { saleNumber, total_amount, items: enrichedItems.length },
       });

@@ -30,7 +30,10 @@ async function consumeManagerAuthorization({ companyId, tillSessionId, actionTyp
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(1);
-  if (actionType === 'discount') query = query.eq('discount_percent', discountPercent);
+  // line_discount (2026-08-21) needs the same exact-percent match as
+  // 'discount' — otherwise an authorization granted for a 5% line override
+  // could be silently reused to cover a 50% one.
+  if (actionType === 'discount' || actionType === 'line_discount') query = query.eq('discount_percent', discountPercent);
 
   const { data: authRow } = await query.maybeSingle();
   if (!authRow) return { ok: false };
