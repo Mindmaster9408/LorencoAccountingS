@@ -26,6 +26,13 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { auditFromReq } = require('../../../middleware/audit');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { getBusinessDayBounds, activeDiscountOrFilter } = require('../services/discountWindow');
+const { consumeManagerAuthorization } = require('../services/managerAuthConsumer');
+
+// Placeholder product backing the "Custom Amount" cart line (2026-08-16,
+// explicit stopgap per Ruan — a real "open item" design comes later). Never
+// shown in the normal product grid (excluded in GET / below); checkout still
+// requires a real product_id, so this satisfies that without a schema change.
+const CUSTOM_ITEM_PRODUCT_CODE = 'SYS-CUSTOM-AMOUNT';
 
 const router = express.Router();
 
@@ -49,7 +56,11 @@ router.get('/', requirePermission('PRODUCTS.VIEW'), async (req, res) => {
       let query = supabase
         .from('products')
         .select('*, categories(name)')
-        .eq('company_id', req.companyId);
+        .eq('company_id', req.companyId)
+        // Never surface the Custom Amount placeholder in the normal grid/
+        // search/delta-sync feed — it's is_active:true (checkout requires
+        // that) but only ever reached via POST /custom-item's own flow.
+        .neq('product_code', CUSTOM_ITEM_PRODUCT_CODE);
 
       if (active_only !== 'false') query = query.eq('is_active', true);
       if (category_id) query = query.eq('category_id', category_id);
@@ -377,6 +388,69 @@ router.post('/next-code/:prefix', requirePermission('PRODUCTS.CREATE'), async (r
     const nextCode = `${codePrefix}${String(maxNum + 1).padStart(4, '0')}`;
     res.json({ code: nextCode, prefix: codePrefix });
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/pos/products/custom-item
+ * Body: { till_session_id }
+ * Manager-PIN-gated "Custom Amount" cart line with no real product behind
+ * it — the manager authorizes via the usual PIN modal (action_type
+ * 'custom_item'), then this find-or-creates a hidden placeholder product
+ * for the amount to attach to, since checkout still requires a real
+ * product_id. No PRODUCTS.CREATE permission needed — the manager PIN IS
+ * the authorization; any authenticated till can call this once a manager
+ * has approved it, same pattern as the discount/return/void/payout flows.
+ * 2026-08-16, explicit stopgap per Ruan — a real "open item" product design
+ * comes later, this just needs to work now.
+ */
+router.post('/custom-item', async (req, res) => {
+  try {
+    const { till_session_id } = req.body;
+    if (!till_session_id) return res.status(400).json({ error: 'till_session_id is required' });
+
+    const consumed = await consumeManagerAuthorization({
+      companyId: req.companyId,
+      tillSessionId: till_session_id,
+      actionType: 'custom_item',
+    });
+    if (!consumed.ok) {
+      return res.status(403).json({ error: 'No valid manager authorization found for a custom amount item' });
+    }
+
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id, vat_rate, requires_vat')
+      .eq('company_id', req.companyId)
+      .eq('product_code', CUSTOM_ITEM_PRODUCT_CODE)
+      .maybeSingle();
+    if (existing) return res.json({ product: existing });
+
+    const { data: created, error } = await supabase
+      .from('products')
+      .insert({
+        company_id:   req.companyId,
+        product_code: CUSTOM_ITEM_PRODUCT_CODE,
+        product_name: 'Custom Amount',
+        unit_price:   0, // never charged — the cart line always overrides price with the manager-entered amount
+        stock_quantity: 999999,
+        requires_vat: true,
+        vat_rate:     15,
+        is_active:    true,
+      })
+      .select('id, vat_rate, requires_vat')
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    posAuditFromReq(req, POS_EVENTS.MANAGER_OVERRIDE, {
+      tillSessionId: till_session_id,
+      metadata: { action_type: 'custom_item', result: 'placeholder_product_created', product_id: created.id },
+    });
+
+    res.json({ product: created });
+  } catch (err) {
+    console.error('[products] custom-item error:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
