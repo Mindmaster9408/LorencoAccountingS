@@ -17,7 +17,7 @@ router.get('/', authenticate, hasPermission('journal.view'), async (req, res) =>
 
     let query = supabase
       .from('journals')
-      .select('*, created_user:users!created_by_user_id(email), posted_user:users!posted_by_user_id(email)')
+      .select('*, created_user:users!created_by_user_id(email), posted_user:users!posted_by_user_id(email)', { count: 'exact' })
       .eq('company_id', req.user.companyId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })
@@ -39,16 +39,41 @@ router.get('/', authenticate, hasPermission('journal.view'), async (req, res) =>
     if (fromDate) query = query.gte('date', fromDate);
     if (toDate)   query = query.lte('date', toDate);
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     if (error) throw new Error(error.message);
+
+    // journals itself carries no debit/credit total — those live per-line on
+    // journal_lines. Aggregate this page's lines in one follow-up query so the
+    // list view can show a real total_debit/total_credit per journal (it
+    // previously read fields that never existed on this table at all).
+    const journalIds = (data || []).map(j => j.id);
+    let totalsByJournal = {};
+    if (journalIds.length) {
+      const { data: lines, error: linesErr } = await supabase
+        .from('journal_lines')
+        .select('journal_id, debit, credit')
+        .in('journal_id', journalIds);
+      if (linesErr) throw new Error(linesErr.message);
+      totalsByJournal = (lines || []).reduce((acc, l) => {
+        const t = acc[l.journal_id] || (acc[l.journal_id] = { total_debit: 0, total_credit: 0 });
+        t.total_debit  += parseFloat(l.debit)  || 0;
+        t.total_credit += parseFloat(l.credit) || 0;
+        return acc;
+      }, {});
+    }
 
     const journals = (data || []).map(j => ({
       ...j,
       created_by_email: j.created_user?.email || null,
       posted_by_email:  j.posted_user?.email  || null,
+      total_debit:  totalsByJournal[j.id]?.total_debit  || 0,
+      total_credit: totalsByJournal[j.id]?.total_credit || 0,
     }));
 
-    res.json({ journals, count: journals.length });
+    // count is the real total matching the filters (not just this page's row
+    // length) — dashboard.html's "Draft Journals" stat tile reads this and
+    // previously undercounted once a company passed the page limit.
+    res.json({ journals, count: count ?? journals.length });
 
   } catch (error) {
     console.error('Error fetching journals:', error);

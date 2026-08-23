@@ -430,6 +430,24 @@ const staticOptions = {
   }
 };
 
+// POS-only: non-HTML assets must revalidate on every request (no 1-hour window).
+// Root cause of the recurring Discount-block regression (2026-08-02 fix,
+// frontend-pos/css/dark-theme.css): the 1-hour Cache-Control let the browser's
+// HTTP disk cache serve stale CSS bytes to the service worker's background
+// "revalidation" fetch (which isn't cache-busted), silently re-persisting old
+// CSS into Cache Storage after the PWA restarted. Scoped to /pos only — every
+// other app (Payroll included) keeps the original staticOptions untouched.
+const posStaticOptions = {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+};
+
 // Helper: send an HTML file with no-cache headers (for named route sendFile calls)
 function sendHtml(res, filePath) {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -471,7 +489,7 @@ app.get('/qa-hub',    (req, res) => sendHtml(res, path.join(ecosystemFrontendPat
 app.get('/client/:id', (req, res) => sendHtml(res, path.join(ecosystemFrontendPath, 'client-detail.html')));
 
 // ── App frontends ─────────────────────────────────────────────────────────────
-app.use('/pos',        express.static(posFrontendPath,       staticOptions));
+app.use('/pos',        express.static(posFrontendPath,       posStaticOptions));
 app.use('/payroll',    express.static(payrollFrontendPath,   staticOptions));
 app.use('/sean',       express.static(seanFrontendPath,      staticOptions));
 app.use('/accounting', express.static(accountingFrontendPath, staticOptions));

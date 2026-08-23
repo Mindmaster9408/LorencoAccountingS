@@ -81,6 +81,22 @@ function aggregateLines(lines) {
   return map;
 }
 
+// Balance of one account given an aggregated debit/credit map, using the same
+// sign convention as /balance-sheet: assets are debit-normal (d - c), everything
+// else (liability/equity) is credit-normal (c - d).
+function balanceOf(agg, acct) {
+  const d = parseFloat(agg[acct.id]?.debit  || 0);
+  const c = parseFloat(agg[acct.id]?.credit || 0);
+  return acct.type === 'asset' ? (d - c) : (c - d);
+}
+
+// One calendar day before a 'YYYY-MM-DD' date string, for the opening balance sheet snapshot.
+function dayBefore(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * GET /api/reports/trial-balance
  */
@@ -417,6 +433,134 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
   } catch (error) {
     console.error('Error generating profit & loss:', error);
     res.status(500).json({ error: 'Failed to generate profit & loss report' });
+  }
+});
+
+/**
+ * GET /api/accounting/reports/cash-flow?fromDate=&toDate=
+ *
+ * Indirect method. Built from the same classification the chart of accounts
+ * already carries (accounts.sub_type / accounts.reporting_group), not a
+ * separate parallel bookkeeping of cash receipts/payments:
+ *   - Net income for the period, from the same posted-GL aggregation as /profit-loss.
+ *   - Add back non-cash depreciation/amortization expense for the period.
+ *   - Operating: working-capital movement (closing balance − opening balance) in
+ *     current_asset (excl. bank_cash/vat_asset) and current_liability (excl.
+ *     bank_cash/short_term_loans) accounts. Asset increases are cash outflows;
+ *     liability increases are cash inflows.
+ *   - Investing: movement in non_current_asset accounts (excl. accumulated_depreciation,
+ *     already handled via the add-back above).
+ *   - Financing: movement in non_current_liability, short_term_loans, and equity
+ *     accounts tagged share_capital/drawings (retained_earnings excluded — already
+ *     captured via net income).
+ *   - Cross-check: the three sections must sum to the actual bank_cash movement
+ *     over the period. isBalanced=false means an account exists that this
+ *     classification didn't account for (e.g. missing sub_type/reporting_group) —
+ *     surfaced honestly rather than silently shown as reconciled.
+ */
+router.get('/cash-flow', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.query;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+
+    const companyId = req.user.companyId;
+
+    // Net income + depreciation add-back, from the period's posted P&L activity.
+    const { accounts: plAccounts, lines: plLines } = await fetchAccountBalances(companyId, {
+      fromDate, toDate, types: ['income', 'expense'],
+    });
+    const plAgg = aggregateLines(plLines);
+
+    let totalIncome = 0, totalExpense = 0, depreciationAddBack = 0;
+    for (const a of plAccounts) {
+      const d = parseFloat(plAgg[a.id]?.debit  || 0);
+      const c = parseFloat(plAgg[a.id]?.credit || 0);
+      if (a.type === 'income')  totalIncome  += c - d;
+      if (a.type === 'expense') {
+        totalExpense += d - c;
+        if (a.sub_type === 'depreciation_amort') depreciationAddBack += d - c;
+      }
+    }
+    const netIncome = totalIncome - totalExpense;
+
+    // Opening (day before fromDate) and closing (toDate) balance-sheet snapshots,
+    // to derive each account's movement during the period.
+    const openingDate = dayBefore(fromDate);
+    const [openSnap, closeSnap] = await Promise.all([
+      fetchAccountBalances(companyId, { asOfDate: openingDate, types: ['asset', 'liability', 'equity'] }),
+      fetchAccountBalances(companyId, { asOfDate: toDate,       types: ['asset', 'liability', 'equity'] }),
+    ]);
+    const openAgg  = aggregateLines(openSnap.lines);
+    const closeAgg = aggregateLines(closeSnap.lines);
+    const bsAccounts = closeSnap.accounts; // same active-account set as opening (both scoped to company+is_active)
+
+    const operatingWorkingCapital = [];
+    const investing = [];
+    const financing = [];
+    let bankCashMovement = 0, openingCash = 0, closingCash = 0;
+
+    for (const a of bsAccounts) {
+      const opening  = balanceOf(openAgg, a);
+      const closing  = balanceOf(closeAgg, a);
+      const movement = Math.round((closing - opening) * 100) / 100;
+
+      if (a.reporting_group === 'bank_cash') {
+        bankCashMovement += movement;
+        openingCash += opening;
+        closingCash += closing;
+        continue; // cash itself is the reconciling total, not a line item
+      }
+      if (movement === 0) continue;
+
+      const entry = { id: a.id, code: a.code, name: a.name, subType: a.sub_type, reportingGroup: a.reporting_group };
+
+      if (a.sub_type === 'current_asset' && a.reporting_group !== 'vat_asset') {
+        operatingWorkingCapital.push({ ...entry, movement: -movement });
+      } else if (a.sub_type === 'current_liability' && a.reporting_group !== 'short_term_loans') {
+        operatingWorkingCapital.push({ ...entry, movement });
+      } else if (a.sub_type === 'non_current_asset' && a.reporting_group !== 'accumulated_depreciation') {
+        investing.push({ ...entry, movement: -movement });
+      } else if (a.sub_type === 'non_current_liability' || a.reporting_group === 'short_term_loans') {
+        financing.push({ ...entry, movement });
+      } else if (a.sub_type === 'equity' && ['share_capital', 'drawings'].includes(a.reporting_group)) {
+        financing.push({ ...entry, movement });
+      }
+      // Anything else (retained_earnings, accumulated_depreciation, vat_asset, or an
+      // account with no sub_type/reporting_group set) is deliberately excluded here —
+      // retained_earnings and accumulated_depreciation are already captured above via
+      // net income and the depreciation add-back; an uncategorized account instead
+      // shows up as a gap in isBalanced below rather than being silently guessed at.
+    }
+
+    const totalOperatingWC = Math.round(operatingWorkingCapital.reduce((s, x) => s + x.movement, 0) * 100) / 100;
+    const netOperating = Math.round((netIncome + depreciationAddBack + totalOperatingWC) * 100) / 100;
+    const netInvesting = Math.round(investing.reduce((s, x) => s + x.movement, 0) * 100) / 100;
+    const netFinancing = Math.round(financing.reduce((s, x) => s + x.movement, 0) * 100) / 100;
+    const netChangeInCash = Math.round((netOperating + netInvesting + netFinancing) * 100) / 100;
+    bankCashMovement = Math.round(bankCashMovement * 100) / 100;
+    openingCash = Math.round(openingCash * 100) / 100;
+    closingCash = Math.round(closingCash * 100) / 100;
+
+    res.json({
+      fromDate, toDate,
+      netIncome: Math.round(netIncome * 100) / 100,
+      depreciationAddBack: Math.round(depreciationAddBack * 100) / 100,
+      operatingWorkingCapital, investing, financing,
+      totals: {
+        operating: netOperating,
+        investing: netInvesting,
+        financing: netFinancing,
+        netChangeInCash,
+      },
+      openingCash, closingCash,
+      bankCashMovement,
+      isBalanced: Math.abs(netChangeInCash - bankCashMovement) < 0.01,
+      reportTruth: getBadge('posted_gl_only'),
+    });
+
+  } catch (error) {
+    console.error('Error generating cash flow statement:', error);
+    res.status(500).json({ error: 'Failed to generate cash flow statement' });
   }
 });
 

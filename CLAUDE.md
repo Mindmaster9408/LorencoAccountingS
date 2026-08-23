@@ -1,7 +1,7 @@
 # CLAUDE.md — Lorenco Ecosystem Master Operating Standard
 
 > **This file is the primary persistent instruction file for all Claude sessions working in this repository.**  
-> Last updated: 2026-07-31  
+> Last updated: 2026-08-01  
 > All rules in this file are permanent operating standards. They apply to every task, every session, every feature.
 
 ---
@@ -19,6 +19,7 @@
 9. [Part E — Paytime Stability Lock (PERMANENT — GOVERNED MODULE)](#9-part-e--paytime-stability-lock)
 10. [Part F — Super User Access Policy (PERMANENT — HARD RULE)](#10-part-f--super-user-access-policy)
 11. [Part G — Checkout Charlie Deployment Timing (PERMANENT — HARD RULE)](#11-part-g--checkout-charlie-deployment-timing)
+12. [Part H — Designated Test/Sandbox Company (PERMANENT — HARD RULE)](#12-part-h--designated-testsandbox-company)
 
 ---
 
@@ -1022,6 +1023,49 @@ Any `no-undef` error must be fixed before pushing — it means the code will thr
 ### RULE G3 — WHEN AN URGENT FIX IS ALREADY LIVE-BROKEN
 
 If Checkout Charlie is already broken in production RIGHT NOW (an active incident, not a planned deploy), Rule G1's "wait for downtime" does not apply — the till is already unusable, so a fix cannot make things worse by shipping immediately. Fix, lint (Rule G2), syntax-check, and push without waiting, exactly as both incidents above were handled. Rule G1 governs planned/routine deploys of new work; it does not mean waiting out a live outage.
+
+---
+
+## 12. PART H — DESIGNATED TEST/SANDBOX COMPANY
+
+> **This section is permanent and non-negotiable.**
+> Established 2026-08-01, after discovering that The Infinite Legacy's own live company record (id 1) had no dedicated, isolated place to test new features — meaning any ad-hoc testing risked touching real payroll/POS data.
+
+---
+
+### RULE H1 — "Infinite Legacy — TEST" IS THE ONLY PLACE TO TEST
+
+A dedicated, permanent sandbox company exists for testing any app or feature across the ecosystem:
+
+| Field | Value |
+|---|---|
+| Company name | `Infinite Legacy — TEST` |
+| Managed under (eco_client `company_id`) | The Infinite Legacy (company id 1) |
+| Client's own isolated data silo (`client_company_id`) | company id 51 |
+| `eco_clients.id` | 44 |
+| `client_code` | `CLT-5F5E41CC` |
+
+This company is a fully isolated `companies` row — its own data silo, completely separate from The Infinite Legacy's real company record (id 1), which carries genuine live payroll and POS activity and must never be used for testing.
+
+**Whenever any app or feature is tested — POS, Payroll, Accounting, Storehouse, Practice, Sean, or any future app — the test must happen inside this company's data.** Never test in a real client's data, and never test directly in The Infinite Legacy's own live company record (id 1).
+
+---
+
+### RULE H2 — ALL APPS AND ADDONS DEFAULT ON, INCLUDING FUTURE ONES
+
+This company's `apps` (`pos`, `payroll`, `accounting`, `inventory`, `practice`) and `addons` (`serial_tracking`, `sean`, `sean_accounting`) are all enabled by default.
+
+**Whenever a new app or addon is added to the ecosystem in the future, Claude must also enable it on this test company by default** (both in `eco_clients.apps`/`addons` and the mirrored `companies.modules_enabled` for client_company_id 51), so the sandbox always has full platform coverage for testing.
+
+---
+
+### RULE H3 — NORMAL RULES AND GOVERNANCE STILL APPLY — TESTING IS NOT AN EXEMPTION
+
+Being "just test data" does not suspend any other rule in this file. In particular:
+
+- **Sean AI governance (Part B) applies in full here.** If Sean learns something from activity in this test company (e.g. an IRP5 code mapping, an allocation pattern), that learning event must still go through the same controlled capture → proposal → approval → propagation flow as learning from any real client. Sean must not auto-propagate anything globally just because the source was the test company — Rule B2 (explicit authorization for global changes) and Rule B9 (no auto-overwrite of intentional differences) apply exactly as they do everywhere else.
+- Required-field validation, permission logic, browser-storage prohibition (Part D), and all other engineering standards in this file apply to code paths exercised via this company exactly as they apply to real companies — a bug is a bug regardless of which company's data revealed it.
+- The only thing that changes for this company is that its data carries no real business/compliance consequence, so it is safe to create, break, and delete data here freely. It is not a loophole for skipping any process rule.
 
 ---
 

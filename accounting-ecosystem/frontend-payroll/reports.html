@@ -220,6 +220,11 @@
                         <div class="report-card-title">Variance Report</div>
                         <div class="report-card-desc">Compare periods and spot anomalies</div>
                     </div>
+                    <div class="report-card" onclick="openReport('annual-analysis')">
+                        <div class="report-card-icon">🗓️</div>
+                        <div class="report-card-title">Annual Analysis (12-Month)</div>
+                        <div class="report-card-desc">Every pay code, month-by-month, with a running total — per employee and company-wide</div>
+                    </div>
                 </div>
             </div>
 
@@ -382,11 +387,11 @@
         }
 
         // ========== REPORT NAVIGATION ==========
-        function openReport(type) {
+        async function openReport(type) {
             currentReport = type;
             document.getElementById('report-selection-view').style.display = 'none';
             document.getElementById('report-detail-view').style.display = 'block';
-            renderReportFilters(type);
+            await renderReportFilters(type);
         }
 
         function backToSelection() {
@@ -418,7 +423,7 @@
         }
 
         // ========== RENDER FILTERS ==========
-        function renderReportFilters(type) {
+        async function renderReportFilters(type) {
             const titles = {
                 'transaction-history': '💳 Transaction History Report',
                 'employee-master': '👥 Employee Master List',
@@ -428,7 +433,8 @@
                 'audit-employee': '📋 Audit Trail - Per Employee',
                 'tax-report': '🏛️ Tax Report (SARS Compliance)',
                 'ytd-report': '📈 Year-to-Date Report',
-                'variance-report': '📊 Variance Report'
+                'variance-report': '📊 Variance Report',
+                'annual-analysis': '🗓️ Annual Analysis (12-Month)'
             };
             document.getElementById('report-title').innerHTML = titles[type] || type;
             if (type === 'bank-details') {
@@ -468,6 +474,18 @@
                 filterHTML += '<div class="filter-group"><label>Date From</label><input type="date" id="filter-date-from"></div>';
                 filterHTML += '<div class="filter-group"><label>Date To</label><input type="date" id="filter-date-to"></div>';
             }
+            if (type === 'annual-analysis') {
+                let taxYearOptions = '';
+                try {
+                    const tyResult = await PayrollAPI.getTaxYears();
+                    if (tyResult.ok && tyResult.data && Array.isArray(tyResult.data.taxYears)) {
+                        taxYearOptions = tyResult.data.taxYears.map(ty =>
+                            '<option value="' + ty + '"' + (ty === tyResult.data.currentTaxYear ? ' selected' : '') + '>' + ty + '</option>'
+                        ).join('');
+                    }
+                } catch (e) { console.error('[Reports] Failed to load tax years:', e.message); }
+                filterHTML += '<div class="filter-group"><label>Tax Year</label><select id="filter-tax-year">' + taxYearOptions + '</select></div>';
+            }
 
             filterHTML += '</div><div class="filter-actions">';
             filterHTML += '<button class="btn btn-primary" onclick="generateReport()">Generate Report</button>';
@@ -497,6 +515,7 @@
                 case 'tax-report': await generateTaxReport(); break;
                 case 'ytd-report': await generateYTDReport(); break;
                 case 'variance-report': await generateVarianceReport(); break;
+                case 'annual-analysis': await generateAnnualAnalysisReport(); break;
             }
         }
 
@@ -1015,6 +1034,121 @@
             document.getElementById('export-bar').style.display = 'flex';
             Permissions.enforceUI();
             logReportGeneration('Variance Report', { period1, period2 });
+        }
+
+        // ========== REPORT 9: ANNUAL ANALYSIS (12-MONTH) ==========
+        // Backend-authoritative — reads only FINALIZED payroll_snapshots via
+        // GET /api/payroll/reports/annual-analysis (see backend/modules/payroll/
+        // routes/reports.js). Mirrors the shape of a Sage "12 Month Analysis" /
+        // Age Analysis report: one row per pay code, one column per month, plus
+        // a running Total column, grouped per employee with a company-wide
+        // Summary at the end.
+        async function generateAnnualAnalysisReport() {
+            const taxYearEl = document.getElementById('filter-tax-year');
+            const taxYear = taxYearEl ? taxYearEl.value : '';
+            if (!taxYear) {
+                document.getElementById('results-section').innerHTML =
+                    '<div class="empty-state"><div class="empty-icon">🗓️</div><div class="empty-text">Select a tax year and click Generate Report</div></div>';
+                return;
+            }
+
+            const result = await PayrollAPI.getAnnualAnalysis(taxYear);
+            if (!result.ok || !result.data) {
+                document.getElementById('results-section').innerHTML =
+                    '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">' +
+                    (result.data && result.data.error ? result.data.error : 'Failed to load report') + '</div></div>';
+                return;
+            }
+
+            const { periods, employees, summary, notes } = result.data;
+            const periodLabels = periods.map(p => formatPeriod(p));
+
+            // Flat export shape (reused by the existing CSV/Excel/PDF export buttons):
+            // headers = ['Employee', 'Section', 'Description', ...months, 'Total']
+            const headers = ['Employee', 'Section', 'Description', ...periodLabels, 'Total'];
+            const exportRows = [];
+
+            function lineToExportRow(empLabel, section, li) {
+                return [empLabel, section, li.description, ...periods.map(p => (li.periods[p] || 0).toFixed(2)), li.total.toFixed(2)];
+            }
+            function totalsRowToExportRow(empLabel, label, totalsRow) {
+                return [empLabel, 'Total', label, ...periods.map(p => (totalsRow.periods[p] || 0).toFixed(2)), totalsRow.total.toFixed(2)];
+            }
+
+            // ── On-screen HTML (custom — bold section/employee/total rows, matching Sage's layout) ──
+            let html = '<div class="results-container" style="overflow-x:auto;">';
+            html += '<table class="results-table" style="min-width:900px;"><thead><tr>';
+            html += '<th>Description</th>';
+            periodLabels.forEach(pl => { html += '<th class="amount">' + pl + '</th>'; });
+            html += '<th class="amount">Total</th>';
+            html += '</tr></thead><tbody>';
+
+            function renderSectionRows(li) {
+                html += '<tr><td>' + li.description + '</td>';
+                periods.forEach(p => { html += '<td class="amount">' + formatMoney(li.periods[p] || 0) + '</td>'; });
+                html += '<td class="amount">' + formatMoney(li.total) + '</td></tr>';
+            }
+            function renderTotalRow(label, totalsRow, cls) {
+                html += '<tr class="' + (cls || 'subtotal') + '" style="font-weight:700;background:#f5f5f5;"><td>' + label + '</td>';
+                periods.forEach(p => { html += '<td class="amount">' + formatMoney(totalsRow.periods[p] || 0) + '</td>'; });
+                html += '<td class="amount">' + formatMoney(totalsRow.total) + '</td></tr>';
+            }
+
+            if (employees.length === 0) {
+                html += '<tr><td colspan="' + (periods.length + 2) + '" style="text-align:center;padding:30px;color:#999;">No finalized payroll data found for ' + taxYear + '</td></tr>';
+            }
+
+            employees.forEach(emp => {
+                html += '<tr style="background:#667eea;color:white;"><td colspan="' + (periods.length + 2) + '" style="font-weight:700;">' + emp.full_name + '</td></tr>';
+
+                if (emp.income.length) {
+                    emp.income.forEach(li => { renderSectionRows(li); exportRows.push(lineToExportRow(emp.full_name, 'Income', li)); });
+                    renderTotalRow('Total: Income', emp.totals.grossPay);
+                    exportRows.push(totalsRowToExportRow(emp.full_name, 'Total: Income', emp.totals.grossPay));
+                }
+                if (emp.deductions.length) {
+                    emp.deductions.forEach(li => { renderSectionRows(li); exportRows.push(lineToExportRow(emp.full_name, 'Deductions', li)); });
+                }
+                if (emp.companyContributions.length) {
+                    emp.companyContributions.forEach(li => { renderSectionRows(li); exportRows.push(lineToExportRow(emp.full_name, 'Company Contributions', li)); });
+                }
+                renderTotalRow('Total: Gross Pay', emp.totals.grossPay);
+                renderTotalRow('Total: Nett Pay', emp.totals.nettPay);
+                renderTotalRow('Total: Cost To Company', emp.totals.costToCompany);
+                exportRows.push(totalsRowToExportRow(emp.full_name, 'Total: Gross Pay', emp.totals.grossPay));
+                exportRows.push(totalsRowToExportRow(emp.full_name, 'Total: Nett Pay', emp.totals.nettPay));
+                exportRows.push(totalsRowToExportRow(emp.full_name, 'Total: Cost To Company', emp.totals.costToCompany));
+            });
+
+            // ── Company-wide summary ──
+            html += '<tr style="background:#764ba2;color:white;"><td colspan="' + (periods.length + 2) + '" style="font-weight:700;">Summary — All Employees</td></tr>';
+            summary.income.forEach(li => { renderSectionRows(li); exportRows.push(lineToExportRow('Summary', 'Income', li)); });
+            summary.deductions.forEach(li => { renderSectionRows(li); exportRows.push(lineToExportRow('Summary', 'Deductions', li)); });
+            summary.companyContributions.forEach(li => { renderSectionRows(li); exportRows.push(lineToExportRow('Summary', 'Company Contributions', li)); });
+            renderTotalRow('Total: Gross Pay', summary.totals.grossPay);
+            renderTotalRow('Total: Nett Pay', summary.totals.nettPay);
+            renderTotalRow('Total: Cost To Company', summary.totals.costToCompany);
+            exportRows.push(totalsRowToExportRow('Summary', 'Total: Gross Pay', summary.totals.grossPay));
+            exportRows.push(totalsRowToExportRow('Summary', 'Total: Nett Pay', summary.totals.nettPay));
+            exportRows.push(totalsRowToExportRow('Summary', 'Total: Cost To Company', summary.totals.costToCompany));
+
+            html += '</tbody></table></div>';
+
+            currentReportData = { headers, rows: exportRows, title: 'Annual Analysis — ' + taxYear };
+
+            document.getElementById('summary-section').innerHTML =
+                '<div class="summary-cards">' +
+                '<div class="summary-card"><div class="summary-card-label">Tax Year</div><div class="summary-card-value">' + taxYear + '</div></div>' +
+                '<div class="summary-card green"><div class="summary-card-label">Employees</div><div class="summary-card-value">' + employees.length + '</div></div>' +
+                '<div class="summary-card teal"><div class="summary-card-label">Total Cost To Company</div><div class="summary-card-value">' + formatMoney(summary.totals.costToCompany.total) + '</div></div>' +
+                '</div>' +
+                (notes && notes.length ? '<div style="margin-top:10px;padding:10px 14px;background:#fff3cd;border-radius:8px;font-size:0.8rem;color:#856404;">' +
+                    notes.map(n => '⚠ ' + n).join('<br>') + '</div>' : '');
+
+            document.getElementById('results-section').innerHTML = html;
+            document.getElementById('export-bar').style.display = 'flex';
+            Permissions.enforceUI();
+            logReportGeneration('Annual Analysis', { taxYear });
         }
 
         // ========== TABLE RENDERER ==========

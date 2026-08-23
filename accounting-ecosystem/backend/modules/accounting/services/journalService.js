@@ -90,7 +90,16 @@ class JournalService {
 
     if (error) throw new Error(`Account validation failed: ${error.message}`);
 
-    const nonPostable = (data || []).filter(a => a.is_postable === false);
+    const found = data || [];
+    const foundIds = new Set(found.map(a => a.id));
+    const missing = accountIds.filter(id => !foundIds.has(id));
+    if (missing.length > 0) {
+      throw new Error(
+        `The following account ID(s) do not exist in this company's chart of accounts: ${missing.join(', ')}`
+      );
+    }
+
+    const nonPostable = found.filter(a => a.is_postable === false);
     if (nonPostable.length > 0) {
       const list = nonPostable.map(a => `${a.code} (${a.name})`).join(', ');
       throw new Error(

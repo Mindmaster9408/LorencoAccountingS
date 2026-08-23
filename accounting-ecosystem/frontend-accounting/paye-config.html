@@ -94,12 +94,16 @@
 
     // Fetch config from backend
     async function fetchConfig() {
-      const res = await fetch('/api/paye/config', {
+      const res = await fetch('/api/accounting/paye/config', {
         headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
       });
       const data = await res.json();
-      incomeTypes = data.incomeTypes.length ? data.incomeTypes : [...defaultIncomeTypes];
-      deductionTypes = data.deductionTypes.length ? data.deductionTypes : [...defaultDeductionTypes];
+      // Backend rows are raw SQL (snake_case is_default/is_custom); normalize to
+      // the camelCase shape the rest of this file already uses, once, here —
+      // rather than fixing every render/remove call site separately.
+      const normalize = t => ({ ...t, isDefault: !!t.is_default, isCustom: !!t.is_custom });
+      incomeTypes = data.incomeTypes.length ? data.incomeTypes.map(normalize) : [...defaultIncomeTypes];
+      deductionTypes = data.deductionTypes.length ? data.deductionTypes.map(normalize) : [...defaultDeductionTypes];
       renderTypes();
     }
 
@@ -236,7 +240,7 @@
 
       try {
         // Save PAYE config
-        await fetch('/api/paye/config', {
+        await fetch('/api/accounting/paye/config', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',

@@ -185,7 +185,7 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'ai-settings.html' || currentPage === 'system-health.html' || currentPage === 'accounting-diagnostics.html' || currentPage === 'audit-log.html' || currentPage === 'audit-trail.html' || currentPage === 'pilot-smoke-tests.html' || currentPage === 'legacy-gl-import.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'system-health.html' || currentPage === 'accounting-diagnostics.html' || currentPage === 'audit-log.html' || currentPage === 'audit-trail.html' || currentPage === 'pilot-smoke-tests.html' || currentPage === 'legacy-gl-import.html' ? 'active' : ''}">
         <a href="#">Administration</a>
         <div class="dropdown">
           <div class="dropdown-header">Monitoring</div>
@@ -211,7 +211,6 @@ function createNavigation() {
         <a href="#">Sean AI</a>
         <div class="dropdown">
           <div class="dropdown-header">AI Features</div>
-          <a href="/accounting/ai-settings.html">AI Settings</a>
           <a href="#">AI Review Queue</a>
           <a href="/accounting/company.html#teach-sean">Teach Sean</a>
           <div class="dropdown-header">Automation</div>

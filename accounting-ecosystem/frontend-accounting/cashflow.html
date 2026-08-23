@@ -383,6 +383,33 @@
         .indent-2 {
             padding-left: 55px;
         }
+
+        .cf-hidden { display: none !important; }
+
+        .report-loading {
+            text-align: center;
+            padding: 32px;
+            color: #5f6368;
+            font-size: 14px;
+        }
+
+        .warning-banner {
+            background: #fff8e1;
+            color: #8a6d00;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+
+        .error-banner {
+            background: #fee2e2;
+            color: #b91c1c;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/cosmic-bg.css">
@@ -400,179 +427,176 @@
     <div class="container">
         <div class="page-header">
             <h1>Cash Flow Statement</h1>
-            <p>Statement of cash flows showing operating, investing, and financing activities</p>
+            <p>Indirect method — net income adjusted for non-cash items and working-capital movement</p>
         </div>
-        
+
         <div class="report-controls">
             <div class="control-group">
                 <label>Date From</label>
-                <input type="date" id="dateFrom" value="2026-01-01">
+                <input type="date" id="dateFrom">
             </div>
             <div class="control-group">
                 <label>Date To</label>
-                <input type="date" id="dateTo" value="2026-01-14">
+                <input type="date" id="dateTo">
             </div>
-            <div class="control-group">
-                <label>Method</label>
-                <select>
-                    <option>Direct Method</option>
-                    <option>Indirect Method</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>Layout</label>
-                <select>
-                    <option>Standard</option>
-                    <option>Detailed</option>
-                    <option>Summary</option>
-                </select>
-            </div>
-            <button class="btn-primary" onclick="generateReport()">Generate Report</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
-            <button class="btn-secondary" onclick="exportExcel()">Export Excel</button>
+            <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
+            <button type="button" class="btn-secondary" disabled title="Coming soon">Export PDF</button>
+            <button type="button" class="btn-secondary" disabled title="Coming soon">Export Excel</button>
         </div>
-        
-        <div class="report-card">
+        <div id="errorBanner" class="error-banner cf-hidden"></div>
+        <div id="warningBanner" class="warning-banner cf-hidden"></div>
+
+        <div class="report-card cf-hidden" id="reportCard">
             <div class="report-header">
                 <h2 id="reportCompanyName"></h2>
-                <script>var _rcn=document.getElementById('reportCompanyName');if(_rcn)_rcn.textContent=localStorage.getItem('accounting_company_name')||localStorage.getItem('eco_company_name')||'My Company';</script>
-                <p>Cash Flow Statement - 01 January 2026 to 14 January 2026</p>
+                <p id="reportSubtitle">Cash Flow Statement</p>
             </div>
-            
+
             <div class="report-content">
-                <table class="report-table">
+                <div id="reportLoading" class="report-loading cf-hidden">Loading…</div>
+                <table class="report-table" id="reportTable">
                     <thead>
                         <tr>
                             <th>Activity</th>
                             <th class="amount">Amount (ZAR)</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr class="section-header">
-                            <td colspan="2">OPERATING ACTIVITIES</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Cash Receipts from Customers</td>
-                            <td class="amount positive">R 225,400.00</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Cash Paid to Suppliers</td>
-                            <td class="amount negative">(R 95,200.00)</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Cash Paid to Employees</td>
-                            <td class="amount negative">(R 73,600.00)</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Cash Paid for Operating Expenses</td>
-                            <td class="amount negative">(R 34,700.00)</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Interest Received</td>
-                            <td class="amount positive">R 1,200.00</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Interest Paid</td>
-                            <td class="amount negative">(R 3,500.00)</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Income Tax Paid</td>
-                            <td class="amount negative">(R 8,400.00)</td>
-                        </tr>
-                        <tr class="section-total">
-                            <td><strong>Net Cash from Operating Activities</strong></td>
-                            <td class="amount positive"><strong>R 11,200.00</strong></td>
-                        </tr>
-                        
-                        <tr><td colspan="2" style="height: 15px;"></td></tr>
-                        
-                        <tr class="section-header">
-                            <td colspan="2">INVESTING ACTIVITIES</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Purchase of Equipment</td>
-                            <td class="amount negative">(R 45,000.00)</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Sale of Investments</td>
-                            <td class="amount positive">R 15,000.00</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Purchase of Intangible Assets</td>
-                            <td class="amount negative">(R 8,000.00)</td>
-                        </tr>
-                        <tr class="section-total">
-                            <td><strong>Net Cash from Investing Activities</strong></td>
-                            <td class="amount negative"><strong>(R 38,000.00)</strong></td>
-                        </tr>
-                        
-                        <tr><td colspan="2" style="height: 15px;"></td></tr>
-                        
-                        <tr class="section-header">
-                            <td colspan="2">FINANCING ACTIVITIES</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Proceeds from Long-term Loan</td>
-                            <td class="amount positive">R 50,000.00</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Repayment of Short-term Loan</td>
-                            <td class="amount negative">(R 15,000.00)</td>
-                        </tr>
-                        <tr>
-                            <td class="indent-1">Dividends Paid</td>
-                            <td class="amount negative">(R 10,000.00)</td>
-                        </tr>
-                        <tr class="section-total">
-                            <td><strong>Net Cash from Financing Activities</strong></td>
-                            <td class="amount positive"><strong>R 25,000.00</strong></td>
-                        </tr>
-                        
-                        <tr><td colspan="2" style="height: 15px;"></td></tr>
-                        
-                        <tr class="section-total" style="background: rgba(0,102,204,0.12);">
-                            <td><strong>NET INCREASE/(DECREASE) IN CASH</strong></td>
-                            <td class="amount negative"><strong>(R 1,800.00)</strong></td>
-                        </tr>
-                        
-                        <tr><td colspan="2" style="height: 10px;"></td></tr>
-                        
-                        <tr>
-                            <td>Cash at Beginning of Period</td>
-                            <td class="amount">R 147,000.00</td>
-                        </tr>
-                        
-                        <tr class="grand-total">
-                            <td><strong>CASH AT END OF PERIOD</strong></td>
-                            <td class="amount"><strong>R 145,200.00</strong></td>
-                        </tr>
-                    </tbody>
+                    <tbody id="reportBody"></tbody>
                 </table>
             </div>
         </div>
     </div>
-    
-    <script>
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; }
+
+        function getAuthHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
-        
-        // User info display handled by navigation.js
-        
-        function generateReport() {
-            alert('Generating report with selected parameters...');
+
+        function fmtAmt(n) {
+            const v = Math.round((parseFloat(n) || 0) * 100) / 100;
+            const s = 'R ' + Math.abs(v).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return v < 0 ? '(' + s + ')' : s;
         }
-        
-        function exportPDF() {
-            alert('Exporting report to PDF...');
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
-        
-        function exportExcel() {
-            alert('Exporting report to Excel...');
+
+        function showError(msg) {
+            const el = document.getElementById('errorBanner');
+            el.textContent = msg;
+            el.classList.remove('cf-hidden');
+            setTimeout(() => el.classList.add('cf-hidden'), 10000);
+        }
+
+        function hide(id) { document.getElementById(id).classList.add('cf-hidden'); }
+        function show(id) { document.getElementById(id).classList.remove('cf-hidden'); }
+
+        function lineRow(label, amount, indent) {
+            const cls = amount < 0 ? 'negative' : (amount > 0 ? 'positive' : '');
+            return '<tr><td class="' + (indent ? 'indent-1' : '') + '">' + escHtml(label) + '</td>' +
+                   '<td class="amount ' + cls + '">' + fmtAmt(amount) + '</td></tr>';
+        }
+
+        async function generateReport() {
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate   = document.getElementById('dateTo').value;
+            if (!fromDate || !toDate) { showError('Please select both a Date From and Date To.'); return; }
+
+            const btn = document.getElementById('generateBtn');
+            btn.disabled    = true;
+            btn.textContent = 'Loading…';
+
+            hide('errorBanner');
+            hide('warningBanner');
+            hide('reportTable');
+            show('reportCard');
+            show('reportLoading');
+
+            try {
+                const url = '/api/accounting/reports/cash-flow?fromDate=' + encodeURIComponent(fromDate) + '&toDate=' + encodeURIComponent(toDate);
+                const res = await fetch(url, { headers: getAuthHeaders() });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const data = await res.json();
+
+                hide('reportLoading');
+
+                document.getElementById('reportSubtitle').textContent =
+                    'Cash Flow Statement — ' + fromDate + ' to ' + toDate;
+
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    document.getElementById('reportCompanyName').textContent =
+                        payload.companyName || payload.company_name || '';
+                } catch (_) { /* leave blank */ }
+
+                if (!data.isBalanced) {
+                    document.getElementById('warningBanner').textContent =
+                        'Note: the three activity sections do not reconcile exactly to the actual cash movement for this period ' +
+                        '(computed R ' + fmtAmt(data.totals.netChangeInCash) + ' vs. actual bank movement ' + fmtAmt(data.bankCashMovement) +
+                        '). This usually means one or more accounts are missing a sub-type/reporting-group classification in the chart of accounts.';
+                    show('warningBanner');
+                }
+
+                const tbody = document.getElementById('reportBody');
+                let html = '';
+
+                html += '<tr class="section-header"><td colspan="2">OPERATING ACTIVITIES</td></tr>';
+                html += lineRow('Net Income', data.netIncome, true);
+                html += lineRow('Add back: Depreciation & Amortization', data.depreciationAddBack, true);
+                (data.operatingWorkingCapital || []).forEach(x => {
+                    html += lineRow((x.movement >= 0 ? 'Increase' : 'Decrease') + ' in ' + x.name, x.movement, true);
+                });
+                html += '<tr class="section-total"><td><strong>Net Cash from Operating Activities</strong></td>' +
+                        '<td class="amount ' + (data.totals.operating >= 0 ? 'positive' : 'negative') + '"><strong>' + fmtAmt(data.totals.operating) + '</strong></td></tr>';
+
+                html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
+                html += '<tr class="section-header"><td colspan="2">INVESTING ACTIVITIES</td></tr>';
+                if ((data.investing || []).length === 0) {
+                    html += '<tr><td class="indent-1" style="color:#9aa0a6;">No investing activity for this period</td><td class="amount">—</td></tr>';
+                }
+                (data.investing || []).forEach(x => {
+                    html += lineRow((x.movement >= 0 ? 'Decrease' : 'Purchase') + ' — ' + x.name, x.movement, true);
+                });
+                html += '<tr class="section-total"><td><strong>Net Cash from Investing Activities</strong></td>' +
+                        '<td class="amount ' + (data.totals.investing >= 0 ? 'positive' : 'negative') + '"><strong>' + fmtAmt(data.totals.investing) + '</strong></td></tr>';
+
+                html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
+                html += '<tr class="section-header"><td colspan="2">FINANCING ACTIVITIES</td></tr>';
+                if ((data.financing || []).length === 0) {
+                    html += '<tr><td class="indent-1" style="color:#9aa0a6;">No financing activity for this period</td><td class="amount">—</td></tr>';
+                }
+                (data.financing || []).forEach(x => {
+                    html += lineRow((x.movement >= 0 ? 'Proceeds from' : 'Repayment of') + ' — ' + x.name, x.movement, true);
+                });
+                html += '<tr class="section-total"><td><strong>Net Cash from Financing Activities</strong></td>' +
+                        '<td class="amount ' + (data.totals.financing >= 0 ? 'positive' : 'negative') + '"><strong>' + fmtAmt(data.totals.financing) + '</strong></td></tr>';
+
+                html += '<tr><td colspan="2" style="height: 15px;"></td></tr>';
+                html += '<tr class="section-total" style="background: rgba(0,102,204,0.12);">' +
+                        '<td><strong>NET INCREASE/(DECREASE) IN CASH</strong></td>' +
+                        '<td class="amount ' + (data.totals.netChangeInCash >= 0 ? 'positive' : 'negative') + '"><strong>' + fmtAmt(data.totals.netChangeInCash) + '</strong></td></tr>';
+
+                html += '<tr><td colspan="2" style="height: 10px;"></td></tr>';
+                html += '<tr><td>Cash at Beginning of Period</td><td class="amount">' + fmtAmt(data.openingCash) + '</td></tr>';
+                html += '<tr class="grand-total"><td><strong>CASH AT END OF PERIOD</strong></td><td class="amount"><strong>' + fmtAmt(data.closingCash) + '</strong></td></tr>';
+
+                tbody.innerHTML = html;
+                show('reportTable');
+
+            } catch (e) {
+                hide('reportLoading');
+                showError('Failed to generate report: ' + e.message);
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = 'Generate Report';
+            }
         }
     </script>
     <script src="js/cosmic-bg.js"></script>

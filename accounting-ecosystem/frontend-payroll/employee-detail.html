@@ -3308,6 +3308,28 @@
             html += '<span style="font-size: 22px; font-weight: 700;">' + formatMoney(previewNet) + '</span>';
             html += '</div>';
 
+            // Company Contributions Section — informational — employer-paid amounts,
+            // not part of the employee's earnings/deductions/net pay arithmetic above.
+            var previewSDL = parseFloat(calc.sdl || 0);
+            var previewUifEmployer = parseFloat(calc.uif_employer || 0);
+            if (previewSDL > 0 || previewUifEmployer > 0) {
+                html += '<div style="margin-bottom: 15px;">';
+                html += '<div style="background: #6c757d; color: white; padding: 6px 15px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; font-weight: 700; font-size: 12px;">';
+                html += '<span>COMPANY CONTRIBUTIONS</span><span>Amount</span></div>';
+                html += '<div style="border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 6px 6px; padding: 8px 15px;">';
+                if (previewUifEmployer > 0) {
+                    html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
+                    html += '<span>UIF (Employer)</span><span>' + formatMoney(previewUifEmployer) + '</span></div>';
+                }
+                if (previewSDL > 0) {
+                    html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
+                    html += '<span>SDL (Skills Development Levy)</span><span>' + formatMoney(previewSDL) + '</span></div>';
+                }
+                html += '<div style="border-top: 2px solid #333; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">';
+                html += '<span>TOTAL COMPANY CONTRIBUTIONS</span><span>' + formatMoney(previewSDL + previewUifEmployer) + '</span></div>';
+                html += '</div></div>';
+            }
+
             // Rates & Quantities Section — only shown when overtime or short-time is present
             if (calc.ratesEntries && calc.ratesEntries.length > 0) {
                 html += '<div style="margin-bottom: 15px;">';

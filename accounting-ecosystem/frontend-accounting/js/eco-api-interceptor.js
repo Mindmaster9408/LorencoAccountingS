@@ -18,6 +18,12 @@
     '/api/auth/',
     '/api/employees',
     '/api/audit',
+    '/api/health',
+    // /api/users has no accounting-module counterpart (backend/modules/accounting
+    // mounts no '/users' route at all) — users-permissions.html and profile.html
+    // both call this shared route directly and would otherwise be silently
+    // rewritten to a nonexistent /api/accounting/users/*.
+    '/api/users',
   ];
 
   function isEcoSharedRoute(u) {

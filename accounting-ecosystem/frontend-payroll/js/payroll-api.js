@@ -137,6 +137,20 @@ var PayrollAPI = (function () {
                 period_key:       periodKey,
                 include_snapshot: true
             });
+        },
+
+        // GET /api/payroll/recon/tax-years
+        // 200: { taxYears: ['YYYY/YYYY', ...], currentTaxYear: 'YYYY/YYYY' }
+        getTaxYears: function () {
+            return request('GET', BASE + '/recon/tax-years');
+        },
+
+        // GET /api/payroll/reports/annual-analysis?taxYear=YYYY/YYYY
+        // Read-only 12-month, per-employee, per-pay-code breakdown from finalized
+        // payroll_snapshots only (the Paytime equivalent of a Sage "12 Month Analysis").
+        // 200: { taxYear, periods[], employees[], summary, notes[] }
+        getAnnualAnalysis: function (taxYear) {
+            return request('GET', BASE + '/reports/annual-analysis?taxYear=' + encodeURIComponent(taxYear));
         }
 
     };

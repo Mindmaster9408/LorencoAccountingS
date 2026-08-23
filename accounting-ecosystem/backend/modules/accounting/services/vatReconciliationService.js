@@ -530,8 +530,10 @@ class VATReconciliationService {
             .select('*')
             .eq('company_id', companyId);
 
+        // vat_submissions has no status column (confirmed against accounting-schema.js)
+        // — status is derived below from which date fields are populated, not stored.
+        // filters.status, if passed, is applied after derivation (see below).
         if (filters.periodId) query = query.eq('vat_period_id', filters.periodId);
-        if (filters.status)   query = query.eq('status', filters.status);
 
         query = query.order('submission_date', { ascending: false });
 
@@ -562,11 +564,15 @@ class VATReconciliationService {
         const vatReportByPeriod = {};
         for (const r of vatReports || []) vatReportByPeriod[r.vat_period_id] = r.id;
 
-        // Flatten and merge period + vat_report data into each submission row
-        return submissions.map(s => {
+        // Flatten and merge period + vat_report data into each submission row.
+        // status is derived, not stored: paid once payment_date is set, submitted
+        // once submission_date is set, otherwise still a draft record.
+        const withStatus = submissions.map(s => {
             const p = periodMap[s.vat_period_id] || {};
+            const status = s.payment_date ? 'paid' : s.submission_date ? 'submitted' : 'draft';
             return {
                 ...s,
+                status,
                 period_key:        p.period_key   || null,
                 from_date:         p.from_date     || null,
                 to_date:           p.to_date       || null,
@@ -574,6 +580,8 @@ class VATReconciliationService {
                 vat_report_id:     vatReportByPeriod[s.vat_period_id] || null,
             };
         });
+
+        return filters.status ? withStatus.filter(s => s.status === filters.status) : withStatus;
     }
 
     // ========================================================

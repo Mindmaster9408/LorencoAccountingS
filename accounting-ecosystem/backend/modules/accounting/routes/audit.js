@@ -122,8 +122,19 @@ router.get('/events', authenticate, hasPermission('audit.view'), async (req, res
     const accountingRows  = r1.data  || [];
     const historicalRows  = r2.error ? [] : (r2.data || []);
 
+    // ── Look up real actor names for accounting_audit_log rows (actor_id is a
+    // real integer FK to users.id) — historical_comparative_audit_log's
+    // performed_by is a UUID from a different identity source, left null.
+    const actorIds = [...new Set(accountingRows.map(r => r.actor_id).filter(id => id != null))];
+    let userNameById = {};
+    if (actorIds.length) {
+      const { data: userRows } = await supabase
+        .from('users').select('id, full_name').in('id', actorIds);
+      userNameById = Object.fromEntries((userRows || []).map(u => [u.id, u.full_name]));
+    }
+
     // ── Normalize ────────────────────────────────────────────────────────────
-    const accountingEvents  = accountingRows.map(normalizeAccountingLog);
+    const accountingEvents  = accountingRows.map(r => normalizeAccountingLog(r, userNameById));
     const historicalEvents  = historicalRows.map(normalizeHistoricalLog);
 
     // ── Merge + sort descending by timestamp ─────────────────────────────────

@@ -794,17 +794,17 @@
                     outstanding: parseFloat(c.current_balance) || 0,
                     creditLimit: parseFloat(c.credit_limit) || 0,
                     status: c.is_active !== false ? 'Active' : 'Inactive',
-                    regNumber: '',
+                    regNumber: c.id_number || '',
                     website: '',
-                    notes: '',
+                    notes: c.notes || '',
                     address: c.address_line_1 || '',
                     city: c.city || '',
-                    state: '',
+                    state: c.province || '',
                     postalCode: c.postal_code || '',
                     country: 'South Africa',
                     paymentTerms: 30,
                     accountNumber: c.customer_number || '',
-                    taxNumber: ''
+                    taxNumber: c.tax_reference || ''
                 }));
             } catch (err) {
                 console.error('[customer-list] load error:', err);

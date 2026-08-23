@@ -122,7 +122,12 @@ class VATReportService {
     };
   }
 
-  async calculateInputVat(companyId, dateFrom, dateTo) {
+  // periodId (optional) additionally pulls in journals that were swept
+  // forward into this period from a locked prior period (is_out_of_period=
+  // true, vat_period_id=periodId) — their original j.date stays in the past,
+  // so a pure date-range filter would silently drop them from the headline
+  // VAT201 totals even though they were deliberately assigned to this period.
+  async calculateInputVat(companyId, dateFrom, dateTo, periodId = null) {
     const result = await db.query(
       `SELECT COALESCE(SUM(jl.debit - jl.credit), 0) AS input_vat
        FROM journal_lines jl
@@ -130,16 +135,18 @@ class VATReportService {
        INNER JOIN accounts a ON a.id = jl.account_id
        WHERE j.company_id = $1
          AND j.status = 'posted'
-         AND j.date >= $2
-         AND j.date <= $3
-         AND a.code = '1400'`,
-      [companyId, dateFrom, dateTo]
+         AND a.code = '1400'
+         AND (
+           (j.date >= $2 AND j.date <= $3)
+           OR (j.vat_period_id = $4 AND j.is_out_of_period = true)
+         )`,
+      [companyId, dateFrom, dateTo, periodId]
     );
 
     return round2(result.rows[0]?.input_vat || 0);
   }
 
-  async calculateOutputVat(companyId, dateFrom, dateTo) {
+  async calculateOutputVat(companyId, dateFrom, dateTo, periodId = null) {
     const result = await db.query(
       `SELECT COALESCE(SUM(jl.credit - jl.debit), 0) AS output_vat
        FROM journal_lines jl
@@ -147,10 +154,12 @@ class VATReportService {
        INNER JOIN accounts a ON a.id = jl.account_id
        WHERE j.company_id = $1
          AND j.status = 'posted'
-         AND j.date >= $2
-         AND j.date <= $3
-         AND a.code = '2300'`,
-      [companyId, dateFrom, dateTo]
+         AND a.code = '2300'
+         AND (
+           (j.date >= $2 AND j.date <= $3)
+           OR (j.vat_period_id = $4 AND j.is_out_of_period = true)
+         )`,
+      [companyId, dateFrom, dateTo, periodId]
     );
 
     return round2(result.rows[0]?.output_vat || 0);
@@ -304,8 +313,8 @@ class VATReportService {
     const controls = await this.getVatControlAccounts(companyId);
     warnings.push(...controls.warnings);
 
-    const outputVat = await this.calculateOutputVat(companyId, periodRange.dateFrom, periodRange.dateTo);
-    const inputVat = await this.calculateInputVat(companyId, periodRange.dateFrom, periodRange.dateTo);
+    const outputVat = await this.calculateOutputVat(companyId, periodRange.dateFrom, periodRange.dateTo, periodRange.periodId);
+    const inputVat = await this.calculateInputVat(companyId, periodRange.dateFrom, periodRange.dateTo, periodRange.periodId);
 
     const summary = this.buildVat201Summary(outputVat, inputVat);
 

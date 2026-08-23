@@ -139,9 +139,14 @@ async function resolveCustomerId(companyId, customerId, customerName) {
   return created.id;
 }
 
-// Batch-attaches a customer_name field to a list of invoice-like rows (or a
-// single row) for API-response backward compatibility, since the DB itself
-// no longer stores a name on the invoice row.
+// Batch-attaches API-response backward-compatibility fields to a list of
+// invoice-like rows (or a single row): customer_name (DB no longer stores a
+// name on the invoice row) plus the "intended" schema field names the
+// frontend was written against (invoice_date/subtotal_ex_vat/total_inc_vat)
+// but which never actually existed on the live customer_invoices table (see
+// the schema-drift comment above resolveCustomerId). Fixing it here — the
+// one place every list/detail/update response passes through — avoids
+// touching every render call site in invoices.html individually.
 async function attachCustomerNames(companyId, rows) {
   const list = Array.isArray(rows) ? rows : [rows];
   const ids = [...new Set(list.map(r => r.customer_id).filter(Boolean))];
@@ -150,7 +155,12 @@ async function attachCustomerNames(companyId, rows) {
     const { data } = await supabase.from('customers').select('id, name').eq('company_id', companyId).in('id', ids);
     nameById = Object.fromEntries((data || []).map(c => [c.id, c.name]));
   }
-  for (const r of list) r.customer_name = r.customer_id ? (nameById[r.customer_id] || `Customer #${r.customer_id}`) : 'Unknown Customer';
+  for (const r of list) {
+    r.customer_name = r.customer_id ? (nameById[r.customer_id] || `Customer #${r.customer_id}`) : 'Unknown Customer';
+    if (r.date !== undefined)         r.invoice_date    = r.date;
+    if (r.subtotal !== undefined)     r.subtotal_ex_vat = r.subtotal;
+    if (r.total_amount !== undefined) r.total_inc_vat   = r.total_amount;
+  }
   return Array.isArray(rows) ? list : list[0];
 }
 
@@ -258,9 +268,92 @@ router.get('/', authenticate, hasPermission('ar.invoice.view'), async (req, res)
   }
 });
 
-// ─── Get Invoice Detail ───────────────────────────────────────────────────────
+// ─── Sales Analysis ───────────────────────────────────────────────────────────
+// Real replacement for the previously 100%-hardcoded sales-analysis.html.
+// Deliberately omits Cost/Profit/Margin columns the old mockup showed at a
+// fixed, invented 40% margin — there is no per-line cost/COGS data anywhere
+// in this schema to compute those honestly, so they're left out rather than
+// guessed. Revenue is ex-VAT (subtotal), matching how income is recognized.
+// Registered before GET /:id so "sales-analysis" is never captured as an :id.
+router.get('/sales-analysis', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const { fromDate, toDate } = req.query;
 
-router.get('/:id', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
+  try {
+    let q = supabase
+      .from('customer_invoices')
+      .select('id, customer_id, date, subtotal, total_amount')
+      .eq('company_id', companyId)
+      .not('status', 'in', '("draft","void","cancelled")');
+
+    if (fromDate) q = q.gte('date', fromDate);
+    if (toDate)   q = q.lte('date', toDate);
+
+    const { data: rawInvoices, error } = await q;
+    if (error) throw new Error(error.message);
+    const invoices = await attachCustomerNames(companyId, rawInvoices || []);
+
+    const byCustomerMap = {};
+    const byMonthMap = {};
+    for (const inv of invoices) {
+      const revenue = parseFloat(inv.subtotal) || 0;
+      const custKey = inv.customer_id ? `id:${inv.customer_id}` : 'unknown';
+      if (!byCustomerMap[custKey]) {
+        byCustomerMap[custKey] = { customerId: inv.customer_id || null, customerName: inv.customer_name, invoiceCount: 0, revenue: 0 };
+      }
+      byCustomerMap[custKey].invoiceCount++;
+      byCustomerMap[custKey].revenue = Math.round((byCustomerMap[custKey].revenue + revenue) * 100) / 100;
+
+      const monthKey = (inv.date || '').slice(0, 7);
+      if (monthKey) byMonthMap[monthKey] = Math.round(((byMonthMap[monthKey] || 0) + revenue) * 100) / 100;
+    }
+
+    // Revenue by income account, via the invoices' own lines.
+    let byAccount = [];
+    if (invoices.length) {
+      const invoiceIds = invoices.map(i => i.id);
+      const { data: lines } = await supabase
+        .from('customer_invoice_lines')
+        .select('line_total, account_id, accounts!account_id(code, name)')
+        .in('invoice_id', invoiceIds);
+      const byAccountMap = {};
+      (lines || []).forEach(l => {
+        const key = l.account_id || 'unassigned';
+        if (!byAccountMap[key]) {
+          byAccountMap[key] = { accountId: l.account_id || null, accountCode: l.accounts?.code || null, accountName: l.accounts?.name || 'Unassigned', revenue: 0 };
+        }
+        byAccountMap[key].revenue = Math.round((byAccountMap[key].revenue + (parseFloat(l.line_total) || 0)) * 100) / 100;
+      });
+      byAccount = Object.values(byAccountMap).sort((a, b) => b.revenue - a.revenue);
+    }
+
+    const byCustomer = Object.values(byCustomerMap).sort((a, b) => b.revenue - a.revenue);
+    const monthlyTrend = Object.entries(byMonthMap).sort(([a], [b]) => a.localeCompare(b)).map(([monthKey, revenue]) => ({ monthKey, revenue }));
+    const totals = {
+      invoiceCount: invoices.length,
+      revenue: Math.round(byCustomer.reduce((s, c) => s + c.revenue, 0) * 100) / 100,
+    };
+
+    res.json({ byCustomer, byAccount, monthlyTrend, totals });
+  } catch (err) {
+    console.error('GET /customer-invoices/sales-analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Get Invoice Detail ───────────────────────────────────────────────────────
+// :id constrained to digits only — otherwise this single-segment wildcard
+// silently swallows every later-registered literal route with no additional
+// path segments (confirmed real: /aging at the bottom of this file and
+// /payments further down both fall in this trap; a request to either
+// currently gets captured here first, parseInt()s to NaN, finds no matching
+// invoice, and returns a misleading 404 "Invoice not found" instead of ever
+// reaching its real handler). Registration order still matters for /payments
+// specifically since path-to-regexp evaluates in order — but constraining
+// this pattern to digits removes the conflict without having to relocate
+// any of the affected routes.
+router.get('/:id(\\d+)', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
   const invoiceId = parseInt(req.params.id);

@@ -682,6 +682,7 @@
     let totalRows          = 0;
     let allBatches         = [];
     let _rowCache          = {};    // id → row object, for Edit pre-fill
+    let transferBatchRowsById = {}; // id → row object, for transfer-pair card details
 
     // Per-action pending IDs
     let pendingConfirmId         = null;
@@ -888,6 +889,12 @@
             let qs = '';
             if (batch) {
                 const data = await apiGet('/bank/staging/batch/' + encodeURIComponent(batch));
+                // getBatch() returns the batch's full staging rows alongside the
+                // links in the same response — cache them so buildTransferCard
+                // can look up each pair's real description/amount/date directly,
+                // with no separate follow-up fetch needed.
+                transferBatchRowsById = {};
+                (data.rows || []).forEach(r => { transferBatchRowsById[r.id] = r; });
                 renderTransferLinks(data.transferLinks || []);
             } else {
                 // Fetch unconfirmed transfer-detected rows to find their link IDs
@@ -959,20 +966,26 @@
             </div>
         `;
 
-        // Populate from/to details from staging data if available
-        loadTransferRowDetails(link);
+        // Populate from/to details from the already-fetched batch rows
+        populateTransferRowDetails(link);
 
         return div;
     }
 
-    async function loadTransferRowDetails(link) {
-        try {
-            // Fetch both staging rows
-            const [fromData, toData] = await Promise.all([
-                apiGet('/bank/staging?matchStatus=UNMATCHED,TRANSFER_DETECTED,REVIEW_REQUIRED,CONFIRMED&limit=1&offset=0').catch(() => ({ staging: [] })),
-            ]);
-            // Use cached staging rows if available
-        } catch (e) { /* non-fatal */ }
+    function populateTransferRowDetails(link) {
+        const fromRow = transferBatchRowsById[link.staging_id_from];
+        const toRow   = transferBatchRowsById[link.staging_id_to];
+
+        const describe = row => row
+            ? `<div class="desc">${escHtml(row.description || '')}</div>
+               <div class="amount">${fmtCcy(row.amount)}</div>
+               <div class="date">${fmtDate(row.date)}</div>`
+            : `<div class="desc">Details not found in this batch.</div>`;
+
+        const fromBox = document.getElementById('transfer-from-' + link.id);
+        const toBox   = document.getElementById('transfer-to-' + link.id);
+        if (fromBox) fromBox.innerHTML = `<div class="label">SENDING (Money Out)</div>${describe(fromRow)}`;
+        if (toBox)   toBox.innerHTML   = `<div class="label">RECEIVING (Money In)</div>${describe(toRow)}`;
     }
 
     // ── Render the staging rows table ─────────────────────────────────────────

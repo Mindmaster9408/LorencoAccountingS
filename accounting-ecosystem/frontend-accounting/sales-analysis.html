@@ -383,6 +383,34 @@
         .indent-2 {
             padding-left: 55px;
         }
+
+        .an-hidden { display: none !important; }
+
+        .report-loading {
+            text-align: center;
+            padding: 32px;
+            color: #5f6368;
+            font-size: 14px;
+        }
+
+        .report-empty {
+            text-align: center;
+            padding: 40px;
+            color: #9aa0a6;
+            font-size: 14px;
+        }
+
+        .error-banner {
+            background: #fee2e2;
+            color: #b91c1c;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+
+        .section-block { margin-bottom: 30px; }
+        .section-block h3 { font-size: 15px; color: #202124; margin-bottom: 12px; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/cosmic-bg.css">
@@ -400,173 +428,202 @@
     <div class="container">
         <div class="page-header">
             <h1>Sales Analysis</h1>
-            <p>Detailed analysis of sales by customer and period</p>
+            <p>Revenue by customer, by income account, and monthly trend</p>
         </div>
-        
+
         <div class="report-controls">
             <div class="control-group">
                 <label>Date From</label>
-                <input type="date" id="dateFrom" value="2026-01-01">
+                <input type="date" id="dateFrom">
             </div>
             <div class="control-group">
                 <label>Date To</label>
-                <input type="date" id="dateTo" value="2026-01-14">
+                <input type="date" id="dateTo">
             </div>
-            <div class="control-group">
-                <label>Group By</label>
-                <select>
-                    <option>Customer</option>
-                    <option>Product</option>
-                    <option>Sales Person</option>
-                    <option>Region</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>Period</label>
-                <select>
-                    <option>Daily</option>
-                    <option>Weekly</option>
-                    <option>Monthly</option>
-                </select>
-            </div>
-            <button class="btn-primary" onclick="generateReport()">Generate Report</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
-            <button class="btn-secondary" onclick="exportExcel()">Export Excel</button>
+            <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
+            <button type="button" class="btn-secondary" disabled title="Coming soon">Export PDF</button>
+            <button type="button" class="btn-secondary" disabled title="Coming soon">Export Excel</button>
         </div>
-        
-        <div class="report-card">
+        <div id="errorBanner" class="error-banner an-hidden"></div>
+
+        <div class="report-card an-hidden" id="reportCard">
             <div class="report-header">
                 <h2 id="reportCompanyName"></h2>
-                <script>var _rcn=document.getElementById('reportCompanyName');if(_rcn)_rcn.textContent=localStorage.getItem('accounting_company_name')||localStorage.getItem('eco_company_name')||'My Company';</script>
-                <p>Sales Analysis - 01 January 2026 to 14 January 2026</p>
+                <p id="reportSubtitle">Sales Analysis</p>
             </div>
-            
+
             <div class="report-content">
-                <table class="report-table">
-                    <thead>
-                        <tr>
-                            <th>Customer</th>
-                            <th class="amount">Invoices</th>
-                            <th class="amount">Units Sold</th>
-                            <th class="amount">Sales (ZAR)</th>
-                            <th class="amount">Cost (ZAR)</th>
-                            <th class="amount">Profit (ZAR)</th>
-                            <th class="amount">Margin %</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>ABC Corporation</td>
-                            <td class="amount">8</td>
-                            <td class="amount">245</td>
-                            <td class="amount">R 52,400.00</td>
-                            <td class="amount">R 31,440.00</td>
-                            <td class="amount positive">R 20,960.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        <tr>
-                            <td>XYZ Industries</td>
-                            <td class="amount">6</td>
-                            <td class="amount">189</td>
-                            <td class="amount">R 45,800.00</td>
-                            <td class="amount">R 27,480.00</td>
-                            <td class="amount positive">R 18,320.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        <tr>
-                            <td>Global Traders</td>
-                            <td class="amount">5</td>
-                            <td class="amount">156</td>
-                            <td class="amount">R 38,200.00</td>
-                            <td class="amount">R 22,920.00</td>
-                            <td class="amount positive">R 15,280.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        <tr>
-                            <td>Metro Solutions</td>
-                            <td class="amount">4</td>
-                            <td class="amount">132</td>
-                            <td class="amount">R 28,600.00</td>
-                            <td class="amount">R 17,160.00</td>
-                            <td class="amount positive">R 11,440.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        <tr>
-                            <td>TechWorld Ltd</td>
-                            <td class="amount">3</td>
-                            <td class="amount">98</td>
-                            <td class="amount">R 20,500.00</td>
-                            <td class="amount">R 12,300.00</td>
-                            <td class="amount positive">R 8,200.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        <tr>
-                            <td>Alpha Retail</td>
-                            <td class="amount">2</td>
-                            <td class="amount">76</td>
-                            <td class="amount">R 18,300.00</td>
-                            <td class="amount">R 10,980.00</td>
-                            <td class="amount positive">R 7,320.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        <tr>
-                            <td>Beta Wholesale</td>
-                            <td class="amount">2</td>
-                            <td class="amount">65</td>
-                            <td class="amount">R 15,700.00</td>
-                            <td class="amount">R 9,420.00</td>
-                            <td class="amount positive">R 6,280.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        <tr>
-                            <td>Gamma Supplies</td>
-                            <td class="amount">1</td>
-                            <td class="amount">42</td>
-                            <td class="amount">R 8,500.00</td>
-                            <td class="amount">R 5,100.00</td>
-                            <td class="amount positive">R 3,400.00</td>
-                            <td class="amount">40.0%</td>
-                        </tr>
-                        
-                        <tr><td colspan="7" style="height: 10px;"></td></tr>
-                        
-                        <tr class="grand-total">
-                            <td><strong>TOTAL</strong></td>
-                            <td class="amount"><strong>31</strong></td>
-                            <td class="amount"><strong>1,003</strong></td>
-                            <td class="amount"><strong>R 228,000.00</strong></td>
-                            <td class="amount"><strong>R 136,800.00</strong></td>
-                            <td class="amount"><strong>R 91,200.00</strong></td>
-                            <td class="amount"><strong>40.0%</strong></td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div id="reportLoading" class="report-loading an-hidden">Loading…</div>
+                <div id="reportEmpty"   class="report-empty   an-hidden">No posted invoices found for the selected criteria.</div>
+
+                <div id="reportSections" class="an-hidden">
+                    <div class="section-block">
+                        <h3>Revenue by Customer</h3>
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th class="amount">Invoices</th>
+                                    <th class="amount">Revenue (ex VAT)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="byCustomerBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="section-block">
+                        <h3>Revenue by Income Account</h3>
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Account</th>
+                                    <th class="amount">Revenue (ex VAT)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="byAccountBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="section-block">
+                        <h3>Monthly Trend</h3>
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Month</th>
+                                    <th class="amount">Revenue (ex VAT)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="byMonthBody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    
-    <script>
-        let token = localStorage.getItem('token');
-        let user = JSON.parse(localStorage.getItem('user') || '{}');
 
-        // Redirect to ecosystem login if no token
-        if (!token) {
-            window.location.href = '/';
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/'; }
+
+        function getAuthHeaders() {
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
-        
-        // User info display handled by navigation.js
-        
-        function generateReport() {
-            alert('Generating report with selected parameters...');
+
+        function fmtAmt(n) {
+            const v = parseFloat(n) || 0;
+            return 'R ' + v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
-        
-        function exportPDF() {
-            alert('Exporting report to PDF...');
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
-        
-        function exportExcel() {
-            alert('Exporting report to Excel...');
+
+        function monthLabel(monthKey) {
+            const [y, m] = monthKey.split('-');
+            const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+            return d.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
         }
+
+        function showError(msg) {
+            const el = document.getElementById('errorBanner');
+            el.textContent = msg;
+            el.classList.remove('an-hidden');
+            setTimeout(() => el.classList.add('an-hidden'), 10000);
+        }
+
+        function hide(id) { document.getElementById(id).classList.add('an-hidden'); }
+        function show(id) { document.getElementById(id).classList.remove('an-hidden'); }
+
+        async function generateReport() {
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate   = document.getElementById('dateTo').value;
+
+            const btn = document.getElementById('generateBtn');
+            btn.disabled    = true;
+            btn.textContent = 'Loading…';
+
+            hide('errorBanner');
+            hide('reportSections');
+            hide('reportEmpty');
+            show('reportCard');
+            show('reportLoading');
+
+            try {
+                const params = new URLSearchParams();
+                if (fromDate) params.set('fromDate', fromDate);
+                if (toDate)   params.set('toDate', toDate);
+                const url = '/api/accounting/customer-invoices/sales-analysis' + (params.toString() ? '?' + params.toString() : '');
+
+                const res = await fetch(url, { headers: getAuthHeaders() });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const data = await res.json();
+
+                hide('reportLoading');
+
+                document.getElementById('reportSubtitle').textContent =
+                    'Sales Analysis' + (fromDate || toDate ? ' — ' + (fromDate || '…') + ' to ' + (toDate || '…') : '');
+
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    document.getElementById('reportCompanyName').textContent =
+                        payload.companyName || payload.company_name || '';
+                } catch (_) { /* leave blank */ }
+
+                const byCustomer   = data.byCustomer   || [];
+                const byAccount    = data.byAccount    || [];
+                const monthlyTrend = data.monthlyTrend || [];
+
+                if (byCustomer.length === 0) {
+                    show('reportEmpty');
+                    return;
+                }
+
+                const custBody = document.getElementById('byCustomerBody');
+                custBody.innerHTML = '';
+                byCustomer.forEach(c => {
+                    custBody.insertAdjacentHTML('beforeend',
+                        '<tr><td>' + escHtml(c.customerName || 'Unknown') + '</td>' +
+                        '<td class="amount">' + (c.invoiceCount || 0) + '</td>' +
+                        '<td class="amount">' + fmtAmt(c.revenue) + '</td></tr>');
+                });
+                const custTotal = byCustomer.reduce((s, c) => s + (parseFloat(c.revenue) || 0), 0);
+                custBody.insertAdjacentHTML('beforeend',
+                    '<tr class="grand-total"><td><strong>TOTAL</strong></td>' +
+                    '<td class="amount"><strong>' + (data.totals?.invoiceCount || 0) + '</strong></td>' +
+                    '<td class="amount"><strong>' + fmtAmt(custTotal) + '</strong></td></tr>');
+
+                const acctBody = document.getElementById('byAccountBody');
+                acctBody.innerHTML = '';
+                byAccount.forEach(a => {
+                    acctBody.insertAdjacentHTML('beforeend',
+                        '<tr><td>' + escHtml((a.accountCode ? a.accountCode + ' — ' : '') + a.accountName) + '</td>' +
+                        '<td class="amount">' + fmtAmt(a.revenue) + '</td></tr>');
+                });
+
+                const monthBody = document.getElementById('byMonthBody');
+                monthBody.innerHTML = '';
+                monthlyTrend.forEach(m => {
+                    monthBody.insertAdjacentHTML('beforeend',
+                        '<tr><td>' + escHtml(monthLabel(m.monthKey)) + '</td>' +
+                        '<td class="amount">' + fmtAmt(m.revenue) + '</td></tr>');
+                });
+
+                show('reportSections');
+
+            } catch (e) {
+                hide('reportLoading');
+                showError('Failed to generate report: ' + e.message);
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = 'Generate Report';
+            }
+        }
+
+        // Auto-run once on load with no date filter (all posted invoices).
+        generateReport();
     </script>
     <script src="js/cosmic-bg.js"></script>
 </body>

@@ -89,8 +89,12 @@ function inferModule(actionType, entityType) {
  * Schema: id, company_id, actor_type, actor_id, action_type, entity_type,
  *         entity_id, before_json, after_json, reason, metadata,
  *         ip_address, user_agent, created_at
+ *
+ * @param {object} row
+ * @param {Record<number,string>} [userNameById] - actor_id -> users.full_name,
+ *   looked up by the caller (this module stays DB-access-free by design).
  */
-function normalizeAccountingLog(row) {
+function normalizeAccountingLog(row, userNameById = {}) {
   return {
     id:          String(row.id),
     timestamp:   row.created_at,
@@ -99,7 +103,7 @@ function normalizeAccountingLog(row) {
     eventType:   row.action_type  || 'UNKNOWN',
     severity:    resolveSeverity(row.action_type),
     userId:      row.actor_id != null ? String(row.actor_id) : null,
-    userName:    null,
+    userName:    row.actor_id != null ? (userNameById[row.actor_id] || null) : null,
     actorType:   row.actor_type   || 'USER',
     entityType:  row.entity_type  || null,
     entityId:    row.entity_id != null ? String(row.entity_id) : null,

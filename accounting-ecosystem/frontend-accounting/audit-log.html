@@ -549,7 +549,9 @@
     hideError();
 
     try {
-      const resp = await fetch('/api/audit?' + params.toString(), { headers: authHeaders() });
+      // /api/audit is the ECO-wide shared log (excluded from the module's auto
+      // /api/accounting/ rewrite) — this page needs the accounting-scoped log.
+      const resp = await fetch('/api/accounting/audit?' + params.toString(), { headers: authHeaders() });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: resp.statusText }));
         throw new Error(err.error || 'Request failed');

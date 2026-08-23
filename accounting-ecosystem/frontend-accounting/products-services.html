@@ -331,7 +331,7 @@ async function loadItems() {
 
 async function loadAccounts() {
   try {
-    const r = await fetch('/api/accounting/customer-invoices/accounts', { headers: authHeaders() });
+    const r = await fetch('/api/accounting/accounts?type=income', { headers: authHeaders() });
     if (!r.ok) return;
     const d = await r.json();
     allAccounts = d.accounts || [];

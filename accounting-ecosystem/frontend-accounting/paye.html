@@ -415,58 +415,59 @@
         <div class="card-grid">
             <div class="stat-card">
                 <h3>Current Month PAYE</h3>
-                <div class="value">R 18,450.00</div>
-                <div class="subtext">January 2026</div>
+                <div class="value" id="statPaye">R 0.00</div>
+                <div class="subtext" id="statMonthLabel">—</div>
             </div>
             <div class="stat-card">
                 <h3>Current Month UIF</h3>
-                <div class="value">R 2,150.00</div>
+                <div class="value" id="statUif">R 0.00</div>
                 <div class="subtext">Employee + Employer</div>
             </div>
             <div class="stat-card">
                 <h3>Current Month SDL</h3>
-                <div class="value">R 675.00</div>
+                <div class="value" id="statSdl">R 0.00</div>
                 <div class="subtext">1% of Payroll</div>
             </div>
             <div class="stat-card">
                 <h3>Total Payable</h3>
-                <div class="value">R 21,275.00</div>
-                <div class="subtext">Due: 7 Feb 2026</div>
+                <div class="value" id="statTotal">R 0.00</div>
+                <div class="subtext" id="statDue">—</div>
             </div>
         </div>
-        
+
         <div class="report-controls">
             <div class="control-group">
-                <label>Tax Period</label>
-                <select>
-                    <option>January 2026</option>
-                    <option>December 2025</option>
-                    <option>November 2025</option>
+                <label>Tax Year</label>
+                <select id="periodSelect">
+                    <option value="2025-2026">2025/2026 Tax Year</option>
                 </select>
             </div>
             <div class="control-group">
-                <label>Report Type</label>
-                <select>
-                    <option>EMP201 Monthly</option>
-                    <option>EMP501 Annual</option>
-                    <option>IRP5/IT3(a)</option>
-                </select>
+                <label>Month</label>
+                <select id="monthSelect"></select>
             </div>
-            <button class="btn-primary" onclick="generateReport()">Generate Report</button>
-            <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
+            <button class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
+            <button class="btn-secondary" disabled title="Coming soon">Export PDF</button>
             <button class="btn-secondary" onclick="submitReturn()">Submit to SARS</button>
             <button class="btn-secondary" onclick="window.location.href='paye-reconciliation.html'" style="background: #28a745;">PAYE Reconciliation</button>
         </div>
-        
+
+        <div id="payeErrorBanner" style="display:none;background:#fee2e2;color:#b91c1c;padding:12px 18px;border-radius:8px;margin:12px 0;font-size:14px;"></div>
+
         <div class="report-card">
             <div class="report-header">
                 <h2>EMP201 - Employer Monthly Return</h2>
-                <p id="payeReportSubtitle">January 2026 - <span id="payeCompanyName"></span></p>
+                <p id="payeReportSubtitle">— <span id="payeCompanyName"></span></p>
                 <script>var _pcn=document.getElementById('payeCompanyName');if(_pcn)_pcn.textContent=localStorage.getItem('accounting_company_name')||localStorage.getItem('eco_company_name')||'My Company';</script>
             </div>
-            
+
             <div class="report-content">
-                <table class="report-table">
+                <div id="payeEmpty" style="display:none;text-align:center;padding:40px;color:#9aa0a6;font-size:14px;">
+                    No approved PAYE reconciliation found for this month. Complete and approve it on the
+                    <a href="paye-reconciliation.html">PAYE Reconciliation</a> page first — EMP201 only ever
+                    reflects finalized (Approved/Locked), never in-progress, figures.
+                </div>
+                <table class="report-table" id="payeTable">
                     <thead>
                         <tr>
                             <th>Employee</th>
@@ -478,81 +479,7 @@
                             <th class="amount">Total Deductions</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
-                            <td>John Smith</td>
-                            <td class="amount">R 25,000.00</td>
-                            <td class="amount">R 4,250.00</td>
-                            <td class="amount">R 250.00</td>
-                            <td class="amount">R 250.00</td>
-                            <td class="amount">R 250.00</td>
-                            <td class="amount">R 5,000.00</td>
-                        </tr>
-                        <tr>
-                            <td>Sarah Johnson</td>
-                            <td class="amount">R 22,000.00</td>
-                            <td class="amount">R 3,520.00</td>
-                            <td class="amount">R 220.00</td>
-                            <td class="amount">R 220.00</td>
-                            <td class="amount">R 220.00</td>
-                            <td class="amount">R 4,180.00</td>
-                        </tr>
-                        <tr>
-                            <td>Michael Brown</td>
-                            <td class="amount">R 18,500.00</td>
-                            <td class="amount">R 2,775.00</td>
-                            <td class="amount">R 185.00</td>
-                            <td class="amount">R 185.00</td>
-                            <td class="amount">R 185.00</td>
-                            <td class="amount">R 3,330.00</td>
-                        </tr>
-                        <tr>
-                            <td>Lisa Davis</td>
-                            <td class="amount">R 20,000.00</td>
-                            <td class="amount">R 3,200.00</td>
-                            <td class="amount">R 200.00</td>
-                            <td class="amount">R 200.00</td>
-                            <td class="amount">R 200.00</td>
-                            <td class="amount">R 3,800.00</td>
-                        </tr>
-                        <tr>
-                            <td>David Wilson</td>
-                            <td class="amount">R 16,000.00</td>
-                            <td class="amount">R 2,080.00</td>
-                            <td class="amount">R 160.00</td>
-                            <td class="amount">R 160.00</td>
-                            <td class="amount">R 160.00</td>
-                            <td class="amount">R 2,560.00</td>
-                        </tr>
-                        <tr>
-                            <td>Emma Taylor</td>
-                            <td class="amount">R 15,000.00</td>
-                            <td class="amount">R 1,875.00</td>
-                            <td class="amount">R 150.00</td>
-                            <td class="amount">R 150.00</td>
-                            <td class="amount">R 150.00</td>
-                            <td class="amount">R 2,325.00</td>
-                        </tr>
-                        <tr>
-                            <td>James Anderson</td>
-                            <td class="amount">R 12,500.00</td>
-                            <td class="amount">R 750.00</td>
-                            <td class="amount">R 125.00</td>
-                            <td class="amount">R 125.00</td>
-                            <td class="amount">R 125.00</td>
-                            <td class="amount">R 1,125.00</td>
-                        </tr>
-                        
-                        <tr class="grand-total">
-                            <td><strong>TOTAL</strong></td>
-                            <td class="amount"><strong>R 129,000.00</strong></td>
-                            <td class="amount"><strong>R 18,450.00</strong></td>
-                            <td class="amount"><strong>R 1,290.00</strong></td>
-                            <td class="amount"><strong>R 1,290.00</strong></td>
-                            <td class="amount"><strong>R 1,290.00</strong></td>
-                            <td class="amount"><strong>R 22,320.00</strong></td>
-                        </tr>
-                    </tbody>
+                    <tbody id="payeBody"></tbody>
                 </table>
             </div>
         </div>
@@ -566,20 +493,114 @@
         if (!token) {
             window.location.href = '/';
         }
-        
-        // User info display and logout handled by navigation.js
-        
-        function generateReport() {
-            alert('Generating PAYE report...');
+
+        // Same month keys/labels as paye-reconciliation.html, so a month
+        // selected here always matches a real paye_employee_lines.month_key.
+        const monthLabels = ['March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February'];
+        const monthKeys   = ['2025-03', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02'];
+
+        (function populateMonthSelect() {
+            const sel = document.getElementById('monthSelect');
+            sel.innerHTML = monthKeys.map((mk, i) => `<option value="${mk}">${monthLabels[i]}</option>`).join('');
+            // Default to the current real month if it falls in this tax year, else the last one.
+            const todayKey = new Date().toISOString().slice(0, 7);
+            sel.value = monthKeys.includes(todayKey) ? todayKey : monthKeys[monthKeys.length - 1];
+        })();
+
+        function fmtR(n) {
+            return 'R ' + (parseFloat(n) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
-        
-        function exportPDF() {
-            alert('Exporting to PDF...');
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
-        
+
+        function showPayeError(msg) {
+            const el = document.getElementById('payeErrorBanner');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 10000);
+        }
+
+        async function generateReport() {
+            const periodId = document.getElementById('periodSelect').value;
+            const monthKey = document.getElementById('monthSelect').value;
+            const monthLabel = monthLabels[monthKeys.indexOf(monthKey)];
+
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading…';
+
+            document.getElementById('payeEmpty').style.display = 'none';
+            document.getElementById('payeTable').style.display = '';
+
+            try {
+                const res = await fetch(`/api/accounting/paye/reconciliation/emp201/${encodeURIComponent(periodId)}?monthKey=${encodeURIComponent(monthKey)}`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const data = await res.json();
+
+                document.getElementById('payeReportSubtitle').innerHTML =
+                    escHtml(monthLabel + ' ' + monthKey.slice(0, 4)) + ' - <span id="payeCompanyName">' +
+                    escHtml(localStorage.getItem('accounting_company_name') || localStorage.getItem('eco_company_name') || 'My Company') + '</span>';
+                document.getElementById('statMonthLabel').textContent = monthLabel + ' ' + monthKey.slice(0, 4);
+
+                if (!data.available || !data.employees.length) {
+                    document.getElementById('payeTable').style.display = 'none';
+                    document.getElementById('payeEmpty').style.display = 'block';
+                    ['statPaye', 'statUif', 'statSdl', 'statTotal'].forEach(id => document.getElementById(id).textContent = 'R 0.00');
+                    return;
+                }
+
+                const t = data.totals;
+                document.getElementById('statPaye').textContent  = fmtR(t.paye);
+                document.getElementById('statUif').textContent   = fmtR(t.uifEmployee + t.uifEmployer);
+                document.getElementById('statSdl').textContent   = fmtR(t.sdl);
+                document.getElementById('statTotal').textContent = fmtR(t.totalDeductions);
+
+                const tbody = document.getElementById('payeBody');
+                tbody.innerHTML = data.employees.map(e => `
+                    <tr>
+                        <td>${escHtml(e.firstName + ' ' + e.lastName)}</td>
+                        <td class="amount">${fmtR(e.grossSalary)}</td>
+                        <td class="amount">${fmtR(e.paye)}</td>
+                        <td class="amount">${fmtR(e.uifEmployee)}</td>
+                        <td class="amount">${fmtR(e.uifEmployer)}</td>
+                        <td class="amount">${fmtR(e.sdl)}</td>
+                        <td class="amount">${fmtR(e.totalDeductions)}</td>
+                    </tr>
+                `).join('') + `
+                    <tr class="grand-total">
+                        <td><strong>TOTAL</strong></td>
+                        <td class="amount"><strong>${fmtR(t.grossSalary)}</strong></td>
+                        <td class="amount"><strong>${fmtR(t.paye)}</strong></td>
+                        <td class="amount"><strong>${fmtR(t.uifEmployee)}</strong></td>
+                        <td class="amount"><strong>${fmtR(t.uifEmployer)}</strong></td>
+                        <td class="amount"><strong>${fmtR(t.sdl)}</strong></td>
+                        <td class="amount"><strong>${fmtR(t.totalDeductions)}</strong></td>
+                    </tr>
+                `;
+            } catch (e) {
+                showPayeError('Failed to load EMP201: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate Report';
+            }
+        }
+
         function submitReturn() {
-            alert('This would submit the EMP201 to SARS eFiling system...');
+            // Actual SARS eFiling submission is a real external integration
+            // project, not built here — this is an honest "not yet" rather
+            // than a stub that pretends to submit anything.
+            alert('SARS eFiling submission is not yet integrated. Use the figures above to submit manually via eFiling for now.');
         }
+
+        // Load the current/default month on page open.
+        generateReport();
     </script>
     <script src="js/cosmic-bg.js"></script>
 </body>

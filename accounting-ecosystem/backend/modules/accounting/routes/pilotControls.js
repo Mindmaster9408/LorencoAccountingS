@@ -231,7 +231,7 @@ router.get(
     try {
       const result = await db.query(
         `SELECT id, company_id, user_id, signed_by_name, period, checklist_type,
-                has_exceptions, exceptions, notes,
+                has_exceptions, exceptions, notes, checklist_answers,
                 items_total, items_done, items_exception, items_na,
                 signed_at, created_at
          FROM pilot_signoffs

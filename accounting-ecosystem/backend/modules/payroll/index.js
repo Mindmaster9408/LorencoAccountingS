@@ -32,6 +32,7 @@ const itemsRoutes        = require('./routes/items');
 const attendanceRoutes   = require('./routes/attendance');
 const kvRoutes           = require('./routes/kv');
 const reconRoutes        = require('./routes/recon');
+const reportsRoutes      = require('./routes/reports');     // NEW — 12-month Annual Analysis report (read-only)
 const unlockRoutes       = require('./routes/unlock');
 const calculateRoutes    = require('./routes/calculate');    // NEW — Workstream 2 Step 6
 const payrunsRoutes      = require('./routes/payruns');      // NEW — Workstream 2 Step 7
@@ -55,6 +56,7 @@ router.use('/items', itemsRoutes);
 router.use('/attendance', attendanceRoutes);
 router.use('/kv', kvRoutes);
 router.use('/recon', reconRoutes);
+router.use('/reports', reportsRoutes);
 // Server-side payslip unlock — replaces client-controlled KV delete pattern
 router.use('/unlock', unlockRoutes);
 

@@ -74,19 +74,67 @@
         document.getElementById('role').value    = user.role  || '';
         document.getElementById('company').value = user.companyName || user.company_name || _compName;
 
-        function saveProfile() {
-            user.firstName = document.getElementById('firstName').value;
-            user.lastName = document.getElementById('lastName').value;
-            localStorage.setItem('user', JSON.stringify(user));
-            alert('Profile updated!');
-            location.reload();
+        function authHeaders() {
+            const token = localStorage.getItem('token') || localStorage.getItem('eco_token');
+            return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
         }
-        function changePassword() {
-            const newPw = document.getElementById('newPw').value;
+
+        async function saveProfile() {
+            const firstName = document.getElementById('firstName').value.trim();
+            const lastName  = document.getElementById('lastName').value.trim();
+            const fullName  = (firstName + ' ' + lastName).trim();
+            if (!fullName) { alert('Please enter a name'); return; }
+
+            try {
+                // Real PUT /api/users/me (shared/routes/users.js) — never
+                // localStorage for business/account data, per CLAUDE.md Part D.
+                const res = await fetch('/api/users/me', {
+                    method: 'PUT', headers: authHeaders(),
+                    body: JSON.stringify({ full_name: fullName }),
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const data = await res.json();
+                // Keep the cached display copy in sync so the topbar/avatar
+                // reflect the change without a full reload — auth/session
+                // state only, not a business-data store.
+                user.firstName = firstName;
+                user.lastName  = lastName;
+                user.fullName  = data.user?.fullName || fullName;
+                localStorage.setItem('user', JSON.stringify(user));
+                alert('Profile updated!');
+                location.reload();
+            } catch (e) {
+                alert('Failed to update profile: ' + e.message);
+            }
+        }
+
+        async function changePassword() {
+            const currentPw = document.getElementById('currentPw').value;
+            const newPw     = document.getElementById('newPw').value;
             const confirmPw = document.getElementById('confirmPw').value;
+            if (!currentPw) { alert('Please enter your current password'); return; }
             if (newPw !== confirmPw) { alert('Passwords do not match'); return; }
             if (newPw.length < 8) { alert('Password must be at least 8 characters'); return; }
-            alert('Password updated successfully');
+
+            try {
+                const res = await fetch('/api/users/me', {
+                    method: 'PUT', headers: authHeaders(),
+                    body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                alert('Password updated successfully');
+                document.getElementById('currentPw').value = '';
+                document.getElementById('newPw').value = '';
+                document.getElementById('confirmPw').value = '';
+            } catch (e) {
+                alert('Failed to update password: ' + e.message);
+            }
         }
     </script>
     <script src="js/cosmic-bg.js"></script>

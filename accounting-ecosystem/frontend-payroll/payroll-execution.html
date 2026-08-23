@@ -1621,10 +1621,11 @@
         html += payslipLine('Total Gross', out.gross || 0, 'total-line gross-line');
 
         // ── DEDUCTIONS ──
+        // Note: SDL is an employer-paid levy, never deducted from the employee's
+        // pay — it does not appear here (see Company Contributions section below).
         html += '<div class="payslip-section-label">Statutory Deductions</div>';
         html += payslipLine('PAYE (Income Tax)', -(out.paye_base || out.paye || 0), 'deduction-line');
         html += payslipLine('UIF (Employee)', -(out.uif  || 0), 'deduction-line');
-        html += payslipLine('SDL (Employer)', -(out.sdl  || 0), 'deduction-line');
 
         var volAdj = Number(out.voluntary_paye_adjustment || 0);
         if (volAdj !== 0) {
@@ -1649,6 +1650,17 @@
             '<span class="label">NET PAY</span>' +
             '<span class="amount">' + fmt(out.net || 0) + '</span>' +
         '</div>';
+
+        // ── COMPANY CONTRIBUTIONS ── (informational — employer-paid amounts,
+        // not part of the employee's earnings/deductions/net pay above)
+        var contribUifEmployer = Number(out.uif_employer || 0);
+        var contribSdl         = Number(out.sdl || 0);
+        if (contribUifEmployer > 0 || contribSdl > 0) {
+            html += '<div class="payslip-section-label">Company Contributions</div>';
+            if (contribUifEmployer > 0) html += payslipLine('UIF (Employer)', contribUifEmployer, '');
+            if (contribSdl > 0)         html += payslipLine('SDL (Skills Development Levy)', contribSdl, '');
+            html += payslipLine('Total Company Contributions', contribUifEmployer + contribSdl, 'total-line');
+        }
 
         // Pro-rata note
         if (out.prorataFactor != null && out.prorataFactor < 1) {
@@ -1720,10 +1732,11 @@
             if (shortTimeAmt > 0) earningsRows += row('Short-Time Adjustment', -shortTimeAmt, 'deduct');
             earningsRows += row('Total Gross', out.gross || 0, 'subtotal');
 
+            // Note: SDL is an employer-paid levy, never deducted from the employee's
+            // pay — it does not appear here (see Company Contributions table below).
             var deductRows = '';
             deductRows += row('PAYE (Income Tax)', -(out.paye_base || out.paye || 0), 'deduct');
             deductRows += row('UIF (Employee)', -(out.uif || 0), 'deduct');
-            deductRows += row('SDL (Employer)', -(out.sdl || 0), 'deduct');
             var volAdj = Number(out.voluntary_paye_adjustment || 0);
             if (volAdj !== 0) {
                 deductRows += row(volAdj > 0 ? 'Voluntary PAYE Increase' : 'PAYE Reduction', -volAdj, 'deduct');
@@ -1736,6 +1749,14 @@
                 if (amt !== 0) deductRows += row(item.description || 'Deduction', -Math.abs(amt), 'deduct');
             });
             deductRows += row('Total Deductions', -(out.deductions || 0), 'subtotal deduct');
+
+            // Company Contributions — informational, employer-paid, not part of net pay
+            var contribUifEmployer = Number(out.uif_employer || 0);
+            var contribSdl         = Number(out.sdl || 0);
+            var contribRows = '';
+            if (contribUifEmployer > 0) contribRows += row('UIF (Employer)', contribUifEmployer);
+            if (contribSdl > 0)         contribRows += row('SDL (Skills Development Levy)', contribSdl);
+            if (contribRows) contribRows += row('Total Company Contributions', contribUifEmployer + contribSdl, 'subtotal');
 
             var prorataNote = '';
             if (out.prorataFactor != null && out.prorataFactor < 1) {
@@ -1763,6 +1784,12 @@
                     '<tbody>' + deductRows + '</tbody>' +
                 '</table>' +
                 '<div class="ps-net"><span>NET PAY</span><span>' + fmtR(out.net || 0) + '</span></div>' +
+                (contribRows ?
+                    '<table>' +
+                        '<thead><tr><th colspan="2">Company Contributions</th></tr></thead>' +
+                        '<tbody>' + contribRows + '</tbody>' +
+                    '</table>'
+                    : '') +
                 prorataNote +
                 '</div>';
         });

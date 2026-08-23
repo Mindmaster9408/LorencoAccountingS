@@ -2206,6 +2206,77 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
   }
 });
 
+// ─── Purchase Analysis ────────────────────────────────────────────────────────
+// Real replacement for the previously 100%-hardcoded purchase-analysis.html.
+// Mirrors customer-invoices.js's /sales-analysis exactly, adjusted for this
+// table's own column names (invoice_date/subtotal_ex_vat, not date/subtotal).
+// Spend is ex-VAT (subtotal), matching how expense is recognized.
+router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const { fromDate, toDate } = req.query;
+
+  try {
+    let q = supabase
+      .from('supplier_invoices')
+      .select('id, supplier_id, invoice_date, subtotal_ex_vat, suppliers!supplier_id(name)')
+      .eq('company_id', companyId)
+      .not('status', 'in', '("draft","void","cancelled")');
+
+    if (fromDate) q = q.gte('invoice_date', fromDate);
+    if (toDate)   q = q.lte('invoice_date', toDate);
+
+    const { data: invoices, error } = await q;
+    if (error) throw new Error(error.message);
+
+    const bySupplierMap = {};
+    const byMonthMap = {};
+    for (const inv of invoices || []) {
+      const spend = parseFloat(inv.subtotal_ex_vat) || 0;
+      const supKey = inv.supplier_id ? `id:${inv.supplier_id}` : 'unknown';
+      if (!bySupplierMap[supKey]) {
+        bySupplierMap[supKey] = { supplierId: inv.supplier_id || null, supplierName: inv.suppliers?.name || 'Unknown', invoiceCount: 0, spend: 0 };
+      }
+      bySupplierMap[supKey].invoiceCount++;
+      bySupplierMap[supKey].spend = Math.round((bySupplierMap[supKey].spend + spend) * 100) / 100;
+
+      const monthKey = (inv.invoice_date || '').slice(0, 7);
+      if (monthKey) byMonthMap[monthKey] = Math.round(((byMonthMap[monthKey] || 0) + spend) * 100) / 100;
+    }
+
+    // Spend by expense account, via the invoices' own lines.
+    let byAccount = [];
+    if ((invoices || []).length) {
+      const invoiceIds = invoices.map(i => i.id);
+      const { data: lines } = await supabase
+        .from('supplier_invoice_lines')
+        .select('line_subtotal_ex_vat, account_id, accounts!account_id(code, name)')
+        .in('invoice_id', invoiceIds);
+      const byAccountMap = {};
+      (lines || []).forEach(l => {
+        const key = l.account_id || 'unassigned';
+        if (!byAccountMap[key]) {
+          byAccountMap[key] = { accountId: l.account_id || null, accountCode: l.accounts?.code || null, accountName: l.accounts?.name || 'Unassigned', spend: 0 };
+        }
+        byAccountMap[key].spend = Math.round((byAccountMap[key].spend + (parseFloat(l.line_subtotal_ex_vat) || 0)) * 100) / 100;
+      });
+      byAccount = Object.values(byAccountMap).sort((a, b) => b.spend - a.spend);
+    }
+
+    const bySupplier = Object.values(bySupplierMap).sort((a, b) => b.spend - a.spend);
+    const monthlyTrend = Object.entries(byMonthMap).sort(([a], [b]) => a.localeCompare(b)).map(([monthKey, spend]) => ({ monthKey, spend }));
+    const totals = {
+      invoiceCount: (invoices || []).length,
+      spend: Math.round(bySupplier.reduce((s, c) => s + c.spend, 0) * 100) / 100,
+    };
+
+    res.json({ bySupplier, byAccount, monthlyTrend, totals });
+  } catch (err) {
+    console.error('GET /suppliers/purchase-analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Supplier Aging Report ────────────────────────────────────────────────────
 
 router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
@@ -2342,28 +2413,33 @@ router.put('/:id', authenticate, hasPermission('ap.invoice.edit'), async (req, r
     if (chkErr) throw new Error(chkErr.message);
     if (!existing) return res.status(404).json({ error: 'Supplier not found' });
 
+    // Patch semantics: only touch fields actually present in the request body.
+    // Previously every field defaulted unconditionally (field || null), so a
+    // partial save (e.g. Contacts editing just phone/email) silently wiped
+    // every field it didn't send — VAT number, banking, address, GL default
+    // account, etc. — on every edit.
+    const updates = { updated_at: new Date().toISOString() };
+    if (name                !== undefined) updates.name                = name.trim();
+    if (type                !== undefined) updates.type                = type || 'company';
+    if (contactName         !== undefined) updates.contact_name        = contactName || null;
+    if (email                !== undefined) updates.email               = email || null;
+    if (phone                !== undefined) updates.phone               = phone || null;
+    if (vatNumber            !== undefined) updates.vat_number          = vatNumber || null;
+    if (registrationNumber   !== undefined) updates.registration_number = registrationNumber || null;
+    if (address              !== undefined) updates.address             = address || null;
+    if (city                 !== undefined) updates.city                = city || null;
+    if (postalCode           !== undefined) updates.postal_code         = postalCode || null;
+    if (paymentTerms         !== undefined) updates.payment_terms       = paymentTerms != null ? parseInt(paymentTerms) : 30;
+    if (defaultAccountId     !== undefined) updates.default_account_id  = defaultAccountId ? parseInt(defaultAccountId) : null;
+    if (bankName             !== undefined) updates.bank_name           = bankName || null;
+    if (bankAccountNumber    !== undefined) updates.bank_account_number = bankAccountNumber || null;
+    if (bankBranchCode       !== undefined) updates.bank_branch_code    = bankBranchCode || null;
+    if (notes                !== undefined) updates.notes               = notes || null;
+    if (isActive             !== undefined) updates.is_active           = isActive !== false;
+
     const { data: supplier, error: updErr } = await supabase
       .from('suppliers')
-      .update({
-        name:                 name.trim(),
-        type:                 type || 'company',
-        contact_name:         contactName || null,
-        email:                email || null,
-        phone:                phone || null,
-        vat_number:           vatNumber || null,
-        registration_number:  registrationNumber || null,
-        address:              address || null,
-        city:                 city || null,
-        postal_code:          postalCode || null,
-        payment_terms:        paymentTerms != null ? parseInt(paymentTerms) : 30,
-        default_account_id:   defaultAccountId ? parseInt(defaultAccountId) : null,
-        bank_name:            bankName || null,
-        bank_account_number:  bankAccountNumber || null,
-        bank_branch_code:     bankBranchCode || null,
-        notes:                notes || null,
-        is_active:            isActive !== false,
-        updated_at:           new Date().toISOString(),
-      })
+      .update(updates)
       .eq('id', supplierId)
       .eq('company_id', companyId)
       .select()

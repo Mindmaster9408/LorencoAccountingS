@@ -432,7 +432,7 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
     // company_id column was added by ALTER TABLE in migration 012.
     let query = supabase
       .from('bank_transactions')
-      .select('*, bank_accounts!bank_account_id(name)')
+      .select('*, bank_accounts!bank_account_id(name)', { count: 'exact' })
       .eq('company_id', req.user.companyId);
 
     if (bankAccountId) query = query.eq('bank_account_id', bankAccountId);
@@ -445,7 +445,7 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
       .order('id', { ascending: true })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
-    let { data, error } = await query;
+    let { data, error, count } = await query;
 
     if (error) {
       // Fallback: company_id not yet present — scope by bank account instead
@@ -464,9 +464,10 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
       const accountIds = accounts.map(a => a.id);
       let fbQuery = supabase
         .from('bank_transactions')
-        .select('*')
+        .select('*', { count: 'exact' })
         .in('bank_account_id', accountIds);
 
+      if (status)        fbQuery = fbQuery.eq('status', status);
       if (bankAccountId) fbQuery = fbQuery.eq('bank_account_id', bankAccountId);
       if (fromDate)      fbQuery = fbQuery.gte('date', fromDate);
       if (toDate)        fbQuery = fbQuery.lte('date', toDate);
@@ -475,7 +476,7 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
         .order('date', { ascending: true })
         .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
-      ({ data, error } = await fbQuery);
+      ({ data, error, count } = await fbQuery);
       if (error) throw new Error(error.message);
     }
 
@@ -484,9 +485,12 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
       bank_account_name: t.bank_accounts?.name ?? null
     }));
 
+    // count is the real total matching the filters, not just this page's row
+    // length — dashboard.html's "Unmatched Transactions" stat tile reads this
+    // and previously undercounted once a company passed the page limit.
     res.json({
       transactions,
-      count: transactions.length
+      count: count ?? transactions.length
     });
 
   } catch (error) {

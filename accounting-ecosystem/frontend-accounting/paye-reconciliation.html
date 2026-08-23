@@ -236,7 +236,7 @@
     let reconData = {}; // { employeeId: { monthKey: { income: {}, deductions: {} } } }
     let emp201Data = {}; // { monthKey: { paye: 0, uif: 0, sdl: 0 } }
     let status = 'DRAFT';
-    let currentPeriodId = 1;
+    let currentPeriodId = document.getElementById('periodSelect').value;
     let currentReconId = null;
 
     async function init() {
@@ -247,7 +247,7 @@
 
     async function loadConfig() {
       try {
-        const res = await fetch('/api/paye/config', {
+        const res = await fetch('/api/accounting/paye/config', {
           headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
         });
         if (res.ok) {
@@ -277,74 +277,68 @@
     }
 
     async function loadEmployees() {
+      let employeeLines = [];
+      let loadedEmp201Data = null;
       try {
-        const res = await fetch(`/api/paye/reconciliation/draft/${currentPeriodId}`, {
+        const res = await fetch(`/api/accounting/paye/reconciliation/draft/${currentPeriodId}`, {
           headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
         });
         if (res.ok) {
           const data = await res.json();
-          employees = data.employees || [];
+          // Backend rows are raw SQL (snake_case employee_code/first_name/
+          // last_name/is_active) — normalize once here rather than touching
+          // every render site that already expects camelCase.
+          employees = (data.employees || []).map(e => ({
+            id: e.id,
+            employeeCode: e.employee_code,
+            firstName: e.first_name,
+            lastName: e.last_name,
+            isActive: e.is_active,
+          }));
           status = data.status || 'DRAFT';
+          currentReconId = data.reconId || null;
+          employeeLines = data.employeeLines || [];
+          loadedEmp201Data = data.emp201Data || null;
         } else {
           throw new Error('Employees API failed');
         }
       } catch (err) {
-        console.warn('Employees load failed, using demo data');
-        employees = [
-          { id: 1, employeeCode: 'EMP001', firstName: 'John', lastName: 'Smith', isActive: true },
-          { id: 2, employeeCode: 'EMP002', firstName: 'Sarah', lastName: 'Johnson', isActive: true },
-          { id: 3, employeeCode: 'EMP003', firstName: 'Michael', lastName: 'Williams', isActive: true },
-          { id: 4, employeeCode: 'EMP004', firstName: 'Emma', lastName: 'Brown', isActive: true },
-          { id: 5, employeeCode: 'EMP005', firstName: 'David', lastName: 'Jones', isActive: true }
-        ];
+        console.warn('Employees load failed:', err.message);
+        employees = [];
       }
 
-      // Initialize emp201Data structure
+      // Initialize emp201Data structure — real saved figures if a draft
+      // exists for this period, otherwise zeroed (never fabricated).
       monthKeys.forEach(mk => {
-        emp201Data[mk] = { paye: 0, uif: 0, sdl: 0 };
+        emp201Data[mk] = (loadedEmp201Data && loadedEmp201Data[mk]) || { paye: 0, uif: 0, sdl: 0 };
       });
 
-      // Initialize data structure
+      // Index any previously-saved lines for this period by employeeId+monthKey
+      // so a reopened draft shows the real figures instead of starting blank.
+      const lineByEmpMonth = {};
+      employeeLines.forEach(l => { lineByEmpMonth[`${l.employee_id}|${l.month_key}`] = l; });
+
+      // Initialize data structure — blank unless a real saved line exists.
+      // Deliberately no fabricated/demo data: a blank period must show as
+      // blank, not as invented figures that could be saved as if real.
       employees.forEach(emp => {
         reconData[emp.id] = {};
-        monthKeys.forEach((mk, idx) => {
+        monthKeys.forEach(mk => {
+          const line = lineByEmpMonth[`${emp.id}|${mk}`];
+          const income = {};
+          const deductions = {};
+          (line?.income_lines || []).forEach(i => { if (i) income[i.incomeTypeKey] = parseFloat(i.amount) || 0; });
+          (line?.deduction_lines || []).forEach(d => { if (d) deductions[d.deductionTypeKey] = parseFloat(d.amount) || 0; });
+
           reconData[emp.id][mk] = {
-            income: {},
-            deductions: {},
-            gross: 0,
-            totalDed: 0,
-            netto: 0,
-            bank: 0,
-            diff: 0
+            income,
+            deductions,
+            gross: line ? parseFloat(line.gross_income) || 0 : 0,
+            totalDed: line ? parseFloat(line.total_deductions) || 0 : 0,
+            netto: line ? parseFloat(line.net_salary) || 0 : 0,
+            bank: line ? parseFloat(line.bank_paid_amount) || 0 : 0,
+            diff: line ? parseFloat(line.difference_amount) || 0 : 0,
           };
-
-          // Add demo data for all employees
-          const baseData = [
-            { basic: 25000, overtime: 1500, allowance: 2000, paye: 4250, uif: 148.50, pension: 2500, medical: 1850, garnishee: 0, bank: 19000 },
-            { basic: 18000, overtime: 1200, allowance: 1500, paye: 2800, uif: 107.10, pension: 1800, medical: 1650, garnishee: 500, bank: 13500 },
-            { basic: 22000, overtime: 1800, allowance: 1800, paye: 3600, uif: 130.90, pension: 2200, medical: 1750, garnishee: 0, bank: 16500 },
-            { basic: 16000, overtime: 1000, allowance: 1200, paye: 2400, uif: 95.20, pension: 1600, medical: 1500, garnishee: 300, bank: 12000 },
-            { basic: 30000, overtime: 2000, allowance: 2500, paye: 5200, uif: 178.50, pension: 3000, medical: 2000, garnishee: 0, bank: 22000 }
-          ];
-
-          if (emp.id >= 1 && emp.id <= 5) {
-            const data = baseData[emp.id - 1];
-            reconData[emp.id][mk].income = {
-              basic_salary: data.basic + (idx * 100),
-              overtime: idx % 2 === (emp.id % 2) ? data.overtime : 0,
-              allowance: data.allowance,
-              bonus: idx === 11 ? data.basic * 0.2 : 0,
-              commission: idx % 3 === 0 ? (emp.id * 200) : 0
-            };
-            reconData[emp.id][mk].deductions = {
-              paye: data.paye + (idx * 15),
-              uif: data.uif,
-              pension: data.pension,
-              medical_aid: data.medical,
-              garnishee: data.garnishee
-            };
-            reconData[emp.id][mk].bank = data.bank + (idx * 50);
-          }
         });
       });
 
@@ -1055,7 +1049,7 @@
       });
 
       try {
-        const res = await fetch(`/api/paye/reconciliation/draft/${currentPeriodId}`, {
+        const res = await fetch(`/api/accounting/paye/reconciliation/draft/${currentPeriodId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -1078,6 +1072,7 @@
     // approveRecon and lockRecon replaced by modal versions below (ACC-HARDEN-027)
 
     function loadPeriod() {
+      currentPeriodId = document.getElementById('periodSelect').value;
       init();
     }
 
@@ -1155,7 +1150,7 @@
             btnLabel: 'Approve',
             btnClass: 'paye-btn-approve',
             onConfirm: async () => {
-                const res = await fetch(`/api/paye/reconciliation/approve/${currentReconId}`, {
+                const res = await fetch(`/api/accounting/paye/reconciliation/approve/${currentReconId}`, {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
                 });
@@ -1179,7 +1174,7 @@
             btnLabel: 'Lock Reconciliation',
             btnClass: 'paye-btn-lock',
             onConfirm: async () => {
-                const res = await fetch(`/api/paye/reconciliation/lock/${currentReconId}`, {
+                const res = await fetch(`/api/accounting/paye/reconciliation/lock/${currentReconId}`, {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
                 });

@@ -287,6 +287,44 @@ const PDFBranding = {
         var netStr = this.formatMoney(displayNet);
         doc.text(netStr, pageWidth - margin - 5 - doc.getTextWidth(netStr), y + 8);
 
+        // ---- Company Contributions Section (informational — employer-paid amounts, ----
+        // ---- not part of the employee's earnings/deductions/net pay arithmetic)     ----
+        var companySDL = parseFloat(calc.sdl || 0);
+        var companyUifEmployer = parseFloat(calc.uif_employer || 0);
+        if (companySDL > 0 || companyUifEmployer > 0) {
+            y += 7;
+            doc.setFillColor(108, 117, 125);
+            doc.rect(margin, y, contentWidth, 6, 'F');
+            doc.setFontSize(8);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text('COMPANY CONTRIBUTIONS', margin + 3, y + 4.5);
+            doc.text('Amount', pageWidth - margin - 18, y + 4.5);
+
+            y += 9;
+            doc.setTextColor(60, 60, 60);
+            doc.setFont(undefined, 'normal');
+
+            if (companyUifEmployer > 0) {
+                doc.text('UIF (Employer)', margin + 3, y);
+                doc.text(this.formatMoney(companyUifEmployer), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(companyUifEmployer)), y);
+                y += 4.5;
+            }
+            if (companySDL > 0) {
+                doc.text('SDL (Skills Development Levy)', margin + 3, y);
+                doc.text(this.formatMoney(companySDL), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(companySDL)), y);
+                y += 4.5;
+            }
+
+            doc.line(margin + 3, y, pageWidth - margin - 3, y);
+            y += 4;
+            doc.setFont(undefined, 'bold');
+            doc.text('TOTAL COMPANY CONTRIBUTIONS', margin + 3, y);
+            var totalContrib = this.formatMoney(companySDL + companyUifEmployer);
+            doc.text(totalContrib, pageWidth - margin - 3 - doc.getTextWidth(totalContrib), y);
+            doc.setFont(undefined, 'normal');
+        }
+
         // ---- Rates & Quantities Section (only when overtime/short-time present) ----
         if (calc.ratesEntries && calc.ratesEntries.length > 0) {
             y += 7;

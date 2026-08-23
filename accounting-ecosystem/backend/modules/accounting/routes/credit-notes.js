@@ -417,11 +417,18 @@ router.post('/from-invoice/:invoiceId', authenticate, hasPermission('ar.credit_n
     return res.status(422).json({ error: 'Cannot create a credit note for a voided invoice.' });
   }
 
-  const { data: invLines } = await supabase
+  // customer_invoice_lines only stores line_total (qty*price), not a
+  // pre-split subtotal_ex_vat/vat_amount/total_inc_vat — those get
+  // recomputed below via calcLineVAT, same as standalone CN creation does.
+  // sort_order doesn't exist on this table; order by id to preserve
+  // insertion order instead.
+  const { data: invLines, error: invLinesErr } = await supabase
     .from('customer_invoice_lines')
     .select('*')
     .eq('invoice_id', invoiceId)
-    .order('sort_order');
+    .order('id');
+
+  if (invLinesErr) return res.status(500).json({ error: invLinesErr.message });
 
   // Check for existing non-void credit notes for this invoice
   const { data: existingCNs } = await supabase
@@ -431,26 +438,43 @@ router.post('/from-invoice/:invoiceId', authenticate, hasPermission('ar.credit_n
     .eq('source_invoice_id', invoiceId)
     .neq('status', 'void');
 
-  // Copy invoice lines verbatim into CN lines (full credit)
-  const cnLines = (invLines || []).map((l, i) => ({
-    description: l.description,
-    accountId:   l.account_id,
-    lineType:    l.line_type,
-    itemId:      l.item_id,
-    quantity:    parseFloat(l.quantity),
-    unitPrice:   parseFloat(l.unit_price),
-    vatRate:     parseFloat(l.vat_rate),
-    sortOrder:   i,
-    // Use pre-calculated totals from the invoice lines (no re-calculation)
-    subtotalExVat: parseFloat(l.subtotal_ex_vat),
-    vatAmount:     parseFloat(l.vat_amount),
-    totalIncVat:   parseFloat(l.total_inc_vat),
-  }));
+  // customer_invoices doesn't store a customer name (see schema-drift note
+  // in customer-invoices.js) — resolve it the same way that file's
+  // attachCustomerNames() does, rather than reading invoice.customer_name
+  // (which doesn't exist and would silently insert NULL).
+  let customerName = null;
+  if (invoice.customer_id) {
+    const { data: cust } = await supabase
+      .from('customers').select('name').eq('id', invoice.customer_id).maybeSingle();
+    customerName = cust?.name || `Customer #${invoice.customer_id}`;
+  }
+
+  const vatInclusive = invoice.vat_mode === 'inclusive';
+
+  // Copy invoice lines verbatim into CN lines (full credit) — VAT split is
+  // recomputed per line via the invoice's own vat_mode, since the source
+  // line only stores a single combined line_total.
+  const cnLines = (invLines || []).map((l, i) => {
+    const calc = calcLineVAT(l.quantity, l.unit_price, l.vat_rate, vatInclusive);
+    return {
+      description: l.description,
+      accountId:   l.account_id,
+      lineType:    l.line_type,
+      itemId:      l.item_id,
+      quantity:    parseFloat(l.quantity),
+      unitPrice:   parseFloat(l.unit_price),
+      vatRate:     parseFloat(l.vat_rate),
+      sortOrder:   i,
+      subtotalExVat: calc.subtotalExVat,
+      vatAmount:     calc.vatAmount,
+      totalIncVat:   calc.totalIncVat,
+    };
+  });
 
   const totals = {
-    subtotalExVat: parseFloat(invoice.subtotal_ex_vat),
+    subtotalExVat: parseFloat(invoice.subtotal),
     vatAmount:     parseFloat(invoice.vat_amount),
-    totalIncVat:   parseFloat(invoice.total_inc_vat),
+    totalIncVat:   parseFloat(invoice.total_amount),
   };
 
   const cnNum = await nextCNNumber(companyId);
@@ -472,7 +496,7 @@ router.post('/from-invoice/:invoiceId', authenticate, hasPermission('ar.credit_n
       [
         companyId,
         invoice.customer_id || null,
-        invoice.customer_name,
+        customerName,
         cnNum,
         cnDate,
         reason,
@@ -526,7 +550,7 @@ router.post('/from-invoice/:invoiceId', authenticate, hasPermission('ar.credit_n
     afterJson: {
       creditNoteNumber: cnNum, creditNoteDate: cnDate,
       sourceInvoiceId: invoiceId, sourceInvoiceNumber: invoice.invoice_number,
-      customerName: invoice.customer_name,
+      customerName,
       subtotalExVat: totals.subtotalExVat, vatAmount: totals.vatAmount, totalIncVat: totals.totalIncVat,
       status: 'draft', existingCreditNoteCount: (existingCNs || []).length,
     },

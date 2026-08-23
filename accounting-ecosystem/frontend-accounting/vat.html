@@ -1511,7 +1511,7 @@
 
             trialBalance.forEach(acc => {
                 const code    = String(acc.account_code || '');
-                const balance = Math.abs(parseFloat(acc.balance) || 0);
+                const balance = Math.abs(parseFloat(acc.amount) || 0);
                 const type    = (acc.account_type || '').toLowerCase();
 
                 if (type === 'income' || code.startsWith('4')) {
@@ -2055,17 +2055,12 @@
                 </tr>
             `).join('');
 
-            // Update summary stat cards from most recent submission
-            const latest = submissions[0];
-            if (latest) {
-                const outputEl   = document.getElementById('outputVatValue');
-                const inputEl    = document.getElementById('inputVatValue');
-                const payableEl  = document.getElementById('vatPayableValue');
-                const fmt = v => 'R ' + Math.abs(parseFloat(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                if (outputEl)  outputEl.textContent  = fmt(latest.output_vat);
-                if (inputEl)   inputEl.textContent   = fmt(latest.input_vat);
-                if (payableEl) payableEl.textContent  = fmt(latest.net_vat);
-            }
+            // Deliberately does NOT touch outputVatValue/inputVatValue/vatPayableValue —
+            // those stat cards must always reflect the currently-selected period's real
+            // GL trial balance (set by populateTrialBalanceData, called from
+            // selectVATPeriod), never a possibly-unrelated-period's past submission
+            // record. Overwriting them here raced with selectVATPeriod() on load and
+            // could leave the cards showing a stale period's figures.
         }
 
         function formatPeriodDisplay(periodKey) {

@@ -14,5 +14,7 @@ router.post('/approve/:reconId', authenticate, authorize('admin', 'accountant'),
 router.post('/lock/:reconId', authenticate, authorize('admin', 'accountant'), payeReconciliationService.lock);
 // Get reconciliation snapshot (view-only)
 router.get('/snapshot/:reconId', authenticate, payeReconciliationService.getSnapshot);
+// Get real EMP201 figures for one month of an approved/locked period (used by paye.html)
+router.get('/emp201/:periodId', authenticate, payeReconciliationService.getEmp201);
 
 module.exports = router;

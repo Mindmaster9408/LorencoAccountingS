@@ -279,99 +279,94 @@
             <button class="btn-refresh" onclick="refreshData()">🔄 Refresh Status</button>
         </div>
         
+        <div id="healthError" style="display:none;background:#fee2e2;color:#b91c1c;padding:12px 18px;border-radius:8px;margin-bottom:20px;font-size:14px;"></div>
+
         <div class="status-grid">
             <div class="status-card">
                 <div class="status-header">
                     <span class="status-title">Server Status</span>
-                    <span class="status-badge badge-healthy">Healthy</span>
+                    <span class="status-badge" id="serverBadge">—</span>
                 </div>
-                <div class="status-value">Running</div>
-                <div class="status-label">Uptime: 15 days 4 hours</div>
+                <div class="status-value" id="serverValue">—</div>
+                <div class="status-label" id="serverUptime">—</div>
             </div>
-            
+
             <div class="status-card">
                 <div class="status-header">
                     <span class="status-title">Database</span>
-                    <span class="status-badge badge-healthy">Connected</span>
+                    <span class="status-badge" id="dbBadge">—</span>
                 </div>
-                <div class="status-value">PostgreSQL</div>
-                <div class="status-label">Query time: 12ms avg</div>
-            </div>
-            
-            <div class="status-card">
-                <div class="status-header">
-                    <span class="status-title">API Response</span>
-                    <span class="status-badge badge-healthy">Normal</span>
-                </div>
-                <div class="status-value">45ms</div>
-                <div class="status-label">Average response time</div>
-            </div>
-            
-            <div class="status-card">
-                <div class="status-header">
-                    <span class="status-title">Storage Usage</span>
-                    <span class="status-badge badge-warning">65%</span>
-                </div>
-                <div class="status-value">6.5 GB</div>
-                <div class="status-label">of 10 GB allocated</div>
+                <div class="status-value" id="dbValue">—</div>
+                <div class="status-label" id="dbLabel">&nbsp;</div>
             </div>
         </div>
-        
+
         <div class="metrics-card">
-            <h2>Performance Metrics</h2>
-            <div class="metric-row">
-                <span class="metric-name">CPU Usage</span>
-                <span class="metric-value">23%</span>
-            </div>
-            <div class="metric-row">
-                <span class="metric-name">Memory Usage</span>
-                <span class="metric-value">1.2 GB / 4 GB</span>
-            </div>
-            <div class="metric-row">
-                <span class="metric-name">Active Connections</span>
-                <span class="metric-value">47</span>
-            </div>
-            <div class="metric-row">
-                <span class="metric-name">Requests/Minute</span>
-                <span class="metric-value">324</span>
-            </div>
-            <div class="metric-row">
-                <span class="metric-name">Error Rate</span>
-                <span class="metric-value">0.02%</span>
-            </div>
+            <h2>Active Modules</h2>
+            <div id="modulesBody"></div>
         </div>
-        
-        <div class="metrics-card">
-            <h2>Recent Errors (Last 24 Hours)</h2>
-            <div class="metric-row">
-                <span class="metric-name">Database Connection Timeout</span>
-                <span class="metric-value" style="color: #ea8600;">2 warnings</span>
-            </div>
-            <div class="metric-row">
-                <span class="metric-name">API Rate Limit Exceeded</span>
-                <span class="metric-value" style="color: #ea8600;">1 warning</span>
-            </div>
-            <div class="metric-row">
-                <span class="metric-name">Failed Login Attempts</span>
-                <span class="metric-value" style="color: #c5221f;">5 errors</span>
-            </div>
+
+        <div class="metrics-card" style="color:#999;font-size:13px;">
+            No performance/error-rate monitoring is wired up yet in this ecosystem — this page only shows what
+            <code>/api/health</code> genuinely knows (server up/down, database reachable, active modules) rather than
+            invented CPU/memory/error figures.
         </div>
     </div>
     
     <script>
         let token = localStorage.getItem('token');
         let user = JSON.parse(localStorage.getItem('user') || '{}');
-        
+
         // Redirect to ecosystem login if no token
         if (!token) {
             window.location.href = '/';
         }
-        
+
         // User info display handled by navigation.js
-        
-        function refreshData() {
-            alert('Refreshing system health data...');
+
+        function fmtUptime(seconds) {
+            const s = parseInt(seconds) || 0;
+            const days = Math.floor(s / 86400);
+            const hours = Math.floor((s % 86400) / 3600);
+            const mins = Math.floor((s % 3600) / 60);
+            if (days > 0) return `Uptime: ${days}d ${hours}h`;
+            if (hours > 0) return `Uptime: ${hours}h ${mins}m`;
+            return `Uptime: ${mins}m`;
         }
+
+        async function refreshData() {
+            const errEl = document.getElementById('healthError');
+            errEl.style.display = 'none';
+            try {
+                // /api/health is an ecosystem-shared endpoint, not accounting-module-scoped.
+                const res = await fetch('/api/health');
+                const data = await res.json().catch(() => ({}));
+                const ok = res.ok && data.status === 'healthy';
+
+                document.getElementById('serverBadge').className = 'status-badge ' + (ok ? 'badge-healthy' : 'badge-error');
+                document.getElementById('serverBadge').textContent = ok ? 'Healthy' : 'Degraded';
+                document.getElementById('serverValue').textContent = ok ? 'Running' : 'Degraded';
+                document.getElementById('serverUptime').textContent = fmtUptime(data.uptime);
+
+                const dbOk = data.database === 'connected';
+                document.getElementById('dbBadge').className = 'status-badge ' + (dbOk ? 'badge-healthy' : 'badge-error');
+                document.getElementById('dbBadge').textContent = dbOk ? 'Connected' : 'Disconnected';
+                document.getElementById('dbValue').textContent = dbOk ? 'PostgreSQL' : '—';
+
+                const modulesBody = document.getElementById('modulesBody');
+                const modules = data.modules || [];
+                modulesBody.innerHTML = modules.length
+                    ? modules.map(m => `<div class="metric-row"><span class="metric-name">${m}</span><span class="metric-value" style="color:#137333;">enabled</span></div>`).join('')
+                    : '<div class="metric-row"><span class="metric-name">No module list returned</span></div>';
+            } catch (e) {
+                errEl.textContent = 'Could not reach /api/health: ' + e.message;
+                errEl.style.display = 'block';
+                document.getElementById('serverBadge').className = 'status-badge badge-error';
+                document.getElementById('serverBadge').textContent = 'Unreachable';
+            }
+        }
+
+        refreshData();
     </script>
     <script src="js/cosmic-bg.js"></script>
 </body>

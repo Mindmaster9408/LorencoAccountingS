@@ -110,93 +110,6 @@
             </div>
         </div>
 
-        <!-- Business Defaults -->
-        <div class="settings-card">
-            <h2>Business Defaults</h2>
-            <div class="card-desc">Default values applied when creating new documents and transactions</div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Default Currency</label>
-                    <select id="defaultCurrency">
-                        <option value="ZAR">ZAR — South African Rand</option>
-                        <option value="USD">USD — US Dollar</option>
-                        <option value="EUR">EUR — Euro</option>
-                        <option value="GBP">GBP — British Pound</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Date Format</label>
-                    <select id="dateFormat">
-                        <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                        <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                        <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Invoice Prefix</label>
-                    <input type="text" id="invoicePrefix" placeholder="e.g. INV" maxlength="10">
-                </div>
-                <div class="form-group">
-                    <label>Default Payment Terms (days)</label>
-                    <select id="defaultPaymentTerms">
-                        <option value="0">Due on receipt</option>
-                        <option value="7">7 days</option>
-                        <option value="14">14 days</option>
-                        <option value="30" selected>30 days</option>
-                        <option value="60">60 days</option>
-                        <option value="90">90 days</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Default VAT Treatment</label>
-                    <select id="defaultVatTreatment">
-                        <option value="inclusive">Tax Inclusive</option>
-                        <option value="exclusive">Tax Exclusive</option>
-                        <option value="exempt">Exempt</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Bank Import: Default Match Confidence</label>
-                    <select id="bankImportConfidence">
-                        <option value="high">High only (safest)</option>
-                        <option value="medium" selected>Medium and above</option>
-                        <option value="low">All suggestions</option>
-                    </select>
-                </div>
-            </div>
-            <button class="btn-save" onclick="saveDefaults()">Save Defaults</button>
-        </div>
-
-        <!-- Report Display -->
-        <div class="settings-card">
-            <h2>Report Display</h2>
-            <div class="card-desc">Control how financial reports are presented</div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Number Format</label>
-                    <select id="numberFormat">
-                        <option value="1 234 567.89">1 234 567.89 (space thousands)</option>
-                        <option value="1,234,567.89" selected>1,234,567.89 (comma thousands)</option>
-                        <option value="1.234.567,89">1.234.567,89 (dot thousands)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Negative Number Style</label>
-                    <select id="negativeStyle">
-                        <option value="minus" selected>-1 234.00</option>
-                        <option value="brackets">(1 234.00)</option>
-                        <option value="red">Red colour</option>
-                    </select>
-                </div>
-            </div>
-            <button class="btn-save" onclick="saveReportPrefs()">Save Report Preferences</button>
-        </div>
     </div>
 
     <script>
@@ -291,47 +204,6 @@
                 });
         }
 
-        // ── Business Defaults ─────────────────────────────────────────────────
-        function loadDefaults() {
-            const currency    = localStorage.getItem(settingsKey('currency'))    || 'ZAR';
-            const dateFormat  = localStorage.getItem(settingsKey('dateFormat'))  || 'DD/MM/YYYY';
-            const invPrefix   = localStorage.getItem(settingsKey('invoicePrefix')) || 'INV';
-            const payTerms    = localStorage.getItem(settingsKey('paymentTerms')) || '30';
-            const vatTreat    = localStorage.getItem(settingsKey('vatTreatment')) || 'inclusive';
-            const bankConf    = localStorage.getItem(settingsKey('bankConfidence')) || 'medium';
-
-            document.getElementById('defaultCurrency').value   = currency;
-            document.getElementById('dateFormat').value        = dateFormat;
-            document.getElementById('invoicePrefix').value     = invPrefix;
-            document.getElementById('defaultPaymentTerms').value = payTerms;
-            document.getElementById('defaultVatTreatment').value = vatTreat;
-            document.getElementById('bankImportConfidence').value = bankConf;
-        }
-
-        function saveDefaults() {
-            localStorage.setItem(settingsKey('currency'),       document.getElementById('defaultCurrency').value);
-            localStorage.setItem(settingsKey('dateFormat'),     document.getElementById('dateFormat').value);
-            localStorage.setItem(settingsKey('invoicePrefix'),  document.getElementById('invoicePrefix').value);
-            localStorage.setItem(settingsKey('paymentTerms'),   document.getElementById('defaultPaymentTerms').value);
-            localStorage.setItem(settingsKey('vatTreatment'),   document.getElementById('defaultVatTreatment').value);
-            localStorage.setItem(settingsKey('bankConfidence'), document.getElementById('bankImportConfidence').value);
-            showAlert('Business defaults saved.', 'success');
-        }
-
-        // ── Report Preferences ────────────────────────────────────────────────
-        function loadReportPrefs() {
-            const numFormat  = localStorage.getItem(settingsKey('numberFormat'))  || '1,234,567.89';
-            const negStyle   = localStorage.getItem(settingsKey('negativeStyle')) || 'minus';
-            document.getElementById('numberFormat').value  = numFormat;
-            document.getElementById('negativeStyle').value = negStyle;
-        }
-
-        function saveReportPrefs() {
-            localStorage.setItem(settingsKey('numberFormat'),  document.getElementById('numberFormat').value);
-            localStorage.setItem(settingsKey('negativeStyle'), document.getElementById('negativeStyle').value);
-            showAlert('Report preferences saved.', 'success');
-        }
-
         // ── Alert helper ──────────────────────────────────────────────────────
         function showAlert(message, type) {
             const container = document.getElementById('alertContainer');
@@ -341,8 +213,6 @@
 
         // ── Init ──────────────────────────────────────────────────────────────
         loadCompanyName();
-        loadDefaults();
-        loadReportPrefs();
         loadPosGlSync();
     </script>
     <script src="js/cosmic-bg.js"></script>

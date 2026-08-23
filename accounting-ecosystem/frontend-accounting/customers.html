@@ -761,7 +761,7 @@
             tbody.innerHTML = sales.map(s => `
               <tr style="border-bottom:1px solid #f1f3f4;">
                 <td style="padding:8px;">${s.created_at ? s.created_at.substring(0,10) : '–'}</td>
-                <td style="padding:8px;">${esc(s.invoice_number || '#' + s.id)}</td>
+                <td style="padding:8px;">${esc(s.sale_number || '#' + s.id)}</td>
                 <td style="padding:8px;"><span class="method-badge method-${(s.payment_method||'').toLowerCase()}">${(s.payment_method||'–').toUpperCase()}</span></td>
                 <td style="padding:8px;text-align:right;font-family:'Courier New',monospace;font-weight:600;">${formatCurrency(parseFloat(s.total_amount||0))}</td>
               </tr>`).join('');

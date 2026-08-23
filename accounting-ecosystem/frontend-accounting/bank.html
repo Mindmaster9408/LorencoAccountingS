@@ -1841,10 +1841,8 @@
                         </td>
                         <td style="color:#aaa; text-align:center; font-size:12px;">—</td>
                         <td>
-                            <select class="allocation-select" id="manualType" onchange="updateManualAccountOptions()">
+                            <select class="allocation-select" id="manualType" onchange="updateManualAccountOptions()" title="For a customer or supplier payment against a specific invoice, use Record Payment on the Customers/Suppliers page instead.">
                                 <option value="">Select Type...</option>
-                                <option value="customer">Customer Payment</option>
-                                <option value="supplier">Supplier Payment</option>
                                 <option value="transfer">Transfer</option>
                                 <option value="vat">VAT Payment</option>
                                 <option value="account">Account</option>
@@ -2222,14 +2220,13 @@ Click OK to simulate uploading a file.`;
                 <td>${bal}</td>
                 ${txn.status === 'unmatched'
                     ? `<td>
-                    <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')">
+                    <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')" title="For a customer or supplier payment against a specific invoice, use Record Payment on the Customers/Suppliers page instead — allocating it here only posts to the control account, not the invoice.">
                         <option value="">Select Type…</option>
-                        <option value="customer">Customer Payment</option>
-                        <option value="supplier">Supplier Payment</option>
                         <option value="transfer">Transfer</option>
                         <option value="vat">VAT Payment</option>
                         <option value="account">Account</option>
                     </select>
+                    <div style="font-size:11px;color:#9aa0a6;margin-top:2px;">Customer/supplier invoice payment? Use Record Payment on the Customers/Suppliers page.</div>
                 </td>
                 <td>
                     <select class="allocation-select" onchange="updateAccount(this,'${txn.id}')">
@@ -3753,32 +3750,10 @@ Click OK to simulate uploading a file.`;
             // Build options based on type
             let html = '<option value="">Select Account...</option>';
 
-            if (type === 'customer') {
-                html += '<optgroup label="Income">';
-                accounts.filter(a => a.type === 'income').forEach(a => {
-                    html += `<option value="${a.code}">${a.code} - ${a.name}</option>`;
-                });
-                html += '</optgroup>';
-                html += '<optgroup label="Assets">';
-                accounts.filter(a => a.code === '1100').forEach(a => {
-                    html += `<option value="${a.code}">${a.code} - ${a.name}</option>`;
-                });
-                html += '</optgroup>';
-            } else if (type === 'supplier') {
-                html += '<optgroup label="Expenses">';
-                accounts.filter(a => a.type === 'expense').forEach(a => {
-                    html += `<option value="${a.code}">${a.code} - ${a.name}</option>`;
-                });
-                html += '</optgroup>';
-                html += '<optgroup label="Liabilities">';
-                accounts.filter(a => a.code === '2000').forEach(a => {
-                    html += `<option value="${a.code}">${a.code} - ${a.name}</option>`;
-                });
-                html += '</optgroup>';
-            } else if (type === 'vat') {
+            if (type === 'vat') {
                 html += '<optgroup label="VAT Accounts">';
-                html += '<option value="2300">2300 - VAT Payable</option>';
-                html += '<option value="2310">2310 - VAT Input (Claimable)</option>';
+                html += '<option value="2300">2300 - VAT Output (Payable)</option>';
+                html += '<option value="1400">1400 - VAT Input (Claimable)</option>';
                 html += '</optgroup>';
             } else if (type === 'transfer') {
                 html += '<optgroup label="Bank Accounts">';
@@ -4551,12 +4526,11 @@ Click OK to simulate uploading a file.`;
                         <div class="form-group">
                             <label>Transaction Type</label>
                             <select class="allocation-select override-type" id="overrideType${id}">
-                                <option value="customer" ${suggestion.type === 'customer' ? 'selected' : ''}>Customer Payment</option>
-                                <option value="supplier" ${suggestion.type === 'supplier' ? 'selected' : ''}>Supplier Payment</option>
                                 <option value="transfer" ${suggestion.type === 'transfer' ? 'selected' : ''}>Transfer</option>
                                 <option value="vat" ${suggestion.type === 'vat' ? 'selected' : ''}>VAT Payment</option>
                                 <option value="account" ${suggestion.type === 'account' ? 'selected' : ''}>Account</option>
                             </select>
+                            <div style="font-size:11px;color:#9aa0a6;margin-top:2px;">Customer/supplier invoice payment? Use Record Payment on the Customers/Suppliers page.</div>
                         </div>
                         <div class="form-group">
                             <label>Account</label>
@@ -4609,7 +4583,19 @@ Click OK to simulate uploading a file.`;
         function applyAllocationToRow(id, type, accountCode) {
             const txnData = getTransactionData(id);
             if (!txnData || !txnData.row) return;
-            
+
+            // Never allow ANY path (AI suggestion, learned override, manual) to
+            // post a bank allocation straight to the AR (1100) / AP (2000)
+            // control account — that posts a balanced journal but never touches
+            // the specific customer/supplier invoice, desyncing the sub-ledger
+            // from the control account and risking a duplicate posting against
+            // an invoice already paid correctly via Record Payment. Single
+            // choke point: every allocation path funnels through this function.
+            if (accountCode === '1100' || accountCode === '2000') {
+                showBankPageAlert('This looks like a customer or supplier invoice payment. Please use "Record Payment" on the Customers/Suppliers page instead — allocating it here would post to the control account without linking the specific invoice.', 'error');
+                return;
+            }
+
             // Set the type dropdown
             const selects = txnData.row.querySelectorAll('.allocation-select');
             if (selects[0]) {
@@ -5014,8 +5000,6 @@ Click OK to simulate uploading a file.`;
                 + '<td>'
                 +   '<select class="allocation-select" onchange="updateAllocation(this,\'' + id + '\')">'
                 +     '<option value="">Select Type\u2026</option>'
-                +     '<option value="customer"' + (type==='customer'?' selected':'') + '>Customer Payment</option>'
-                +     '<option value="supplier"' + (type==='supplier'?' selected':'') + '>Supplier Payment</option>'
                 +     '<option value="transfer"' + (type==='transfer'?' selected':'') + '>Transfer</option>'
                 +     '<option value="vat"'      + (type==='vat'     ?' selected':'') + '>VAT Payment</option>'
                 +     '<option value="account"'  + (type==='account' ?' selected':'') + '>Account</option>'

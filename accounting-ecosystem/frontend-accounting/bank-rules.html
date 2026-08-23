@@ -406,7 +406,7 @@
   function renderRules() {
     const tbody = document.getElementById('rulesBody');
     const count = document.getElementById('rulesCount');
-    const active = allRules.filter(r => r.is_active).length;
+    const active = allRules.filter(r => r.isActive).length;
     count.textContent = allRules.length + ' rule(s) — ' + active + ' active';
 
     if (!allRules.length) {
@@ -421,21 +421,21 @@
     }
 
     tbody.innerHTML = allRules.map(r => {
-      const acctLabel = r.account_code ? (r.account_code + ' ' + (r.account_name || '')) : '—';
-      const vatLabel  = r.vat_setting_name || '—';
-      const lastAppl  = r.last_applied_at ? new Date(r.last_applied_at).toLocaleDateString('en-ZA') : '—';
+      const acctLabel = r.accountCode ? (r.accountCode + ' ' + (r.accountName || '')) : '—';
+      const vatLabel  = r.vatSettingName || '—';
+      const lastAppl  = r.lastAppliedAt ? new Date(r.lastAppliedAt).toLocaleDateString('en-ZA') : '—';
       return `<tr>
         <td>${esc(r.priority)}</td>
-        <td><span class="mono">${esc(r.match_pattern)}</span></td>
-        <td><span class="badge badge-match">${esc(r.match_type)}</span></td>
+        <td><span class="mono">${esc(r.matchPattern)}</span></td>
+        <td><span class="badge badge-match">${esc(r.matchType)}</span></td>
         <td>${esc(acctLabel)}</td>
         <td>${esc(vatLabel)}</td>
-        <td><span class="badge ${r.is_active ? 'badge-active' : 'badge-inactive'}">${r.is_active ? 'Active' : 'Inactive'}</span></td>
-        <td><span class="stat-chip" title="Total times applied">${r.apply_count || 0}&#215;</span> ${lastAppl !== '—' ? '<span style="font-size:11px;color:#9ca3af;">' + lastAppl + '</span>' : ''}</td>
+        <td><span class="badge ${r.isActive ? 'badge-active' : 'badge-inactive'}">${r.isActive ? 'Active' : 'Inactive'}</span></td>
+        <td><span class="stat-chip" title="Total times applied">${r.applyCount || 0}&#215;</span> ${lastAppl !== '—' ? '<span style="font-size:11px;color:#9ca3af;">' + lastAppl + '</span>' : ''}</td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn-ghost btn-sm" onclick="openEditModal(${r.id})">Edit</button>
-          ${r.is_active
-            ? `<button type="button" class="btn btn-ghost btn-sm" style="color:#dc2626;margin-left:4px;" onclick="openDeactivateConfirm(${r.id},'${esc(r.match_pattern).replace(/'/g,'\\&apos;')}')">Deactivate</button>`
+          ${r.isActive
+            ? `<button type="button" class="btn btn-ghost btn-sm" style="color:#dc2626;margin-left:4px;" onclick="openDeactivateConfirm(${r.id},'${esc(r.matchPattern).replace(/'/g,'\\&apos;')}')">Deactivate</button>`
             : '<span style="font-size:11px;color:#9ca3af;margin-left:4px;">Inactive</span>'}
         </td>
       </tr>`;
@@ -461,12 +461,12 @@
     if (!r) return;
     editingId = ruleId;
     document.getElementById('modalTitle').textContent = 'Edit Rule';
-    document.getElementById('fPattern').value   = r.match_pattern || '';
-    document.getElementById('fMatchType').value = r.match_type    || 'contains';
-    document.getElementById('fPriority').value  = r.priority      || 100;
+    document.getElementById('fPattern').value   = r.matchPattern || '';
+    document.getElementById('fMatchType').value = r.matchType    || 'contains';
+    document.getElementById('fPriority').value  = r.priority     || 100;
     document.getElementById('saveRuleBtn').textContent = 'Update Rule';
-    populateAccountSelect(r.account_id);
-    populateVatSelect(r.vat_setting_id);
+    populateAccountSelect(r.accountId);
+    populateVatSelect(r.vatSettingId);
     hideModalError();
     document.getElementById('ruleModal').classList.add('open');
   }
