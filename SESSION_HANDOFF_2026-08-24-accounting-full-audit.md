@@ -234,19 +234,44 @@ two more real bugs found, both fixed/migrated in commit `640b6a8`:
    constraint's original 6-state model. **User chose: expand the
    constraint** — migration 147 written accordingly.
 
+**Update (2026-08-24, migration 147 run, write-path testing continued
+further):** with 146+147 both live, the invoice **header** insert (via a
+direct Supabase-REST probe, since `POST /invoices`'s actual
+`db.getClient()` transaction still can't run in this sandbox — see below)
+succeeded for the first time with `status: 'unpaid'`. The **line** insert
+then surfaced a fourth, more severe bug:
+
+3. **`supplier_invoice_lines_account_id_fkey` pointed at a dead table
+   (migration 148, not yet run).** The FK referenced `chart_of_accounts(id)`
+   — a table confirmed to have **zero rows across every company in the
+   database**, written to by nothing else in this codebase. The real,
+   live chart of accounts everywhere else in the app (`journalService.js`,
+   `accounts.js`, `customer_invoice_lines`, `findAccountByCode()`, the
+   `/purchase-analysis` and `/sales-analysis` reports built earlier today)
+   is `accounts`. Confirmed live: inserting a line with a real, active,
+   company-scoped account (id 536, "Cost of Sales — Materials", confirmed
+   to exist and belong to the TEST company) was still rejected — meaning
+   **no supplier invoice line, with any account whatsoever, could ever be
+   created**. This is likely the single biggest reason the whole AP module
+   had zero real invoices: even a client that got past every other bug
+   would hit this on the very first line of the very first invoice.
+   Migration 148 drops the stray FK and repoints it at `accounts(id)`
+   (`ON DELETE SET NULL`, matching `account_id`'s existing nullability).
+
 **Still outstands:**
-- Migration 147 has not been run by the user yet.
+- Migration 148 has not been run by the user yet.
 - Invoice creation's actual atomic-insert transaction (`POST /invoices`,
   which uses `db.getClient()` — a direct Postgres connection, not the
   Supabase REST client) **could not be live-tested in this sandbox at
-  all** — it times out identically to the earlier Cash Flow/Profit & Loss
-  limitation (`"Connection terminated due to connection timeout"`). The
-  status-constraint bug above was only caught because it was independently
-  verified via a one-off Supabase-REST insert probe, not through the
-  actual application code path. This means: even after migration 147 runs,
-  **nobody has yet watched a real `POST /invoices` call succeed
-  end-to-end** in this environment — a real browser/server (or a
-  production-like environment that can reach direct Postgres) is required
-  to confirm it, along with the GL posting (DR expense / DR VAT input /
-  CR AP), then a payment against it (DR AP / CR bank, invoice flips to
-  `paid`), then void/reverse of both.
+  all**, on any attempt today — it times out identically to the earlier
+  Cash Flow/Profit & Loss limitation. Every one of today's 4 fixes
+  (columns, `supplier_name`, status constraint, this FK) was instead
+  confirmed via one-off Supabase-REST probes that mirror the exact
+  values the real route would send, then cleaned up immediately. This is
+  strong schema-level evidence but is **not** the same as watching the
+  real route succeed. After migration 148, this needs testing from an
+  environment that can reach direct Postgres (a real browser/server
+  session, or production): create an invoice with a line item end-to-end
+  through `POST /invoices` itself, confirm GL posts DR expense / DR VAT
+  input / CR AP, record a payment against it (DR AP / CR bank, invoice
+  flips to `paid`), then void/reverse both.
