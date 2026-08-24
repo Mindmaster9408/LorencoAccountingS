@@ -169,27 +169,56 @@ hardcoded mock figures with genuine posted-GL aggregation.
   manually verify the `isBalanced` check actually reconciles for a period
   with no uncategorized accounts
 
-**FOLLOW-UP NOTE — bigger, out-of-original-scope finding**
-- Area: Accounts Payable / Supplier Invoice creation (`POST /invoices` in
-  `suppliers.js`), not something this audit set out to check
-- Dependency: discovered only because live-testing the Aged Creditors fix
-  required checking real column names
-- Confirmed now: `supplier_invoices` has **zero rows across every company in
-  the entire database** — the AP invoice-creation feature appears to have
-  never successfully run for any real client. The `POST /invoices` route's
-  raw-SQL `INSERT INTO supplier_invoice_lines (...)` statement references
-  `line_subtotal_ex_vat`/`vat_amount`/`line_total_inc_vat`/`sort_order` —
-  none of which exist on the real `supplier_invoice_lines` table (confirmed
-  via the live PostgREST schema; only `line_total` exists). If this
-  statement has ever actually executed, it would fail with a Postgres
-  "column does not exist" error.
-- Not yet confirmed: whether `POST /invoices` (and any other AP write path
-  in `suppliers.js` beyond the two read-only routes fixed today) is
-  currently broken end-to-end
-- Risk if wrong: the whole Accounts Payable module may be non-functional for
-  creating real supplier invoices — this is a much larger fix than today's
-  audit scope and was **not** attempted this session
-- Recommended next check: **explicitly confirm with the user before touching
-  this** — it needs its own audit of every write path in `suppliers.js`
-  against the real schema, not a quick patch, per CLAUDE.md Rule A1 (audit
-  before change)
+**RESOLVED (2026-08-24, later same day) — full `suppliers.js` audit
+completed at user's explicit request.** The finding above ("supplier
+invoice creation may be broken") turned out to be worse than suspected: the
+**entire** Accounts Payable write path was broken, not just invoice
+creation. Read through every route in the file against the live PostgREST
+schema for `suppliers`, `supplier_invoices`, `supplier_invoice_lines`,
+`supplier_payments`, `supplier_payment_allocations`, `purchase_orders`, and
+`purchase_order_lines`. Confirmed and fixed:
+- `supplier_invoices` real columns are `date`/`subtotal`/`total_amount`/
+  `supplier_ref`/`created_by` (same convention as `customer_invoices`) — not
+  `invoice_date`/`subtotal_ex_vat`/`total_inc_vat`/`vat_inclusive`/
+  `reference`/`created_by_user_id`, which every invoice CRUD route (create,
+  edit with GL correction, void), every payment route, and the dashboard
+  stats route all used. Fixed everywhere.
+- `supplier_invoice_lines` only has `line_total` (no per-line VAT amount, no
+  `sort_order`) — fixed the create/edit line-insert SQL and removed
+  `.order('sort_order')` calls (now `.order('id')` or unordered).
+- `suppliers.code` doesn't exist (`supplier_code` does) — fixed every join
+  across invoices, payments, and purchase orders that selected it.
+- `purchase_orders`/`purchase_order_lines` were checked and are **correct
+  as-is** — those tables genuinely have `subtotal_ex_vat`/`total_inc_vat`/
+  `line_total_inc_vat`/`sort_order`/`vat_inclusive` as real columns (a
+  different, richer naming convention than the invoice tables). Not touched.
+- New migration **146** (`146_suppliers_missing_columns.sql`, not yet run by
+  user): `suppliers.type`/`registration_number`/`city`/`postal_code` are
+  real, live form fields on `suppliers.html` (`fieldType`, `fieldRegNo`,
+  `fieldCity`, `fieldPostal`) that had **no matching column at all** —
+  every create/edit silently discarded them. Added via migration rather
+  than dropped from the code, since dropping would have been a real feature
+  loss. `default_account_id` was confirmed (repo-wide search) unused by any
+  frontend page and was dropped from the code instead — no migration needed
+  for that one.
+
+**Live-tested** against Infinite Legacy — TEST (company id 51): all 6
+read-only routes (`stats`, list, list with `search`, invoices, payments,
+orders) now return 200 with correct data — previously several of these
+would have 500'd (`code`/`total_inc_vat` don't exist) and none had been
+exercised successfully before. Supplier creation was tested and confirmed
+to fail on **only** the migration-146 columns (`"Could not find the 'city'
+column"`) — proving every other column mapping in the whole file is now
+correct.
+
+**Still outstands:**
+- Migration 146 has not been run by the user yet.
+- The full write path (create supplier, create/edit/void a supplier
+  invoice, record/reverse a payment) has been code-audited and read-path
+  live-tested, but the actual write/insert calls have **not yet** been
+  live-tested end-to-end — that requires migration 146 first. Once it's
+  run, re-test: create a supplier with all fields filled in, create an
+  invoice against it (confirm GL posts DR expense / DR VAT input / CR AP),
+  record a payment against that invoice (confirm GL posts DR AP / CR bank,
+  confirm invoice status flips to paid), then void/reverse both to confirm
+  those paths too.
