@@ -2208,9 +2208,12 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
 
 // ─── Purchase Analysis ────────────────────────────────────────────────────────
 // Real replacement for the previously 100%-hardcoded purchase-analysis.html.
-// Mirrors customer-invoices.js's /sales-analysis exactly, adjusted for this
-// table's own column names (invoice_date/subtotal_ex_vat, not date/subtotal).
-// Spend is ex-VAT (subtotal), matching how expense is recognized.
+// Column names verified against the live PostgREST schema (2026-08-24) —
+// supplier_invoices actually has date/subtotal/total_amount (same naming as
+// customer_invoices), not invoice_date/subtotal_ex_vat as first assumed from
+// reading this file's own (also-wrong) raw-SQL insert further up; and
+// supplier_invoice_lines only has line_total, not line_subtotal_ex_vat.
+// Spend is ex-VAT (subtotal/line_total), matching how expense is recognized.
 router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Database not available' });
   const companyId = req.companyId;
@@ -2219,12 +2222,12 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
   try {
     let q = supabase
       .from('supplier_invoices')
-      .select('id, supplier_id, invoice_date, subtotal_ex_vat, suppliers!supplier_id(name)')
+      .select('id, supplier_id, date, subtotal, suppliers!supplier_id(name)')
       .eq('company_id', companyId)
       .not('status', 'in', '("draft","void","cancelled")');
 
-    if (fromDate) q = q.gte('invoice_date', fromDate);
-    if (toDate)   q = q.lte('invoice_date', toDate);
+    if (fromDate) q = q.gte('date', fromDate);
+    if (toDate)   q = q.lte('date', toDate);
 
     const { data: invoices, error } = await q;
     if (error) throw new Error(error.message);
@@ -2232,7 +2235,7 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
     const bySupplierMap = {};
     const byMonthMap = {};
     for (const inv of invoices || []) {
-      const spend = parseFloat(inv.subtotal_ex_vat) || 0;
+      const spend = parseFloat(inv.subtotal) || 0;
       const supKey = inv.supplier_id ? `id:${inv.supplier_id}` : 'unknown';
       if (!bySupplierMap[supKey]) {
         bySupplierMap[supKey] = { supplierId: inv.supplier_id || null, supplierName: inv.suppliers?.name || 'Unknown', invoiceCount: 0, spend: 0 };
@@ -2240,7 +2243,7 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
       bySupplierMap[supKey].invoiceCount++;
       bySupplierMap[supKey].spend = Math.round((bySupplierMap[supKey].spend + spend) * 100) / 100;
 
-      const monthKey = (inv.invoice_date || '').slice(0, 7);
+      const monthKey = (inv.date || '').slice(0, 7);
       if (monthKey) byMonthMap[monthKey] = Math.round(((byMonthMap[monthKey] || 0) + spend) * 100) / 100;
     }
 
@@ -2250,7 +2253,7 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
       const invoiceIds = invoices.map(i => i.id);
       const { data: lines } = await supabase
         .from('supplier_invoice_lines')
-        .select('line_subtotal_ex_vat, account_id, accounts!account_id(code, name)')
+        .select('line_total, account_id, accounts!account_id(code, name)')
         .in('invoice_id', invoiceIds);
       const byAccountMap = {};
       (lines || []).forEach(l => {
@@ -2258,7 +2261,7 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
         if (!byAccountMap[key]) {
           byAccountMap[key] = { accountId: l.account_id || null, accountCode: l.accounts?.code || null, accountName: l.accounts?.name || 'Unassigned', spend: 0 };
         }
-        byAccountMap[key].spend = Math.round((byAccountMap[key].spend + (parseFloat(l.line_subtotal_ex_vat) || 0)) * 100) / 100;
+        byAccountMap[key].spend = Math.round((byAccountMap[key].spend + (parseFloat(l.line_total) || 0)) * 100) / 100;
       });
       byAccount = Object.values(byAccountMap).sort((a, b) => b.spend - a.spend);
     }
@@ -2282,10 +2285,15 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
 router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
   const companyId = req.companyId;
   try {
-    // Fetch unpaid / part-paid invoices with supplier details
+    // Fetch unpaid / part-paid invoices with supplier details.
+    // Column names verified against the live PostgREST schema (2026-08-24) —
+    // supplier_invoices has date/total_amount, not invoice_date/total_inc_vat;
+    // suppliers has supplier_code, not code. The prior version of this query
+    // used the wrong names on both counts and had never actually been hit
+    // successfully (0 supplier_invoices rows existed in the whole database).
     const { data: rows, error } = await supabase
       .from('supplier_invoices')
-      .select('id, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid, supplier_id, suppliers!supplier_id(id, name, code)')
+      .select('id, invoice_number, date, due_date, total_amount, amount_paid, supplier_id, suppliers!supplier_id(id, name, supplier_code)')
       .eq('company_id', companyId)
       .neq('status', 'paid')
       .neq('status', 'cancelled')
@@ -2299,7 +2307,7 @@ router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req,
     // Group by supplier and bucket into aging periods
     const supplierMap = {};
     for (const row of rows || []) {
-      const outstanding = parseFloat(row.total_inc_vat) - parseFloat(row.amount_paid);
+      const outstanding = parseFloat(row.total_amount) - parseFloat(row.amount_paid);
       if (outstanding <= 0) continue; // skip fully-covered invoices
 
       const sup = row.suppliers;
@@ -2310,7 +2318,7 @@ router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req,
         supplierMap[sid] = {
           supplier_id:   sid,
           supplier_name: sup.name,
-          supplier_code: sup.code,
+          supplier_code: sup.supplier_code,
           current:    0,
           days30:     0,
           days60:     0,
