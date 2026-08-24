@@ -242,12 +242,19 @@ router.post('/', authenticate, hasPermission('ap.invoice.create'), async (req, r
     // NOTE: default_account_id is accepted from the request body but not
     // persisted — no frontend page sends it (confirmed via repo-wide search,
     // 2026-08-24) and the suppliers table has no matching column.
+    //
+    // supplier_name is a legacy NOT NULL column no longer read anywhere in
+    // this codebase (name is the live column everything else reads/writes),
+    // but Postgres still rejects the insert without it — mirror name into it
+    // rather than dropping the constraint, since that's a schema decision
+    // beyond the scope of this audit.
     const { data: supplier, error: insErr } = await supabase
       .from('suppliers')
       .insert({
         company_id:           companyId,
         supplier_code:        supplierCode,
         name:                 name.trim(),
+        supplier_name:        name.trim(),
         type:                 type || 'company',
         contact_name:         contactName || null,
         email:                email || null,
