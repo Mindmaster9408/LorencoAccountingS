@@ -211,14 +211,42 @@ to fail on **only** the migration-146 columns (`"Could not find the 'city'
 column"`) — proving every other column mapping in the whole file is now
 correct.
 
+**Update (2026-08-24, migration 146 run, write-path testing continued):**
+two more real bugs found, both fixed/migrated in commit `640b6a8`:
+1. **`supplier_name` NOT NULL fix (code, no migration needed).**
+   `suppliers.supplier_name` is a legacy NOT NULL column nothing in the
+   codebase reads anymore (`name` is the live column) — but Postgres still
+   rejected every create because it was never populated. Fixed by mirroring
+   `name` into `supplier_name` on insert. **Confirmed live**: creating
+   "Audit Test Supplier" (id 20, in TEST company) with every field filled
+   in — including the new migration-146 fields — now succeeds and
+   round-trips correctly.
+2. **`supplier_invoices_status_check` vocabulary mismatch (migration 147,
+   not yet run).** The constraint only allowed `draft/approved/partial/
+   paid/overdue/cancelled` — but every route in `suppliers.js` consistently
+   sets/reads `unpaid`/`part_paid`/`void` (the `invoiceStatus()` helper, the
+   void endpoint, aging, dashboard stats, payment allocation/reversal).
+   Confirmed live via a direct Supabase-REST probe (bypassing the
+   sandbox's blocked direct-Postgres path — see below) that a brand-new
+   invoice's default `'unpaid'` status is rejected outright. Asked the user
+   how to resolve it: expand the DB constraint to also allow the app's
+   existing vocabulary, vs. rewrite the app's status logic to the
+   constraint's original 6-state model. **User chose: expand the
+   constraint** — migration 147 written accordingly.
+
 **Still outstands:**
-- Migration 146 has not been run by the user yet.
-- The full write path (create supplier, create/edit/void a supplier
-  invoice, record/reverse a payment) has been code-audited and read-path
-  live-tested, but the actual write/insert calls have **not yet** been
-  live-tested end-to-end — that requires migration 146 first. Once it's
-  run, re-test: create a supplier with all fields filled in, create an
-  invoice against it (confirm GL posts DR expense / DR VAT input / CR AP),
-  record a payment against that invoice (confirm GL posts DR AP / CR bank,
-  confirm invoice status flips to paid), then void/reverse both to confirm
-  those paths too.
+- Migration 147 has not been run by the user yet.
+- Invoice creation's actual atomic-insert transaction (`POST /invoices`,
+  which uses `db.getClient()` — a direct Postgres connection, not the
+  Supabase REST client) **could not be live-tested in this sandbox at
+  all** — it times out identically to the earlier Cash Flow/Profit & Loss
+  limitation (`"Connection terminated due to connection timeout"`). The
+  status-constraint bug above was only caught because it was independently
+  verified via a one-off Supabase-REST insert probe, not through the
+  actual application code path. This means: even after migration 147 runs,
+  **nobody has yet watched a real `POST /invoices` call succeed
+  end-to-end** in this environment — a real browser/server (or a
+  production-like environment that can reach direct Postgres) is required
+  to confirm it, along with the GL posting (DR expense / DR VAT input /
+  CR AP), then a payment against it (DR AP / CR bank, invoice flips to
+  `paid`), then void/reverse of both.
