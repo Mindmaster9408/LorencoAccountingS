@@ -122,7 +122,7 @@ router.get('/stats', authenticate, hasPermission('ap.invoice.view'), async (req,
         .eq('is_active', true),
       supabase
         .from('supplier_invoices')
-        .select('total_inc_vat, amount_paid, due_date, status')
+        .select('total_amount, amount_paid, due_date, status')
         .eq('company_id', companyId)
         .neq('status', 'cancelled')
         .neq('status', 'draft'),
@@ -139,7 +139,7 @@ router.get('/stats', authenticate, hasPermission('ap.invoice.view'), async (req,
     let overdue = 0;
     let overdueCount = 0;
     for (const inv of invoicesResult.data || []) {
-      const balance = parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid);
+      const balance = parseFloat(inv.total_amount) - parseFloat(inv.amount_paid);
       totalPayable += balance;
       if (inv.due_date < today && inv.status !== 'paid' && inv.status !== 'cancelled') {
         overdue += balance;
@@ -180,7 +180,7 @@ router.get('/', authenticate, hasPermission('ap.invoice.view'), async (req, res)
     if (status === 'inactive') query = query.eq('is_active', false);
     if (search) {
       query = query.or(
-        `name.ilike.%${search}%,code.ilike.%${search}%,email.ilike.%${search}%`
+        `name.ilike.%${search}%,supplier_code.ilike.%${search}%,email.ilike.%${search}%`
       );
     }
     query = query.order('name');
@@ -191,7 +191,7 @@ router.get('/', authenticate, hasPermission('ap.invoice.view'), async (req, res)
     // Fetch outstanding invoice balances for the company to compute balance_owing per supplier
     const { data: balanceRows, error: balErr } = await supabase
       .from('supplier_invoices')
-      .select('supplier_id, total_inc_vat, amount_paid')
+      .select('supplier_id, total_amount, amount_paid')
       .eq('company_id', companyId)
       .neq('status', 'paid')
       .neq('status', 'cancelled')
@@ -200,7 +200,7 @@ router.get('/', authenticate, hasPermission('ap.invoice.view'), async (req, res)
 
     const balanceMap = {};
     for (const row of balanceRows || []) {
-      const b = parseFloat(row.total_inc_vat) - parseFloat(row.amount_paid);
+      const b = parseFloat(row.total_amount) - parseFloat(row.amount_paid);
       balanceMap[row.supplier_id] = (balanceMap[row.supplier_id] || 0) + b;
     }
 
@@ -221,7 +221,7 @@ router.post('/', authenticate, hasPermission('ap.invoice.create'), async (req, r
   const {
     code, name, type, contactName, email, phone,
     vatNumber, registrationNumber, address, city, postalCode,
-    paymentTerms, defaultAccountId, bankName, bankAccountNumber, bankBranchCode, notes,
+    paymentTerms, defaultAccountId: _defaultAccountId, bankName, bankAccountNumber, bankBranchCode, notes,
   } = req.body;
 
   if (!name || !name.trim()) return res.status(400).json({ error: 'Supplier name is required' });
@@ -239,11 +239,14 @@ router.post('/', authenticate, hasPermission('ap.invoice.create'), async (req, r
       supplierCode = `SUP${String(n).padStart(3, '0')}`;
     }
 
+    // NOTE: default_account_id is accepted from the request body but not
+    // persisted — no frontend page sends it (confirmed via repo-wide search,
+    // 2026-08-24) and the suppliers table has no matching column.
     const { data: supplier, error: insErr } = await supabase
       .from('suppliers')
       .insert({
         company_id:           companyId,
-        code:                 supplierCode,
+        supplier_code:        supplierCode,
         name:                 name.trim(),
         type:                 type || 'company',
         contact_name:         contactName || null,
@@ -255,9 +258,8 @@ router.post('/', authenticate, hasPermission('ap.invoice.create'), async (req, r
         city:                 city || null,
         postal_code:          postalCode || null,
         payment_terms:        paymentTerms != null ? parseInt(paymentTerms) : 30,
-        default_account_id:   defaultAccountId ? parseInt(defaultAccountId) : null,
         bank_name:            bankName || null,
-        bank_account_number:  bankAccountNumber || null,
+        bank_account:         bankAccountNumber || null,
         bank_branch_code:     bankBranchCode || null,
         notes:                notes || null,
       })
@@ -273,7 +275,7 @@ router.post('/', authenticate, hasPermission('ap.invoice.create'), async (req, r
       entityType: 'SUPPLIER',
       entityId: supplier.id,
       beforeJson: null,
-      afterJson: { code: supplier.code, name: supplier.name, vatNumber: vatNumber || null },
+      afterJson: { code: supplier.supplier_code, name: supplier.name, vatNumber: vatNumber || null },
       reason: 'Supplier created',
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
@@ -294,16 +296,16 @@ router.get('/invoices', authenticate, hasPermission('ap.invoice.view'), async (r
   try {
     let query = supabase
       .from('supplier_invoices')
-      .select('*, suppliers!supplier_id(name, code)')
+      .select('*, suppliers!supplier_id(name, supplier_code)')
       .eq('company_id', companyId);
 
     if (supplierId) query = query.eq('supplier_id', parseInt(supplierId));
     if (status)     query = query.eq('status', status);
-    if (fromDate)   query = query.gte('invoice_date', fromDate);
-    if (toDate)     query = query.lte('invoice_date', toDate);
+    if (fromDate)   query = query.gte('date', fromDate);
+    if (toDate)     query = query.lte('date', toDate);
 
     query = query
-      .order('invoice_date', { ascending: false })
+      .order('date', { ascending: false })
       .order('id', { ascending: false });
 
     const { data, error } = await query;
@@ -312,7 +314,7 @@ router.get('/invoices', authenticate, hasPermission('ap.invoice.view'), async (r
     // Flatten nested supplier relation to match original response shape
     const invoices = (data || []).map(row => {
       const { suppliers: sup, ...rest } = row;
-      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.code || null };
+      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.supplier_code || null };
     });
 
     res.json({ invoices });
@@ -427,12 +429,19 @@ router.post('/invoices', authenticate, hasPermission('ap.invoice.create'), async
     try {
       await dbClient.query('BEGIN');
 
+      // Column names verified against the live PostgREST schema (2026-08-24) —
+      // supplier_invoices uses date/subtotal/total_amount/created_by/supplier_ref
+      // (same convention as customer_invoices), not invoice_date/subtotal_ex_vat/
+      // total_inc_vat/created_by_user_id/reference. There is no vat_inclusive
+      // column — it only affects how the entered amount was interpreted during
+      // calcLineVAT() above; the resulting subtotal/vat_amount/total_amount are
+      // stored regardless of entry method, so nothing is lost by not persisting it.
       const hdrResult = await dbClient.query(
         `INSERT INTO supplier_invoices
-           (company_id, supplier_id, invoice_number, reference, invoice_date,
-            due_date, vat_inclusive, subtotal_ex_vat, vat_amount, total_inc_vat,
-            amount_paid, status, notes, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           (company_id, supplier_id, invoice_number, supplier_ref, date,
+            due_date, subtotal, vat_amount, total_amount,
+            amount_paid, status, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          RETURNING *`,
         [
           companyId,
@@ -441,7 +450,6 @@ router.post('/invoices', authenticate, hasPermission('ap.invoice.create'), async
           reference || null,
           invoiceDate,
           dueDate || null,
-          vatInclusive === true,
           totals.subtotalExVat,
           totals.vatAmount,
           totals.totalIncVat,
@@ -453,29 +461,28 @@ router.post('/invoices', authenticate, hasPermission('ap.invoice.create'), async
       );
       invoice = hdrResult.rows[0];
 
-      // Bulk-insert all lines in one statement
+      // Bulk-insert all lines in one statement. supplier_invoice_lines only has
+      // a single line_total column (no per-line VAT breakdown, no sort_order) —
+      // stored ex-VAT, consistent with the header's subtotal.
       const lineVals = [];
       const lineParams = [];
       let p = 1;
       for (const l of processedLines) {
-        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
         lineParams.push(
           invoice.id,
           l.description,
           l.accountId || null,
           l.quantity,
           l.unitPrice,
-          l.lineSubtotalExVat,
           l.vatRate,
-          l.vatAmount,
-          l.lineTotalIncVat,
-          l.sortOrder
+          l.lineSubtotalExVat
         );
       }
       await dbClient.query(
         `INSERT INTO supplier_invoice_lines
            (invoice_id, description, account_id, quantity, unit_price,
-            line_subtotal_ex_vat, vat_rate, vat_amount, line_total_inc_vat, sort_order)
+            vat_rate, line_total)
          VALUES ${lineVals.join(',')}`,
         lineParams
       );
@@ -622,7 +629,7 @@ router.post('/invoices', authenticate, hasPermission('ap.invoice.create'), async
       .from('supplier_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoice.id)
-      .order('sort_order');
+      .order('id');
     if (ilErr) throw new Error(ilErr.message);
 
     const { suppliers: sup, ...invRest } = fullInv;
@@ -646,7 +653,7 @@ router.post('/invoices', authenticate, hasPermission('ap.invoice.create'), async
         supplierId: invoice.supplier_id,
         supplierName,
         invoiceNumber: invoice.invoice_number || null,
-        invoiceDate: invoice.invoice_date,
+        invoiceDate: invoice.date,
         subtotalExVat: totals.subtotalExVat,
         vatAmount: totals.vatAmount,
         totalIncVat: totals.totalIncVat,
@@ -672,7 +679,7 @@ router.get('/invoices/:id', authenticate, hasPermission('ap.invoice.view'), asyn
   try {
     const { data: inv, error: invErr } = await supabase
       .from('supplier_invoices')
-      .select('*, suppliers!supplier_id(name, code, vat_number, email)')
+      .select('*, suppliers!supplier_id(name, supplier_code, vat_number, email)')
       .eq('id', invoiceId)
       .eq('company_id', companyId)
       .maybeSingle();
@@ -683,7 +690,7 @@ router.get('/invoices/:id', authenticate, hasPermission('ap.invoice.view'), asyn
       .from('supplier_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoiceId)
-      .order('sort_order');
+      .order('id');
     if (lErr) throw new Error(lErr.message);
 
     const { suppliers: sup, ...invRest } = inv;
@@ -695,8 +702,8 @@ router.get('/invoices/:id', authenticate, hasPermission('ap.invoice.view'), asyn
     res.json({
       invoice: {
         ...invRest,
-        supplier_name:  sup?.name       || null,
-        supplier_code:  sup?.code       || null,
+        supplier_name:  sup?.name          || null,
+        supplier_code:  sup?.supplier_code || null,
         supplier_vat:   sup?.vat_number || null,
         supplier_email: sup?.email      || null,
         lines: flatLines,
@@ -726,7 +733,7 @@ router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), asyn
     //   (b) we can detect accounting-impacting changes and trigger GL correction
     const { data: existing, error: chkErr } = await supabase
       .from('supplier_invoices')
-      .select('id, status, supplier_id, journal_id, invoice_date, subtotal_ex_vat, vat_amount, total_inc_vat')
+      .select('id, status, supplier_id, journal_id, date, subtotal, vat_amount, total_amount')
       .eq('id', invoiceId)
       .eq('company_id', companyId)
       .maybeSingle();
@@ -798,18 +805,18 @@ router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), asyn
     // Any change here means the original posted journal no longer matches the
     // invoice — GL correction (reverse + replace) is required.
     const amountsChanged = (
-      Math.abs(parseFloat(existing.subtotal_ex_vat || 0) - newTotals.subtotalExVat) > 0.005 ||
-      Math.abs(parseFloat(existing.vat_amount      || 0) - newTotals.vatAmount)      > 0.005 ||
-      Math.abs(parseFloat(existing.total_inc_vat   || 0) - newTotals.totalIncVat)    > 0.005
+      Math.abs(parseFloat(existing.subtotal    || 0) - newTotals.subtotalExVat) > 0.005 ||
+      Math.abs(parseFloat(existing.vat_amount  || 0) - newTotals.vatAmount)     > 0.005 ||
+      Math.abs(parseFloat(existing.total_amount || 0) - newTotals.totalIncVat) > 0.005
     );
-    const dateChanged = existing.invoice_date !== invoiceDate;
+    const dateChanged = existing.date !== invoiceDate;
 
     // Fetch existing line accounts to detect expense account reassignment
     const { data: existingLineRows } = await supabase
       .from('supplier_invoice_lines')
       .select('account_id')
       .eq('invoice_id', invoiceId)
-      .order('sort_order');
+      .order('id');
     const existingAcctIds = (existingLineRows || []).map(l => String(l.account_id || '')).sort().join(',');
     const newAcctIds      = processedLines.map(l => String(l.accountId || '')).sort().join(',');
     const accountsChanged = existingAcctIds !== newAcctIds;
@@ -952,29 +959,30 @@ router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), asyn
     try {
       await dbClient.query('BEGIN');
 
+      // Column names verified against the live PostgREST schema (2026-08-24) —
+      // same real-column set as POST /invoices above (date/subtotal/total_amount,
+      // no vat_inclusive/reference columns).
       await dbClient.query(
         `UPDATE supplier_invoices
          SET supplier_id      = $1,
              invoice_number   = $2,
-             reference        = $3,
-             invoice_date     = $4,
+             supplier_ref     = $3,
+             date             = $4,
              due_date         = $5,
-             vat_inclusive    = $6,
-             subtotal_ex_vat  = $7,
-             vat_amount       = $8,
-             total_inc_vat    = $9,
-             notes            = $10,
-             status           = $11,
-             journal_id       = $12,
-             updated_at       = $13
-         WHERE id = $14 AND company_id = $15`,
+             subtotal         = $6,
+             vat_amount       = $7,
+             total_amount     = $8,
+             notes            = $9,
+             status           = $10,
+             journal_id       = $11,
+             updated_at       = $12
+         WHERE id = $13 AND company_id = $14`,
         [
           supplierId ? parseInt(supplierId) : existing.supplier_id,
           invoiceNumber || null,
           reference || null,
           invoiceDate,
           dueDate || null,
-          vatInclusive === true,
           newTotals.subtotalExVat,
           newTotals.vatAmount,
           newTotals.totalIncVat,
@@ -997,24 +1005,21 @@ router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), asyn
       const lineParams = [];
       let p = 1;
       for (const l of processedLines) {
-        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
         lineParams.push(
           invoiceId,
           l.description,
           l.accountId || null,
           l.quantity,
           l.unitPrice,
-          l.lineSubtotalExVat,
           l.vatRate,
-          l.vatAmount,
-          l.lineTotalIncVat,
-          l.sortOrder
+          l.lineSubtotalExVat
         );
       }
       await dbClient.query(
         `INSERT INTO supplier_invoice_lines
            (invoice_id, description, account_id, quantity, unit_price,
-            line_subtotal_ex_vat, vat_rate, vat_amount, line_total_inc_vat, sort_order)
+            vat_rate, line_total)
          VALUES ${lineVals.join(',')}`,
         lineParams
       );
@@ -1040,7 +1045,7 @@ router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), asyn
       .from('supplier_invoice_lines')
       .select('*, accounts!account_id(code, name)')
       .eq('invoice_id', invoiceId)
-      .order('sort_order');
+      .order('id');
     if (ilErr) throw new Error(ilErr.message);
 
     const { suppliers: sup, ...invRest } = fullInv;
@@ -1057,10 +1062,10 @@ router.put('/invoices/:id', authenticate, hasPermission('ap.invoice.edit'), asyn
       entityType: 'SUPPLIER_INVOICE',
       entityId: invoiceId,
       beforeJson: {
-        invoiceDate: existing.invoice_date,
-        subtotalExVat: parseFloat(existing.subtotal_ex_vat || 0),
+        invoiceDate: existing.date,
+        subtotalExVat: parseFloat(existing.subtotal || 0),
         vatAmount: parseFloat(existing.vat_amount || 0),
-        totalIncVat: parseFloat(existing.total_inc_vat || 0),
+        totalIncVat: parseFloat(existing.total_amount || 0),
         journalId: existing.journal_id || null,
       },
       afterJson: {
@@ -1241,7 +1246,7 @@ router.post('/invoices/:id/void', authenticate, hasPermission('ap.invoice.void')
       beforeJson: {
         status:       invoice.status,
         journalId:    invoice.journal_id || null,
-        totalIncVat:  parseFloat(invoice.total_inc_vat),
+        totalIncVat:  parseFloat(invoice.total_amount),
         amountPaid:   parseFloat(invoice.amount_paid || 0),
       },
       afterJson: {
@@ -1273,7 +1278,7 @@ router.get('/orders', authenticate, hasPermission('ap.invoice.view'), async (req
   try {
     let query = supabase
       .from('purchase_orders')
-      .select('*, suppliers!supplier_id(name, code)')
+      .select('*, suppliers!supplier_id(name, supplier_code)')
       .eq('company_id', companyId);
 
     if (supplierId) query = query.eq('supplier_id', parseInt(supplierId));
@@ -1285,7 +1290,7 @@ router.get('/orders', authenticate, hasPermission('ap.invoice.view'), async (req
 
     const orders = (data || []).map(row => {
       const { suppliers: sup, ...rest } = row;
-      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.code || null };
+      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.supplier_code || null };
     });
 
     res.json({ orders });
@@ -1480,7 +1485,7 @@ router.get('/payments', authenticate, hasPermission('ap.invoice.view'), async (r
   try {
     let query = supabase
       .from('supplier_payments')
-      .select('*, suppliers!supplier_id(name, code)')
+      .select('*, suppliers!supplier_id(name, supplier_code)')
       .eq('company_id', companyId);
 
     if (supplierId) query = query.eq('supplier_id', parseInt(supplierId));
@@ -1493,7 +1498,7 @@ router.get('/payments', authenticate, hasPermission('ap.invoice.view'), async (r
 
     const payments = (data || []).map(row => {
       const { suppliers: sup, ...rest } = row;
-      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.code || null };
+      return { ...rest, supplier_name: sup?.name || null, supplier_code: sup?.supplier_code || null };
     });
 
     res.json({ payments });
@@ -1557,7 +1562,7 @@ router.get('/payments/:id', authenticate, hasPermission('ap.invoice.view'), asyn
       payment.supplier_id
         ? supabase
             .from('suppliers')
-            .select('id, name, code')
+            .select('id, name, supplier_code')
             .eq('id', payment.supplier_id)
             .eq('company_id', companyId)
             .maybeSingle()
@@ -1622,7 +1627,7 @@ router.get('/payments/:id', authenticate, hasPermission('ap.invoice.view'), asyn
       const invoiceIds = [...new Set(rawAllocs.map(a => a.invoice_id))];
       const { data: invoices } = await supabase
         .from('supplier_invoices')
-        .select('id, invoice_number, invoice_date, due_date, total_inc_vat, amount_paid, status')
+        .select('id, invoice_number, date, due_date, total_amount, amount_paid, status')
         .eq('company_id', companyId)
         .in('id', invoiceIds);
 
@@ -1630,13 +1635,13 @@ router.get('/payments/:id', authenticate, hasPermission('ap.invoice.view'), asyn
 
       allocations = rawAllocs.map(alloc => {
         const inv     = invMap.get(alloc.invoice_id) || {};
-        const total   = parseFloat(inv.total_inc_vat || 0);
+        const total   = parseFloat(inv.total_amount || 0);
         const paid    = parseFloat(inv.amount_paid   || 0);
         const applied = parseFloat(alloc.amount       || 0);
         return {
           invoiceId:          alloc.invoice_id,
           invoiceNumber:      inv.invoice_number     || `#${alloc.invoice_id}`,
-          invoiceDate:        inv.invoice_date       || null,
+          invoiceDate:        inv.date               || null,
           invoiceDueDate:     inv.due_date           || null,
           invoiceTotal:       total,
           invoiceAmountPaid:  paid,
@@ -1691,8 +1696,8 @@ router.get('/payments/:id', authenticate, hasPermission('ap.invoice.view'), asyn
     res.json({
       payment: {
         ...payment,
-        supplierName:          supplier?.name || null,
-        supplierCode:          supplier?.code || null,
+        supplierName:          supplier?.name          || null,
+        supplierCode:          supplier?.supplier_code || null,
         bankLedgerAccountCode: bankAcct?.code || null,
         bankLedgerAccountName: bankAcct?.name || null,
         createdByUserName:     createdByUser?.full_name  || createdByUser?.username  || null,
@@ -1814,7 +1819,7 @@ router.post('/payments/:id/void', authenticate, hasPermission('ap.payment.void')
         const allocInvId    = parseInt(alloc.invoice_id);
 
         const { rows: invLock } = await revClient.query(
-          `SELECT id, amount_paid, total_inc_vat
+          `SELECT id, amount_paid, total_amount
              FROM supplier_invoices
             WHERE id = $1 AND company_id = $2
             FOR UPDATE`,
@@ -1827,7 +1832,7 @@ router.post('/payments/:id/void', authenticate, hasPermission('ap.payment.void')
           0,
           Math.round((parseFloat(inv.amount_paid) - allocAmount) * 100) / 100
         );
-        const newStatus        = invoiceStatus(inv.total_inc_vat, newAmountPaid);
+        const newStatus        = invoiceStatus(inv.total_amount, newAmountPaid);
 
         await revClient.query(
           `UPDATE supplier_invoices
@@ -2025,14 +2030,14 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
         const allocAmount = parseFloat(alloc.amount);
         const { data: inv } = await supabase
           .from('supplier_invoices')
-          .select('amount_paid, total_inc_vat, invoice_number')
+          .select('amount_paid, total_amount, invoice_number')
           .eq('id', parseInt(alloc.invoiceId))
           .eq('company_id', companyId)
           .maybeSingle();
         if (!inv) {
           return res.status(422).json({ error: `Supplier invoice ${alloc.invoiceId} not found for this company.` });
         }
-        const remaining = parseFloat(inv.total_inc_vat) - parseFloat(inv.amount_paid || 0);
+        const remaining = parseFloat(inv.total_amount) - parseFloat(inv.amount_paid || 0);
         if (allocAmount > remaining + 0.01) {
           return res.status(422).json({
             error: `Allocation of ${allocAmount.toFixed(2)} exceeds outstanding balance of ${remaining.toFixed(2)} on invoice ${inv.invoice_number || alloc.invoiceId}.`
@@ -2123,7 +2128,7 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
           // Lock the invoice row — no other transaction can update amount_paid
           // for this invoice until this transaction commits or rolls back.
           const { rows: lockRows } = await allocClient.query(
-            `SELECT id, amount_paid, total_inc_vat
+            `SELECT id, amount_paid, total_amount
              FROM supplier_invoices
              WHERE id = $1 AND company_id = $2
              FOR UPDATE`,
@@ -2137,7 +2142,7 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
           const inv               = lockRows[0];
           const currentAmountPaid = parseFloat(inv.amount_paid || 0);
           const newAmountPaid     = Math.round((currentAmountPaid + allocAmount) * 100) / 100;
-          const totalIncVat       = parseFloat(inv.total_inc_vat);
+          const totalIncVat       = parseFloat(inv.total_amount);
 
           // Authoritative overpayment guard — checked with locked, current data.
           if (newAmountPaid > totalIncVat + 0.015) {
@@ -2374,10 +2379,10 @@ router.get('/:id', authenticate, hasPermission('ap.invoice.view'), async (req, r
     if (supErr) throw new Error(supErr.message);
     if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
 
-    // Compute balance_owing: sum of (total_inc_vat - amount_paid) for unpaid/part-paid invoices
+    // Compute balance_owing: sum of (total_amount - amount_paid) for unpaid/part-paid invoices
     const { data: invRows, error: invErr } = await supabase
       .from('supplier_invoices')
-      .select('total_inc_vat, amount_paid')
+      .select('total_amount, amount_paid')
       .eq('company_id', companyId)
       .eq('supplier_id', supplierId)
       .neq('status', 'paid')
@@ -2387,7 +2392,7 @@ router.get('/:id', authenticate, hasPermission('ap.invoice.view'), async (req, r
 
     const balance_owing = Math.round(
       (invRows || []).reduce(
-        (sum, r) => sum + (parseFloat(r.total_inc_vat) - parseFloat(r.amount_paid)), 0
+        (sum, r) => sum + (parseFloat(r.total_amount) - parseFloat(r.amount_paid)), 0
       ) * 100
     ) / 100;
 
@@ -2405,7 +2410,7 @@ router.put('/:id', authenticate, hasPermission('ap.invoice.edit'), async (req, r
   const {
     name, type, contactName, email, phone,
     vatNumber, registrationNumber, address, city, postalCode,
-    paymentTerms, defaultAccountId, bankName, bankAccountNumber, bankBranchCode, notes, isActive,
+    paymentTerms, defaultAccountId: _defaultAccountId, bankName, bankAccountNumber, bankBranchCode, notes, isActive,
   } = req.body;
 
   if (!name || !name.trim()) return res.status(400).json({ error: 'Supplier name is required' });
@@ -2438,9 +2443,11 @@ router.put('/:id', authenticate, hasPermission('ap.invoice.edit'), async (req, r
     if (city                 !== undefined) updates.city                = city || null;
     if (postalCode           !== undefined) updates.postal_code         = postalCode || null;
     if (paymentTerms         !== undefined) updates.payment_terms       = paymentTerms != null ? parseInt(paymentTerms) : 30;
-    if (defaultAccountId     !== undefined) updates.default_account_id  = defaultAccountId ? parseInt(defaultAccountId) : null;
+    // NOTE: defaultAccountId is accepted from the request body but not
+    // persisted — no frontend page sends it and suppliers has no matching
+    // column (confirmed via repo-wide search, 2026-08-24).
     if (bankName             !== undefined) updates.bank_name           = bankName || null;
-    if (bankAccountNumber    !== undefined) updates.bank_account_number = bankAccountNumber || null;
+    if (bankAccountNumber    !== undefined) updates.bank_account        = bankAccountNumber || null;
     if (bankBranchCode       !== undefined) updates.bank_branch_code    = bankBranchCode || null;
     if (notes                !== undefined) updates.notes               = notes || null;
     if (isActive             !== undefined) updates.is_active           = isActive !== false;
