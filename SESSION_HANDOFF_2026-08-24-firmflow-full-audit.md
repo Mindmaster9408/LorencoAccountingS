@@ -179,11 +179,54 @@ this sandbox's direct Postgres connection times out, confirmed independently
 by two of the six agents (same limitation documented in the Accounting audit
 handoff).
 
+## Update (2026-08-24, same day) — schema-cache-reload theory tested and ruled out
+
+Migration 149 (`NOTIFY pgrst, 'reload schema';`) was run by the user. Re-ran
+every previously-flagged broken embed afterward — all failed identically.
+This ruled out stale cache as the cause and confirmed these are genuinely
+missing foreign key constraints in Postgres itself.
+
+## Headline discovery — this was never 6 isolated bugs, it's one systemic gap
+
+Given that confirmation, a full systematic scan was run: every `_id`-suffixed
+column (excluding `id`, `company_id`, and polymorphic/audit columns like
+`actor_user_id`/`entity_id`/`source_id` that intentionally vary their target
+by a type discriminator) across **all 67 `practice_*` tables** was tested
+for a working PostgREST embed relationship to its evident target table.
+
+**Result: 198 confirmed-missing foreign key constraints.** Of 72 tables with
+a `client_id` column, only 5 had a working FK to `practice_clients`. Of ~40
+`*_team_member_id`-family columns, only 4 worked. The same near-total-absence
+pattern held for `engagement_id`, `deadline_id`, `workflow_run_id`, `task_id`,
+`taxpayer_profile_id`, `compliance_pack_id`, `template_id`, `billing_pack_id`,
+`time_entry_id`, `skill_id`, `certification_id`, and the `related_*_id`/
+`linked_*_id` columns. This single gap is the root cause of the large
+majority of the "critical" and "high" findings listed above — every one of
+those was really a symptom of this one systemic issue, not a collection of
+unrelated bugs. (This also means two of the six original audit agents'
+"clean" verdicts — Secretarial/Engagement and part of Workflow/Client — were
+too optimistic: `compliance-packs.js`, `engagement-periods.js`, and
+`work-queue.js` all use the exact same broken `client_id` embed pattern and
+would fail identically; they just weren't the specific queries those agents
+happened to probe.)
+
+**Fix**: migration **150** (`150_practice_module_missing_fks.sql`, not yet
+run) adds all 198 missing FK constraints in one file, generated
+programmatically from live probe results (not hand-typed) to avoid
+transcription error, using the same `NOT VALID` safe-against-existing-data
+pattern as every other FK-adding migration this session. No `ON DELETE`
+clause is specified anywhere (defaults to `NO ACTION`) — deliberately
+conservative given the scale; a parent row cannot be deleted while any of
+these 198 relationships still reference it, which is the correct default
+for compliance/practice records regardless.
+
 ## Next step
 
-This is a findings inventory only — nothing has been fixed. Given the volume
-(10 critical + 9 high-severity findings across a very large module), the next
-conversation should decide how to prioritize the fix pass: critical
-(500-causing) items first, or everything in one pass like the Accounting
-audit, and whether to try the schema-cache-reload theory first before
-committing to migrations for the missing-FK findings.
+Run migration 150. After it runs, re-verify a representative sample of the
+previously-broken embeds (the ones listed under CRITICAL/HIGH above) to
+confirm they now resolve, then re-audit whether any of the specific
+column-name/constraint findings (the ones NOT caused by missing FKs —
+`req.userId`, `practice_clients.client_name`, the `tax-config.js` constant
+mismatch, the `auditFromReq()` misuse, etc.) still need their own separate
+fixes. Those are unrelated to the FK gap and will still need addressing
+after migration 150 lands.
