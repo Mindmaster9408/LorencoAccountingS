@@ -105,7 +105,7 @@ async function buildSnapshot(cid, taxReturn, calcId) {
     // Client
     const { data: client } = await supabase
         .from('practice_clients')
-        .select('id, display_name, company_name, client_type, income_tax_number, id_number, passport_number')
+        .select('id, name, client_type, income_tax_number, id_number, passport_number')
         .eq('id', taxReturn.client_id)
         .eq('company_id', cid)
         .single();
@@ -113,7 +113,7 @@ async function buildSnapshot(cid, taxReturn, calcId) {
     // Taxpayer profile
     const { data: profile } = await supabase
         .from('practice_taxpayer_profiles')
-        .select('id, taxpayer_type, income_tax_number, id_number, passport_number, date_of_birth, marital_status, age_at_year_end, notes')
+        .select('id, taxpayer_type, income_tax_reference, id_number, passport_number, marital_status, notes')
         .eq('id', taxReturn.taxpayer_profile_id)
         .eq('company_id', cid)
         .single();
@@ -227,9 +227,9 @@ function buildReportHtml(pack, snapshot) {
     const tr = s.tax_return || {};
     const calc = s.calculation;
 
-    const clientName = cl.display_name || cl.company_name || ('Client #' + tr.client_id);
+    const clientName = cl.name || ('Client #' + tr.client_id);
     const taxpayerType = tp.taxpayer_type || tr.taxpayer_type || 'individual';
-    const taxRef = tp.income_tax_number || cl.income_tax_number || '—';
+    const taxRef = tp.income_tax_reference || cl.income_tax_number || '—';
     const idNum  = tp.id_number || cl.id_number || tp.passport_number || cl.passport_number || '—';
 
     const incomeRows = (s.income_entries || []).map(e =>
@@ -518,8 +518,8 @@ function streamReportPdf(pack, snapshot, res) {
     const tr = s.tax_return || {};
     const calc = s.calculation;
 
-    const clientName = cl.display_name || cl.company_name || ('Client #' + tr.client_id);
-    const taxRef = tp.income_tax_number || cl.income_tax_number || '—';
+    const clientName = cl.name || ('Client #' + tr.client_id);
+    const taxRef = tp.income_tax_reference || cl.income_tax_number || '—';
     const idNum  = tp.id_number || cl.id_number || tp.passport_number || cl.passport_number || '—';
     const genDate = pack.report_generated_at
         ? new Date(pack.report_generated_at).toLocaleString('en-ZA')
