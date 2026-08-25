@@ -520,7 +520,7 @@ async function _dataRiskSummary(cid, q) {
             return qt;
         })(),
         (() => {
-            let qt = supabase.from('practice_company_tax_review_packs').select('tax_return_id, pack_status').eq('company_id', cid).in('pack_status', ['draft','generated','ready_for_review','reviewed','approved']);
+            let qt = supabase.from('practice_company_tax_review_packs').select('company_tax_return_id, pack_status').eq('company_id', cid).in('pack_status', ['draft','generated','ready_for_review','reviewed','approved']);
             if (q.tax_year) qt = qt.eq('tax_year', parseInt(q.tax_year));
             return qt;
         })(),
@@ -529,7 +529,7 @@ async function _dataRiskSummary(cid, q) {
     ]);
 
     const indPackReturnIds = new Set((indPacksExistRes.data || []).map(p => p.tax_return_id));
-    const coPackReturnIds  = new Set((coPacksExistRes.data  || []).map(p => p.tax_return_id));
+    const coPackReturnIds  = new Set((coPacksExistRes.data  || []).map(p => p.company_tax_return_id));
     const missingReviewPacks = [
         ...(indReadyRes.data || []).filter(r => !indPackReturnIds.has(r.id)),
         ...(coReadyRes.data  || []).filter(r => !coPackReturnIds.has(r.id)),

@@ -127,7 +127,7 @@ async function buildSnapshot(cid, taxReturn, calcId) {
     // Tax adjustments
     const { data: adjRows } = await supabase
         .from('practice_company_tax_adjustments')
-        .select('id, adjustment_type, description, amount, category, tax_effect, source_reference, notes')
+        .select('id, adjustment_type, description, amount, adjustment_category, tax_effect, source_reference, notes')
         .eq('company_tax_return_id', returnId)
         .eq('company_id', cid)
         .order('adjustment_type')
@@ -138,7 +138,7 @@ async function buildSnapshot(cid, taxReturn, calcId) {
     // Readiness items
     const { data: riRows } = await supabase
         .from('practice_company_tax_readiness_items')
-        .select('item_type, item_label, item_status, notes')
+        .select('item_type, item_name, status, notes')
         .eq('company_tax_return_id', returnId)
         .eq('company_id', cid)
         .order('created_at');
@@ -169,9 +169,9 @@ async function buildSnapshot(cid, taxReturn, calcId) {
     }
 
     // Readiness scoring from items
-    const required  = readiness_items.filter(i => i.item_status !== 'not_applicable');
-    const done      = required.filter(i => DONE_RI_STATUSES.includes(i.item_status));
-    const blocked   = required.filter(i => i.item_status === 'blocked');
+    const required  = readiness_items.filter(i => i.status !== 'not_applicable');
+    const done      = required.filter(i => DONE_RI_STATUSES.includes(i.status));
+    const blocked   = required.filter(i => i.status === 'blocked');
     const score     = required.length > 0 ? Math.round((done.length / required.length) * 100) : null;
     let readiness_status = 'unknown';
     if (required.length > 0) {
@@ -397,11 +397,11 @@ function buildReportHtml(pack, snapshot) {
             ${r.blocked_count > 0 ? `<div><div class="kv-label" style="color:#eb5757">Blocked Items</div><div class="kv-val" style="color:#eb5757">${r.blocked_count}</div></div>` : ''}
             <div><div class="kv-label">Return Status</div><div class="kv-val">${esc(tr.status || '—')}</div></div>
         </div>
-        ${(s.readiness_items || []).filter(i => i.item_status === 'blocked').length > 0
+        ${(s.readiness_items || []).filter(i => i.status === 'blocked').length > 0
             ? `<div style="background:#2a0a0a;border:1px solid #5a1a1a;border-radius:6px;padding:10px 12px;margin-top:8px">
                 <div style="font-size:10px;color:#f87171;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Blocked Items</div>
-                ${(s.readiness_items || []).filter(i => i.item_status === 'blocked').map(i =>
-                    `<div style="font-size:12px;color:#fca5a5;margin-bottom:3px">• ${esc(i.item_label || i.item_type)}: ${esc(i.notes || '—')}</div>`
+                ${(s.readiness_items || []).filter(i => i.status === 'blocked').map(i =>
+                    `<div style="font-size:12px;color:#fca5a5;margin-bottom:3px">• ${esc(i.item_name || i.item_type)}: ${esc(i.notes || '—')}</div>`
                 ).join('')}
             </div>`
             : ''}
