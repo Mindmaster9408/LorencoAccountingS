@@ -376,7 +376,7 @@ router.post('/calculations/:id/submit-review', async (req, res) => {
             .update({
                 calculation_status: 'ready_for_review',
                 updated_at:         new Date().toISOString(),
-                updated_by:         req.user?.id || null,
+                updated_by:         req.user?.userId || null,
             })
             .eq('id', calcId)
             .eq('company_id', cid)
@@ -387,7 +387,7 @@ router.post('/calculations/:id/submit-review', async (req, res) => {
         await logCalcEvent(cid, calcId, existing.company_tax_return_id, 'company_tax_calculation_submitted_review', {
             old_status:    existing.calculation_status,
             new_status:    'ready_for_review',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         await auditFromReq(req, 'company_tax_calculation_submitted_review', 'practice_company_tax_calculations', calcId);
 
@@ -417,11 +417,11 @@ router.post('/calculations/:id/approve', async (req, res) => {
             .update({
                 calculation_status: 'approved',
                 reviewed_at:        now,
-                reviewed_by:        req.user?.id || null,
+                reviewed_by:        req.user?.userId || null,
                 approved_at:        now,
-                approved_by:        req.user?.id || null,
+                approved_by:        req.user?.userId || null,
                 updated_at:         now,
-                updated_by:         req.user?.id || null,
+                updated_by:         req.user?.userId || null,
             })
             .eq('id', calcId)
             .eq('company_id', cid)
@@ -432,7 +432,7 @@ router.post('/calculations/:id/approve', async (req, res) => {
         await logCalcEvent(cid, calcId, existing.company_tax_return_id, 'company_tax_calculation_approved', {
             old_status:    existing.calculation_status,
             new_status:    'approved',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             notes:         req.body.notes || null,
         });
         await auditFromReq(req, 'company_tax_calculation_approved', 'practice_company_tax_calculations', calcId);
@@ -466,7 +466,7 @@ router.post('/calculations/:id/reject', async (req, res) => {
                 calculation_status: 'rejected',
                 rejection_reason:   reason,
                 updated_at:         new Date().toISOString(),
-                updated_by:         req.user?.id || null,
+                updated_by:         req.user?.userId || null,
             })
             .eq('id', calcId)
             .eq('company_id', cid)
@@ -477,7 +477,7 @@ router.post('/calculations/:id/reject', async (req, res) => {
         await logCalcEvent(cid, calcId, existing.company_tax_return_id, 'company_tax_calculation_rejected', {
             old_status:    existing.calculation_status,
             new_status:    'rejected',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             notes:         reason,
         });
         await auditFromReq(req, 'company_tax_calculation_rejected', 'practice_company_tax_calculations', calcId, { metadata: { reason } });
@@ -516,7 +516,7 @@ router.put('/calculations/:id', async (req, res) => {
     }
 
     const ALLOWED = ['calculation_name', 'notes', 'internal_notes'];
-    const updates = { updated_at: new Date().toISOString(), updated_by: req.user?.id || null };
+    const updates = { updated_at: new Date().toISOString(), updated_by: req.user?.userId || null };
     ALLOWED.forEach(function(k) {
         if (k in req.body) updates[k] = req.body[k];
     });
@@ -642,8 +642,8 @@ router.post('/:returnId/calculations/run-draft', async (req, res) => {
                 assumptions:                    result.assumptions,
 
                 notes:                          req.body.notes || null,
-                created_by:                     req.user?.id || null,
-                updated_by:                     req.user?.id || null,
+                created_by:                     req.user?.userId || null,
+                updated_by:                     req.user?.userId || null,
             })
             .select()
             .single();
@@ -652,7 +652,7 @@ router.post('/:returnId/calculations/run-draft', async (req, res) => {
 
         await logCalcEvent(cid, calc.id, returnId, 'company_tax_calculation_run', {
             new_status:    'draft',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: {
                 version:               nextVersion,
                 taxable_income:        result.taxable_income_estimate,

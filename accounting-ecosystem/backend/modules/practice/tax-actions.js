@@ -280,12 +280,12 @@ router.post('/from-dashboard-risk', async (req, res) => {
             assigned_team_member_id:  assigned_team_member_id ? parseInt(assigned_team_member_id) : null,
             due_date:                 due_date || null,
             notes:                    notes    || null,
-            created_by:               req.user?.id || null,
+            created_by:               req.user?.userId || null,
         }).select().single();
         if (error) throw error;
 
         await logEvent(cid, data.id, 'tax_action_created', {
-            new_status: 'open', actor_user_id: req.user?.id,
+            new_status: 'open', actor_user_id: req.user?.userId,
             metadata: { source_type, source_id, action_type },
         });
         res.status(201).json({ action: data });
@@ -325,7 +325,7 @@ router.post('/:id/create-task', async (req, res) => {
             status:                     'open',
             due_date:                   due_date || action.due_date || null,
             reviewer_team_member_id:    assigned_team_member_id ? parseInt(assigned_team_member_id) : null,
-            created_by:                 req.user?.id || null,
+            created_by:                 req.user?.userId || null,
             notes:                      task_notes || action.notes || null,
             review_status:              'not_required',
             approval_status:            'not_required',
@@ -334,13 +334,13 @@ router.post('/:id/create-task', async (req, res) => {
         if (tErr) throw tErr;
 
         const { error: uErr } = await supabase.from('practice_tax_work_actions')
-            .update({ linked_task_id: task.id, action_status: 'in_progress', updated_at: now(), updated_by: req.user?.id || null })
+            .update({ linked_task_id: task.id, action_status: 'in_progress', updated_at: now(), updated_by: req.user?.userId || null })
             .eq('id', actionId).eq('company_id', cid);
         if (uErr) throw uErr;
 
         await logEvent(cid, actionId, 'tax_action_task_created', {
             old_status: action.action_status, new_status: 'in_progress',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { task_id: task.id, task_title: title },
         });
         res.status(201).json({ task, action_id: actionId });
@@ -378,18 +378,18 @@ router.post('/:id/create-document-request', async (req, res) => {
             required_by_date:        required_by_date || action.due_date || null,
             assigned_team_member_id: assigned_team_member_id ? parseInt(assigned_team_member_id) : null,
             notes:                   notes || action.notes || null,
-            created_by:              req.user?.id || null,
+            created_by:              req.user?.userId || null,
         }).select().single();
         if (dErr) throw dErr;
 
         const { error: uErr } = await supabase.from('practice_tax_work_actions')
-            .update({ linked_document_request_id: docReq.id, action_status: 'in_progress', updated_at: now(), updated_by: req.user?.id || null })
+            .update({ linked_document_request_id: docReq.id, action_status: 'in_progress', updated_at: now(), updated_by: req.user?.userId || null })
             .eq('id', actionId).eq('company_id', cid);
         if (uErr) throw uErr;
 
         await logEvent(cid, actionId, 'tax_action_document_request_created', {
             old_status: action.action_status, new_status: 'in_progress',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { document_request_id: docReq.id, request_title: title, document_category: category },
         });
         res.status(201).json({ document_request: docReq, action_id: actionId });
@@ -431,13 +431,13 @@ router.post('/:id/assign-reviewer', async (req, res) => {
         if (sErr) throw sErr;
 
         const { error: uErr } = await supabase.from('practice_tax_work_actions')
-            .update({ action_status: 'in_progress', updated_at: now(), updated_by: req.user?.id || null })
+            .update({ action_status: 'in_progress', updated_at: now(), updated_by: req.user?.userId || null })
             .eq('id', actionId).eq('company_id', cid);
         if (uErr) throw uErr;
 
         await logEvent(cid, actionId, 'tax_action_reviewer_assigned', {
             old_status: action.action_status, new_status: 'in_progress',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { source_type: action.source_type, source_id: action.source_id, reviewer_team_member_id: parseInt(reviewer_team_member_id) },
         });
         res.json({ ok: true, reviewer_team_member_id: parseInt(reviewer_team_member_id) });
@@ -490,13 +490,13 @@ router.post('/:id/mark-ready-review', async (req, res) => {
         if (sErr) throw sErr;
 
         const { error: uErr } = await supabase.from('practice_tax_work_actions')
-            .update({ action_status: 'in_progress', updated_at: now(), updated_by: req.user?.id || null })
+            .update({ action_status: 'in_progress', updated_at: now(), updated_by: req.user?.userId || null })
             .eq('id', actionId).eq('company_id', cid);
         if (uErr) throw uErr;
 
         await logEvent(cid, actionId, 'tax_work_marked_ready_review', {
             old_status: action.action_status, new_status: 'in_progress',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { source_type: action.source_type, source_id: action.source_id, previous_source_status: currentStatus },
         });
         res.json({ ok: true, source_new_status: readyStatus });
@@ -517,13 +517,13 @@ router.put('/:id/complete', async (req, res) => {
 
     try {
         const { error } = await supabase.from('practice_tax_work_actions')
-            .update({ action_status: 'completed', completed_at: now(), completed_by: req.user?.id || null, updated_at: now(), updated_by: req.user?.id || null })
+            .update({ action_status: 'completed', completed_at: now(), completed_by: req.user?.userId || null, updated_at: now(), updated_by: req.user?.userId || null })
             .eq('id', actionId).eq('company_id', cid);
         if (error) throw error;
 
         await logEvent(cid, actionId, 'tax_action_completed', {
             old_status: action.action_status, new_status: 'completed',
-            actor_user_id: req.user?.id, notes: req.body.notes || null,
+            actor_user_id: req.user?.userId, notes: req.body.notes || null,
         });
         res.json({ ok: true });
     } catch (err) {
@@ -543,13 +543,13 @@ router.put('/:id/dismiss', async (req, res) => {
 
     try {
         const { error } = await supabase.from('practice_tax_work_actions')
-            .update({ action_status: 'dismissed', updated_at: now(), updated_by: req.user?.id || null })
+            .update({ action_status: 'dismissed', updated_at: now(), updated_by: req.user?.userId || null })
             .eq('id', actionId).eq('company_id', cid);
         if (error) throw error;
 
         await logEvent(cid, actionId, 'tax_action_dismissed', {
             old_status: action.action_status, new_status: 'dismissed',
-            actor_user_id: req.user?.id, notes: req.body.notes || null,
+            actor_user_id: req.user?.userId, notes: req.body.notes || null,
         });
         res.json({ ok: true });
     } catch (err) {
@@ -633,12 +633,12 @@ router.post('/', async (req, res) => {
             assigned_team_member_id:  assigned_team_member_id ? parseInt(assigned_team_member_id) : null,
             due_date:                 due_date || null,
             notes:                    notes    || null,
-            created_by:               req.user?.id || null,
+            created_by:               req.user?.userId || null,
         }).select().single();
         if (error) throw error;
 
         await logEvent(cid, data.id, 'tax_action_created', {
-            new_status: 'open', actor_user_id: req.user?.id,
+            new_status: 'open', actor_user_id: req.user?.userId,
             metadata: { source_type, source_id, action_type },
         });
         res.status(201).json({ action: data });
@@ -657,7 +657,7 @@ router.put('/:id', async (req, res) => {
     if (action.action_status === 'cancelled') return res.status(400).json({ error: 'Cannot update a cancelled action' });
 
     const allowed = ['action_title', 'action_status', 'assigned_team_member_id', 'due_date', 'notes'];
-    const updates = { updated_at: now(), updated_by: req.user?.id || null };
+    const updates = { updated_at: now(), updated_by: req.user?.userId || null };
     allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
 
     if (updates.action_status && !ACTION_STATUSES.includes(updates.action_status))
@@ -676,7 +676,7 @@ router.put('/:id', async (req, res) => {
 
         await logEvent(cid, actionId, 'tax_action_updated', {
             old_status: action.action_status, new_status: data.action_status,
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         res.json({ action: data });
     } catch (err) {
@@ -695,13 +695,13 @@ router.delete('/:id', async (req, res) => {
 
     try {
         const { error } = await supabase.from('practice_tax_work_actions')
-            .update({ action_status: 'cancelled', updated_at: now(), updated_by: req.user?.id || null })
+            .update({ action_status: 'cancelled', updated_at: now(), updated_by: req.user?.userId || null })
             .eq('id', actionId).eq('company_id', cid);
         if (error) throw error;
 
         await logEvent(cid, actionId, 'tax_action_cancelled', {
             old_status: action.action_status, new_status: 'cancelled',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         res.json({ ok: true });
     } catch (err) {

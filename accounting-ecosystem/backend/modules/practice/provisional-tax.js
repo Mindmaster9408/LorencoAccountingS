@@ -245,15 +245,15 @@ router.post('/', async (req, res) => {
                 related_compliance_pack_id:      related_compliance_pack_id  || null,
                 related_deadline_id:             related_deadline_id          || null,
                 related_workflow_run_id:         related_workflow_run_id      || null,
-                created_by:                      req.user?.id || null,
-                updated_by:                      req.user?.id || null,
+                created_by:                      req.user?.userId || null,
+                updated_by:                      req.user?.userId || null,
             })
             .select()
             .single();
         if (error) throw error;
 
         await logEvent(cid, plan.id, null, 'provisional_tax_plan_created', {
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { tax_year: plan.tax_year, plan_name: plan.plan_name },
         });
         await auditFromReq(req, 'provisional_tax_plan_created', 'practice_provisional_tax_plans', plan.id, { metadata: { tax_year: plan.tax_year } });
@@ -321,7 +321,7 @@ router.put('/:id', async (req, res) => {
         'related_compliance_pack_id', 'related_deadline_id', 'related_workflow_run_id',
     ];
 
-    const updates = { updated_at: new Date().toISOString(), updated_by: req.user?.id || null };
+    const updates = { updated_at: new Date().toISOString(), updated_by: req.user?.userId || null };
     allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
 
     if (updates.status && !PLAN_STATUSES.includes(updates.status))
@@ -346,11 +346,11 @@ router.put('/:id', async (req, res) => {
         if (updates.status && updates.status !== existing.status) {
             await logEvent(cid, planId, null, 'provisional_tax_status_changed', {
                 old_status: existing.status, new_status: updates.status,
-                actor_user_id: req.user?.id,
+                actor_user_id: req.user?.userId,
             });
         } else {
             await logEvent(cid, planId, null, 'provisional_tax_plan_updated', {
-                actor_user_id: req.user?.id,
+                actor_user_id: req.user?.userId,
             });
         }
         await auditFromReq(req, 'provisional_tax_plan_updated', 'practice_provisional_tax_plans', planId);
@@ -374,14 +374,14 @@ router.delete('/:id', async (req, res) => {
     try {
         const { error } = await supabase
             .from('practice_provisional_tax_plans')
-            .update({ status: 'cancelled', updated_at: new Date().toISOString(), updated_by: req.user?.id || null })
+            .update({ status: 'cancelled', updated_at: new Date().toISOString(), updated_by: req.user?.userId || null })
             .eq('id', planId)
             .eq('company_id', cid);
         if (error) throw error;
 
         await logEvent(cid, planId, null, 'provisional_tax_status_changed', {
             old_status: existing.status, new_status: 'cancelled',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         await auditFromReq(req, 'provisional_tax_plan_cancelled', 'practice_provisional_tax_plans', planId);
 
@@ -438,7 +438,7 @@ router.post('/:id/create-periods', async (req, res) => {
 
         for (const p of periods) {
             await logEvent(cid, planId, p.id, 'provisional_tax_period_created', {
-                actor_user_id: req.user?.id,
+                actor_user_id: req.user?.userId,
                 metadata: { period_type: p.period_type },
             });
         }
@@ -489,7 +489,7 @@ router.put('/:id/periods/:periodId/status', async (req, res) => {
 
         await logEvent(cid, planId, periodId, 'provisional_tax_status_changed', {
             old_status: period.status, new_status: status,
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         await auditFromReq(req, 'provisional_tax_period_status_changed', 'practice_provisional_tax_periods', periodId, { metadata: { plan_id: planId, new_status: status } });
 
@@ -545,7 +545,7 @@ router.put('/:id/periods/:periodId', async (req, res) => {
         if (error) throw error;
 
         await logEvent(cid, planId, periodId, 'provisional_tax_period_updated', {
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         await auditFromReq(req, 'provisional_tax_period_updated', 'practice_provisional_tax_periods', periodId, { metadata: { plan_id: planId } });
 
@@ -576,9 +576,9 @@ router.post('/:id/review', async (req, res) => {
             .update({
                 status:       'reviewed',
                 reviewed_at:  reviewedAt,
-                reviewed_by:  req.user?.id || null,
+                reviewed_by:  req.user?.userId || null,
                 updated_at:   reviewedAt,
-                updated_by:   req.user?.id || null,
+                updated_by:   req.user?.userId || null,
             })
             .eq('id', planId)
             .eq('company_id', cid)
@@ -588,7 +588,7 @@ router.post('/:id/review', async (req, res) => {
 
         await logEvent(cid, planId, null, 'provisional_tax_reviewed', {
             old_status: plan.status, new_status: 'reviewed',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             notes: notes || null,
         });
         await auditFromReq(req, 'provisional_tax_reviewed', 'practice_provisional_tax_plans', planId);

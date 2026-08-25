@@ -101,7 +101,7 @@ function sanitizeConfigBody(body) {
 // Must be registered BEFORE /:id routes.
 
 router.post('/seed-from-js', async (req, res) => {
-    const actorId = req.user?.id || null;
+    const actorId = req.user?.userId || null;
     const results = [];
     const errors  = [];
 
@@ -247,7 +247,7 @@ router.post('/:id/brackets', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logConfigEvent(cfg.id, cfg.company_id, 'bracket_created', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         metadata: { bracket_id: data.id },
     });
     await auditFromReq(req, 'CREATE', 'practice_tax_bracket', data.id, { module: 'practice' });
@@ -309,7 +309,7 @@ router.put('/:id/brackets/:bracketId', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logConfigEvent(cfg.id, cfg.company_id, 'bracket_updated', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         metadata: { bracket_id: bracketId, changed: Object.keys(updates) },
     });
 
@@ -340,7 +340,7 @@ router.delete('/:id/brackets/:bracketId', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logConfigEvent(cfg.id, cfg.company_id, 'bracket_deleted', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         metadata: { bracket_id: bracketId },
     });
 
@@ -374,7 +374,7 @@ router.put('/:id/activate', async (req, res) => {
         .update({
             status:     'active',
             updated_at: now,
-            updated_by: req.user?.id || null,
+            updated_by: req.user?.userId || null,
         })
         .eq('id', cfg.id)
         .select()
@@ -384,7 +384,7 @@ router.put('/:id/activate', async (req, res) => {
     await logConfigEvent(cfg.id, cfg.company_id, 'config_activated', {
         old_status:    cfg.status,
         new_status:    'active',
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         notes:         req.body.notes || null,
     });
     await auditFromReq(req, 'UPDATE', 'practice_tax_year_config', cfg.id, { module: 'practice', action: 'activate' });
@@ -402,7 +402,7 @@ router.put('/:id/archive', async (req, res) => {
     const now = new Date().toISOString();
     const { data, error } = await supabase
         .from('practice_tax_year_configs')
-        .update({ status: 'archived', updated_at: now, updated_by: req.user?.id || null })
+        .update({ status: 'archived', updated_at: now, updated_by: req.user?.userId || null })
         .eq('id', cfg.id)
         .select()
         .single();
@@ -411,7 +411,7 @@ router.put('/:id/archive', async (req, res) => {
     await logConfigEvent(cfg.id, cfg.company_id, 'config_archived', {
         old_status:    cfg.status,
         new_status:    'archived',
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
     });
     await auditFromReq(req, 'UPDATE', 'practice_tax_year_config', cfg.id, { module: 'practice', action: 'archive' });
 
@@ -430,9 +430,9 @@ router.put('/:id/lock', async (req, res) => {
         .from('practice_tax_year_configs')
         .update({
             locked_at:  now,
-            locked_by:  req.user?.id || null,
+            locked_by:  req.user?.userId || null,
             updated_at: now,
-            updated_by: req.user?.id || null,
+            updated_by: req.user?.userId || null,
         })
         .eq('id', cfg.id)
         .select()
@@ -440,7 +440,7 @@ router.put('/:id/lock', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logConfigEvent(cfg.id, cfg.company_id, 'config_locked', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         notes: req.body.notes || null,
     });
     await auditFromReq(req, 'UPDATE', 'practice_tax_year_config', cfg.id, { module: 'practice', action: 'lock' });
@@ -476,7 +476,7 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ error: 'Invalid country_code' });
 
     body.updated_at = new Date().toISOString();
-    body.updated_by = req.user?.id || null;
+    body.updated_by = req.user?.userId || null;
 
     const { data, error } = await supabase
         .from('practice_tax_year_configs')
@@ -487,7 +487,7 @@ router.put('/:id', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logConfigEvent(cfg.id, cfg.company_id, 'config_updated', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         metadata: { changed: Object.keys(body).filter(k => !['updated_at','updated_by'].includes(k)) },
     });
     await auditFromReq(req, 'UPDATE', 'practice_tax_year_config', cfg.id, { module: 'practice' });
@@ -535,7 +535,7 @@ router.post('/', async (req, res) => {
     // Global configs created through this public endpoint are always scoped null (global)
     // company-specific would require admin pathway (future)
     body.company_id = null;
-    if (req.user?.id) { body.created_by = req.user.id; body.updated_by = req.user.id; }
+    if (req.user?.userId) { body.created_by = req.user.userId; body.updated_by = req.user.userId; }
 
     const { data, error } = await supabase
         .from('practice_tax_year_configs')
@@ -545,7 +545,7 @@ router.post('/', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logConfigEvent(data.id, data.company_id, 'config_created', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         new_status:    'draft',
     });
     await auditFromReq(req, 'CREATE', 'practice_tax_year_config', data.id, { module: 'practice' });

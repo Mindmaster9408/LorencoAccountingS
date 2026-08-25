@@ -242,15 +242,15 @@ router.post('/', async (req, res) => {
                 related_provisional_tax_plan_id:related_provisional_tax_plan_id|| null,
                 notes:                          notes          || null,
                 internal_notes:                 internal_notes || null,
-                created_by:                     req.user?.id   || null,
-                updated_by:                     req.user?.id   || null,
+                created_by:                     req.user?.userId   || null,
+                updated_by:                     req.user?.userId   || null,
             })
             .select()
             .single();
         if (error) throw error;
 
         await logEvent(cid, ret.id, 'individual_tax_return_created', {
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { tax_year: ret.tax_year, return_name: ret.return_name },
         });
         await auditFromReq(req, 'individual_tax_return_created', 'practice_individual_tax_returns', ret.id, { metadata: { tax_year: ret.tax_year } });
@@ -309,7 +309,7 @@ router.post('/:id/generate-default-items', async (req, res) => {
         if (error) throw error;
 
         await logEvent(cid, returnId, 'individual_tax_items_generated', {
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { count: items.length },
         });
         await auditFromReq(req, 'individual_tax_items_generated', 'practice_individual_tax_returns', returnId, { metadata: { count: items.length } });
@@ -352,14 +352,14 @@ router.post('/:id/recalculate-readiness', async (req, res) => {
                 readiness_score:  readiness.score,
                 readiness_status: readiness.readiness_status,
                 updated_at:       new Date().toISOString(),
-                updated_by:       req.user?.id || null,
+                updated_by:       req.user?.userId || null,
             })
             .eq('id', returnId)
             .eq('company_id', cid);
         if (error) throw error;
 
         await logEvent(cid, returnId, 'individual_tax_readiness_recalculated', {
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: readiness,
         });
 
@@ -547,7 +547,7 @@ router.post('/:id/income', async (req, res) => {
         if (error) throw error;
 
         await logEvent(cid, returnId, 'individual_tax_income_added', {
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { income_type, gross_amount },
         });
 
@@ -673,7 +673,7 @@ router.post('/:id/deductions', async (req, res) => {
         if (error) throw error;
 
         await logEvent(cid, returnId, 'individual_tax_deduction_added', {
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: { deduction_type, amount },
         });
 
@@ -814,7 +814,7 @@ router.put('/:id', async (req, res) => {
         'notes', 'internal_notes',
     ];
 
-    const updates = { updated_at: new Date().toISOString(), updated_by: req.user?.id || null };
+    const updates = { updated_at: new Date().toISOString(), updated_by: req.user?.userId || null };
     allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
 
     if (updates.status && !RETURN_STATUSES.includes(updates.status))
@@ -835,7 +835,7 @@ router.put('/:id', async (req, res) => {
             : 'individual_tax_return_updated';
         await logEvent(cid, returnId, eventType, {
             old_status: existing.status, new_status: updates.status || existing.status,
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         await auditFromReq(req, 'individual_tax_return_updated', 'practice_individual_tax_returns', returnId);
 
@@ -858,14 +858,14 @@ router.delete('/:id', async (req, res) => {
     try {
         const { error } = await supabase
             .from('practice_individual_tax_returns')
-            .update({ status: 'cancelled', updated_at: new Date().toISOString(), updated_by: req.user?.id || null })
+            .update({ status: 'cancelled', updated_at: new Date().toISOString(), updated_by: req.user?.userId || null })
             .eq('id', returnId)
             .eq('company_id', cid);
         if (error) throw error;
 
         await logEvent(cid, returnId, 'individual_tax_status_changed', {
             old_status: existing.status, new_status: 'cancelled',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
         });
         await auditFromReq(req, 'individual_tax_return_cancelled', 'practice_individual_tax_returns', returnId);
 

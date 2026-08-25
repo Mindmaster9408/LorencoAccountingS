@@ -772,11 +772,11 @@ router.post('/:returnId/review-packs/generate', async (req, res) => {
                 pack_name:           (pack_name && pack_name.trim()) || defaultName,
                 pack_status:         'generated',
                 report_generated_at: now,
-                report_generated_by: req.user?.id || null,
+                report_generated_by: req.user?.userId || null,
                 warning_flags:       snapshot.warning_flags || [],
                 report_snapshot:     snapshot,
-                created_by:          req.user?.id || null,
-                updated_by:          req.user?.id || null,
+                created_by:          req.user?.userId || null,
+                updated_by:          req.user?.userId || null,
             })
             .select()
             .single();
@@ -784,7 +784,7 @@ router.post('/:returnId/review-packs/generate', async (req, res) => {
 
         await logPackEvent(cid, pack.id, returnId, 'individual_tax_review_pack_generated', {
             new_status:    'generated',
-            actor_user_id: req.user?.id,
+            actor_user_id: req.user?.userId,
             metadata: {
                 tax_year:       taxReturn.tax_year,
                 calculation_id: resolvedCalcId,
@@ -811,7 +811,7 @@ router.get('/review-packs/:id/report-data', async (req, res) => {
     if (!pack) return res.status(404).json({ error: 'Review pack not found' });
 
     await logPackEvent(cid, pack.id, pack.tax_return_id, 'individual_tax_review_pack_report_viewed', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         metadata: { format: 'data' },
     });
 
@@ -831,7 +831,7 @@ router.get('/review-packs/:id/report-html', async (req, res) => {
     const html = buildReportHtml(pack, snapshot);
 
     await logPackEvent(cid, pack.id, pack.tax_return_id, 'individual_tax_review_pack_report_viewed', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         metadata: { format: 'html' },
     });
 
@@ -851,7 +851,7 @@ router.get('/review-packs/:id/report-pdf', async (req, res) => {
     const snapshot = pack.report_snapshot || {};
 
     await logPackEvent(cid, pack.id, pack.tax_return_id, 'individual_tax_review_pack_report_viewed', {
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         metadata: { format: 'pdf' },
     });
 
@@ -872,7 +872,7 @@ router.put('/review-packs/:id/submit-review', async (req, res) => {
     const now = new Date().toISOString();
     const { data: updated, error } = await supabase
         .from('practice_individual_tax_review_packs')
-        .update({ pack_status: 'ready_for_review', updated_at: now, updated_by: req.user?.id || null })
+        .update({ pack_status: 'ready_for_review', updated_at: now, updated_by: req.user?.userId || null })
         .eq('id', packId)
         .eq('company_id', cid)
         .select()
@@ -881,7 +881,7 @@ router.put('/review-packs/:id/submit-review', async (req, res) => {
 
     await logPackEvent(cid, pack.id, pack.tax_return_id, 'individual_tax_review_pack_submitted_review', {
         old_status: pack.pack_status, new_status: 'ready_for_review',
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
     });
     await auditFromReq(req, 'individual_tax_review_pack_submitted_review', 'practice_individual_tax_review_packs', packId);
 
@@ -906,10 +906,10 @@ router.put('/review-packs/:id/approve', async (req, res) => {
         .update({
             pack_status:    'approved',
             reviewed_at:    now,
-            reviewed_by:    req.user?.id || null,
+            reviewed_by:    req.user?.userId || null,
             approval_notes: approval_notes || null,
             updated_at:     now,
-            updated_by:     req.user?.id || null,
+            updated_by:     req.user?.userId || null,
         })
         .eq('id', packId)
         .eq('company_id', cid)
@@ -919,7 +919,7 @@ router.put('/review-packs/:id/approve', async (req, res) => {
 
     await logPackEvent(cid, pack.id, pack.tax_return_id, 'individual_tax_review_pack_approved', {
         old_status: pack.pack_status, new_status: 'approved',
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         notes: approval_notes || null,
     });
     await auditFromReq(req, 'individual_tax_review_pack_approved', 'practice_individual_tax_review_packs', packId);
@@ -949,7 +949,7 @@ router.put('/review-packs/:id/reject', async (req, res) => {
             pack_status:      'rejected',
             rejection_reason: String(rejection_reason).trim(),
             updated_at:       now,
-            updated_by:       req.user?.id || null,
+            updated_by:       req.user?.userId || null,
         })
         .eq('id', packId)
         .eq('company_id', cid)
@@ -959,7 +959,7 @@ router.put('/review-packs/:id/reject', async (req, res) => {
 
     await logPackEvent(cid, pack.id, pack.tax_return_id, 'individual_tax_review_pack_rejected', {
         old_status: pack.pack_status, new_status: 'rejected',
-        actor_user_id: req.user?.id,
+        actor_user_id: req.user?.userId,
         notes: String(rejection_reason).trim(),
     });
     await auditFromReq(req, 'individual_tax_review_pack_rejected', 'practice_individual_tax_review_packs', packId);
