@@ -1,0 +1,21 @@
+-- =============================================================================
+-- 149: Reload PostgREST schema cache (not a schema migration — a cache nudge)
+-- =============================================================================
+-- Run in Supabase SQL Editor.
+--
+-- Why: the Firmflow (Practice module) breadth audit (2026-08-24) found ~6
+-- "missing foreign key" defects (broken PostgREST table!fk_column embeds
+-- returning PGRST200 "no relationship found") across individual-tax.js,
+-- provisional-tax.js, taxpayer-profiles.js, tax-actions.js/tax-dashboard.js,
+-- billing.js, document-requests.js, and skills-matrix.js. Before writing FK-
+-- adding migrations for all of these, rule out the cheaper explanation first:
+-- this codebase has a documented history of PostgREST's in-memory schema
+-- cache going stale independently of the real Postgres schema (a real FK can
+-- exist but PostgREST hasn't picked it up yet — looks identical to a
+-- genuinely-missing FK from the API side).
+--
+-- This is NOT a destructive or structural change — it only asks PostgREST to
+-- re-read the current schema. Safe to run any time.
+-- =============================================================================
+
+NOTIFY pgrst, 'reload schema';
