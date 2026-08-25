@@ -377,7 +377,11 @@ router.post('/', async (req, res) => {
     }
 });
 
-router.get('/:id', async (req, res) => {
+// :id constrained to digits only — otherwise this single-segment wildcard
+// shadows the literal /decisions, /actions, and /events routes registered
+// further down the file (all single-segment paths too), silently 404ing
+// every request to those three list endpoints.
+router.get('/:id(\\d+)', async (req, res) => {
     const cid = req.companyId;
     try {
         const report = await _verifyReport(req.params.id, cid);
