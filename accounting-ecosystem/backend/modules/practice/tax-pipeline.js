@@ -157,9 +157,14 @@ async function _runAutoChecks(sourceType, sourceId, cid, newStage) {
 
 async function _fetchRecord(sourceType, sourceId, cid) {
     const cfg = _cfg(sourceType);
+    // practice_provisional_tax_plans has no readiness_status column (unlike
+    // the two tax-return tables) — selecting it unconditionally 404'd every
+    // provisional tax plan lookup through this shared fetcher.
+    const baseCols = 'id, company_id, tax_year, filing_stage, filing_stage_updated_at, filing_stage_updated_by, responsible_team_member_id, reviewer_team_member_id, status';
+    const cols = cfg.table === 'practice_provisional_tax_plans' ? baseCols : baseCols + ', readiness_status';
     const { data, error } = await supabase
         .from(cfg.table)
-        .select('id, company_id, tax_year, filing_stage, filing_stage_updated_at, filing_stage_updated_by, responsible_team_member_id, reviewer_team_member_id, status, readiness_status')
+        .select(cols)
         .eq('id', sourceId)
         .eq('company_id', cid)
         .single();
