@@ -1,6 +1,97 @@
 # SESSION HANDOFF — 2026-08-24 — Firmflow (Practice module) breadth audit
 
-## What this is
+## STATUS: fixes complete (2026-08-24, same day)
+
+Everything catalogued below has now been fixed, migrated, and (where this
+sandbox's environment allows) live-verified. Summary of what shipped, in
+the order it happened:
+
+1. **Migration 149** — schema-cache reload, run to rule out staleness as
+   the cause of the "missing FK" findings. Ruled out — every broken embed
+   failed identically afterward.
+2. **Migration 150** — added 198 missing foreign keys across the whole
+   module (a single systemic gap: of 72 `client_id` columns only 5 had a
+   working FK, of ~40 `team_member_id`-family columns only 4 did, same
+   near-total-absence pattern for `engagement_id`/`deadline_id`/
+   `workflow_run_id`/`task_id`/`taxpayer_profile_id`/`compliance_pack_id`/
+   `template_id`/`billing_pack_id`/`time_entry_id`/`skill_id`/
+   `certification_id`/`related_*_id`/`linked_*_id`). Generated
+   programmatically from live probe results, not hand-typed.
+3. **Migration 151** — 2 `category_id` FKs the migration-150 generator's
+   rule set accidentally excluded (`practice_skills`,
+   `practice_certifications`). Full re-scan after confirmed these were the
+   only 2 gaps remaining anywhere in the module.
+4. **Code fixes**, each committed and pushed separately, each verified with
+   `node -c` + `eslint` (zero errors throughout) and, wherever the schema
+   allowed, a live Supabase-REST probe before and after:
+   - `req.userId` → `req.user?.userId` (159 occurrences, 15 files) — this
+     property never existed anywhere in the codebase.
+   - `practice_clients` has no `client_name`/`display_name`/`company_name`
+     — only `name`. Fixed in 4 files via broken embeds (whose FK migration
+     150 had just repaired) and 6 files via direct wrong-column selects.
+   - `tax-reports.js` Risk Summary selected the wrong FK column on
+     `practice_company_tax_review_packs` (`tax_return_id` instead of
+     `company_tax_return_id`), falsely flagging every ready-for-review
+     company return as missing its pack.
+   - `company-tax-review-packs.js`: `category`→`adjustment_category`,
+     `item_label`/`item_status`→`item_name`/`status` (every company-tax
+     review pack shipped with an empty adjustments table and broken
+     readiness section) — **plus a second, audit-missed instance** of the
+     `practice_clients` display_name/company_name bug in the same file's
+     `buildSnapshot()`.
+   - `individual-tax-review-packs.js`: same client-name bug, plus
+     `income_tax_number`→`income_tax_reference`, and dropped
+     `date_of_birth`/`age_at_year_end` (neither exists on
+     `practice_taxpayer_profiles`, neither was actually used downstream).
+   - `tax-config.js` `/seed-from-js`: read the wrong constant field names
+     from `individual-tax-constants.js` — 6 medical-credit/threshold
+     fields silently seeded NULL for every tax year, every time.
+   - `auditFromReq()` called with the wrong signature (26 sites, 6 files)
+     — `(req, actionType, {plainObject})` instead of
+     `(req, actionType, entityType, entityId, extra)` — was corrupting the
+     ecosystem-wide `audit_log` table's `entity_type`/`entity_id` columns
+     for every individual/company tax return, calculation, and review
+     pack event.
+   - `dashboard.js` Risk/Activity sections: `practice_billing_packs
+     .total_value` doesn't exist (real: `proposed_invoice_value`);
+     `practice_deadline_events`/`practice_billing_pack_events.created_by`
+     doesn't exist (real: `actor_user_id`) — both sections silently
+     always empty.
+   - `workflows.js` Reorder Steps route and `executive-reporting.js`'s
+     `/decisions`/`/actions`/`/events` routes — both the same Express
+     route-shadowing bug class found earlier today in
+     `customer-invoices.js` (a bare `/:id`-style wildcard registered
+     before a literal-path route with the same segment count). Fixed with
+     a digit-only constraint rather than relocating routes.
+   - `skills-matrix.js`'s `getCompetency()` advisory helper never checked
+     any of its 3 queries for `.error`, so a genuine failure looked
+     identical to "this person really has zero skill gaps" — now throws,
+     which both existing callers (Delegation, Partner Scorecards) already
+     catch and handle with their own documented graceful-degradation
+     policy.
+   - `tax-bulk-operations.js`: `practice_tax_work_actions.source_id` is
+     NOT NULL (confirmed live) but `create_tax_actions` never set it —
+     every bulk "create tax actions" operation failed for every client.
+     Threaded the operation's own id through as `source_id`.
+   - `tax-pipeline.js`'s shared `_fetchRecord()` selected
+     `readiness_status` unconditionally across all 3 source types, but
+     `practice_provisional_tax_plans` has no such column — every
+     provisional-tax-plan pipeline lookup silently 404'd. Fixed to match
+     the table-specific guard the stage-transition check already had.
+   - **One catalogued finding turned out to be a false positive on live
+     verification**: `tax-actions.js`'s `POST /:id/create-task` (omitting
+     `review_required`/`approval_required`) does NOT fail — confirmed live
+     that `practice_tasks` accepts the insert without them (both columns
+     have a database default satisfying their NOT NULL constraint,
+     despite PostgREST's OpenAPI spec listing them as "required"). No code
+     change made — verified before fixing something that wasn't broken.
+
+No further action needed on this document's findings unless new issues
+surface during hands-on testing in the browser (this session verified via
+direct Supabase-REST/PostgREST probes throughout — a real browser
+walkthrough of Firmflow's pages has not been done by anyone yet).
+
+## What this was (original findings, now resolved above)
 
 Following the same-day Accounting/Ledger Leo full-module audit (which found the
 entire Accounts Payable write path in `suppliers.js` had never worked — wrong
