@@ -666,6 +666,14 @@ async function getCompetency(cid, teamMemberId, sourceModule) {
         supabase.from('practice_team_certifications').select('*, practice_certifications:certification_id(certification_name)').eq('company_id', cid).eq('team_member_id', teamMemberId).eq('is_active', true),
     ]);
 
+    // Never silently swallow a query failure into "no skills, no gaps" — every
+    // caller (Delegation, Planning Board, Partner Scorecards) treats a clean
+    // result as a real "nothing to flag" answer, so a masked error here would
+    // misinform a real staffing decision instead of surfacing the problem.
+    if (memberRes.error) throw new Error('getCompetency: failed to load team member — ' + memberRes.error.message);
+    if (skillsRes.error) throw new Error('getCompetency: failed to load team skills — ' + skillsRes.error.message);
+    if (certsRes.error) throw new Error('getCompetency: failed to load certifications — ' + certsRes.error.message);
+
     const member = memberRes.data;
     const allSkills = skillsRes.data || [];
     const certifications = (certsRes.data || []).map(c => ({
