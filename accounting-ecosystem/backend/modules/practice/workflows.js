@@ -77,7 +77,10 @@ router.post('/templates/:id/steps', async (req, res) => {
   }
 });
 
-router.put('/templates/:templateId/steps/:stepId', async (req, res) => {
+// :stepId constrained to digits only — otherwise this shadows the literal
+// /templates/:id/steps/reorder route below (Express matched this route first,
+// parseInt('reorder') = NaN, silently breaking the Reorder Steps feature).
+router.put('/templates/:templateId/steps/:stepId(\\d+)', async (req, res) => {
   try {
     const step = await workflowService.updateStep(req, parseInt(req.params.stepId), req.body);
     await auditFromReq(req, 'UPDATE', 'practice_workflow_template_step', step.id, { module: 'practice' });
