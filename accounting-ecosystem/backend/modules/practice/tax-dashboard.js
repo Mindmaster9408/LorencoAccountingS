@@ -12,7 +12,7 @@ const { supabase } = require('../../config/database');
 
 function today()         { return new Date().toISOString().split('T')[0]; }
 function daysFromNow(n)  { return new Date(Date.now() + n * 86400000).toISOString().split('T')[0]; }
-function clientName(c)   { return (c?.display_name || c?.company_name || '—'); }
+function clientName(c)   { return (c?.name || '—'); }
 
 // ─── GET /summary ─────────────────────────────────────────────────────────────
 // 12 KPI counts for the command-centre header cards.
@@ -246,20 +246,20 @@ router.get('/risk', async (req, res) => {
         ] = await Promise.all([
             // Overdue deadlines with client name + client_id (needed by action modal)
             supabase.from('practice_deadlines')
-                .select('id, title, due_date, status, deadline_type, client_id, clients:practice_clients!client_id(display_name, company_name)')
+                .select('id, title, due_date, status, deadline_type, client_id, clients:practice_clients!client_id(name)')
                 .eq('company_id', cid)
                 .not('status', 'in', '(completed,submitted,missed,cancelled)')
                 .lt('due_date', t).order('due_date').limit(20),
 
             // Individual returns: blocked readiness — client_id for action modal
             supabase.from('practice_individual_tax_returns')
-                .select('id, return_name, tax_year, client_id, clients:practice_clients!client_id(display_name, company_name)')
+                .select('id, return_name, tax_year, client_id, clients:practice_clients!client_id(name)')
                 .eq('company_id', cid).eq('readiness_status', 'blocked')
                 .not('status', 'in', '(completed,cancelled,submitted)').limit(20),
 
             // Company returns: blocked readiness — client_id for action modal
             supabase.from('practice_company_tax_returns')
-                .select('id, return_name, tax_year, client_id, clients:practice_clients!client_id(display_name, company_name)')
+                .select('id, return_name, tax_year, client_id, clients:practice_clients!client_id(name)')
                 .eq('company_id', cid).eq('readiness_status', 'blocked')
                 .not('status', 'in', '(completed,cancelled)').limit(20),
 
@@ -426,7 +426,7 @@ router.get('/returns', async (req, res) => {
 
     function buildIndQ() {
         let q = supabase.from('practice_individual_tax_returns')
-            .select('id, return_name, tax_year, status, readiness_status, readiness_score, responsible_team_member_id, reviewer_team_member_id, clients:practice_clients!client_id(display_name, company_name)')
+            .select('id, return_name, tax_year, status, readiness_status, readiness_score, responsible_team_member_id, reviewer_team_member_id, clients:practice_clients!client_id(name)')
             .eq('company_id', cid).neq('status', 'cancelled');
         if (tax_year)          q = q.eq('tax_year', parseInt(tax_year));
         if (status)            q = q.eq('status', status);
@@ -437,7 +437,7 @@ router.get('/returns', async (req, res) => {
 
     function buildCoQ() {
         let q = supabase.from('practice_company_tax_returns')
-            .select('id, return_name, tax_year, status, readiness_status, readiness_score, responsible_team_member_id, reviewer_team_member_id, clients:practice_clients!client_id(display_name, company_name)')
+            .select('id, return_name, tax_year, status, readiness_status, readiness_score, responsible_team_member_id, reviewer_team_member_id, clients:practice_clients!client_id(name)')
             .eq('company_id', cid).neq('status', 'cancelled');
         if (tax_year)          q = q.eq('tax_year', parseInt(tax_year));
         if (status)            q = q.eq('status', status);
@@ -448,7 +448,7 @@ router.get('/returns', async (req, res) => {
 
     function buildProvQ() {
         let q = supabase.from('practice_provisional_tax_plans')
-            .select('id, plan_name, tax_year, status, responsible_team_member_id, reviewer_team_member_id, period_1_due_date, period_2_due_date, topup_due_date, clients:practice_clients!client_id(display_name, company_name)')
+            .select('id, plan_name, tax_year, status, responsible_team_member_id, reviewer_team_member_id, period_1_due_date, period_2_due_date, topup_due_date, clients:practice_clients!client_id(name)')
             .eq('company_id', cid).neq('status', 'cancelled');
         if (tax_year) q = q.eq('tax_year', parseInt(tax_year));
         if (status)   q = q.eq('status', status);

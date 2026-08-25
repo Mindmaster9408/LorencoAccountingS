@@ -105,11 +105,11 @@ async function _enrichClientNames(packs, cid) {
     if (!ids.length) return packs;
     const { data: clients } = await supabase
         .from('practice_clients')
-        .select('id, client_name')
+        .select('id, name')
         .eq('company_id', cid)
         .in('id', ids);
     const nameMap = {};
-    (clients || []).forEach(c => { nameMap[c.id] = c.client_name; });
+    (clients || []).forEach(c => { nameMap[c.id] = c.name; });
     return packs.map(p => ({ ...p, client_name: nameMap[p.client_id] || null }));
 }
 

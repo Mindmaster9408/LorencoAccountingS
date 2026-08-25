@@ -162,11 +162,11 @@ router.get('/lines', async (req, res) => {
             const clientIds = [...new Set(lines.map(l => l.client_id).filter(Boolean))];
             const { data: clients } = await supabase
                 .from('practice_clients')
-                .select('id, client_name')
+                .select('id, name')
                 .eq('company_id', cid)
                 .in('id', clientIds);
             const nameMap = {};
-            (clients || []).forEach(c => { nameMap[c.id] = c.client_name; });
+            (clients || []).forEach(c => { nameMap[c.id] = c.name; });
             lines = lines.map(l => ({ ...l, client_name: nameMap[l.client_id] || null }));
         }
 

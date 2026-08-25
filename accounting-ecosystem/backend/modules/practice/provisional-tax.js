@@ -145,7 +145,7 @@ router.get('/', async (req, res) => {
             .from('practice_provisional_tax_plans')
             .select(`
                 *,
-                clients:practice_clients!client_id(display_name, company_name)
+                clients:practice_clients!client_id(name)
             `)
             .eq('company_id', cid)
             .order('tax_year', { ascending: false })
@@ -162,7 +162,7 @@ router.get('/', async (req, res) => {
 
         const plans = (data || []).map(p => ({
             ...p,
-            client_name: p.clients?.display_name || p.clients?.company_name || null,
+            client_name: p.clients?.name || null,
             clients: undefined,
         }));
 
@@ -275,7 +275,7 @@ router.get('/:id', async (req, res) => {
             .from('practice_provisional_tax_plans')
             .select(`
                 *,
-                clients:practice_clients!client_id(display_name, company_name)
+                clients:practice_clients!client_id(name)
             `)
             .eq('id', planId)
             .eq('company_id', cid)
@@ -292,7 +292,7 @@ router.get('/:id', async (req, res) => {
         res.json({
             plan: {
                 ...plan,
-                client_name: plan.clients?.display_name || plan.clients?.company_name || null,
+                client_name: plan.clients?.name || null,
                 clients: undefined,
             },
             periods: periods || [],

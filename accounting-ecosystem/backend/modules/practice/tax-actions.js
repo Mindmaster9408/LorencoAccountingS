@@ -112,17 +112,17 @@ router.get('/review-queue', async (req, res) => {
 
     try {
         let indQ = supabase.from('practice_individual_tax_returns')
-            .select('id, return_name, tax_year, status, readiness_status, reviewer_team_member_id, clients:practice_clients!client_id(display_name, company_name)')
+            .select('id, return_name, tax_year, status, readiness_status, reviewer_team_member_id, clients:practice_clients!client_id(name)')
             .eq('company_id', cid).eq('status', 'ready_for_review').neq('status', 'cancelled');
         if (rvId) indQ = indQ.eq('reviewer_team_member_id', rvId);
 
         let coQ = supabase.from('practice_company_tax_returns')
-            .select('id, return_name, tax_year, status, readiness_status, reviewer_team_member_id, clients:practice_clients!client_id(display_name, company_name)')
+            .select('id, return_name, tax_year, status, readiness_status, reviewer_team_member_id, clients:practice_clients!client_id(name)')
             .eq('company_id', cid).eq('status', 'ready_for_review');
         if (rvId) coQ = coQ.eq('reviewer_team_member_id', rvId);
 
         let provQ = supabase.from('practice_provisional_tax_plans')
-            .select('id, plan_name, tax_year, status, reviewer_team_member_id, clients:practice_clients!client_id(display_name, company_name)')
+            .select('id, plan_name, tax_year, status, reviewer_team_member_id, clients:practice_clients!client_id(name)')
             .eq('company_id', cid).eq('status', 'ready_for_review');
         if (rvId) provQ = provQ.eq('reviewer_team_member_id', rvId);
 
@@ -163,7 +163,7 @@ router.get('/review-queue', async (req, res) => {
 
         (indRes.data || []).forEach(r => rows.push({
             source_type: 'individual_return', source_id: r.id,
-            client_name: r.clients?.display_name || r.clients?.company_name || '—',
+            client_name: r.clients?.name || '—',
             return_name: r.return_name, tax_year: r.tax_year, status: r.status,
             readiness_status: r.readiness_status || null,
             reviewer: r.reviewer_team_member_id ? (memberMap[r.reviewer_team_member_id] || 'Member #' + r.reviewer_team_member_id) : null,
@@ -173,7 +173,7 @@ router.get('/review-queue', async (req, res) => {
 
         (coRes.data || []).forEach(r => rows.push({
             source_type: 'company_return', source_id: r.id,
-            client_name: r.clients?.display_name || r.clients?.company_name || '—',
+            client_name: r.clients?.name || '—',
             return_name: r.return_name, tax_year: r.tax_year, status: r.status,
             readiness_status: r.readiness_status || null,
             reviewer: r.reviewer_team_member_id ? (memberMap[r.reviewer_team_member_id] || 'Member #' + r.reviewer_team_member_id) : null,
@@ -183,7 +183,7 @@ router.get('/review-queue', async (req, res) => {
 
         (provRes.data || []).forEach(r => rows.push({
             source_type: 'provisional_plan', source_id: r.id,
-            client_name: r.clients?.display_name || r.clients?.company_name || '—',
+            client_name: r.clients?.name || '—',
             return_name: r.plan_name, tax_year: r.tax_year, status: r.status,
             readiness_status: null,
             reviewer: r.reviewer_team_member_id ? (memberMap[r.reviewer_team_member_id] || 'Member #' + r.reviewer_team_member_id) : null,

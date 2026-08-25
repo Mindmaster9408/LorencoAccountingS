@@ -467,14 +467,14 @@ router.get('/', async (req, res) => {
 
         const [clientsRes, membersRes] = await Promise.all([
             clientIds.length
-                ? supabase.from('practice_clients').select('id, client_name').in('id', clientIds).eq('company_id', cid)
+                ? supabase.from('practice_clients').select('id, name').in('id', clientIds).eq('company_id', cid)
                 : { data: [] },
             memberIds.length
                 ? supabase.from('practice_team_members').select('id, display_name').in('id', memberIds).eq('company_id', cid)
                 : { data: [] },
         ]);
 
-        const clientMap = Object.fromEntries((clientsRes.data || []).map(c => [c.id, c.client_name]));
+        const clientMap = Object.fromEntries((clientsRes.data || []).map(c => [c.id, c.name]));
         const memberMap = Object.fromEntries((membersRes.data || []).map(m => [m.id, m.display_name]));
 
         const enriched = (data || []).map(r => ({

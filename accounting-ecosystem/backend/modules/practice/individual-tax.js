@@ -158,7 +158,7 @@ router.get('/', async (req, res) => {
             .from('practice_individual_tax_returns')
             .select(`
                 *,
-                clients:practice_clients!client_id(display_name, company_name)
+                clients:practice_clients!client_id(name)
             `)
             .eq('company_id', cid)
             .order('tax_year', { ascending: false })
@@ -176,7 +176,7 @@ router.get('/', async (req, res) => {
 
         const returns = (data || []).map(r => ({
             ...r,
-            client_name: r.clients?.display_name || r.clients?.company_name || null,
+            client_name: r.clients?.name || null,
             clients: undefined,
         }));
 
@@ -776,7 +776,7 @@ router.get('/:id', async (req, res) => {
             .from('practice_individual_tax_returns')
             .select(`
                 *,
-                clients:practice_clients!client_id(display_name, company_name)
+                clients:practice_clients!client_id(name)
             `)
             .eq('id', returnId)
             .eq('company_id', cid)
@@ -786,7 +786,7 @@ router.get('/:id', async (req, res) => {
         res.json({
             tax_return: {
                 ...ret,
-                client_name: ret.clients?.display_name || ret.clients?.company_name || null,
+                client_name: ret.clients?.name || null,
                 clients: undefined,
             },
         });
