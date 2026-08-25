@@ -250,7 +250,7 @@ router.get('/risk', async (req, res) => {
 
       // Billing packs in draft/reviewed (oldest first)
       supabase.from('practice_billing_packs')
-        .select('id, pack_number, pack_name, status, total_value, created_at, practice_clients:client_id(name)')
+        .select('id, pack_number, pack_name, status, proposed_invoice_value, created_at, practice_clients:client_id(name)')
         .eq('company_id', cid)
         .in('status', ['draft', 'reviewed'])
         .order('created_at', { ascending: true })
@@ -315,7 +315,7 @@ router.get('/risk', async (req, res) => {
         pack_number: r.pack_number,
         pack_name:   r.pack_name,
         status:      r.status,
-        total_value: r.total_value,
+        total_value: r.proposed_invoice_value,
         created_at:  r.created_at,
         client_name: r.practice_clients?.name || null,
       })),
@@ -359,14 +359,14 @@ router.get('/activity', async (req, res) => {
 
       // Deadline events — FK exists so embedded join works
       supabase.from('practice_deadline_events')
-        .select('id, event_type, old_status, new_status, created_at, created_by, practice_deadlines:deadline_id(title, practice_clients:client_id(name))')
+        .select('id, event_type, old_status, new_status, created_at, actor_user_id, practice_deadlines:deadline_id(title, practice_clients:client_id(name))')
         .eq('company_id', cid)
         .order('created_at', { ascending: false })
         .limit(15),
 
       // Billing pack events — FK exists so embedded join works
       supabase.from('practice_billing_pack_events')
-        .select('id, event_type, old_status, new_status, created_at, created_by, practice_billing_packs:billing_pack_id(pack_number, pack_name, practice_clients:client_id(name))')
+        .select('id, event_type, old_status, new_status, created_at, actor_user_id, practice_billing_packs:billing_pack_id(pack_number, pack_name, practice_clients:client_id(name))')
         .eq('company_id', cid)
         .order('created_at', { ascending: false })
         .limit(15),
@@ -408,7 +408,7 @@ router.get('/activity', async (req, res) => {
         old_status:  e.old_status,
         new_status:  e.new_status,
         created_at:  e.created_at,
-        created_by:  e.created_by ? String(e.created_by) : null,
+        created_by:  e.actor_user_id ? String(e.actor_user_id) : null,
         label:       dl?.title || null,
         client_name: dl?.practice_clients?.name || null,
       });
@@ -422,7 +422,7 @@ router.get('/activity', async (req, res) => {
         old_status:  e.old_status,
         new_status:  e.new_status,
         created_at:  e.created_at,
-        created_by:  e.created_by ? String(e.created_by) : null,
+        created_by:  e.actor_user_id ? String(e.actor_user_id) : null,
         label:       pk ? `Pack #${pk.pack_number}${pk.pack_name ? ' — ' + pk.pack_name : ''}` : null,
         client_name: pk?.practice_clients?.name || null,
       });
