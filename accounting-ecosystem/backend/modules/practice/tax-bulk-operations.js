@@ -309,7 +309,7 @@ async function _executeAssignReviewer(cid, client, options, taxYear, result) {
     result.created_records.reviewer_assignments = (result.created_records.reviewer_assignments || 0) + updated;
 }
 
-async function _executeCreateAction(cid, client, options, taxYear, userId, result) {
+async function _executeCreateAction(cid, client, options, taxYear, userId, result, opId) {
     const actionType  = options.action_type  || 'general_followup';
     const actionTitle = options.action_title ||
         `Tax season follow-up — ${client.name}${taxYear ? ' ' + taxYear : ''}`;
@@ -331,6 +331,7 @@ async function _executeCreateAction(cid, client, options, taxYear, userId, resul
         action_status: 'open',
         due_date:      dueDate,
         source_type:   'bulk_operation',
+        source_id:     opId,
         created_by:    userId || null,
         created_at:    now(),
         updated_at:    now(),
@@ -401,7 +402,7 @@ async function executeOperation(cid, op, userId) {
                 await _executeAssignReviewer(cid, client, options, tax_year, itemResult);
 
             if (operation_type === 'create_tax_actions')
-                await _executeCreateAction(cid, client, options, tax_year, userId, itemResult);
+                await _executeCreateAction(cid, client, options, tax_year, userId, itemResult, opId);
 
             if (itemWarnings.length > 0) {
                 itemResult.item_status = 'warning';
