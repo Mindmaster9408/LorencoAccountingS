@@ -403,7 +403,7 @@ router.post('/team', async (req, res) => {
     return res.status(400).json({ error: e.message });
   }
   body.company_id = req.companyId;
-  if (req.userId) body.created_by = req.userId;
+  if (req.user?.userId) body.created_by = req.user?.userId;
 
   const { data, error } = await supabase
     .from('practice_team_members')
@@ -435,7 +435,7 @@ router.put('/team/:id', async (req, res) => {
     return res.status(400).json({ error: e.message });
   }
   body.updated_at = new Date().toISOString();
-  if (req.userId) body.updated_by = req.userId;
+  if (req.user?.userId) body.updated_by = req.user?.userId;
 
   const { data, error } = await supabase
     .from('practice_team_members')
@@ -459,7 +459,7 @@ router.delete('/team/:id', async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Team member not found' });
 
   const updates = { is_active: false, updated_at: new Date().toISOString() };
-  if (req.userId) updates.updated_by = req.userId;
+  if (req.user?.userId) updates.updated_by = req.user?.userId;
 
   const { error } = await supabase
     .from('practice_team_members')
@@ -477,7 +477,7 @@ router.put('/team/:id/reactivate', async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Team member not found' });
 
   const updates = { is_active: true, updated_at: new Date().toISOString() };
-  if (req.userId) updates.updated_by = req.userId;
+  if (req.user?.userId) updates.updated_by = req.user?.userId;
 
   const { error } = await supabase
     .from('practice_team_members')
@@ -580,7 +580,7 @@ router.post('/team/sync-from-users', async (req, res) => {
       can_review_work:   false,
       can_approve_work:  false,
       is_active:         true,
-      created_by:        req.userId || null
+      created_by:        req.user?.userId || null
     }));
 
     const { data: inserted, error: insErr } = await supabase
@@ -697,7 +697,7 @@ router.post('/clients/sync-from-eco', async (req, res) => {
       id_number:     ec.id_number || null,
       client_type:   ec.client_type === 'individual' ? 'individual' : 'company',
       is_active:     true,
-      created_by:    req.userId || null
+      created_by:    req.user?.userId || null
     }));
 
     const { data: inserted, error: insErr } = await supabase
@@ -841,7 +841,7 @@ router.post('/clients', async (req, res) => {
 
   body.company_id = req.companyId;
   body.is_active = true;
-  if (req.userId) body.created_by = req.userId;
+  if (req.user?.userId) body.created_by = req.user?.userId;
 
   const idForLookup   = body.id_number || body.registration_number || null;
   const forceCreate   = !!req.body.force_create;    // user confirms they want a new record despite name match
@@ -1044,7 +1044,7 @@ router.put('/clients/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid risk_rating' });
 
   body.updated_at = new Date().toISOString();
-  if (req.userId) body.updated_by = req.userId;
+  if (req.user?.userId) body.updated_by = req.user?.userId;
 
   const { data, error } = await supabase
     .from('practice_clients')
@@ -1114,7 +1114,7 @@ router.delete('/clients/:id', async (req, res) => {
     onboarding_status: 'archived',
     updated_at: new Date().toISOString()
   };
-  if (req.userId) updates.updated_by = req.userId;
+  if (req.user?.userId) updates.updated_by = req.user?.userId;
 
   const { error } = await supabase
     .from('practice_clients')
@@ -1174,7 +1174,7 @@ router.post('/clients/:id/contacts', async (req, res) => {
 
   body.client_id = parseInt(req.params.id);
   body.company_id = req.companyId;
-  if (req.userId) body.created_by = req.userId;
+  if (req.user?.userId) body.created_by = req.user?.userId;
 
   const { data, error } = await supabase.from('practice_client_contacts').insert(body).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -1194,7 +1194,7 @@ router.put('/clients/:clientId/contacts/:contactId', async (req, res) => {
 
   const body = sanitizeContactBody(req.body);
   body.updated_at = new Date().toISOString();
-  if (req.userId) body.updated_by = req.userId;
+  if (req.user?.userId) body.updated_by = req.user?.userId;
 
   const { data, error } = await supabase
     .from('practice_client_contacts')
@@ -1219,7 +1219,7 @@ router.delete('/clients/:clientId/contacts/:contactId', async (req, res) => {
   if (!existing.data) return res.status(404).json({ error: 'Contact not found' });
 
   const updates = { is_active: false, updated_at: new Date().toISOString() };
-  if (req.userId) updates.updated_by = req.userId;
+  if (req.user?.userId) updates.updated_by = req.user?.userId;
 
   const { error } = await supabase
     .from('practice_client_contacts')

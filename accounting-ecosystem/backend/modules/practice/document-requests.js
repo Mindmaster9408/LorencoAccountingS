@@ -147,7 +147,7 @@ router.post('/checklists', async (req, res) => {
             checklist_name: checklist_name.trim(),
             category:       cat,
             description:    description || null,
-            created_by:     req.userId || null,
+            created_by:     req.user?.userId || null,
         })
         .select().single();
     if (error) return res.status(500).json({ error: error.message });
@@ -272,7 +272,7 @@ router.post('/checklists/:id/apply', async (req, res) => {
         required_by_date:  required_by_date || null,
         requested_at:      now,
         notes:             `Applied from checklist: ${clOk.data.checklist_name}`,
-        created_by:        req.userId || null,
+        created_by:        req.user?.userId || null,
     }));
 
     const { data: created, error: cErr } = await supabase
@@ -325,7 +325,7 @@ router.put('/checklists/:id', async (req, res) => {
     }
     if (description !== undefined) updates.description = description || null;
     if (is_active   !== undefined) updates.is_active   = is_active === true || is_active === 'true';
-    if (req.userId) updates.updated_by = req.userId;
+    if (req.user?.userId) updates.updated_by = req.user?.userId;
 
     const { data, error } = await supabase
         .from('practice_document_checklists')
@@ -459,7 +459,7 @@ router.post('/', async (req, res) => {
             related_communication_id: related_communication_id ? parseInt(related_communication_id) : null,
             notes:                    notes          || null,
             internal_notes:           internal_notes || null,
-            created_by:               req.userId     || null,
+            created_by:               req.user?.userId     || null,
         })
         .select().single();
     if (error) return res.status(500).json({ error: error.message });
@@ -498,7 +498,7 @@ router.put('/:id/received', async (req, res) => {
             request_status: 'received',
             received_at:    now,
             updated_at:     now,
-            updated_by:     req.userId || null,
+            updated_by:     req.user?.userId || null,
         })
         .eq('id', req.params.id)
         .eq('company_id', req.companyId)
@@ -528,7 +528,7 @@ router.put('/:id/reminder-sent', async (req, res) => {
             reminder_count:   (existing.reminder_count || 0) + 1,
             last_reminder_at: now,
             updated_at:       now,
-            updated_by:       req.userId || null,
+            updated_by:       req.user?.userId || null,
         })
         .eq('id', req.params.id)
         .eq('company_id', req.companyId)
@@ -556,7 +556,7 @@ router.put('/:id/waive', async (req, res) => {
             request_status: 'waived',
             notes:          notes ? (existing.notes ? existing.notes + '\nWaived: ' + notes : 'Waived: ' + notes) : existing.notes,
             updated_at:     now,
-            updated_by:     req.userId || null,
+            updated_by:     req.user?.userId || null,
         })
         .eq('id', req.params.id)
         .eq('company_id', req.companyId)
@@ -591,7 +591,7 @@ router.put('/:id', async (req, res) => {
     if (updates.assigned_team_member_id !== undefined)
         updates.assigned_team_member_id = updates.assigned_team_member_id ? parseInt(updates.assigned_team_member_id) : null;
 
-    if (req.userId) updates.updated_by = req.userId;
+    if (req.user?.userId) updates.updated_by = req.user?.userId;
 
     const { data, error } = await supabase
         .from('practice_document_requests')
@@ -616,7 +616,7 @@ router.delete('/:id', async (req, res) => {
         .update({
             request_status: 'cancelled',
             updated_at:     new Date().toISOString(),
-            updated_by:     req.userId || null,
+            updated_by:     req.user?.userId || null,
         })
         .eq('id', req.params.id)
         .eq('company_id', req.companyId);

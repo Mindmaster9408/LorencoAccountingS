@@ -210,7 +210,7 @@ router.post('/', async (req, res) => {
             due_date:            due_date || sub.payment_due_date || null,
             notes:               notes || null,
             internal_notes:      internal_notes || null,
-            created_by:          req.userId || null,
+            created_by:          req.user?.userId || null,
         };
 
         const { data: created, error: insertErr } = await supabase
@@ -222,7 +222,7 @@ router.post('/', async (req, res) => {
 
         await _writeEvent(cid, created.id, 'payment_created', {
             amount: row.original_amount, balance_before: 0, balance_after: row.balance_outstanding,
-            actor_user_id: req.userId, notes: 'Payment case created from submission #' + sid,
+            actor_user_id: req.user?.userId, notes: 'Payment case created from submission #' + sid,
         });
         await auditFromReq(req, 'CREATE', 'tax_payment', created.id, { submission_id: sid, direction });
         res.status(201).json({ ok: true, payment: created });
@@ -266,7 +266,7 @@ router.put('/:id', async (req, res) => {
         const allowed = ['due_date', 'notes', 'internal_notes'];
         const updates = _pick(req.body, allowed);
         if (!Object.keys(updates).length) return res.status(400).json({ error: 'No updatable fields provided' });
-        updates.updated_by = req.userId || null;
+        updates.updated_by = req.user?.userId || null;
 
         const { data: updated, error: updateErr } = await supabase
             .from('practice_tax_payments')
@@ -300,14 +300,14 @@ router.delete('/:id', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_tax_payments')
-            .update({ status: 'cancelled', updated_by: req.userId || null })
+            .update({ status: 'cancelled', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
         await _writeEvent(cid, id, 'payment_cancelled', {
             balance_before: payment.balance_outstanding, balance_after: payment.balance_outstanding,
-            actor_user_id: req.userId, notes: req.body.notes || null,
+            actor_user_id: req.user?.userId, notes: req.body.notes || null,
         });
         await auditFromReq(req, 'tax_payment_cancelled', 'tax_payment', id, { old_status: payment.status });
         res.json({ ok: true, id, status: 'cancelled' });
@@ -352,7 +352,7 @@ async function _applyLedgerMovement(req, res, { eventType, field, allowedDirecti
                 [field]:             next[field],
                 balance_outstanding: balanceAfter,
                 status:              newStatus,
-                updated_by:          req.userId || null,
+                updated_by:          req.user?.userId || null,
             })
             .eq('id', id)
             .eq('company_id', cid)
@@ -363,7 +363,7 @@ async function _applyLedgerMovement(req, res, { eventType, field, allowedDirecti
         await _writeEvent(cid, id, eventType, {
             amount: _round2(amount), payment_date: payment_date || null, payment_method: payment_method || null,
             reference: reference || null, balance_before: balanceBefore, balance_after: balanceAfter,
-            actor_user_id: req.userId, notes: notes || null,
+            actor_user_id: req.user?.userId, notes: notes || null,
         });
         await auditFromReq(req, eventType, 'tax_payment', id, { amount: _round2(amount), new_status: newStatus });
         res.json({ ok: true, payment: updated });

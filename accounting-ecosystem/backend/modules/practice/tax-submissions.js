@@ -158,14 +158,14 @@ router.post('/create-from-pipeline', async (req, res) => {
                 tax_year:          tax_year || source.tax_year || null,
                 submission_type,
                 submission_status: 'draft',
-                created_by:        req.userId || null,
+                created_by:        req.user?.userId || null,
             })
             .select('id, submission_status, source_type, source_id, submission_type, tax_year, client_id, created_at')
             .single();
 
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, created.id, 'submission_created', null, 'draft', req.userId, 'Created from pipeline', { source_type, source_id: sid, submission_type });
+        await _writeEvent(cid, created.id, 'submission_created', null, 'draft', req.user?.userId, 'Created from pipeline', { source_type, source_id: sid, submission_type });
         await auditFromReq(req, 'CREATE', 'tax_submission', created.id, { source_type, source_id: sid, via: 'pipeline' });
         res.status(201).json({ ok: true, submission: created });
     } catch (err) {
@@ -258,14 +258,14 @@ router.post('/', async (req, res) => {
                 related_compliance_pack_id: related_compliance_pack_id || null,
                 related_review_pack_id:    related_review_pack_id || null,
                 related_calculation_id:    related_calculation_id || null,
-                created_by:                req.userId || null,
+                created_by:                req.user?.userId || null,
             })
             .select('*')
             .single();
 
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, created.id, 'submission_created', null, 'draft', req.userId, null, { source_type, source_id: sid, submission_type });
+        await _writeEvent(cid, created.id, 'submission_created', null, 'draft', req.user?.userId, null, { source_type, source_id: sid, submission_type });
         await auditFromReq(req, 'CREATE', 'tax_submission', created.id, { source_type, source_id: sid, submission_type });
         res.status(201).json({ ok: true, submission: created });
     } catch (err) {
@@ -322,7 +322,7 @@ router.put('/:id', async (req, res) => {
         ];
         const updates = _pick(req.body, allowed);
         if (!Object.keys(updates).length) return res.status(400).json({ error: 'No updatable fields provided' });
-        updates.updated_by = req.userId || null;
+        updates.updated_by = req.user?.userId || null;
 
         const { data: updated, error: updateErr } = await supabase
             .from('practice_tax_submissions')
@@ -334,7 +334,7 @@ router.put('/:id', async (req, res) => {
 
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'submission_updated', sub.submission_status, sub.submission_status, req.userId, null, { fields: Object.keys(updates) });
+        await _writeEvent(cid, id, 'submission_updated', sub.submission_status, sub.submission_status, req.user?.userId, null, { fields: Object.keys(updates) });
         await auditFromReq(req, 'UPDATE', 'tax_submission', id, { fields: Object.keys(updates) });
         res.json({ ok: true, submission: updated });
     } catch (err) {
@@ -358,13 +358,13 @@ router.delete('/:id', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_tax_submissions')
-            .update({ submission_status: 'cancelled', updated_by: req.userId || null })
+            .update({ submission_status: 'cancelled', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid);
 
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'submission_cancelled', sub.submission_status, 'cancelled', req.userId, req.body.notes || null, {});
+        await _writeEvent(cid, id, 'submission_cancelled', sub.submission_status, 'cancelled', req.user?.userId, req.body.notes || null, {});
         await auditFromReq(req, 'tax_submission_cancelled', 'tax_submission', id, { old_status: sub.submission_status });
         res.json({ ok: true, id, submission_status: 'cancelled' });
     } catch (err) {
@@ -406,14 +406,14 @@ router.put('/:id/mark-submitted', async (req, res) => {
                 submission_method:          submission_method || null,
                 submitted_by_team_member_id: submitted_by_team_member_id || null,
                 evidence_summary:           evidence_summary || null,
-                updated_by:                 req.userId || null,
+                updated_by:                 req.user?.userId || null,
             })
             .eq('id', id)
             .eq('company_id', cid);
 
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'submission_marked_submitted', 'draft', 'submitted', req.userId, null, { submission_reference, submission_method });
+        await _writeEvent(cid, id, 'submission_marked_submitted', 'draft', 'submitted', req.user?.userId, null, { submission_reference, submission_method });
         await auditFromReq(req, 'tax_submission_marked_submitted', 'tax_submission', id, { submitted_at, submission_reference });
         res.json({ ok: true, id, submission_status: 'submitted' });
     } catch (err) {
@@ -446,14 +446,14 @@ router.put('/:id/record-acknowledgement', async (req, res) => {
                 acknowledgement_reference:  acknowledgement_reference || null,
                 acknowledgement_received_at,
                 acknowledgement_file_note:  acknowledgement_file_note || null,
-                updated_by:                 req.userId || null,
+                updated_by:                 req.user?.userId || null,
             })
             .eq('id', id)
             .eq('company_id', cid);
 
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'acknowledgement_recorded', 'submitted', 'acknowledged', req.userId, null, { acknowledgement_reference });
+        await _writeEvent(cid, id, 'acknowledgement_recorded', 'submitted', 'acknowledged', req.user?.userId, null, { acknowledgement_reference });
         await auditFromReq(req, 'tax_acknowledgement_recorded', 'tax_submission', id, { acknowledgement_reference });
         res.json({ ok: true, id, submission_status: 'acknowledged' });
     } catch (err) {
@@ -499,14 +499,14 @@ router.put('/:id/record-assessment', async (req, res) => {
                 amount_payable:         amount_payable   != null ? Number(amount_payable)   : null,
                 payment_due_date:       payment_due_date || null,
                 assessment_file_note:   assessment_file_note || null,
-                updated_by:             req.userId || null,
+                updated_by:             req.user?.userId || null,
             })
             .eq('id', id)
             .eq('company_id', cid);
 
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'assessment_recorded', sub.submission_status, 'assessed', req.userId, null, { assessment_outcome, assessment_reference });
+        await _writeEvent(cid, id, 'assessment_recorded', sub.submission_status, 'assessed', req.user?.userId, null, { assessment_outcome, assessment_reference });
         await auditFromReq(req, 'tax_assessment_recorded', 'tax_submission', id, { assessment_outcome, assessment_reference });
         res.json({ ok: true, id, submission_status: 'assessed', assessment_outcome });
     } catch (err) {
@@ -536,14 +536,14 @@ router.put('/:id/set-follow-up', async (req, res) => {
                 follow_up_due_date:         follow_up_due_date  || null,
                 follow_up_notes:            follow_up_notes     || null,
                 responsible_team_member_id: responsible_team_member_id || sub.responsible_team_member_id || null,
-                updated_by:                 req.userId || null,
+                updated_by:                 req.user?.userId || null,
             })
             .eq('id', id)
             .eq('company_id', cid);
 
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'follow_up_set', sub.submission_status, sub.submission_status, req.userId, null, { follow_up_required, follow_up_due_date });
+        await _writeEvent(cid, id, 'follow_up_set', sub.submission_status, sub.submission_status, req.user?.userId, null, { follow_up_required, follow_up_due_date });
         await auditFromReq(req, 'tax_follow_up_set', 'tax_submission', id, { follow_up_required, follow_up_due_date });
         res.json({ ok: true, id, follow_up_required: Boolean(follow_up_required), follow_up_due_date: follow_up_due_date || null });
     } catch (err) {
@@ -612,14 +612,14 @@ router.post('/:id/evidence', async (req, res) => {
                 file_name:                  file_name                  || null,
                 file_mime_type:             file_mime_type             || null,
                 file_size_bytes:            file_size_bytes            || null,
-                created_by:                 req.userId                 || null,
+                created_by:                 req.user?.userId                 || null,
             })
             .select('*')
             .single();
 
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, id, 'evidence_added', sub.submission_status, sub.submission_status, req.userId, null, { evidence_type, evidence_title });
+        await _writeEvent(cid, id, 'evidence_added', sub.submission_status, sub.submission_status, req.user?.userId, null, { evidence_type, evidence_title });
         await auditFromReq(req, 'CREATE', 'tax_submission_evidence', created.id, { submission_id: id, evidence_type });
         res.status(201).json({ ok: true, evidence: created });
     } catch (err) {
@@ -679,14 +679,14 @@ router.put('/:id/evidence/:evidenceId/verify', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_tax_submission_evidence')
-            .update({ is_verified: true, verified_at: _now(), verified_by: req.userId || null })
+            .update({ is_verified: true, verified_at: _now(), verified_by: req.user?.userId || null })
             .eq('id', evidenceId)
             .eq('submission_id', id)
             .eq('company_id', cid);
 
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'evidence_verified', null, null, req.userId, null, { evidence_id: evidenceId, evidence_type: ev.evidence_type });
+        await _writeEvent(cid, id, 'evidence_verified', null, null, req.user?.userId, null, { evidence_id: evidenceId, evidence_type: ev.evidence_type });
         await auditFromReq(req, 'evidence_verified', 'tax_submission_evidence', evidenceId, { submission_id: id });
         res.json({ ok: true, evidence_id: evidenceId, is_verified: true });
     } catch (err) {
@@ -709,7 +709,7 @@ router.delete('/:id/evidence/:evidenceId', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_tax_submission_evidence')
-            .update({ is_deleted: true, deleted_at: _now(), deleted_by: req.userId || null })
+            .update({ is_deleted: true, deleted_at: _now(), deleted_by: req.user?.userId || null })
             .eq('id', evidenceId)
             .eq('submission_id', id)
             .eq('company_id', cid);
@@ -739,12 +739,12 @@ router.put('/:id/mark-correction-required', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_tax_submissions')
-            .update({ submission_status: 'correction_required', updated_by: req.userId || null })
+            .update({ submission_status: 'correction_required', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'correction_required', sub.submission_status, 'correction_required', req.userId, req.body.notes || null, {});
+        await _writeEvent(cid, id, 'correction_required', sub.submission_status, 'correction_required', req.user?.userId, req.body.notes || null, {});
         await auditFromReq(req, 'tax_submission_correction_required', 'tax_submission', id, { old_status: sub.submission_status });
         res.json({ ok: true, id, submission_status: 'correction_required' });
     } catch (err) {
@@ -768,12 +768,12 @@ router.put('/:id/mark-objection-required', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_tax_submissions')
-            .update({ submission_status: 'objection_required', updated_by: req.userId || null })
+            .update({ submission_status: 'objection_required', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'objection_required', sub.submission_status, 'objection_required', req.userId, req.body.notes || null, {});
+        await _writeEvent(cid, id, 'objection_required', sub.submission_status, 'objection_required', req.user?.userId, req.body.notes || null, {});
         await auditFromReq(req, 'tax_submission_objection_required', 'tax_submission', id, { old_status: sub.submission_status });
         res.json({ ok: true, id, submission_status: 'objection_required' });
     } catch (err) {
@@ -799,12 +799,12 @@ router.put('/:id/mark-completed', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_tax_submissions')
-            .update({ submission_status: 'completed', updated_by: req.userId || null })
+            .update({ submission_status: 'completed', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'submission_completed', sub.submission_status, 'completed', req.userId, req.body.notes || null, {});
+        await _writeEvent(cid, id, 'submission_completed', sub.submission_status, 'completed', req.user?.userId, req.body.notes || null, {});
         await auditFromReq(req, 'tax_submission_completed', 'tax_submission', id, { old_status: sub.submission_status });
         res.json({ ok: true, id, submission_status: 'completed' });
     } catch (err) {

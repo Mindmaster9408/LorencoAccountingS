@@ -248,12 +248,12 @@ router.post('/templates', async (req, res) => {
             settings:      settings   || {},
             is_active:     true,
             is_default:    false,
-            created_by:    req.userId || null,
+            created_by:    req.user?.userId || null,
         })
         .select().single();
 
     if (error) return res.status(500).json({ error: error.message });
-    await logTemplateEvent(cid, data.id, 'tax_checklist_template_created', { actorUserId: req.userId });
+    await logTemplateEvent(cid, data.id, 'tax_checklist_template_created', { actorUserId: req.user?.userId });
     await auditFromReq(req, 'CREATE', 'practice_tax_checklist_template', data.id, { module: 'practice' });
     res.status(201).json({ template: data });
 });
@@ -280,7 +280,7 @@ router.put('/templates/:id', async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Template not found' });
 
     const allowed = ['template_name', 'template_type', 'description', 'client_type', 'tax_year', 'is_active', 'settings'];
-    const updates = { updated_at: new Date().toISOString(), updated_by: req.userId || null };
+    const updates = { updated_at: new Date().toISOString(), updated_by: req.user?.userId || null };
     allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
 
     if (updates.template_type && !TEMPLATE_TYPES.includes(updates.template_type))
@@ -297,7 +297,7 @@ router.put('/templates/:id', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     const evtType = updates.is_active === false ? 'tax_checklist_template_deactivated' : 'tax_checklist_template_updated';
-    await logTemplateEvent(cid, data.id, evtType, { actorUserId: req.userId });
+    await logTemplateEvent(cid, data.id, evtType, { actorUserId: req.user?.userId });
     await auditFromReq(req, 'UPDATE', 'practice_tax_checklist_template', data.id, { module: 'practice' });
     res.json({ template: data });
 });
@@ -313,12 +313,12 @@ router.delete('/templates/:id', async (req, res) => {
 
     const { error } = await supabase
         .from('practice_tax_checklist_templates')
-        .update({ is_active: false, updated_at: new Date().toISOString(), updated_by: req.userId || null })
+        .update({ is_active: false, updated_at: new Date().toISOString(), updated_by: req.user?.userId || null })
         .eq('id', req.params.id)
         .eq('company_id', cid);
     if (error) return res.status(500).json({ error: error.message });
 
-    await logTemplateEvent(cid, parseInt(req.params.id), 'tax_checklist_template_deactivated', { actorUserId: req.userId });
+    await logTemplateEvent(cid, parseInt(req.params.id), 'tax_checklist_template_deactivated', { actorUserId: req.user?.userId });
     await auditFromReq(req, 'DEACTIVATE', 'practice_tax_checklist_template', parseInt(req.params.id), { module: 'practice' });
     res.json({ success: true });
 });
@@ -392,7 +392,7 @@ router.post('/templates/:id/items', async (req, res) => {
         .select().single();
     if (error) return res.status(500).json({ error: error.message });
 
-    await logTemplateEvent(cid, templateId, 'tax_checklist_item_created', { actorUserId: req.userId, metadata: { item_id: data.id } });
+    await logTemplateEvent(cid, templateId, 'tax_checklist_item_created', { actorUserId: req.user?.userId, metadata: { item_id: data.id } });
     res.status(201).json({ item: data });
 });
 
@@ -426,7 +426,7 @@ router.put('/templates/:id/items/:itemId', async (req, res) => {
         .select().single();
     if (error) return res.status(500).json({ error: error.message });
 
-    await logTemplateEvent(cid, templateId, 'tax_checklist_item_updated', { actorUserId: req.userId, metadata: { item_id: data.id } });
+    await logTemplateEvent(cid, templateId, 'tax_checklist_item_updated', { actorUserId: req.user?.userId, metadata: { item_id: data.id } });
     res.json({ item: data });
 });
 
@@ -484,7 +484,7 @@ router.post('/seed-defaults', async (req, res) => {
                 is_active:     true,
                 is_default:    true,
                 settings:      {},
-                created_by:    req.userId || null,
+                created_by:    req.user?.userId || null,
             })
             .select().single();
 
@@ -507,7 +507,7 @@ router.post('/seed-defaults', async (req, res) => {
             await supabase.from('practice_tax_checklist_template_items').insert(itemRows);
         }
 
-        await logTemplateEvent(cid, newTpl.id, 'tax_checklist_defaults_seeded', { actorUserId: req.userId });
+        await logTemplateEvent(cid, newTpl.id, 'tax_checklist_defaults_seeded', { actorUserId: req.user?.userId });
         created++;
     }
 
@@ -629,7 +629,7 @@ router.post('/templates/:id/apply', async (req, res) => {
                 request_status:      'requested',
                 required_by_date:    dueDate || null,
                 requested_at:        now,
-                created_by:          req.userId || null,
+                created_by:          req.user?.userId || null,
             });
             if (!drErr) { docRequestsCreated++; existingDocTitles.add(item.item_name.toLowerCase()); }
         }
@@ -682,7 +682,7 @@ router.post('/templates/:id/apply', async (req, res) => {
     }
 
     await logTemplateEvent(cid, templateId, 'tax_checklist_applied', {
-        actorUserId: req.userId,
+        actorUserId: req.user?.userId,
         metadata: { client_id: clientIdInt, doc_requests_created: docRequestsCreated, pack_items_created: packItemsCreated, tax_items_created: taxItemsCreated, skipped },
     });
     await auditFromReq(req, 'APPLY', 'practice_tax_checklist_template', templateId, {

@@ -257,7 +257,7 @@ router.post('/', async (req, res) => {
             reviewer_team_member_id:    reviewer_team_member_id    ? parseInt(reviewer_team_member_id)    : null,
             notes:                      notes          || null,
             internal_notes:             internal_notes || null,
-            created_by:                 req.userId     || null,
+            created_by:                 req.user?.userId     || null,
         })
         .select().single();
 
@@ -311,7 +311,7 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ error: 'Invalid tax_status' });
     if (updates.marital_status && !MARITAL_STATUSES.includes(updates.marital_status))
         return res.status(400).json({ error: 'Invalid marital_status' });
-    if (req.userId) updates.updated_by = req.userId;
+    if (req.user?.userId) updates.updated_by = req.user?.userId;
 
     const { data, error } = await supabase
         .from('practice_taxpayer_profiles')
@@ -338,7 +338,7 @@ router.delete('/:id', async (req, res) => {
 
     const { error } = await supabase
         .from('practice_taxpayer_profiles')
-        .update({ tax_status: 'ceased', updated_at: new Date().toISOString(), updated_by: req.userId || null })
+        .update({ tax_status: 'ceased', updated_at: new Date().toISOString(), updated_by: req.user?.userId || null })
         .eq('id', req.params.id)
         .eq('company_id', cid);
 
@@ -633,7 +633,7 @@ router.post('/:id/recalculate-readiness', async (req, res) => {
 
     const { data, error } = await supabase
         .from('practice_taxpayer_profiles')
-        .update({ readiness_score: score, readiness_status, updated_at: now, updated_by: req.userId || null })
+        .update({ readiness_score: score, readiness_status, updated_at: now, updated_by: req.user?.userId || null })
         .eq('id', profileId)
         .eq('company_id', cid)
         .select().single();

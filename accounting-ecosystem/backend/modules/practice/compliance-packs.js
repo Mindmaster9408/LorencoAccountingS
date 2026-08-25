@@ -283,13 +283,13 @@ router.post('/', async (req, res) => {
             notes:                   notes          || null,
             internal_notes:          internal_notes || null,
             settings:                settings && typeof settings === 'object' ? settings : {},
-            created_by:              req.userId || null,
+            created_by:              req.user?.userId || null,
         })
         .select().single();
 
     if (error) return res.status(500).json({ error: error.message });
 
-    await logPackEvent(cid, data.id, 'compliance_pack_created', null, 'draft', req.userId, null, { pack_type });
+    await logPackEvent(cid, data.id, 'compliance_pack_created', null, 'draft', req.user?.userId, null, { pack_type });
     await auditFromReq(req, 'CREATE', 'practice_compliance_pack', data.id, { module: 'practice', pack_type });
 
     res.status(201).json({ compliance_pack: data });
@@ -334,7 +334,7 @@ router.put('/:id', async (req, res) => {
     if (updates.status !== undefined && !PACK_STATUSES.includes(updates.status))
         return res.status(400).json({ error: 'Invalid status' });
     if (updates.pack_name !== undefined) updates.pack_name = updates.pack_name.trim();
-    if (req.userId) updates.updated_by = req.userId;
+    if (req.user?.userId) updates.updated_by = req.user?.userId;
 
     const { data, error } = await supabase
         .from('practice_compliance_packs')
@@ -346,7 +346,7 @@ router.put('/:id', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     if (updates.status && updates.status !== existing.status) {
-        await logPackEvent(cid, data.id, 'compliance_pack_updated', existing.status, data.status, req.userId, null, {});
+        await logPackEvent(cid, data.id, 'compliance_pack_updated', existing.status, data.status, req.user?.userId, null, {});
     }
     await auditFromReq(req, 'UPDATE', 'practice_compliance_pack', data.id, { module: 'practice' });
 
@@ -363,13 +363,13 @@ router.delete('/:id', async (req, res) => {
     const now = new Date().toISOString();
     const { error } = await supabase
         .from('practice_compliance_packs')
-        .update({ status: 'cancelled', updated_at: now, updated_by: req.userId || null })
+        .update({ status: 'cancelled', updated_at: now, updated_by: req.user?.userId || null })
         .eq('id', req.params.id)
         .eq('company_id', cid);
 
     if (error) return res.status(500).json({ error: error.message });
 
-    await logPackEvent(cid, parseInt(req.params.id), 'compliance_pack_cancelled', existing.status, 'cancelled', req.userId, null, {});
+    await logPackEvent(cid, parseInt(req.params.id), 'compliance_pack_cancelled', existing.status, 'cancelled', req.user?.userId, null, {});
     await auditFromReq(req, 'UPDATE', 'practice_compliance_pack', parseInt(req.params.id), {
         module: 'practice', action: 'compliance_pack_cancelled',
     });
@@ -398,14 +398,14 @@ router.post('/:id/recalculate-readiness', async (req, res) => {
 
     const { data, error } = await supabase
         .from('practice_compliance_packs')
-        .update({ readiness_score: score, readiness_status, updated_at: now, updated_by: req.userId || null })
+        .update({ readiness_score: score, readiness_status, updated_at: now, updated_by: req.user?.userId || null })
         .eq('id', req.params.id)
         .eq('company_id', cid)
         .select().single();
 
     if (error) return res.status(500).json({ error: error.message });
 
-    await logPackEvent(cid, data.id, 'compliance_pack_readiness_recalculated', null, null, req.userId, null, {
+    await logPackEvent(cid, data.id, 'compliance_pack_readiness_recalculated', null, null, req.user?.userId, null, {
         score, readiness_status, item_count: (items || []).length,
     });
     await auditFromReq(req, 'UPDATE', 'practice_compliance_pack', data.id, {
@@ -623,7 +623,7 @@ router.post('/:id/generate-default-items', async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    await logPackEvent(cid, packId, 'compliance_pack_defaults_generated', null, null, req.userId, null, {
+    await logPackEvent(cid, packId, 'compliance_pack_defaults_generated', null, null, req.user?.userId, null, {
         pack_type: pack.pack_type, created_count: created.length,
     });
     await auditFromReq(req, 'CREATE', 'practice_compliance_pack_item', packId, {
@@ -709,7 +709,7 @@ router.post('/:id/generate-from-documents', async (req, res) => {
 
     if (cErr) return res.status(500).json({ error: cErr.message });
 
-    await logPackEvent(cid, packId, 'compliance_pack_documents_generated', null, null, req.userId, null, {
+    await logPackEvent(cid, packId, 'compliance_pack_documents_generated', null, null, req.user?.userId, null, {
         created_count: created.length, skipped: alreadyLinked.size,
     });
     await auditFromReq(req, 'CREATE', 'practice_compliance_pack_item', packId, {

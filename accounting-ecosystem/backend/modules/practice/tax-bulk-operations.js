@@ -510,14 +510,14 @@ router.post('/', async (req, res) => {
         source_filter:    filters       && typeof filters       === 'object' ? filters       : {},
         options:          options       && typeof options        === 'object' ? options       : {},
         preview_snapshot: preview_snapshot && typeof preview_snapshot === 'object' ? preview_snapshot : {},
-        created_by:       req.userId || null,
+        created_by:       req.user?.userId || null,
         created_at:       now(),
         updated_at:       now(),
     }).select().single();
 
     if (error) return res.status(500).json({ error: error.message });
 
-    await logBulkEvent(cid, data.id, 'bulk_operation_created', req.userId, null, { operation_type });
+    await logBulkEvent(cid, data.id, 'bulk_operation_created', req.user?.userId, null, { operation_type });
     await auditFromReq(req, 'CREATE', 'practice_tax_bulk_operation', data.id, { module: 'practice', operation_type });
 
     res.status(201).json({ operation: data });
@@ -579,12 +579,12 @@ router.post('/:id/execute', async (req, res) => {
         .update({ operation_status: 'running', started_at: now(), updated_at: now() })
         .eq('id', opId);
 
-    await logBulkEvent(cid, opId, 'bulk_operation_executed', req.userId, null,
+    await logBulkEvent(cid, opId, 'bulk_operation_executed', req.user?.userId, null,
         { client_count: (op.preview_snapshot && (op.preview_snapshot.clients || []).length) || 0 });
 
     let summary;
     try {
-        summary = await executeOperation(cid, op, req.userId);
+        summary = await executeOperation(cid, op, req.user?.userId);
     } catch (err) {
         await supabase.from('practice_tax_bulk_operations')
             .update({
@@ -592,7 +592,7 @@ router.post('/:id/execute', async (req, res) => {
                 result_summary:   { error: err.message },
                 completed_at:     now(), updated_at: now(),
             }).eq('id', opId);
-        await logBulkEvent(cid, opId, 'bulk_operation_failed', req.userId, err.message, {});
+        await logBulkEvent(cid, opId, 'bulk_operation_failed', req.user?.userId, err.message, {});
         return res.status(500).json({ error: err.message });
     }
 
@@ -608,12 +608,12 @@ router.post('/:id/execute', async (req, res) => {
             result_summary:   summary,
             completed_at:     now(),
             updated_at:       now(),
-            updated_by:       req.userId || null,
+            updated_by:       req.user?.userId || null,
         }).eq('id', opId);
 
     await logBulkEvent(cid, opId,
         finalStatus === 'failed' ? 'bulk_operation_failed' : 'bulk_operation_completed',
-        req.userId, null, summary);
+        req.user?.userId, null, summary);
     await auditFromReq(req, 'UPDATE', 'practice_tax_bulk_operation', opId,
         { module: 'practice', final_status: finalStatus, summary });
 
@@ -648,11 +648,11 @@ router.put('/:id/cancel', async (req, res) => {
         return res.status(400).json({ error: 'Already cancelled' });
 
     const { error } = await supabase.from('practice_tax_bulk_operations')
-        .update({ operation_status: 'cancelled', cancelled_at: now(), updated_at: now(), updated_by: req.userId || null })
+        .update({ operation_status: 'cancelled', cancelled_at: now(), updated_at: now(), updated_by: req.user?.userId || null })
         .eq('id', opId);
     if (error) return res.status(500).json({ error: error.message });
 
-    await logBulkEvent(cid, opId, 'bulk_operation_cancelled', req.userId, null, {});
+    await logBulkEvent(cid, opId, 'bulk_operation_cancelled', req.user?.userId, null, {});
     res.json({ success: true });
 });
 

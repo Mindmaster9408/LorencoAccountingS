@@ -321,7 +321,7 @@ router.post('/engagements/:id/periods/generate-preview', async (req, res) => {
   }
 
   await logEngagementEvent(req.companyId, eng.id, 'engagement_periods_previewed', {
-    actorUserId: req.userId || null,
+    actorUserId: req.user?.userId || null,
     metadata:    { from_date, to_date, previewed: periods.length, duplicates: duplicates.length, new: newPeriods.length }
   });
 
@@ -378,7 +378,7 @@ router.post('/engagements/:id/periods/generate', async (req, res) => {
   }
 
   const now   = new Date().toISOString();
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
 
   const rows = toInsert.map(p => ({
     company_id:    req.companyId,
@@ -482,7 +482,7 @@ router.post('/engagement-periods/:id/generate-workflow', async (req, res) => {
     .single();
   if (!client) return res.status(404).json({ error: 'Client not found or access denied' });
 
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
   const { due_date, anchor_date, deadline_title, create_deadline, notes } = req.body;
 
   // Resolve due_date: request body → period.due_date → null (let workflowService decide via offset)
@@ -612,7 +612,7 @@ router.put('/engagement-periods/:id/skip', async (req, res) => {
     return res.status(400).json({ error: 'reason is required to skip a period' });
   }
 
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
   const now   = new Date().toISOString();
 
   const { data, error } = await supabase
@@ -655,7 +655,7 @@ router.put('/engagement-periods/:id/cancel', async (req, res) => {
     return res.status(409).json({ error: 'Period is already cancelled' });
   }
 
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
   const now   = new Date().toISOString();
 
   const { data, error } = await supabase

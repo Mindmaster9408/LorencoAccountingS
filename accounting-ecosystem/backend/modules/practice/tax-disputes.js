@@ -253,14 +253,14 @@ router.post('/create-from-submission', async (req, res) => {
                 date_opened:   new Date().toISOString().slice(0, 10),
                 priority:      priority || 'medium',
                 notes:         notes    || null,
-                created_by:    req.userId || null,
-                updated_by:    req.userId || null,
+                created_by:    req.user?.userId || null,
+                updated_by:    req.user?.userId || null,
             })
             .select()
             .single();
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.userId, notes,
+        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.user?.userId, notes,
             { source_type: 'tax_submission', source_id: Number(submission_id), case_type: ct });
         await auditFromReq(req, 'tax_dispute_created_from_submission', 'tax_dispute', created.id, { submission_id, case_type: ct });
         res.status(201).json({ ok: true, case: created });
@@ -319,14 +319,14 @@ router.post('/create-from-sars-line', async (req, res) => {
                 date_opened: new Date().toISOString().slice(0, 10),
                 priority:    priority || 'medium',
                 notes:       notes    || null,
-                created_by:  req.userId || null,
-                updated_by:  req.userId || null,
+                created_by:  req.user?.userId || null,
+                updated_by:  req.user?.userId || null,
             })
             .select()
             .single();
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.userId, notes,
+        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.user?.userId, notes,
             { source_type: 'sars_statement_line', source_id: Number(statement_line_id), case_type: ct });
         await auditFromReq(req, 'tax_dispute_created_from_sars_line', 'tax_dispute', created.id, { statement_line_id, case_type: ct });
         res.status(201).json({ ok: true, case: created });
@@ -382,14 +382,14 @@ router.post('/create-from-assessment', async (req, res) => {
                 date_opened:          new Date().toISOString().slice(0, 10),
                 priority:             priority     || 'medium',
                 notes:                notes        || null,
-                created_by:           req.userId   || null,
-                updated_by:           req.userId   || null,
+                created_by:           req.user?.userId   || null,
+                updated_by:           req.user?.userId   || null,
             })
             .select()
             .single();
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.userId, notes,
+        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.user?.userId, notes,
             { source_type: 'assessment', assessment_reference: assessment_reference.trim(), case_type: ct });
         await auditFromReq(req, 'tax_dispute_created_from_assessment', 'tax_dispute', created.id, { assessment_reference, case_type: ct });
         res.status(201).json({ ok: true, case: created });
@@ -466,14 +466,14 @@ router.post('/', async (req, res) => {
                 responsible_team_member_id: responsible_team_member_id ? Number(responsible_team_member_id) : null,
                 notes:                     notes          || null,
                 internal_notes:            internal_notes || null,
-                created_by:                req.userId     || null,
-                updated_by:                req.userId     || null,
+                created_by:                req.user?.userId     || null,
+                updated_by:                req.user?.userId     || null,
             })
             .select()
             .single();
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.userId, notes, { source_type, case_type });
+        await _writeEvent(cid, created.id, 'dispute_case_created', null, 'open', req.user?.userId, notes, { source_type, case_type });
         await auditFromReq(req, 'tax_dispute_case_created', 'tax_dispute', created.id, { case_type, source_type });
         res.status(201).json({ ok: true, case: created });
     } catch (err) {
@@ -523,7 +523,7 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: `Invalid priority` });
         if (patch.outcome_amount != null) patch.outcome_amount = _round2(patch.outcome_amount);
 
-        patch.updated_by = req.userId || null;
+        patch.updated_by = req.user?.userId || null;
 
         const { error: updateErr } = await supabase
             .from('practice_tax_dispute_cases')
@@ -532,7 +532,7 @@ router.put('/:id', async (req, res) => {
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'dispute_case_updated', c.case_status, c.case_status, req.userId,
+        await _writeEvent(cid, id, 'dispute_case_updated', c.case_status, c.case_status, req.user?.userId,
             req.body.notes || null, { fields: Object.keys(patch) });
         await auditFromReq(req, 'tax_dispute_case_updated', 'tax_dispute', id, { fields: Object.keys(patch) });
         res.json({ ok: true, id });
@@ -558,12 +558,12 @@ router.delete('/:id', async (req, res) => {
         const notes = req.body.notes || null;
         const { error: updateErr } = await supabase
             .from('practice_tax_dispute_cases')
-            .update({ case_status: 'cancelled', updated_by: req.userId || null })
+            .update({ case_status: 'cancelled', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'dispute_case_cancelled', c.case_status, 'cancelled', req.userId, notes, {});
+        await _writeEvent(cid, id, 'dispute_case_cancelled', c.case_status, 'cancelled', req.user?.userId, notes, {});
         await auditFromReq(req, 'tax_dispute_case_cancelled', 'tax_dispute', id, { old_status: c.case_status });
         res.json({ ok: true, id, case_status: 'cancelled' });
     } catch (err) {
@@ -589,7 +589,7 @@ async function _applyAction(req, res, allowedFrom, newStatus, eventType, extraPa
                 error: `Action not allowed from status: ${c.case_status}. Allowed from: ${allowedFrom.join(', ')}`,
             });
 
-        const patch = { case_status: newStatus, updated_by: req.userId || null, ...extraPatch };
+        const patch = { case_status: newStatus, updated_by: req.user?.userId || null, ...extraPatch };
         const { error: updateErr } = await supabase
             .from('practice_tax_dispute_cases')
             .update(patch)
@@ -597,7 +597,7 @@ async function _applyAction(req, res, allowedFrom, newStatus, eventType, extraPa
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, eventType, c.case_status, newStatus, req.userId, req.body.notes || null, extraPatch);
+        await _writeEvent(cid, id, eventType, c.case_status, newStatus, req.user?.userId, req.body.notes || null, extraPatch);
         await auditFromReq(req, auditAction, 'tax_dispute', id, { old_status: c.case_status, new_status: newStatus });
         res.json({ ok: true, id, case_status: newStatus });
     } catch (err) {
@@ -743,14 +743,14 @@ router.post('/:id/evidence', async (req, res) => {
                 evidence_note:      evidence_note       || null,
                 external_reference: external_reference  || null,
                 is_verified:        false,
-                created_by:         req.userId || null,
-                updated_by:         req.userId || null,
+                created_by:         req.user?.userId || null,
+                updated_by:         req.user?.userId || null,
             })
             .select()
             .single();
         if (insertErr) throw insertErr;
 
-        await _writeEvent(cid, id, 'evidence_added', c.case_status, c.case_status, req.userId, null,
+        await _writeEvent(cid, id, 'evidence_added', c.case_status, c.case_status, req.user?.userId, null,
             { evidence_title: evidence_title.trim(), evidence_type });
         await auditFromReq(req, 'tax_dispute_evidence_added', 'tax_dispute_evidence', ev.id, { dispute_case_id: id });
         res.status(201).json({ ok: true, evidence: ev });
@@ -782,7 +782,7 @@ router.delete('/:id/evidence/:evidenceId', async (req, res) => {
             .eq('company_id', cid);
         if (delErr) throw delErr;
 
-        await _writeEvent(cid, id, 'evidence_removed', c.case_status, c.case_status, req.userId, null,
+        await _writeEvent(cid, id, 'evidence_removed', c.case_status, c.case_status, req.user?.userId, null,
             { evidence_id: evidenceId, evidence_title: ev.evidence_title });
         await auditFromReq(req, 'tax_dispute_evidence_removed', 'tax_dispute_evidence', evidenceId, { dispute_case_id: id });
         res.json({ ok: true, id: evidenceId });
@@ -811,15 +811,15 @@ router.put('/:id/evidence/:evidenceId/verify', async (req, res) => {
             .from('practice_tax_dispute_evidence')
             .update({
                 is_verified: true,
-                verified_by: req.userId || null,
+                verified_by: req.user?.userId || null,
                 verified_at: new Date().toISOString(),
-                updated_by:  req.userId || null,
+                updated_by:  req.user?.userId || null,
             })
             .eq('id', evidenceId)
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
 
-        await _writeEvent(cid, id, 'evidence_verified', c.case_status, c.case_status, req.userId, null,
+        await _writeEvent(cid, id, 'evidence_verified', c.case_status, c.case_status, req.user?.userId, null,
             { evidence_id: evidenceId });
         await auditFromReq(req, 'tax_dispute_evidence_verified', 'tax_dispute_evidence', evidenceId, { dispute_case_id: id });
         res.json({ ok: true, id: evidenceId, is_verified: true });

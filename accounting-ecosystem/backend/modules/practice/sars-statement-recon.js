@@ -245,7 +245,7 @@ router.post('/lines', async (req, res) => {
             reconciliation_status: 'unmatched',
             notes:                notes || null,
             internal_notes:       internal_notes || null,
-            created_by:           req.userId || null,
+            created_by:           req.user?.userId || null,
         };
 
         const { data: created, error: insertErr } = await supabase
@@ -256,7 +256,7 @@ router.post('/lines', async (req, res) => {
         if (insertErr) throw insertErr;
 
         await _writeReconEvent(cid, created.id, 'sars_statement_line_created', {
-            new_status: 'unmatched', actor_user_id: req.userId,
+            new_status: 'unmatched', actor_user_id: req.user?.userId,
             notes: `Statement line created. ${tax_type} / ${transaction_type}`,
         });
         await auditFromReq(req, 'CREATE', 'sars_recon', created.id, { tax_type, transaction_type });
@@ -311,7 +311,7 @@ router.put('/lines/:id', async (req, res) => {
         if (updates.debit_amount  != null) updates.debit_amount  = _round2(updates.debit_amount);
         if (updates.credit_amount != null) updates.credit_amount = _round2(updates.credit_amount);
         if (updates.running_balance != null) updates.running_balance = _round2(updates.running_balance);
-        updates.updated_by = req.userId || null;
+        updates.updated_by = req.user?.userId || null;
 
         const { data: updated, error: updateErr } = await supabase
             .from('practice_sars_statement_lines')
@@ -325,7 +325,7 @@ router.put('/lines/:id', async (req, res) => {
         await _writeReconEvent(cid, id, 'sars_statement_line_updated', {
             old_status: line.reconciliation_status,
             new_status: updated.reconciliation_status,
-            actor_user_id: req.userId,
+            actor_user_id: req.user?.userId,
             notes: `Fields updated: ${Object.keys(updates).filter(k => k !== 'updated_by').join(', ')}`,
         });
         await auditFromReq(req, 'UPDATE', 'sars_recon', id, { fields: Object.keys(updates) });
@@ -353,7 +353,7 @@ router.delete('/lines/:id', async (req, res) => {
 
         const { error: updateErr } = await supabase
             .from('practice_sars_statement_lines')
-            .update({ reconciliation_status: 'cancelled', updated_by: req.userId || null })
+            .update({ reconciliation_status: 'cancelled', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid);
         if (updateErr) throw updateErr;
@@ -361,7 +361,7 @@ router.delete('/lines/:id', async (req, res) => {
         await _writeReconEvent(cid, id, 'sars_statement_line_cancelled', {
             old_status: line.reconciliation_status,
             new_status: 'cancelled',
-            actor_user_id: req.userId,
+            actor_user_id: req.user?.userId,
             notes: req.body.notes || null,
         });
         await auditFromReq(req, 'sars_statement_line_cancelled', 'sars_recon', id, { old_status: line.reconciliation_status });
@@ -419,8 +419,8 @@ router.post('/lines/:id/match-payment-event', async (req, res) => {
                 reconciliation_status:   'matched',
                 matched_payment_event_id: eventId,
                 matched_at:              now,
-                matched_by:              req.userId || null,
-                updated_by:              req.userId || null,
+                matched_by:              req.user?.userId || null,
+                updated_by:              req.user?.userId || null,
             })
             .eq('id', id)
             .eq('company_id', cid)
@@ -431,7 +431,7 @@ router.post('/lines/:id/match-payment-event', async (req, res) => {
         await _writeReconEvent(cid, id, 'sars_statement_line_matched', {
             old_status: line.reconciliation_status,
             new_status: 'matched',
-            actor_user_id: req.userId,
+            actor_user_id: req.user?.userId,
             notes: notes || null,
             metadata: { payment_event_id: eventId, warnings: coherenceWarning },
         });
@@ -464,7 +464,7 @@ router.post('/lines/:id/unmatch', async (req, res) => {
                 matched_payment_event_id: null,
                 matched_at:               null,
                 matched_by:               null,
-                updated_by:               req.userId || null,
+                updated_by:               req.user?.userId || null,
             })
             .eq('id', id)
             .eq('company_id', cid)
@@ -475,7 +475,7 @@ router.post('/lines/:id/unmatch', async (req, res) => {
         await _writeReconEvent(cid, id, 'sars_statement_line_unmatched', {
             old_status: line.reconciliation_status,
             new_status: 'unmatched',
-            actor_user_id: req.userId,
+            actor_user_id: req.user?.userId,
             notes: req.body.notes || null,
             metadata: { previously_matched_event_id: line.matched_payment_event_id },
         });
@@ -504,7 +504,7 @@ router.post('/lines/:id/dispute', async (req, res) => {
 
         const { data: updated, error: updateErr } = await supabase
             .from('practice_sars_statement_lines')
-            .update({ reconciliation_status: 'disputed', updated_by: req.userId || null })
+            .update({ reconciliation_status: 'disputed', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid)
             .select('*')
@@ -514,7 +514,7 @@ router.post('/lines/:id/dispute', async (req, res) => {
         await _writeReconEvent(cid, id, 'sars_statement_line_disputed', {
             old_status: line.reconciliation_status,
             new_status: 'disputed',
-            actor_user_id: req.userId,
+            actor_user_id: req.user?.userId,
             notes: req.body.notes.trim(),
         });
         await auditFromReq(req, 'sars_statement_line_disputed', 'sars_recon', id, { notes: req.body.notes.trim() });
@@ -540,7 +540,7 @@ router.post('/lines/:id/ignore', async (req, res) => {
 
         const { data: updated, error: updateErr } = await supabase
             .from('practice_sars_statement_lines')
-            .update({ reconciliation_status: 'ignored', updated_by: req.userId || null })
+            .update({ reconciliation_status: 'ignored', updated_by: req.user?.userId || null })
             .eq('id', id)
             .eq('company_id', cid)
             .select('*')
@@ -550,7 +550,7 @@ router.post('/lines/:id/ignore', async (req, res) => {
         await _writeReconEvent(cid, id, 'sars_statement_line_ignored', {
             old_status: line.reconciliation_status,
             new_status: 'ignored',
-            actor_user_id: req.userId,
+            actor_user_id: req.user?.userId,
             notes: req.body.notes || null,
         });
         await auditFromReq(req, 'sars_statement_line_ignored', 'sars_recon', id, {});

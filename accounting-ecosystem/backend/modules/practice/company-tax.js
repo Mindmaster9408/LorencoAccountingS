@@ -212,7 +212,7 @@ router.post('/', async (req, res) => {
     if (!profileOk) return res.status(400).json({ error: 'taxpayer_profile_id not found in this company' });
 
     body.company_id = cid;
-    if (req.userId) body.created_by = req.userId;
+    if (req.user?.userId) body.created_by = req.user?.userId;
 
     const { data, error } = await supabase
         .from('practice_company_tax_returns')
@@ -222,7 +222,7 @@ router.post('/', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logCtEvent(cid, data.id, 'company_tax_return_created', {
-        actorUserId: req.userId || null,
+        actorUserId: req.user?.userId || null,
         newStatus:   data.status,
         metadata:    { tax_year: data.tax_year },
     });
@@ -254,11 +254,11 @@ router.put('/:id', async (req, res) => {
 
     const oldStatus = existing.status;
     body.updated_at = new Date().toISOString();
-    if (req.userId) body.updated_by = req.userId;
+    if (req.user?.userId) body.updated_by = req.user?.userId;
 
     if (body.status === 'reviewed' && !body.reviewed_at) {
         body.reviewed_at = new Date().toISOString();
-        body.reviewed_by = req.userId || null;
+        body.reviewed_by = req.user?.userId || null;
     }
 
     const { data, error } = await supabase
@@ -271,7 +271,7 @@ router.put('/:id', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logCtEvent(cid, data.id, 'company_tax_return_updated', {
-        actorUserId: req.userId || null,
+        actorUserId: req.user?.userId || null,
         oldStatus,
         newStatus:   data.status,
         metadata:    { changed_fields: Object.keys(body).filter(k => !['updated_at','updated_by'].includes(k)) },
@@ -292,13 +292,13 @@ router.delete('/:id', async (req, res) => {
 
     const { error } = await supabase
         .from('practice_company_tax_returns')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString(), updated_by: req.userId || null })
+        .update({ status: 'cancelled', updated_at: new Date().toISOString(), updated_by: req.user?.userId || null })
         .eq('id', req.params.id)
         .eq('company_id', cid);
     if (error) return res.status(500).json({ error: error.message });
 
     await logCtEvent(cid, parseInt(req.params.id), 'company_tax_return_cancelled', {
-        actorUserId: req.userId || null,
+        actorUserId: req.user?.userId || null,
         oldStatus:   existing.status,
         newStatus:   'cancelled',
     });
@@ -353,7 +353,7 @@ router.post('/:id/generate-default-items', async (req, res) => {
         .eq('company_id', cid);
 
     await logCtEvent(cid, returnId, 'company_tax_items_generated', {
-        actorUserId: req.userId || null,
+        actorUserId: req.user?.userId || null,
         metadata:    { items_created: inserted.length, items_skipped: DEFAULT_READINESS_ITEMS.length - inserted.length },
     });
     await auditFromReq(req, 'CREATE', 'practice_company_tax_readiness_items', returnId, { module: 'practice', count: inserted.length });
@@ -380,7 +380,7 @@ router.post('/:id/recalculate-readiness', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logCtEvent(cid, returnId, 'company_tax_readiness_recalculated', {
-        actorUserId: req.userId || null,
+        actorUserId: req.user?.userId || null,
         metadata:    readiness,
     });
 
@@ -440,7 +440,7 @@ router.post('/:id/adjustments', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logCtEvent(cid, parseInt(req.params.id), 'company_tax_adjustment_added', {
-        actorUserId: req.userId || null,
+        actorUserId: req.user?.userId || null,
         metadata:    { adjustment_id: data.id, adjustment_type, amount: data.amount },
     });
     await auditFromReq(req, 'CREATE', 'practice_company_tax_adjustment', data.id, { module: 'practice' });
@@ -479,7 +479,7 @@ router.put('/:id/adjustments/:adjustmentId', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await logCtEvent(cid, parseInt(req.params.id), 'company_tax_adjustment_updated', {
-        actorUserId: req.userId || null,
+        actorUserId: req.user?.userId || null,
         metadata:    { adjustment_id: data.id },
     });
     await auditFromReq(req, 'UPDATE', 'practice_company_tax_adjustment', data.id, { module: 'practice' });

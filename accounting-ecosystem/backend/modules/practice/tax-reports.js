@@ -1279,7 +1279,7 @@ router.post('/snapshots', async (req, res) => {
         report_data,
         notes:        notes || null,
         generated_at: now(),
-        generated_by: req.userId || null,
+        generated_by: req.user?.userId || null,
     }).select().single();
 
     if (error) {

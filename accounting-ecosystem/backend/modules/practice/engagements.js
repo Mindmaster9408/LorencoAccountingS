@@ -140,7 +140,7 @@ router.post('/services', async (req, res) => {
   if (body.default_billing_type  && !BILLING_TYPES.includes(body.default_billing_type))    return res.status(400).json({ error: 'Invalid default_billing_type' });
 
   body.company_id = req.companyId;
-  if (req.userId) body.created_by = req.userId;
+  if (req.user?.userId) body.created_by = req.user?.userId;
 
   const { data, error } = await supabase
     .from('practice_service_catalog')
@@ -253,7 +253,7 @@ router.post('/clients/:clientId/engagements', async (req, res) => {
   body.company_id = req.companyId;
   body.client_id  = clientId;
   body.status     = 'active';
-  if (req.userId) body.created_by = req.userId;
+  if (req.user?.userId) body.created_by = req.user?.userId;
 
   const { data, error } = await supabase
     .from('practice_client_engagements')
@@ -263,7 +263,7 @@ router.post('/clients/:clientId/engagements', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   await logEngagementEvent(req.companyId, data.id, 'engagement_created', {
-    actorUserId: req.userId || null,
+    actorUserId: req.user?.userId || null,
     newStatus:   'active',
     metadata:    { engagement_name: body.engagement_name, service_category: body.service_category }
   });
@@ -292,7 +292,7 @@ router.put('/engagements/:id', async (req, res) => {
   if (body.billing_type      && !BILLING_TYPES.includes(body.billing_type))           return res.status(400).json({ error: 'Invalid billing_type' });
 
   body.updated_at = new Date().toISOString();
-  if (req.userId) body.updated_by = req.userId;
+  if (req.user?.userId) body.updated_by = req.user?.userId;
 
   const { data, error } = await supabase
     .from('practice_client_engagements')
@@ -303,7 +303,7 @@ router.put('/engagements/:id', async (req, res) => {
     .single();
   if (error) return res.status(500).json({ error: error.message });
 
-  await logEngagementEvent(req.companyId, eng.id, 'engagement_updated', { actorUserId: req.userId || null });
+  await logEngagementEvent(req.companyId, eng.id, 'engagement_updated', { actorUserId: req.user?.userId || null });
   await auditFromReq(req, 'UPDATE', 'practice_client_engagement', eng.id, { module: 'practice' });
   res.json({ engagement: data });
 });
@@ -314,7 +314,7 @@ router.put('/engagements/:id/pause', async (req, res) => {
   if (!eng) return res.status(404).json({ error: 'Engagement not found' });
   if (eng.status !== 'active') return res.status(409).json({ error: 'Only active engagements can be paused' });
 
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
   const { data, error } = await supabase
     .from('practice_client_engagements')
     .update({ status: 'paused', updated_at: new Date().toISOString(), updated_by: actor })
@@ -337,7 +337,7 @@ router.put('/engagements/:id/reactivate', async (req, res) => {
   if (!eng) return res.status(404).json({ error: 'Engagement not found' });
   if (eng.status !== 'paused') return res.status(409).json({ error: 'Only paused engagements can be reactivated' });
 
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
   const { data, error } = await supabase
     .from('practice_client_engagements')
     .update({ status: 'active', updated_at: new Date().toISOString(), updated_by: actor })
@@ -361,7 +361,7 @@ router.put('/engagements/:id/end', async (req, res) => {
   if (['ended', 'cancelled'].includes(eng.status)) return res.status(409).json({ error: 'Engagement is already ended or cancelled' });
 
   const now   = new Date().toISOString();
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
   const { data, error } = await supabase
     .from('practice_client_engagements')
     .update({ status: 'ended', ended_at: now, ended_by: actor, updated_at: now, updated_by: actor })
@@ -385,7 +385,7 @@ router.delete('/engagements/:id', async (req, res) => {
   if (eng.status === 'cancelled') return res.status(409).json({ error: 'Engagement is already cancelled' });
 
   const now   = new Date().toISOString();
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
   const { error } = await supabase
     .from('practice_client_engagements')
     .update({ status: 'cancelled', cancelled_at: now, cancelled_by: actor, updated_at: now, updated_by: actor })
@@ -551,7 +551,7 @@ router.post('/engagements/:id/generate-workflow', async (req, res) => {
   else if (create_deadline === false || create_deadline === 'false') createDeadlineBool = false;
   // else leave undefined — workflowService will respect template.creates_compliance_deadline
 
-  const actor = req.userId || null;
+  const actor = req.user?.userId || null;
 
   try {
     const result = await workflowService.createRunAndGenerateTasks(req, {

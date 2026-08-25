@@ -499,7 +499,7 @@ router.put('/:sourceType/:sourceId/stage', async (req, res) => {
             .update({
                 filing_stage:            new_stage,
                 filing_stage_updated_at: new Date().toISOString(),
-                filing_stage_updated_by: req.userId || null,
+                filing_stage_updated_by: req.user?.userId || null,
             })
             .eq('id', sid)
             .eq('company_id', cid);
@@ -511,7 +511,7 @@ router.put('/:sourceType/:sourceId/stage', async (req, res) => {
 
         // Write pipeline event
         const metadata = { move_type: move };
-        await _writeEvent(cid, sourceType, sid, currentStage, new_stage, req.userId, notes, metadata);
+        await _writeEvent(cid, sourceType, sid, currentStage, new_stage, req.user?.userId, notes, metadata);
 
         // Audit log
         const auditAction = new_stage === 'cancelled'
