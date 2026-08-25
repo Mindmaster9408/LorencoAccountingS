@@ -111,7 +111,7 @@ async function buildSnapshot(cid, taxReturn, calcId) {
     // Client
     const { data: client } = await supabase
         .from('practice_clients')
-        .select('id, display_name, company_name, client_type')
+        .select('id, name, client_type')
         .eq('id', taxReturn.client_id)
         .eq('company_id', cid)
         .single();
@@ -247,7 +247,7 @@ function buildReportHtml(pack, snapshot) {
     const at  = s.adjustment_totals || {};
     const calc = s.calculation;
 
-    const clientName   = cl.display_name || cl.company_name || ('Client #' + (tr.client_id || '—'));
+    const clientName   = cl.name || ('Client #' + (tr.client_id || '—'));
     const taxpayerType = tp.taxpayer_type || 'company';
     const taxRef       = tp.income_tax_reference || '—';
     const regNum       = tp.registration_number  || '—';
@@ -567,7 +567,7 @@ function streamReportPdf(pack, snapshot, res) {
     const at  = s.adjustment_totals || {};
     const calc = s.calculation;
 
-    const clientName = cl.display_name || cl.company_name || ('Client #' + (tr.client_id || '—'));
+    const clientName = cl.name || ('Client #' + (tr.client_id || '—'));
     const taxRef     = tp.income_tax_reference || '—';
     const regNum     = tp.registration_number  || '—';
     const genDate    = pack.report_generated_at
