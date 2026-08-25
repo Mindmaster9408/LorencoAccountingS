@@ -831,8 +831,8 @@ router.post('/:returnId/review-packs/generate', async (req, res) => {
                 warning_count:  (snapshot.warning_flags || []).length,
             },
         });
-        await auditFromReq(req, 'company_tax_review_pack_generated', {
-            pack_id: pack.id, company_tax_return_id: returnId,
+        await auditFromReq(req, 'company_tax_review_pack_generated', 'practice_company_tax_review_packs', pack.id, {
+            metadata: { company_tax_return_id: returnId },
         });
 
         res.status(201).json({ pack });
@@ -923,7 +923,7 @@ router.put('/review-packs/:id/submit-review', async (req, res) => {
         old_status: pack.pack_status, new_status: 'ready_for_review',
         actor_user_id: req.user?.id,
     });
-    await auditFromReq(req, 'company_tax_review_pack_submitted_review', { pack_id: packId });
+    await auditFromReq(req, 'company_tax_review_pack_submitted_review', 'practice_company_tax_review_packs', packId);
 
     res.json({ pack: updated });
 });
@@ -962,7 +962,7 @@ router.put('/review-packs/:id/approve', async (req, res) => {
         actor_user_id: req.user?.id,
         notes: approval_notes || null,
     });
-    await auditFromReq(req, 'company_tax_review_pack_approved', { pack_id: packId });
+    await auditFromReq(req, 'company_tax_review_pack_approved', 'practice_company_tax_review_packs', packId);
 
     res.json({ pack: updated });
 });
@@ -1002,7 +1002,7 @@ router.put('/review-packs/:id/reject', async (req, res) => {
         actor_user_id: req.user?.id,
         notes: String(rejection_reason).trim(),
     });
-    await auditFromReq(req, 'company_tax_review_pack_rejected', { pack_id: packId });
+    await auditFromReq(req, 'company_tax_review_pack_rejected', 'practice_company_tax_review_packs', packId);
 
     res.json({ pack: updated });
 });

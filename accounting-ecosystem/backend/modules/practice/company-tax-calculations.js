@@ -389,7 +389,7 @@ router.post('/calculations/:id/submit-review', async (req, res) => {
             new_status:    'ready_for_review',
             actor_user_id: req.user?.id,
         });
-        await auditFromReq(req, 'company_tax_calculation_submitted_review', { calculation_id: calcId });
+        await auditFromReq(req, 'company_tax_calculation_submitted_review', 'practice_company_tax_calculations', calcId);
 
         res.json({ calculation: calc });
     } catch (err) {
@@ -435,7 +435,7 @@ router.post('/calculations/:id/approve', async (req, res) => {
             actor_user_id: req.user?.id,
             notes:         req.body.notes || null,
         });
-        await auditFromReq(req, 'company_tax_calculation_approved', { calculation_id: calcId });
+        await auditFromReq(req, 'company_tax_calculation_approved', 'practice_company_tax_calculations', calcId);
 
         res.json({ calculation: calc });
     } catch (err) {
@@ -480,7 +480,7 @@ router.post('/calculations/:id/reject', async (req, res) => {
             actor_user_id: req.user?.id,
             notes:         reason,
         });
-        await auditFromReq(req, 'company_tax_calculation_rejected', { calculation_id: calcId, reason });
+        await auditFromReq(req, 'company_tax_calculation_rejected', 'practice_company_tax_calculations', calcId, { metadata: { reason } });
 
         res.json({ calculation: calc });
     } catch (err) {
@@ -661,11 +661,10 @@ router.post('/:returnId/calculations/run-draft', async (req, res) => {
                 adjustment_count:      (result.add_back_total !== 0 || result.deduction_total !== 0 || result.allowance_total !== 0 || result.disallowance_total !== 0),
             },
         });
-        await auditFromReq(req, 'company_tax_calculation_run', {
-            calculation_id: calc.id,
+        await auditFromReq(req, 'company_tax_calculation_run', 'practice_company_tax_calculations', calc.id, { metadata: {
             return_id: returnId,
             version: nextVersion,
-        });
+        } });
 
         res.status(201).json({ calculation: calc });
     } catch (err) {

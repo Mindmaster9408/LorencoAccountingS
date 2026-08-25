@@ -369,7 +369,7 @@ router.post('/calculations/:id/submit-review', async (req, res) => {
             old_status: existing.calculation_status, new_status: 'ready_for_review',
             actor_user_id: req.user?.id,
         });
-        await auditFromReq(req, 'individual_tax_calculation_submitted_review', { calculation_id: calcId });
+        await auditFromReq(req, 'individual_tax_calculation_submitted_review', 'practice_individual_tax_calculations', calcId);
 
         res.json({ calculation: calc });
     } catch (err) {
@@ -412,7 +412,7 @@ router.post('/calculations/:id/approve', async (req, res) => {
             actor_user_id: req.user?.id,
             notes: req.body.notes || null,
         });
-        await auditFromReq(req, 'individual_tax_calculation_approved', { calculation_id: calcId });
+        await auditFromReq(req, 'individual_tax_calculation_approved', 'practice_individual_tax_calculations', calcId);
 
         res.json({ calculation: calc });
     } catch (err) {
@@ -452,7 +452,7 @@ router.post('/calculations/:id/reject', async (req, res) => {
             actor_user_id: req.user?.id,
             notes: reason,
         });
-        await auditFromReq(req, 'individual_tax_calculation_rejected', { calculation_id: calcId, reason });
+        await auditFromReq(req, 'individual_tax_calculation_rejected', 'practice_individual_tax_calculations', calcId, { metadata: { reason } });
 
         res.json({ calculation: calc });
     } catch (err) {
@@ -536,8 +536,8 @@ router.post('/:returnId/calculations/run-draft', async (req, res) => {
                 warning_count:       result.warning_flags.length,
             },
         });
-        await auditFromReq(req, 'individual_tax_calculation_run', {
-            calculation_id: calc.id, tax_return_id: returnId, version: nextVersion,
+        await auditFromReq(req, 'individual_tax_calculation_run', 'practice_individual_tax_calculations', calc.id, {
+            metadata: { tax_return_id: returnId, version: nextVersion },
         });
 
         res.status(201).json({ calculation: calc });

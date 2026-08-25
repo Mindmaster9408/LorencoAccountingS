@@ -253,7 +253,7 @@ router.post('/', async (req, res) => {
             actor_user_id: req.user?.id,
             metadata: { tax_year: ret.tax_year, return_name: ret.return_name },
         });
-        await auditFromReq(req, 'individual_tax_return_created', { return_id: ret.id, tax_year: ret.tax_year });
+        await auditFromReq(req, 'individual_tax_return_created', 'practice_individual_tax_returns', ret.id, { metadata: { tax_year: ret.tax_year } });
 
         res.status(201).json({ tax_return: ret });
     } catch (err) {
@@ -312,7 +312,7 @@ router.post('/:id/generate-default-items', async (req, res) => {
             actor_user_id: req.user?.id,
             metadata: { count: items.length },
         });
-        await auditFromReq(req, 'individual_tax_items_generated', { return_id: returnId, count: items.length });
+        await auditFromReq(req, 'individual_tax_items_generated', 'practice_individual_tax_returns', returnId, { metadata: { count: items.length } });
 
         // Return all items
         const { data: allItems } = await supabase
@@ -837,7 +837,7 @@ router.put('/:id', async (req, res) => {
             old_status: existing.status, new_status: updates.status || existing.status,
             actor_user_id: req.user?.id,
         });
-        await auditFromReq(req, 'individual_tax_return_updated', { return_id: returnId });
+        await auditFromReq(req, 'individual_tax_return_updated', 'practice_individual_tax_returns', returnId);
 
         res.json({ tax_return: ret });
     } catch (err) {
@@ -867,7 +867,7 @@ router.delete('/:id', async (req, res) => {
             old_status: existing.status, new_status: 'cancelled',
             actor_user_id: req.user?.id,
         });
-        await auditFromReq(req, 'individual_tax_return_cancelled', { return_id: returnId });
+        await auditFromReq(req, 'individual_tax_return_cancelled', 'practice_individual_tax_returns', returnId);
 
         res.json({ ok: true });
     } catch (err) {
