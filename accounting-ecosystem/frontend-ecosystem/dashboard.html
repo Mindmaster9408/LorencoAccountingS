@@ -334,12 +334,20 @@
             background: #000000;  /* matches logo dark background, fills letterbox areas */
         }
         /* Card is flex-column so image can flex:1 to fill grid row height */
-        .app-card.pos.app-card-image-only {
+        .app-card.pos.app-card-image-only,
+        .app-card.accounting.app-card-image-only,
+        .app-card.inventory.app-card-image-only,
+        .app-card.practice.app-card-image-only {
             display: flex;
             flex-direction: column;
             background: #000000;  /* consistent background behind letterbox edges */
         }
-        .app-card.pos.app-card-image-only .app-card-full-image {
+        .app-card.pos.app-card-image-only .app-card-full-image,
+        .app-card.accounting.app-card-image-only .app-card-full-image,
+        .app-card.inventory.app-card-image-only .app-card-full-image,
+        .app-card.practice.app-card-image-only .app-card-full-image {
+            object-fit: contain;
+            object-position: center center;
             flex: 1;
             min-height: 230px;
         }
@@ -1874,6 +1882,7 @@
                 name: 'Ledger Leo',
                 subtitle: 'General Ledger',
                 icon: '&#128200;',
+                logo: 'assets/branding/leo/leo-logo-full.png',
                 desc: 'Chart of accounts, journals, bank reconciliation, VAT returns, financial reports.',
                 path: '/accounting',
                 cssClass: 'accounting',
@@ -1910,6 +1919,7 @@
                 name: 'Stockton',
                 subtitle: 'Inventory Management',
                 icon: '&#128230;',
+                logo: 'assets/branding/stockton/stockton-logo-full.png',
                 desc: 'Stock items, warehouses, movements, suppliers and purchase orders.',
                 path: '/inventory',
                 cssClass: 'inventory',
@@ -1919,6 +1929,7 @@
                 name: 'Firmflow',
                 subtitle: 'Practice Management',
                 icon: '&#128203;',
+                logo: 'assets/branding/firmflow/firmflow-logo-full.png',
                 desc: 'Client files, tasks, deadlines and time tracking for your accounting practice.',
                 path: '/practice',
                 cssClass: 'practice',
@@ -2276,22 +2287,22 @@
                     ? `<button class="app-btn-launch" onclick="event.stopPropagation(); installPaytime()" id="paytimeInstallBtn" style="display:none;background:linear-gradient(135deg,#10b981,#059669);margin-top:6px;width:100%;">&#128229; Install Desktop</button>`
                     : '';
 
-                if (app.key === 'payroll') {
+                // Apps with a full marketing-poster logo render as an image-only
+                // tile (click anywhere to launch) instead of the generic
+                // icon+title+desc layout. 'pos' keeps its own contain/letterbox
+                // treatment (checkout-charlie-card-img); the rest share the same
+                // pattern via their cssClass in the CSS above.
+                const IMAGE_ONLY_KEYS = ['payroll', 'pos', 'accounting', 'inventory', 'practice'];
+                if (IMAGE_ONLY_KEYS.includes(app.key)) {
+                    const imgSrc   = app.fullCardImage || app.logo;
+                    const imgClass = app.key === 'pos'
+                        ? 'app-card-full-image checkout-charlie-card-img'
+                        : 'app-card-full-image';
                     return `
-                        <div class="app-card payroll app-card-image-only ${isActive ? '' : 'disabled'}"
+                        <div class="app-card ${app.cssClass} app-card-image-only ${isActive ? '' : 'disabled'}"
                              onclick="${isActive ? `launchApp('${app.key}')` : ''}"
-                             title="Lorenco Paytime${isActive ? '' : ' — Not Activated'}">
-                            <img src="${app.logo}" alt="Lorenco Paytime" class="app-card-full-image">
-                        </div>
-                    `;
-                }
-
-                if (app.key === 'pos') {
-                    return `
-                        <div class="app-card pos app-card-image-only ${isActive ? '' : 'disabled'}"
-                             onclick="${isActive ? `launchApp('${app.key}')` : ''}"
-                             title="Checkout Charlie${isActive ? '' : ' — Not Activated'}">
-                            <img src="${app.fullCardImage || app.logo}" alt="Checkout Charlie" class="app-card-full-image checkout-charlie-card-img">
+                             title="${app.name}${isActive ? '' : ' — Not Activated'}">
+                            <img src="${imgSrc}" alt="${app.name}" class="${imgClass}">
                         </div>
                     `;
                 }
