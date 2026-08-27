@@ -56,7 +56,10 @@ router.get('/', requirePerm(PERM.VIEW), async (req, res) => {
   res.json({ sales_orders: result.sales_orders });
 });
 
-router.get('/:id', requirePerm(PERM.VIEW), async (req, res) => {
+// :id constrained to digits only — otherwise this single-segment wildcard
+// shadows the literal /demand-dashboard route registered further down
+// (both single-segment paths), silently 404ing every request to it.
+router.get('/:id(\\d+)', requirePerm(PERM.VIEW), async (req, res) => {
   const result = await salesOrderService.getSalesOrder(supabase, req.companyId, parseInt(req.params.id));
   if (!result.success) return res.status(result.status || 500).json({ error: result.error });
   res.json({ sales_order: result.sales_order });
