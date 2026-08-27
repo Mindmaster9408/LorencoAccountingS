@@ -323,7 +323,19 @@ select option {
 }
 .close-btn,
 .modal-close {
+    background: transparent !important;
     color: var(--text-muted) !important;
+}
+/* .close-btn (customer-list.html, customer-receipts.html) has its own
+   inline light-mode background (#f8f9fa) the rule above never overrode —
+   only color was covered, so the button kept its light-grey fill forever,
+   reading as a near-blank pale box against the dark modal. .modal-close
+   (used everywhere else) never had this problem — no inline background
+   of its own to begin with. */
+.close-btn:hover,
+.modal-close:hover {
+    background: var(--surface-hover) !important;
+    color: var(--text) !important;
 }
 
 /* ── Tabs ───────────────────────────────────────────────────────────────────── */
