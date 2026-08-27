@@ -25,8 +25,7 @@ function createNavigation() {
           <span class="eco-hub-text">ECO Hub</span>
         </a>
         <div class="logo">
-          <div class="logo-icon">L</div>
-          <span>Lorenco</span>
+          <img src="/accounting/assets/branding/leo/leo-logo.png" alt="Ledger Leo" class="logo-icon-img">
         </div>
         <div class="company-selector" id="companySelectorBtn" onclick="toggleCompanyDropdown()">
           <span id="navCompanyName">Company</span>
@@ -231,6 +230,15 @@ function createNavigation() {
     addNavigationStyles();
   }
 
+  // Ledger Leo favicon — single injection point covers every accounting page
+  if (!document.querySelector('link[rel="icon"]')) {
+    const favicon = document.createElement('link');
+    favicon.rel  = 'icon';
+    favicon.type = 'image/png';
+    favicon.href = '/accounting/assets/branding/leo/leo-logo.png';
+    document.head.appendChild(favicon);
+  }
+
   // Initialize user display
   initializeNavigation();
 }
@@ -308,6 +316,13 @@ function addNavigationStyles() {
         font-weight: bold;
         color: #0066cc;
         font-size: 18px;
+      }
+
+      .logo-icon-img {
+        height: 34px;
+        width: auto;
+        object-fit: contain;
+        border-radius: 6px;
       }
 
       .company-selector {

@@ -584,9 +584,9 @@
             topbarEl.classList.add('topbar'); // some pages already hardcode class="topbar" on this div — classList.add is idempotent either way
             topbarEl.innerHTML =
                 '<div class="topbar-left">' +
-                    '<div class="app-icon">📋</div>' +
+                    '<img src="/practice/assets/branding/firmflow/firmflow-logo.png" alt="Firmflow" class="app-icon" style="object-fit:contain;">' +
                     '<div>' +
-                        '<div class="app-title">Lorenco Practice</div>' +
+                        '<div class="app-title">Firmflow</div>' +
                         '<div class="app-subtitle">Practice Management</div>' +
                     '</div>' +
                 '</div>' +
@@ -595,6 +595,15 @@
                     _renderBell(activePage) +
                     '<a href="/dashboard" class="btn-back">← ECO Hub</a>' +
                 '</div>';
+        }
+
+        // Firmflow favicon — single injection point covers every practice page
+        if (!document.querySelector('link[rel="icon"]')) {
+            var favicon = document.createElement('link');
+            favicon.rel  = 'icon';
+            favicon.type = 'image/png';
+            favicon.href = '/practice/assets/branding/firmflow/firmflow-logo.png';
+            document.head.appendChild(favicon);
         }
 
         var navEl = document.getElementById('app-nav');
