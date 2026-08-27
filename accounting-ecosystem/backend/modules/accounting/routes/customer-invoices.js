@@ -147,6 +147,111 @@ async function resolveCustomerId(companyId, customerId, customerName) {
 // the schema-drift comment above resolveCustomerId). Fixing it here — the
 // one place every list/detail/update response passes through — avoids
 // touching every render call site in invoices.html individually.
+/**
+ * Company-link invoice pull-through (2026-08-21, migration 156).
+ *
+ * When a posted customer invoice's customer is a linked company
+ * (customers.eco_client_id set, link_status='active' — see
+ * shared/routes/client-links.js), this creates a DRAFT on the other
+ * company's side using the exact same review/approve mechanism
+ * supplierOcrDrafts.js already uses for OCR uploads — reused rather than
+ * duplicated (see docs/leo-customer-supplier-linking-and-invoice-pullthrough.md).
+ * A real supplier_invoice is only ever created there once THEY explicitly
+ * approve it (POST /invoice-ocr-drafts/:id/approve), same forensic
+ * guarantee as any OCR-sourced invoice: nothing lands in their GL without
+ * a human choosing the GL account for every line and confirming it.
+ *
+ * Best-effort and non-fatal by design — called after this company's own
+ * invoice has already been successfully posted; a failure here must never
+ * roll back or fail that already-completed action for the sending company.
+ */
+async function pushInvoiceToLinkedSupplier({ companyId, invoice, lines }) {
+  const { data: customer } = await supabase
+    .from('customers').select('eco_client_id, link_status')
+    .eq('id', invoice.customer_id).eq('company_id', companyId).maybeSingle();
+  if (!customer || !customer.eco_client_id || customer.link_status !== 'active') return;
+
+  const { data: targetEcoClient } = await supabase
+    .from('eco_clients').select('client_company_id')
+    .eq('id', customer.eco_client_id).maybeSingle();
+  if (!targetEcoClient || !targetEcoClient.client_company_id) return;
+  const targetCompanyId = targetEcoClient.client_company_id;
+
+  // My own eco_client identity — same resolution rule as
+  // client-links.js's getOwnEcoClient() (first by id if more than one).
+  const { data: ownRows } = await supabase
+    .from('eco_clients').select('id, name')
+    .eq('client_company_id', companyId)
+    .order('id', { ascending: true }).limit(1);
+  const own = (ownRows && ownRows[0]) || null;
+  if (!own) return; // no client_code identity — nothing to attribute the draft to
+
+  // The supplier record on their side representing ME — created when the
+  // link was established (client-links.js). If it's missing, the link was
+  // never actually completed; skip rather than guessing at a supplier.
+  const { data: supplierRow } = await supabase
+    .from('suppliers').select('id')
+    .eq('company_id', targetCompanyId).eq('eco_client_id', own.id).maybeSingle();
+  if (!supplierRow) return;
+
+  // Duplicate guard — POST /:id/post is already blocked from running twice
+  // for the same invoice (journal_id check), but this is a cheap extra
+  // safety net against ever pushing the same source invoice twice.
+  const { data: existingDraft } = await supabase
+    .from('supplier_invoice_ocr_drafts').select('id')
+    .eq('source_customer_invoice_id', invoice.id).eq('source_company_id', companyId)
+    .maybeSingle();
+  if (existingDraft) return;
+
+  const { data: myCompany } = await supabase
+    .from('companies').select('company_name, trading_name').eq('id', companyId).maybeSingle();
+  const myName = (myCompany && (myCompany.trading_name || myCompany.company_name)) || own.name;
+
+  const header = {
+    supplier_name:   myName,
+    invoice_number:  invoice.invoice_number,
+    invoice_date:    invoice.date,
+    due_date:        invoice.due_date || null,
+    vat_inclusive:   false, // customer_invoice_lines.line_total is always ex-VAT
+    subtotal_ex_vat: parseFloat(invoice.subtotal) || 0,
+    vat_amount:      parseFloat(invoice.vat_amount) || 0,
+    total_inc_vat:   parseFloat(invoice.total_amount) || 0,
+    warnings: [],
+  };
+  const draftLines = (lines || []).map((l, i) => ({
+    sort_order:  i,
+    description: l.description || '',
+    quantity:    parseFloat(l.quantity)   || 1,
+    unit_price:  parseFloat(l.unit_price) || 0,
+    line_total:  parseFloat(l.line_total) || 0,
+    vat_rate:    parseFloat(l.vat_rate)   || 0,
+    // GL account is deliberately left unmapped — the receiving company's
+    // chart of accounts is its own; POST /:id/approve already refuses to
+    // convert a draft with any unmapped line, which is exactly right here.
+    account_id:  null,
+  }));
+
+  await supabase.from('supplier_invoice_ocr_drafts').insert({
+    company_id:                 targetCompanyId,
+    supplier_id:                supplierRow.id,
+    status:                     'draft',
+    original_filename:          `Company Link — Invoice ${invoice.invoice_number}`,
+    file_mime_type:             'application/x-company-link',
+    file_size_bytes:            0,
+    file_path:                  null,
+    ocr_raw:                    null,
+    extracted_header:           header,
+    extracted_lines:            draftLines,
+    confidence_summary:         null,
+    reviewer_header:            header,
+    reviewer_lines:             draftLines,
+    created_by_user_id:         null,
+    source:                     'company_link',
+    source_customer_invoice_id: invoice.id,
+    source_company_id:          companyId,
+  });
+}
+
 async function attachCustomerNames(companyId, rows) {
   const list = Array.isArray(rows) ? rows : [rows];
   const ids = [...new Set(list.map(r => r.customer_id).filter(Boolean))];
@@ -999,6 +1104,16 @@ router.post('/:id/post', authenticate, hasPermission('ar.invoice.post'), async (
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
     });
+
+    // Company-link pull-through (2026-08-21) — best-effort, never blocks or
+    // fails the response for this invoice, which has already posted
+    // successfully above. See pushInvoiceToLinkedSupplier() for the full
+    // explanation.
+    try {
+      await pushInvoiceToLinkedSupplier({ companyId, invoice, lines: lines || [] });
+    } catch (pushErr) {
+      console.error('[CustomerAR] Company-link invoice push failed (non-fatal):', pushErr.message);
+    }
 
     res.json({ message: 'Invoice posted to General Ledger', journalId: glJournal.id });
   } catch (err) {

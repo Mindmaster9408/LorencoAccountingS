@@ -2135,12 +2135,12 @@ async function loadOcrDrafts() {
           <div style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(d.original_filename||'')}">
             ${escHtml((d.original_filename||'—').substring(0,30))}
           </div>
-          <div style="opacity:0.5;font-size:11px;">${d.file_mime_type === 'application/pdf' ? 'PDF' : 'Image'}</div>
+          <div style="opacity:0.5;font-size:11px;">${d.source === 'company_link' ? '🔗 Company Link' : (d.file_mime_type === 'application/pdf' ? 'PDF' : 'Image')}</div>
         </td>
         <td style="font-size:12px;">${escHtml(supplier)}</td>
         <td style="font-size:12px;font-family:monospace;">${escHtml(hdr.invoice_number||'—')}</td>
         <td style="font-size:12px;">${hdr.invoice_date||'—'}</td>
-        <td>${confBadge(d.confidence_summary)}</td>
+        <td>${d.source === 'company_link' ? '<span style="opacity:0.5;font-size:11px;">n/a</span>' : confBadge(d.confidence_summary)}</td>
         <td>${statusBadge(d.status)}</td>
         <td style="font-size:11px;opacity:0.6;">${d.created_at ? new Date(d.created_at).toLocaleDateString('en-ZA') : '—'}</td>
         <td>

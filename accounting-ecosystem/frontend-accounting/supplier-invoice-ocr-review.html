@@ -470,6 +470,8 @@ function renderDraft() {
     } else {
       frameEl.innerHTML = `<img src="${fileUrl}" alt="Invoice image" style="object-fit:contain;max-width:100%;max-height:100%;padding:8px;">`;
     }
+  } else if (draft.source === 'company_link') {
+    frameEl.innerHTML = '<div class="preview-placeholder">🔗 This invoice arrived via Company Link — no file to preview.<br>Review the extracted fields on the right, then map a GL account for every line before approving.</div>';
   } else {
     frameEl.innerHTML = '<div class="preview-placeholder">📄 File preview not available.<br>Review the extracted fields on the right.</div>';
   }

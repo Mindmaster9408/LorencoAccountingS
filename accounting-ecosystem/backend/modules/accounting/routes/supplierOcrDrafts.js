@@ -253,6 +253,7 @@ router.get('/', authenticate, hasPermission('ap.invoice.view'), async (req, res)
         reviewer_header, created_by_user_id, reviewed_by_user_id, approved_by_user_id,
         created_at, reviewed_at, approved_at, rejected_at, converted_at,
         converted_supplier_invoice_id, notes,
+        source, source_customer_invoice_id, source_company_id,
         suppliers!supplier_id(id, name, code)
       `)
       .eq('company_id', companyId)
