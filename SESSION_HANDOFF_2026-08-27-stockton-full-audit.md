@@ -107,14 +107,21 @@ one-line fix.
 | 9 | Route-shadowing in `sales-orders.js` | `GET /:id` → `GET /:id(\\d+)`, digit-only constraint, registered before `/demand-dashboard` | `0efe044` |
 | 10 | PO-number sequence silently broken | Root cause: `po_number_seq` sequence already existed (migration 055) but the `nextval(seq_name)` RPC PostgREST needs to call it was never created — every PO number has been `Date.now()`, never the real sequence. Migration 154 creates the allowlisted RPC wrapper (`SECURITY DEFINER`, restricted to known sequence names). Route now also logs (rather than silently swallows) `seqErr` if the RPC ever fails, keeping the `Date.now()` fallback only as a visible last resort. | migration 154 + inline fix (this commit) |
 
-**Migrations 152, 153, and 154 have been pushed but not yet run by the
-user in Supabase.** Until they run:
-- Every one of the 21 previously-broken FK-dependent embeds/queries
-  (finding #1) will still fail live, even though the querying code is
-  now correct in all other respects.
-- The Sales Order feature (finding #4) has no tables to write to yet.
-- PO creation (finding #10) will keep silently falling back to
-  `Date.now()`-based numbers (now logged, not silent) until 154 runs.
+**Migrations 152, 153, and 154 have all been run and confirmed by the user
+in Supabase (2026-08-27):**
+- 152 — verified: 30 total FK constraints across the Stockton tables (up
+  21 from the pre-migration baseline).
+- 153 — verified: `sales_orders`/`sales_order_lines`/
+  `sales_order_status_history` all created with every column exactly as
+  designed (including the generated `line_total` column).
+- 154 — first run hit `54001: stack depth limit exceeded` (an unqualified
+  `nextval('po_number_seq')` call inside the function resolved back to its
+  own `text` signature instead of the built-in `nextval(regclass)`,
+  recursing forever — fixed by calling `pg_catalog.nextval(seq_name::regclass)`
+  directly, schema-qualified). Corrected version confirmed: returns `1000`,
+  matching `po_number_seq START 1000`.
+
+All schema-level dependencies for this module's fixes are now live.
 
 ## Follow-up note
 
@@ -122,11 +129,9 @@ user in Supabase.** Until they run:
 FOLLOW-UP NOTE
 - Area: Stockton (Inventory module) — full breadth audit
 - Dependency: Migrations 152 (21 FKs), 153 (Sales Order tables), 154
-  (po_number_seq RPC) must be run in Supabase before this module's fixes
-  are live.
-- What was done now: all 10 confirmed findings fixed and committed;
-  code-level fixes are live already (deployed on next push to origin/main),
-  schema-level fixes are staged as migrations only.
+  (po_number_seq RPC) — all confirmed run in Supabase 2026-08-27.
+- What was done now: all 10 confirmed findings fixed, committed, and
+  pushed; all three dependent migrations run and verified by the user.
 - What still needs to be checked: after migrations run, live-verify (a)
   the 21 previously-broken embeds/queries now resolve, (b) full Sales
   Order lifecycle (create → confirm → allocate → fulfill → cancel) works
