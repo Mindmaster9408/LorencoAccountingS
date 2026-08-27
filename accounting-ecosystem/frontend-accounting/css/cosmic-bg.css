@@ -1,29 +1,21 @@
 /* ================================================================
    Eco Cosmic Background (Accounting) — visual layer only
    Scope  : frontend-accounting pages only
-   Changes: body background, fixed particle/glow layer, z-index
-   Forbidden: accounting logic, auth, data, layout
-   Same base/star mechanism as frontend-payroll/css/cosmic-bg.css. Glow
-   orb opacity is deliberately lower than Payroll's — these orbs are
-   position:fixed (pinned to the browser window, not page content), so
-   they show fully on every page. Accounting has many sparser pages
-   (empty-state tables, short settings forms) than Payroll/the ECO Hub,
-   which exposed far more raw glow — reduced per 2026-08-16 feedback
-   that the result read as "too purple, not dark enough".
+   Changes: fixed particle/glow layer, z-index (does NOT touch body
+   background — dark-theme.css owns that: solid #090d18, see its own
+   header comment). Forbidden: accounting logic, auth, data, layout.
    Load AFTER css/dark-theme.css.
 
-   2026-08-18 CORRECTED: the 2026-08-16 fix here killed dark-theme.css's
-   background-image entirely (background-image: none !important) to chase
-   down a "too purple" glow-orb complaint. That was the wrong layer — the
-   architecture doc (accounting-dark-theme-architecture.md) confirms the
-   gradient itself (--bg-dark #0f0c29 → --bg-mid #302b63 → --bg-end #24243e)
-   IS the intended design, "a deep purple/navy gradient... matching the
-   ecosystem dashboard look" — not a flat black page. Removing it made the
-   whole page flatter than intended, which in turn made the correctly-dark
-   `.dropdown` background (#1e1b3a) read as too purple by contrast against
-   an unintentionally-blacker page. This file no longer touches body
-   background at all — dark-theme.css's gradient shows through untouched;
-   only the star canvas + glow orbs layer on top of it.
+   2026-08-18: glow-orb opacity restored to match frontend-payroll/css/
+   cosmic-bg.css and the Eco Hub exactly (0.22/0.18/0.08). Two earlier
+   rounds of dampening this (2026-08-16, then again same day) were both
+   chasing a "too purple" complaint whose real cause was dark-theme.css's
+   body being a full-page gradient through --bg-mid, not this glow layer —
+   once that was fixed at its source, this glow was left too weak to read
+   as the flowing, visible "cosmic" effect Ruan specifically wants (matching
+   how Paytime/the Eco Hub actually look) — it read as flat solid black
+   instead. Restoring full intensity is correct now that the base is a
+   true solid near-black with no redundant gradient stacked underneath it.
    ================================================================ */
 
 /* ── Fixed background container (behind everything) ─────────────── */
@@ -59,7 +51,7 @@
 .pt-bg-glow.g1 {
     width: 560px; height: 560px;
     top: -120px; left: -140px;
-    background: rgba(91, 61, 245, 0.045);
+    background: rgba(91, 61, 245, 0.22);
     animation: ptGlowPulse 8s ease-in-out infinite;
     animation-delay: 0s;
 }
@@ -67,7 +59,7 @@
 .pt-bg-glow.g2 {
     width: 500px; height: 500px;
     bottom: -100px; right: -120px;
-    background: rgba(61, 165, 255, 0.035);
+    background: rgba(61, 165, 255, 0.18);
     animation: ptGlowPulse 8s ease-in-out infinite;
     animation-delay: -4s;
 }
@@ -75,7 +67,7 @@
 .pt-bg-glow.g3 {
     width: 360px; height: 360px;
     top: 40%; left: 50%;
-    background: rgba(91, 61, 245, 0.018);
+    background: rgba(91, 61, 245, 0.08);
     animation: ptGlowPulseCenter 8s ease-in-out infinite;
     animation-delay: -2s;
 }
