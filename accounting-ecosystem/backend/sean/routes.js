@@ -785,6 +785,21 @@ router.get('/bank-learning/stats', async (req, res) => {
   }
 });
 
+// ─── POST /bank-learning/analyze ─────────────────────────────────────────────
+// Manually re-run pattern analysis on demand (SEVCO "Analyze Now" button).
+// Normally fires automatically after each trusted-source allocation — this
+// just lets a Super Admin force it without waiting for the next transaction.
+
+router.post('/bank-learning/analyze', requireSuperAdmin, async (req, res) => {
+  try {
+    await bankLearning.analyzePatterns();
+    res.json({ success: true });
+  } catch (err) {
+    console.error('SEAN /bank-learning/analyze error:', err.message);
+    res.status(500).json({ error: 'Failed to run pattern analysis' });
+  }
+});
+
 // ─── GET /bank-learning/suggest ──────────────────────────────────────────────
 // Used by bank.html Sean button to get an allocation suggestion with
 // Codex-backed explanation.

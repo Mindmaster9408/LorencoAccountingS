@@ -71,6 +71,23 @@
         .page-header h1 span { color: #22d3ee; }
         .page-header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 6px; }
 
+        .tab-bar {
+            display: flex; gap: 8px; margin-bottom: 24px;
+            border-bottom: 1px solid var(--border); padding-bottom: 0;
+        }
+        .tab-btn {
+            padding: 10px 18px; border-radius: 10px 10px 0 0; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--text-muted);
+            transition: all 0.2s; margin-bottom: -1px;
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active {
+            color: #67e8f9; background: var(--surface);
+            border-color: var(--border); border-bottom-color: var(--bg);
+        }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -171,52 +188,85 @@
 
     <div class="main">
         <div class="page-header">
-            <h1>SEVCO <span>/ Paytime IRP5 Learning</span></h1>
-            <p>What Sean has learned from real IRP5 code changes across every client, and what still needs your review before it spreads anywhere else.</p>
+            <h1>SEVCO <span>/ Sean Learning</span></h1>
+            <p>What Sean has learned across every client, and what still needs your review before it spreads anywhere else.</p>
         </div>
 
-        <div id="statsGrid" class="stats-grid">
-            <div class="loading">Loading stats…</div>
+        <div class="tab-bar">
+            <button class="tab-btn active" id="tabBtnIrp5" onclick="switchTab('irp5')">Paytime IRP5 Learning</button>
+            <button class="tab-btn" id="tabBtnBank" onclick="switchTab('bank')">Bank Allocation Learning</button>
         </div>
 
-        <div class="section">
-            <div class="section-header">
-                <h2>Discovered Patterns</h2>
-                <div>
-                    <button class="btn" onclick="loadPatterns()">Refresh</button>
-                    <button class="btn btn-primary" onclick="runAnalyze()">Analyze Now</button>
+        <div id="tabIrp5" class="tab-panel active">
+            <div id="statsGrid" class="stats-grid">
+                <div class="loading">Loading stats…</div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Discovered Patterns</h2>
+                    <div>
+                        <button class="btn" onclick="loadPatterns()">Refresh</button>
+                        <button class="btn btn-primary" onclick="runAnalyze()">Analyze Now</button>
+                    </div>
                 </div>
+                <div id="patternsBody"><div class="loading">Loading patterns…</div></div>
             </div>
-            <div id="patternsBody"><div class="loading">Loading patterns…</div></div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Proposals Awaiting Review</h2>
+                    <span class="hint">Approve fills missing codes only. Sean never overwrites an existing code.</span>
+                </div>
+                <div id="proposalsBody"><div class="loading">Loading proposals…</div></div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Exception Lookup</h2>
+                    <span class="hint">Clients with a different existing code — always excluded from propagation</span>
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                    <input type="text" id="excName" placeholder="Item name, e.g. Commission">
+                    <input type="text" id="excCode" placeholder="Proposed code, e.g. 3606">
+                    <button class="btn btn-primary" onclick="loadExceptions()">Look up</button>
+                </div>
+                <div id="exceptionsBody"><div class="loading" style="padding:8px;">Enter an item name and code above.</div></div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Propagation Audit Log</h2>
+                    <button class="btn" onclick="loadLog()">Refresh</button>
+                </div>
+                <div id="logBody"><div class="loading">Loading log…</div></div>
+            </div>
         </div>
 
-        <div class="section">
-            <div class="section-header">
-                <h2>Proposals Awaiting Review</h2>
-                <span class="hint">Approve fills missing codes only. Sean never overwrites an existing code.</span>
+        <div id="tabBank" class="tab-panel">
+            <div id="bankStatsGrid" class="stats-grid">
+                <div class="loading">Loading stats…</div>
             </div>
-            <div id="proposalsBody"><div class="loading">Loading proposals…</div></div>
-        </div>
 
-        <div class="section">
-            <div class="section-header">
-                <h2>Exception Lookup</h2>
-                <span class="hint">Clients with a different existing code — always excluded from propagation</span>
+            <div class="section">
+                <div class="section-header">
+                    <h2>Discovered Patterns</h2>
+                    <span class="hint">Bank transaction description &rarr; account code, learned from trusted (PDF/API) imports only</span>
+                    <div>
+                        <button class="btn" onclick="loadBankPatterns()">Refresh</button>
+                        <button class="btn btn-primary" onclick="runBankAnalyze()">Analyze Now</button>
+                    </div>
+                </div>
+                <div id="bankPatternsBody"><div class="loading">Loading patterns…</div></div>
             </div>
-            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
-                <input type="text" id="excName" placeholder="Item name, e.g. Commission">
-                <input type="text" id="excCode" placeholder="Proposed code, e.g. 3606">
-                <button class="btn btn-primary" onclick="loadExceptions()">Look up</button>
-            </div>
-            <div id="exceptionsBody"><div class="loading" style="padding:8px;">Enter an item name and code above.</div></div>
-        </div>
 
-        <div class="section">
-            <div class="section-header">
-                <h2>Propagation Audit Log</h2>
-                <button class="btn" onclick="loadLog()">Refresh</button>
+            <div class="section">
+                <div class="section-header">
+                    <h2>Proposals Awaiting Review</h2>
+                    <span class="hint">Approving makes the pattern eligible as a global suggestion across every client — it does not write anything to any client's data directly</span>
+                </div>
+                <div id="bankProposalsBody"><div class="loading">Loading proposals…</div></div>
             </div>
-            <div id="logBody"><div class="loading">Loading log…</div></div>
         </div>
     </div>
 
@@ -270,12 +320,12 @@
             try {
                 const stats = await apiGet('/api/sean/paytime/stats');
                 const cards = [
-                    ['Learning Events', stats.totalEvents ?? stats.total_events ?? '—'],
-                    ['Patterns Found', stats.totalPatterns ?? stats.total_patterns ?? '—'],
-                    ['Pending Proposals', stats.pendingProposals ?? stats.pending_proposals ?? '—'],
-                    ['Approved (not yet run)', stats.approvedProposals ?? stats.approved_proposals ?? '—'],
-                    ['Propagations Applied', stats.totalApplied ?? stats.total_applied ?? '—'],
-                    ['Exceptions Logged', stats.totalExceptions ?? stats.total_exceptions ?? '—'],
+                    ['Learning Events', stats.totalLearningEvents ?? '—'],
+                    ['Patterns Found', stats.totalPatterns ?? '—'],
+                    ['Pending Proposals', stats.pendingApprovals ?? '—'],
+                    ['Approved (not yet run)', stats.patternsByStatus?.approved ?? '—'],
+                    ['Propagations Applied', stats.totalPropagations ?? '—'],
+                    ['Avg. Confidence', stats.avgConfidence != null ? `${stats.avgConfidence}%` : '—'],
                 ];
                 grid.innerHTML = cards.map(([label, value]) => `
                     <div class="stat-card">
@@ -477,9 +527,137 @@
             }
         }
 
+        // ── Tabs ──
+        function switchTab(name) {
+            document.getElementById('tabIrp5').classList.toggle('active', name === 'irp5');
+            document.getElementById('tabBank').classList.toggle('active', name === 'bank');
+            document.getElementById('tabBtnIrp5').classList.toggle('active', name === 'irp5');
+            document.getElementById('tabBtnBank').classList.toggle('active', name === 'bank');
+        }
+
+        // ── Bank Allocation Learning ──
+        async function loadBankStats() {
+            const grid = document.getElementById('bankStatsGrid');
+            try {
+                const stats = await apiGet('/api/sean/bank-learning/stats');
+                const cards = [
+                    ['Learning Events', stats.totalEvents ?? '—'],
+                    ['Patterns Found', stats.totalPatterns ?? '—'],
+                    ['Pending Proposals', stats.pendingProposals ?? '—'],
+                ];
+                grid.innerHTML = cards.map(([label, value]) => `
+                    <div class="stat-card">
+                        <div class="stat-value">${esc(value)}</div>
+                        <div class="stat-label">${esc(label)}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                grid.innerHTML = `<div class="error-msg">Could not load stats: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function loadBankPatterns() {
+            const body = document.getElementById('bankPatternsBody');
+            body.innerHTML = '<div class="loading">Loading patterns…</div>';
+            try {
+                const data = await apiGet('/api/sean/bank-learning/patterns');
+                const patterns = data.patterns || [];
+                if (!patterns.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No patterns discovered yet.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = `
+                    <table>
+                        <tr><th>Description</th><th>Suggested Account</th><th>Confidence</th><th>Clients Observed</th><th>Status</th></tr>
+                        ${patterns.map(p => `
+                            <tr>
+                                <td>${esc(p.normalized_description)}</td>
+                                <td>${esc(p.suggested_account_code)} — ${esc(p.suggested_account_name || '')}</td>
+                                <td>
+                                    <span class="confidence-bar"><span class="confidence-fill" style="width:${Math.round(p.confidence_score ?? 0)}%"></span></span>
+                                    ${Math.round(p.confidence_score ?? 0)}%
+                                </td>
+                                <td>${esc(p.clients_observed ?? '—')}</td>
+                                <td><span class="badge badge-correct">${esc(p.status)}</span></td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `;
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load patterns: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function runBankAnalyze() {
+            try {
+                await apiPost('/api/sean/bank-learning/analyze');
+                await Promise.all([loadBankPatterns(), loadBankProposals(), loadBankStats()]);
+            } catch (e) {
+                alert('Analyze failed: ' + e.message);
+            }
+        }
+
+        async function loadBankProposals() {
+            const body = document.getElementById('bankProposalsBody');
+            body.innerHTML = '<div class="loading">Loading proposals…</div>';
+            try {
+                const data = await apiGet('/api/sean/bank-learning/proposals');
+                const proposals = data.proposals || [];
+                if (!proposals.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No proposals awaiting review.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = proposals.map(p => renderBankProposalCard(p)).join('');
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load proposals: ${esc(e.message)}</div>`;
+            }
+        }
+
+        function renderBankProposalCard(p) {
+            const pattern = p.sean_bank_allocation_patterns || {};
+            const status = p.status || 'pending';
+            const canDecide = status === 'pending';
+            return `
+                <div class="section" style="margin-bottom:14px; background:rgba(255,255,255,0.03);">
+                    <div class="section-header">
+                        <h2 style="font-size:0.95rem;">${esc(p.snapshot_description)} &rarr; ${esc(p.snapshot_account_code)}</h2>
+                        <span class="badge badge-correct">${esc(status)}</span>
+                    </div>
+                    <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.78rem; margin-bottom:10px;">
+                        <span>Confidence: <strong>${esc(p.snapshot_confidence ?? pattern.confidence_score ?? '—')}%</strong></span>
+                        <span>Clients observed: <strong>${esc(p.snapshot_clients ?? pattern.clients_observed ?? '—')}</strong></span>
+                        <span>Occurrences: <strong>${esc(pattern.occurrence_count ?? '—')}</strong></span>
+                    </div>
+                    ${canDecide ? `
+                        <div class="action-row">
+                            <button class="btn btn-success" onclick="decideBankProposal(${p.id}, 'authorize')">Approve</button>
+                            <button class="btn btn-danger" onclick="decideBankProposal(${p.id}, 'reject')">Reject</button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        async function decideBankProposal(id, action) {
+            try {
+                if (action === 'reject') {
+                    const reason = prompt('Reason for rejecting this proposal (optional):') || '';
+                    await apiPost(`/api/sean/bank-learning/proposals/${id}/reject`, { reason });
+                } else {
+                    await apiPost(`/api/sean/bank-learning/proposals/${id}/authorize`);
+                }
+                await Promise.all([loadBankProposals(), loadBankStats()]);
+            } catch (e) {
+                alert(`Could not ${action} proposal: ` + e.message);
+            }
+        }
+
         // ── Init ──
         (async function init() {
-            await Promise.all([loadStats(), loadPatterns(), loadProposals(), loadLog()]);
+            await Promise.all([
+                loadStats(), loadPatterns(), loadProposals(), loadLog(),
+                loadBankStats(), loadBankPatterns(), loadBankProposals()
+            ]);
         })();
     </script>
 </body>
