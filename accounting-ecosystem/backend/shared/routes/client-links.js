@@ -72,6 +72,38 @@ async function getOwnEcoClient(companyId) {
   return (data && data[0]) || null;
 }
 
+async function getCompanyDisplayName(companyId) {
+  const { data } = await supabase.from('companies').select('company_name, trading_name').eq('id', companyId).maybeSingle();
+  return (data && (data.trading_name || data.company_name)) || `Company ${companyId}`;
+}
+
+/**
+ * Find-or-create one side of the mirrored pair, active immediately — used
+ * only at approval time, once mutual trust is already established by the
+ * approval action itself, so no second pending/approve cycle is needed for
+ * these two (same "approval covers both directions" principle Charlie's
+ * ensureMirroredRecords already uses for its four records).
+ */
+async function ensureActiveRecord(table, companyId, ecoClientId, name) {
+  const nameCol = table === 'customers' ? { name } : { supplier_name: name, name };
+  const { data: existing } = await supabase
+    .from(table).select('id, link_status')
+    .eq('company_id', companyId).eq('eco_client_id', ecoClientId).maybeSingle();
+  if (existing) {
+    if (existing.link_status !== 'active') {
+      await supabase.from(table).update({ link_status: 'active', updated_at: new Date().toISOString() }).eq('id', existing.id);
+    }
+    return;
+  }
+  await supabase.from(table).insert({
+    company_id: companyId,
+    eco_client_id: ecoClientId,
+    link_status: 'active',
+    is_active: true,
+    ...nameCol,
+  });
+}
+
 async function getEcoClientByCode(clientCode) {
   const { data, error } = await supabase
     .from('eco_clients')
@@ -288,6 +320,21 @@ router.post('/suppliers/:supplierId/approve', async (req, res) => {
       if (initiatorCustomer) {
         await supabase.from('customers').update({ link_status: 'active', updated_at: new Date().toISOString() }).eq('id', initiatorCustomer.id);
       }
+
+      // Full mirroring (2026-08-21, requested by Ruan: "dit moet alles op
+      // dieselfde tyd gebeur") — same principle as Charlie's own
+      // ensureMirroredRecords (Workstream 100): once a link is trusted on
+      // both sides, EACH side gets both a customer AND a supplier record
+      // for the other, so trade can flow either direction without a second,
+      // separate link request having to be initiated from scratch. The two
+      // records above (initiator's customer, my supplier) already existed
+      // from the original request; these two are the missing reverse pair —
+      // created active immediately, no further approval needed since this
+      // one approval already established mutual trust for the relationship.
+      const initiatorName = await getCompanyDisplayName(initiatorEcoClient.client_company_id);
+      const myName = await getCompanyDisplayName(req.companyId);
+      await ensureActiveRecord('customers', req.companyId, supplier.eco_client_id, initiatorName);
+      await ensureActiveRecord('suppliers', initiatorEcoClient.client_company_id, own.id, myName);
     }
 
     await auditFromReq(req, 'UPDATE', 'supplier', supplierId, {
@@ -295,7 +342,7 @@ router.post('/suppliers/:supplierId/approve', async (req, res) => {
       metadata: { action: 'client_link_approved' },
     });
 
-    res.json({ success: true, message: 'Link approved — active on both sides.' });
+    res.json({ success: true, message: 'Link approved — active on both sides, both directions.' });
   } catch (err) {
     console.error('[client-links] approve:', err.message);
     res.status(500).json({ error: 'Server error' });

@@ -56,6 +56,56 @@ async function findAccountByCode(companyId, code) {
 }
 
 /**
+ * Company-link "they paid" note (2026-08-21).
+ *
+ * Deliberately NOT an automatic cross-company payment reconciliation —
+ * Ruan's explicit call: "ons kan nie laat dit outomaties gebeur nie" (no
+ * automatic posting/matching of the money itself). This only appends a
+ * plain, human-readable note onto the SENDING company's original
+ * customer_invoice once their pulled-through supplier invoice is fully
+ * paid, so that company's bookkeeper knows to expect / look out for the
+ * actual proof of payment (bank statement, EFT confirmation) rather than
+ * hearing nothing until they happen to check. It never touches amount_paid,
+ * status, or any GL entry on the sending side.
+ *
+ * Only fires for a supplier_invoice that genuinely originated from a
+ * company-link draft (supplier_invoice_ocr_drafts.source='company_link') —
+ * an ordinary, unrelated supplier invoice reaching 'paid' never triggers
+ * this at all. Best-effort: any failure here must never affect the
+ * payment that already committed successfully.
+ */
+async function notifyLinkedCustomerOfPayment({ companyId, supplierInvoiceId }) {
+  const { data: draft } = await supabase
+    .from('supplier_invoice_ocr_drafts')
+    .select('source_customer_invoice_id, source_company_id')
+    .eq('converted_supplier_invoice_id', supplierInvoiceId)
+    .eq('source', 'company_link')
+    .maybeSingle();
+  if (!draft || !draft.source_customer_invoice_id || !draft.source_company_id) return;
+
+  const { data: payingCompany } = await supabase
+    .from('companies').select('company_name, trading_name').eq('id', companyId).maybeSingle();
+  const payingName = (payingCompany && (payingCompany.trading_name || payingCompany.company_name)) || `Company ${companyId}`;
+
+  const { data: sourceInvoice } = await supabase
+    .from('customer_invoices').select('id, notes')
+    .eq('id', draft.source_customer_invoice_id).eq('company_id', draft.source_company_id).maybeSingle();
+  if (!sourceInvoice) return; // original invoice gone/inaccessible — nothing to note
+
+  const marker = `[Company Link] ${payingName} marked this invoice as paid`;
+  if ((sourceInvoice.notes || '').includes(marker)) return; // already noted once — never duplicate
+
+  const dateStr = new Date().toISOString().substring(0, 10);
+  const newNote = `${marker} on ${dateStr}. Check for proof of payment (bank statement / EFT confirmation) — this is informational only, no payment was automatically recorded.`;
+  const updatedNotes = sourceInvoice.notes ? `${sourceInvoice.notes}\n${newNote}` : newNote;
+
+  await supabase
+    .from('customer_invoices')
+    .update({ notes: updatedNotes, updated_at: new Date().toISOString() })
+    .eq('id', draft.source_customer_invoice_id).eq('company_id', draft.source_company_id);
+}
+
+/**
  * Calculate line-item VAT amounts for a given mode.
  * Returns { subtotalExVat, vatAmount, totalIncVat } — all rounded to 2dp.
  */
@@ -2121,6 +2171,12 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
     // Why here and not in Step 4: Step 4 is a fast pre-check. Step 7 is the
     // authoritative check — the balance is validated inside the lock so two
     // concurrent payments cannot both pass Step 4 and then both over-allocate.
+    // Company-link "they paid" note (2026-08-21, Ruan's explicit call: no
+    // automatic cross-company payment reconciliation — just enough visibility
+    // that the sending company knows to look out for proof of payment).
+    // Collected during the loop below, notified best-effort AFTER commit.
+    const justPaidInvoiceIds = [];
+
     if (allocations && allocations.length) {
       const allocClient = await db.getClient();
       try {
@@ -2162,6 +2218,7 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
           }
 
           const newStatus = invoiceStatus(totalIncVat, newAmountPaid);
+          if (newStatus === 'paid') justPaidInvoiceIds.push(allocInvoiceId);
 
           await allocClient.query(
             `UPDATE supplier_invoices
@@ -2186,6 +2243,16 @@ router.post('/payments', authenticate, hasPermission('ap.payment.record'), async
         throw allocTxErr;
       } finally {
         allocClient.release();
+      }
+    }
+
+    // Company-link "they paid" note — best-effort, never blocks or fails
+    // this already-committed payment. See notifyLinkedCustomerOfPayment().
+    for (const paidInvoiceId of justPaidInvoiceIds) {
+      try {
+        await notifyLinkedCustomerOfPayment({ companyId, supplierInvoiceId: paidInvoiceId });
+      } catch (noteErr) {
+        console.error('[Suppliers] Company-link payment note failed (non-fatal):', noteErr.message);
       }
     }
 

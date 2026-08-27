@@ -598,6 +598,19 @@ router.post('/:id/approve', authenticate, hasPermission('ap.invoice.create'), as
     // ── 7. Atomic invoice create (header + lines in pg transaction) ─────────
     // Same pattern as POST /api/accounting/suppliers/invoices (suppliers.js).
     // GL posting happens AFTER commit — JournalService runs independently.
+    //
+    // BUG FIX (found live 2026-08-21, while building the company-link
+    // pull-through that reuses this exact route): this insert used
+    // invoice_date/vat_inclusive/subtotal_ex_vat/total_inc_vat/
+    // created_by_user_id — none of which exist on the live supplier_invoices
+    // table. Confirmed by direct probe-insert against the live schema: it
+    // actually uses date/subtotal/total_amount/created_by/supplier_ref (same
+    // convention as customer_invoices — see suppliers.js's POST /invoices,
+    // which already has this exact fix and comment). supplier_invoice_lines
+    // likewise only has a single ex-VAT line_total column — no
+    // line_subtotal_ex_vat/vat_amount/line_total_inc_vat/sort_order. This
+    // meant POST /:id/approve had never worked for ANY OCR draft, ever —
+    // every click would 500 with "Could not find the 'invoice_date' column".
     const dbClient = await db.getClient();
     let invoice;
     try {
@@ -605,10 +618,10 @@ router.post('/:id/approve', authenticate, hasPermission('ap.invoice.create'), as
 
       const hdrResult = await dbClient.query(
         `INSERT INTO supplier_invoices
-           (company_id, supplier_id, invoice_number, reference, invoice_date,
-            due_date, vat_inclusive, subtotal_ex_vat, vat_amount, total_inc_vat,
-            amount_paid, status, notes, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           (company_id, supplier_id, invoice_number, supplier_ref, date,
+            due_date, subtotal, vat_amount, total_amount,
+            amount_paid, status, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          RETURNING *`,
         [
           companyId,
@@ -617,7 +630,6 @@ router.post('/:id/approve', authenticate, hasPermission('ap.invoice.create'), as
           header.reference  || null,
           header.invoice_date,
           header.due_date   || null,
-          vatInclusive,
           totals.subtotalExVat,
           totals.vatAmount,
           totals.totalIncVat,
@@ -629,22 +641,22 @@ router.post('/:id/approve', authenticate, hasPermission('ap.invoice.create'), as
       );
       invoice = hdrResult.rows[0];
 
-      // Bulk-insert all lines
+      // Bulk-insert all lines — line_total stored ex-VAT, consistent with
+      // the header's subtotal (same convention as suppliers.js).
       const lineVals   = [];
       const lineParams = [];
       let p = 1;
       for (const l of processedLines) {
-        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
+        lineVals.push(`($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`);
         lineParams.push(
           invoice.id, l.description, l.accountId || null,
-          l.quantity, l.unitPrice, l.lineSubtotalExVat,
-          l.vatRate, l.vatAmount, l.lineTotalIncVat, l.sortOrder
+          l.quantity, l.unitPrice, l.vatRate, l.lineSubtotalExVat
         );
       }
       await dbClient.query(
         `INSERT INTO supplier_invoice_lines
            (invoice_id, description, account_id, quantity, unit_price,
-            line_subtotal_ex_vat, vat_rate, vat_amount, line_total_inc_vat, sort_order)
+            vat_rate, line_total)
          VALUES ${lineVals.join(',')}`,
         lineParams
       );
