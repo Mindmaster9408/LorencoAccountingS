@@ -46,7 +46,19 @@ body {
 }
 
 /* ── Top Bar ────────────────────────────────────────────────────────────────── */
+/* position:relative + z-index keeps the top bar (and .main-nav below, see
+   its own rule) visible and clickable ABOVE any modal on the page,
+   2026-08-18 per Ruan — previously .modal/.modal-overlay z-index ranged
+   500-4000 across different pages against nav's own ~1000-1001
+   (navigation.js), so a modal's darkening overlay visually buried the
+   nav underneath it every time one was open. 4500 clears every .modal
+   z-index found across frontend-accounting (highest was 4000, quotes.html)
+   while staying below the 9000+ tier used by toasts/dropdown-search
+   results/upload previews, which should still float above everything
+   including the nav. */
 .top-bar {
+    position: relative !important;
+    z-index: 4500 !important;
     background: rgba(0,0,0,0.4) !important;
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
@@ -83,6 +95,8 @@ body {
 /* ── Navbar / Main Nav (navigation.js injects .main-nav) ────────────────────── */
 .navbar,
 .main-nav {
+    position: relative !important;
+    z-index: 4500 !important;
     background: rgba(255,255,255,0.04) !important;
     border-bottom-color: var(--border) !important;
     box-shadow: none !important;
