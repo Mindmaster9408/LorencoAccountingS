@@ -20,6 +20,19 @@
 -- sequence name is allowlisted inside the function (rather than executing
 -- an arbitrary caller-supplied identifier) since this function is exposed
 -- as a public RPC — new sequences must be added to the allowlist explicitly.
+--
+-- CORRECTED after first run: the initial version of this function called
+-- an unqualified, dynamically-built `nextval('po_number_seq')` from inside
+-- itself. Since pg_catalog is always implicitly searched, but Postgres
+-- resolves an untyped string literal argument to whichever visible
+-- candidate needs no cast, it matched this function's own `text` signature
+-- instead of the built-in `nextval(regclass)` — the function called
+-- itself, forever, until Postgres raised "54001: stack depth limit
+-- exceeded". Fixed by calling the built-in schema-qualified with an
+-- explicit ::regclass cast (pg_catalog.nextval(...)), which cannot resolve
+-- back to this function under any circumstances, and by dropping the
+-- dynamic SQL entirely since it was never needed once the call is
+-- unambiguous.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.nextval(seq_name text)
@@ -28,15 +41,12 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  v_val bigint;
 BEGIN
   IF seq_name NOT IN ('po_number_seq') THEN
     RAISE EXCEPTION 'nextval(): unknown or unlisted sequence "%"', seq_name;
   END IF;
 
-  EXECUTE format('SELECT nextval(%L)', seq_name) INTO v_val;
-  RETURN v_val;
+  RETURN pg_catalog.nextval(seq_name::regclass);
 END;
 $$;
 
@@ -45,4 +55,5 @@ GRANT EXECUTE ON FUNCTION public.nextval(text) TO service_role, authenticated;
 NOTIFY pgrst, 'reload schema';
 
 -- ─── Verification ─────────────────────────────────────────────────────────────
-SELECT nextval('po_number_seq') AS direct_call_should_be_a_number;
+-- Explicitly schema-qualified so this call itself is unambiguous too.
+SELECT public.nextval('po_number_seq') AS wrapper_rpc_should_be_a_number;
