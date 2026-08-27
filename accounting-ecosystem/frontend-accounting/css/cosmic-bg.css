@@ -10,25 +10,21 @@
    (empty-state tables, short settings forms) than Payroll/the ECO Hub,
    which exposed far more raw glow — reduced per 2026-08-16 feedback
    that the result read as "too purple, not dark enough".
-   Load AFTER css/dark-theme.css so this body background wins the cascade.
+   Load AFTER css/dark-theme.css.
 
-   2026-08-16: confirmed via DevTools Computed panel that a plain `body {}`
-   selector here was NOT enough — dark-theme.css's body rule is also
-   `background: linear-gradient(...) !important`, and `background` is a
-   SHORTHAND that expands into background-image AND background-color
-   independently. Both rules' shorthands compete per-longhand, not as a
-   whole; dark-theme.css's background-image (the gradient) was still
-   winning even though this file loads later. Fixed by (a) using a
-   higher-specificity `html body` selector so this wins outright
-   regardless of load order, and (b) setting background-image: none
-   explicitly rather than relying on the shorthand to imply it.
+   2026-08-18 CORRECTED: the 2026-08-16 fix here killed dark-theme.css's
+   background-image entirely (background-image: none !important) to chase
+   down a "too purple" glow-orb complaint. That was the wrong layer — the
+   architecture doc (accounting-dark-theme-architecture.md) confirms the
+   gradient itself (--bg-dark #0f0c29 → --bg-mid #302b63 → --bg-end #24243e)
+   IS the intended design, "a deep purple/navy gradient... matching the
+   ecosystem dashboard look" — not a flat black page. Removing it made the
+   whole page flatter than intended, which in turn made the correctly-dark
+   `.dropdown` background (#1e1b3a) read as too purple by contrast against
+   an unintentionally-blacker page. This file no longer touches body
+   background at all — dark-theme.css's gradient shows through untouched;
+   only the star canvas + glow orbs layer on top of it.
    ================================================================ */
-
-/* ── Dark cosmic base ─────────────────────────────────────────── */
-html body {
-    background-color: #090d18 !important;
-    background-image: none !important;
-}
 
 /* ── Fixed background container (behind everything) ─────────────── */
 /* z-index: -1 (not 0) is deliberate — it lets this paint behind ALL
