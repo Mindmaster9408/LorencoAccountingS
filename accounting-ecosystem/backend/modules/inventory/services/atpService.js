@@ -151,17 +151,29 @@ async function calculateProjectedAvailability(supabase, companyId, itemId, horiz
 
   if (!item) return { success: false, error: 'Item not found' };
 
-  // Expected inflows from open POs
-  const { data: poLines } = await supabase
-    .from('purchase_order_lines')
+  // Expected inflows from open POs. purchase_order_lines is a plain
+  // description/amount AP line with no item tracking at all — the real
+  // item-tracked PO line table (matching what procurementService.js
+  // already correctly uses) is purchase_order_items, and it has no
+  // company_id of its own — scoped via the joined purchase_orders row.
+  const { data: poLinesRaw } = await supabase
+    .from('purchase_order_items')
     .select(`
-      quantity_ordered, quantity_received, expected_date,
-      purchase_orders:po_id (id, po_number, expected_date, status)
+      quantity, received_qty, expected_date,
+      purchase_orders:po_id (id, po_number, expected_date, status, company_id)
     `)
-    .eq('company_id', companyId)
     .eq('item_id', itemId)
     .gte('expected_date', todayStr)
     .lte('expected_date', horizonStr);
+
+  const poLines = (poLinesRaw || [])
+    .filter(l => l.purchase_orders?.company_id === companyId)
+    .map(l => ({
+      quantity_ordered: l.quantity,
+      quantity_received: l.received_qty,
+      expected_date: l.expected_date,
+      purchase_orders: l.purchase_orders,
+    }));
 
   // Future SO demand
   const { data: soLines } = await supabase
