@@ -161,7 +161,7 @@ async function getWorkOrderCostSummary(supabase, companyId, options = {}) {
       completed_qty, unit_cost, status, finalized_at,
       created_at, updated_at,
       work_orders:work_order_id (
-        id, reference_number, status,
+        id, reference_number:wo_number, status,
         quantity_to_produce, quantity_produced,
         inventory_items:item_id (id, name, sku)
       )
@@ -356,6 +356,22 @@ async function getVarianceSummaryReport(supabase, companyId, options = {}) {
 }
 
 async function getOperationalDashboard(supabase, companyId) {
+  // Unlike every other function in this file, this one drives its queries
+  // through a single Promise.all rather than per-query .error checks — a
+  // thrown error (e.g. from costingService.getStockValuation) would
+  // otherwise escape uncaught, and since neither this function nor its
+  // route handler had a try/catch, the request would hang indefinitely
+  // instead of erroring (Express 4 does not auto-catch a rejected async
+  // handler). Wrapped to match this file's {success:false, status, error}
+  // convention.
+  try {
+    return await _getOperationalDashboardInner(supabase, companyId);
+  } catch (err) {
+    return { success: false, status: 500, error: err.message };
+  }
+}
+
+async function _getOperationalDashboardInner(supabase, companyId) {
   const today = new Date().toISOString().slice(0, 10);
 
   const [itemCount, supplierCount, openWOs, openPOs, overduePOs, activeReservations, lowStockCount, valuation] = await Promise.all([
@@ -365,9 +381,15 @@ async function getOperationalDashboard(supabase, companyId) {
     supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('company_id', companyId).in('status', ['approved', 'ordered', 'partial_receipt']),
     supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('company_id', companyId).not('status', 'in', '("cancelled","closed","fully_received")').lt('expected_date', today),
     supabase.from('stock_reservations').select('item_id, quantity_reserved, quantity_released, quantity_consumed').eq('company_id', companyId).in('reservation_status', ['active', 'partially_released']),
-    supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('is_active', true).filter('current_stock', 'lte', 'min_stock'),
+    // PostgREST's .filter() compares a column to a literal value, not to
+    // another column — fetch the active/min_stock>0 set and compare
+    // current_stock <= min_stock client-side instead.
+    supabase.from('inventory_items').select('current_stock, min_stock').eq('company_id', companyId).eq('is_active', true).gt('min_stock', 0),
     costingService.getStockValuation(supabase, companyId)
   ]);
+
+  const lowStockItemCount = (lowStockCount.data || [])
+    .filter(i => parseFloat(i.current_stock || 0) <= parseFloat(i.min_stock || 0)).length;
 
   const reservationRows = activeReservations.data || [];
   const reservedByItem = {};
@@ -424,7 +446,7 @@ async function getOperationalDashboard(supabase, companyId) {
       overdue_purchase_orders: overduePOs.count || 0,
       active_reservations: reservationRows.length,
       total_reserved_value: parseFloat(totalReservedValue.toFixed(4)),
-      low_stock_count: lowStockCount.count || 0,
+      low_stock_count: lowStockItemCount,
       shortage_item_count: shortageItems.length,
       total_stock_value: (valuation || []).reduce((sum, row) => sum + (parseFloat(row.totalValue) || 0), 0)
     },

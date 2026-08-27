@@ -149,19 +149,25 @@ router.get('/sean-context', requirePerm(PERM.VIEW), async (req, res) => {
 router.get('/dashboard', async (req, res) => {
   const cid = req.companyId;
   try {
-    const [items, movements, suppliers, lowStock, openWOs, activeBoMs] = await Promise.all([
+    const [items, movements, suppliers, lowStockItems, openWOs, activeBoMs] = await Promise.all([
       supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
       supabase.from('stock_movements').select('id', { count: 'exact', head: true }).eq('company_id', cid),
       supabase.from('suppliers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true),
-      supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('is_active', true).filter('current_stock', 'lte', 'min_stock'),
+      // PostgREST's .filter() compares a column to a literal value, not to
+      // another column — 'current_stock lte min_stock' can't be expressed
+      // that way. Fetch the active/min_stock>0 set and compare
+      // current_stock <= min_stock client-side instead.
+      supabase.from('inventory_items').select('current_stock, min_stock').eq('company_id', cid).eq('is_active', true).gt('min_stock', 0),
       supabase.from('work_orders').select('id', { count: 'exact', head: true }).eq('company_id', cid).in('status', ['released', 'in_progress']),
       supabase.from('bom_headers').select('id', { count: 'exact', head: true }).eq('company_id', cid).eq('status', 'active'),
     ]);
+    const lowStockCount = (lowStockItems.data || [])
+      .filter(i => parseFloat(i.current_stock || 0) <= parseFloat(i.min_stock || 0)).length;
     res.json({
       total_items:     items.count     || 0,
       total_movements: movements.count || 0,
       total_suppliers: suppliers.count || 0,
-      low_stock_count: lowStock.count  || 0,
+      low_stock_count: lowStockCount,
       open_work_orders: openWOs.count  || 0,
       active_boms:     activeBoMs.count || 0,
     });
