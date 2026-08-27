@@ -313,6 +313,24 @@ select option {
 }
 
 /* ── Modals ─────────────────────────────────────────────────────────────────── */
+/* padding-top clears the nav (top-bar 60px + main-nav 56px = 116px, see
+   .top-bar/.main-nav above) now that nav sits at z-index:4500, above
+   every modal. Before this, a tall/vertically-centered dialog (e.g. New
+   Invoice) could reach up into the nav's own screen region — harmless
+   when nav rendered behind the modal, but once nav paints on top of it
+   (2026-08-18 fix) the two visually collided, garbling both the modal
+   header text and the nav links sitting in the same space. .modal and
+   .modal-overlay both serve as the full-viewport flex container (inset:0;
+   display:flex;align-items:center) on different pages — covering both
+   patterns keeps a shorter dialog still looking centered (just centered
+   within the space below nav, not the full viewport) while a tall one
+   simply starts right below nav instead of reaching up into it. */
+.modal,
+.modal-overlay,
+.overlay {
+    padding-top: 116px !important;
+    box-sizing: border-box !important;
+}
 .modal-overlay,
 .overlay {
     background: rgba(15,12,41,0.85) !important;
