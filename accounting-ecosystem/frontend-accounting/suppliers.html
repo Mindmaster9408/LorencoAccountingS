@@ -240,6 +240,7 @@
     <div class="tab"        onclick="switchTab('payments')"  id="tab-btn-payments">Payments</div>
     <div class="tab"        onclick="switchTab('aging')"      id="tab-btn-aging">Aging Report</div>
     <div class="tab"        onclick="switchTab('ocr-drafts')" id="tab-btn-ocr-drafts">📄 OCR Invoice Review</div>
+    <div class="tab"        onclick="switchTab('client-links')" id="tab-btn-client-links">🔗 Company Link Requests</div>
   </div>
 
   <!-- ══ Tab: Supplier List ══════════════════════════════════════════ -->
@@ -486,6 +487,44 @@
         <div id="ocrDraftsEmpty" class="empty-state" style="display:none">
           <h3>No OCR drafts</h3>
           <p>Upload a supplier invoice PDF or image to extract and review it.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Tab: Company Link Requests ═══════════════════════════════════ -->
+  <div id="tab-client-links" class="tab-content">
+    <div class="card">
+      <div class="card-header">
+        <h2>🔗 Company Link Requests</h2>
+        <button class="btn btn-secondary btn-sm" onclick="loadClientLinkRequests()">Refresh</button>
+      </div>
+
+      <div style="padding:10px 20px;background:rgba(251,191,36,0.06);border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;color:#d1a800;">
+        ⚠️ Approving a request means their invoices will start pulling into
+        your books once that's built. Only approve a request from a company
+        you actually trade with.
+      </div>
+
+      <div class="card-body" style="padding:0">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Client Code</th>
+                <th>Requested</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="clientLinkTbody">
+              <tr><td colspan="4" style="text-align:center;padding:40px;opacity:0.5;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="clientLinkEmpty" class="empty-state" style="display:none">
+          <h3>No pending link requests</h3>
+          <p>When another company links one of their customer records to yours, it will appear here for you to approve.</p>
         </div>
       </div>
     </div>
@@ -1033,6 +1072,7 @@ const tabLoaders = {
   payments:    loadPayments,
   aging:       loadAging,
   'ocr-drafts': loadOcrDrafts,
+  'client-links': loadClientLinkRequests,
 };
 
 function switchTab(name) {
@@ -1985,6 +2025,59 @@ function esc(str) {
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════
+//  COMPANY LINK REQUESTS (2026-08-21)
+// ═══════════════════════════════════════════════════════
+// Incoming requests from other companies who've linked one of THEIR
+// customer records to us (via our client_code). See
+// backend/shared/routes/client-links.js — a fresh mechanism, not the old
+// backend/inter-company/ engine.
+
+async function loadClientLinkRequests() {
+  const tbody = document.getElementById('clientLinkTbody');
+  const empty = document.getElementById('clientLinkEmpty');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;opacity:0.5;">Loading…</td></tr>';
+
+  const data = await apiGet('/api/client-links/pending');
+  if (!data) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;opacity:0.5;">Failed to load.</td></tr>'; return; }
+
+  const pending = data.pending || [];
+  if (!pending.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = pending.map(p => `
+    <tr>
+      <td>${esc(p.name)}</td>
+      <td>${esc(p.clientCode || '—')}</td>
+      <td>${fmtDate(p.requestedAt)}</td>
+      <td>
+        <button class="btn btn-primary btn-sm" onclick="approveClientLink(${p.supplierId})">Approve</button>
+        <button class="btn btn-secondary btn-sm" onclick="rejectClientLink(${p.supplierId})">Reject</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function approveClientLink(supplierId) {
+  if (!confirm('Approve this company link? Both sides will be marked active.')) return;
+  const result = await apiPost(`/api/client-links/suppliers/${supplierId}/approve`, {});
+  if (result?.error) { alert(result.error); return; }
+  alert(result?.message || 'Link approved.');
+  await loadClientLinkRequests();
+  await loadSuppliers();
+}
+
+async function rejectClientLink(supplierId) {
+  if (!confirm('Reject this company link request?')) return;
+  const result = await apiPost(`/api/client-links/suppliers/${supplierId}/reject`, {});
+  if (result?.error) { alert(result.error); return; }
+  await loadClientLinkRequests();
 }
 
 // Close modal when clicking backdrop

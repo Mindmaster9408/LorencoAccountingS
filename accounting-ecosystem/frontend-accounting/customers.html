@@ -563,6 +563,10 @@
         lastPurchase:    c.last_purchase_at      ? toDateStr(c.last_purchase_at)      : null,
         lastAccountSale: c.last_account_sale_at  ? toDateStr(c.last_account_sale_at) : null,
         status:      c.is_active ? 'active' : 'inactive',
+        // Company-link fields (2026-08-21) — see /api/client-links/*.
+        // linkStatus is null for an ordinary (non-linked) customer.
+        ecoClientId: c.eco_client_id || null,
+        linkStatus:  c.link_status || null,
       };
     }
 
@@ -583,6 +587,18 @@
       document.getElementById('monthRevenue').textContent     = formatCurrency(
         posSales.reduce((s, p) => s + parseFloat(p.total_amount || 0), 0)
       );
+    }
+
+    // Company-link action cell (2026-08-21) — shared by both render paths
+    // below so the markup can't drift out of sync between them.
+    function linkActionHtml(c) {
+      if (c.linkStatus === 'active') {
+        return '<span class="status-badge status-active" title="Linked to another platform company">🔗 Linked</span>';
+      }
+      if (c.linkStatus === 'pending') {
+        return '<span class="status-badge status-overdue" title="Waiting for the other company to approve">🔗 Pending</span>';
+      }
+      return `<button class="action-btn" onclick="openLinkCustomerModal(${c.id}, '${esc(c.name)}')">🔗 Link</button>`;
     }
 
     function renderCustomers() {
@@ -607,6 +623,7 @@
           <td>
             <div class="action-btns">
               <button class="action-btn" onclick="viewCustomer(${c.id})">View</button>
+              ${linkActionHtml(c)}
             </div>
           </td>
         </tr>
@@ -709,10 +726,68 @@
           <td>
             <div class="action-btns">
               <button class="action-btn" onclick="viewCustomer(${c.id})">View</button>
+              ${linkActionHtml(c)}
             </div>
           </td>
         </tr>
       `).join('');
+    }
+
+    // ── Company Link (2026-08-21) — link this customer record to another
+    // real platform company by their Lorenco Ecosystem client_code. See
+    // backend/shared/routes/client-links.js.
+    async function openLinkCustomerModal(customerId, customerName) {
+      const code = prompt(
+        `Link "${customerName}" to another company\n\n` +
+        `Enter their Lorenco Ecosystem client code (e.g. CLT-38EF9A29) — ` +
+        `you'll find it on their ECO Dashboard.`
+      );
+      if (!code || !code.trim()) return;
+      const clientCode = code.trim().toUpperCase();
+
+      // Look the code up first and show WHO it found before actually
+      // creating the link request — typing the wrong code (a typo, or the
+      // wrong client's code) should never silently send a request to a
+      // company nobody meant to link to.
+      let found;
+      try {
+        const res = await fetch('/api/client-links/lookup', {
+          method: 'POST', headers: authH(),
+          body: JSON.stringify({ client_code: clientCode }),
+        });
+        found = await res.json();
+        if (!res.ok) { alert(found.error || 'No client found for that code'); return; }
+      } catch (err) {
+        alert('Error looking up that code: ' + err.message);
+        return;
+      }
+
+      const confirmed = confirm(
+        `Found: ${found.client.name} (${found.client.clientCode})\n\n` +
+        `Send a link request to them? It will appear on their Supplier list for approval.`
+      );
+      if (!confirmed) return;
+
+      submitCustomerLink(customerId, clientCode);
+    }
+
+    async function submitCustomerLink(customerId, clientCode) {
+      try {
+        const res = await fetch(`/api/client-links/customers/${customerId}/link`, {
+          method: 'POST',
+          headers: authH(),
+          body: JSON.stringify({ client_code: clientCode }),
+        });
+        const result = await res.json();
+        if (!res.ok) {
+          alert(result.error || 'Failed to send link request');
+          return;
+        }
+        alert(result.message || 'Link request sent.');
+        await loadCustomers();
+      } catch (err) {
+        alert('Error sending link request: ' + err.message);
+      }
     }
 
     async function viewCustomer(id) {

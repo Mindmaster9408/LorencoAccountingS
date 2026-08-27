@@ -804,7 +804,10 @@
                     country: 'South Africa',
                     paymentTerms: 30,
                     accountNumber: c.customer_number || '',
-                    taxNumber: c.tax_reference || ''
+                    taxNumber: c.tax_reference || '',
+                    // Company-link fields (2026-08-21) — see /api/client-links/*.
+                    ecoClientId: c.eco_client_id || null,
+                    linkStatus: c.link_status || null
                 }));
             } catch (err) {
                 console.error('[customer-list] load error:', err);
@@ -836,12 +839,78 @@
                                 <button class="action-btn" onclick="editCustomer(${customer.id})">Edit</button>
                                 <button class="action-btn" onclick="viewCustomer(${customer.id})">View</button>
                                 <button class="action-btn action-btn-danger" onclick="deleteCustomer(${customer.id}, '${customer.name.replace(/'/g, "\\'")}')">Deactivate</button>
+                                ${linkActionHtml(customer)}
                             </div>
                         </td>
                     </tr>
                 `;
                 tbody.innerHTML += row;
             });
+        }
+
+        // ── Company Link (2026-08-21) — link this customer record to another
+        // real platform company by their Lorenco Ecosystem client_code. See
+        // backend/shared/routes/client-links.js.
+        function linkActionHtml(customer) {
+            if (customer.linkStatus === 'active') {
+                return '<span class="badge badge-active" title="Linked to another platform company">🔗 Linked</span>';
+            }
+            if (customer.linkStatus === 'pending') {
+                return '<span class="badge badge-inactive" title="Waiting for the other company to approve">🔗 Pending</span>';
+            }
+            return `<button class="action-btn" onclick="openLinkCustomerModal(${customer.id}, '${customer.name.replace(/'/g, "\\'")}')">🔗 Link</button>`;
+        }
+
+        function authHeaders() {
+            return {
+                'Authorization': 'Bearer ' + localStorage.getItem('token'),
+                'Content-Type': 'application/json'
+            };
+        }
+
+        async function openLinkCustomerModal(customerId, customerName) {
+            const code = prompt(
+                `Link "${customerName}" to another company\n\n` +
+                `Enter their Lorenco Ecosystem client code (e.g. CLT-38EF9A29) — ` +
+                `you'll find it on their ECO Dashboard.`
+            );
+            if (!code || !code.trim()) return;
+            const clientCode = code.trim().toUpperCase();
+
+            // Look the code up first and show WHO it found before actually
+            // creating the link request — a typo, or the wrong client's code,
+            // should never silently send a request to the wrong company.
+            let found;
+            try {
+                const res = await fetch('/api/client-links/lookup', {
+                    method: 'POST', headers: authHeaders(),
+                    body: JSON.stringify({ client_code: clientCode })
+                });
+                found = await res.json();
+                if (!res.ok) { alert(found.error || 'No client found for that code'); return; }
+            } catch (err) {
+                alert('Error looking up that code: ' + err.message);
+                return;
+            }
+
+            const confirmed = confirm(
+                `Found: ${found.client.name} (${found.client.clientCode})\n\n` +
+                `Send a link request to them? It will appear on their Supplier list for approval.`
+            );
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch(`/api/client-links/customers/${customerId}/link`, {
+                    method: 'POST', headers: authHeaders(),
+                    body: JSON.stringify({ client_code: clientCode })
+                });
+                const result = await res.json();
+                if (!res.ok) { alert(result.error || 'Failed to send link request'); return; }
+                alert(result.message || 'Link request sent.');
+                await loadCustomers();
+            } catch (err) {
+                alert('Error sending link request: ' + err.message);
+            }
         }
 
         function filterCustomers(search) {

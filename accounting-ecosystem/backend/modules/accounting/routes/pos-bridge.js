@@ -378,7 +378,7 @@ router.get('/customers', authenticate, hasPermission('pos.view'), async (req, re
     let query = supabase
       .from('customers')
       .select(
-        'id, customer_number, name, customer_type, contact_person, email, phone, contact_number, address_line_1, city, province, postal_code, credit_limit, current_balance, is_active, created_at, id_number, tax_reference, notes',
+        'id, customer_number, name, customer_type, contact_person, email, phone, contact_number, address_line_1, city, province, postal_code, credit_limit, current_balance, is_active, created_at, id_number, tax_reference, notes, eco_client_id, link_status',
         { count: 'exact' }
       )
       .eq('company_id', req.user.companyId);

@@ -538,8 +538,45 @@
             .catch(function () { /* non-fatal — full nav remains visible */ });
     }
 
+    // ── Eco Cosmic Background (2026-08-18) ──────────────────────────────────
+    // Adds the same star-canvas + glow-orb layer already shipped for
+    // Accounting and Paytime — matches Ruan's explicit ask to bring the
+    // Eco Hub's "cosmic" look to every app. Self-injected here (link,
+    // background div, script) rather than edited into all 71 HTML files
+    // individually, the same reasoning _injectNavCss()/_renderBell() above
+    // already use for this shared file. Does NOT touch body background —
+    // practice.css/this file's own existing dark gradient is left as-is;
+    // only the star canvas + glow orbs layer on top of it.
+    var COSMIC_CSS_ID = 'lorenco-practice-cosmic-css';
+    function _injectCosmicBg() {
+        if (document.getElementById('pt-cosmic-bg')) return; // idempotent
+
+        if (!document.getElementById(COSMIC_CSS_ID)) {
+            var link = document.createElement('link');
+            link.id = COSMIC_CSS_ID;
+            link.rel = 'stylesheet';
+            link.href = '/practice/css/cosmic-bg.css';
+            document.head.appendChild(link);
+        }
+
+        var bg = document.createElement('div');
+        bg.id = 'pt-cosmic-bg';
+        bg.setAttribute('aria-hidden', 'true');
+        bg.innerHTML =
+            '<div class="pt-bg-glow g1"></div>' +
+            '<div class="pt-bg-glow g2"></div>' +
+            '<div class="pt-bg-glow g3"></div>' +
+            '<canvas id="pt-bgCanvas"></canvas>';
+        document.body.insertBefore(bg, document.body.firstChild);
+
+        var script = document.createElement('script');
+        script.src = '/practice/js/cosmic-bg.js';
+        document.body.appendChild(script);
+    }
+
     function init(activePage) {
         _injectNavCss();
+        _injectCosmicBg();
         var companyName = getCompanyName();
 
         var topbarEl = document.getElementById('app-topbar');
