@@ -91,3 +91,51 @@ separately. Sales Orders (#4) is the largest open question — the feature
 has apparently never had its tables created at all, which is a bigger
 decision (build the tables now vs. treat as a known gap) rather than a
 one-line fix.
+
+## Final status — all 10 findings fixed
+
+| # | Finding | Fix | Commit |
+|---|---|---|---|
+| 1 | Missing FK epidemic (21 relationships) | Migration 152 — 21 `ADD CONSTRAINT ... NOT VALID` FKs across `stock_count_lines`, `stock_reservations`, `inventory_stock_locations`, `warehouse_transfers`, `warehouse_transfer_lines`, `warehouse_locations`, `production_batches`, `stock_movements`, `stock_count_sessions`, `stock_valuation_movements` | `8fcf59f` |
+| 2 | `stock-counts.js` `/:id/history` 500s | `stock_movements` → `stock_valuation_movements` (real `source_type`/`source_id` columns) | `b93050a` |
+| 3 | `atpService.js` future-demand built on nonexistent/wrong columns | `purchase_order_lines` → `purchase_order_items` (real PO-item table), remapped `quantity`/`received_qty` → `quantity_ordered`/`quantity_received` in a post-fetch `.map()`, company scoped via joined `purchase_orders.company_id` | `12648d4` |
+| 4 | Sales Order tables never existed | Migration 153 — created `sales_orders`, `sales_order_lines` (generated `line_total` column), `sales_order_status_history`, reverse-engineered from the already-complete `salesOrderService.js`/`routes/sales-orders.js` code. User confirmed: build now. | `0efe044` |
+| 5 | `procurementService.js` wrong `reservations` table/columns | `.from('reservations')` → `.from('stock_reservations')` with real netting columns (`quantity_reserved`/`quantity_released`/`quantity_consumed`, `reservation_status`) | `57b93b3` |
+| 6 | Broken `.filter('current_stock','lte','min_stock')` idiom (3 places) + `getOperationalDashboard` hangs forever | Replaced with client-side filter after broader fetch in all 3 files (`index.js`, `procurementService.js`, `reportingService.js`); wrapped `getOperationalDashboard` in try/catch via new internal `_getOperationalDashboardInner` | `79ab6bc`, `57b93b3` |
+| 7 | `getWorkOrderCostSummary` selects nonexistent `reference_number` | Aliased in `.select()`: `reference_number:wo_number` (no frontend change needed — confirmed frontend already expects `reference_number` key) | `79ab6bc` |
+| 8 | `generateShortageRecommendations` wrong `work_order_materials` columns | `quantity_required`/`quantity_issued` → real `required_qty`/`issued_qty` | `57b93b3` |
+| 9 | Route-shadowing in `sales-orders.js` | `GET /:id` → `GET /:id(\\d+)`, digit-only constraint, registered before `/demand-dashboard` | `0efe044` |
+| 10 | PO-number sequence silently broken | Root cause: `po_number_seq` sequence already existed (migration 055) but the `nextval(seq_name)` RPC PostgREST needs to call it was never created — every PO number has been `Date.now()`, never the real sequence. Migration 154 creates the allowlisted RPC wrapper (`SECURITY DEFINER`, restricted to known sequence names). Route now also logs (rather than silently swallows) `seqErr` if the RPC ever fails, keeping the `Date.now()` fallback only as a visible last resort. | migration 154 + inline fix (this commit) |
+
+**Migrations 152, 153, and 154 have been pushed but not yet run by the
+user in Supabase.** Until they run:
+- Every one of the 21 previously-broken FK-dependent embeds/queries
+  (finding #1) will still fail live, even though the querying code is
+  now correct in all other respects.
+- The Sales Order feature (finding #4) has no tables to write to yet.
+- PO creation (finding #10) will keep silently falling back to
+  `Date.now()`-based numbers (now logged, not silent) until 154 runs.
+
+## Follow-up note
+
+```
+FOLLOW-UP NOTE
+- Area: Stockton (Inventory module) — full breadth audit
+- Dependency: Migrations 152 (21 FKs), 153 (Sales Order tables), 154
+  (po_number_seq RPC) must be run in Supabase before this module's fixes
+  are live.
+- What was done now: all 10 confirmed findings fixed and committed;
+  code-level fixes are live already (deployed on next push to origin/main),
+  schema-level fixes are staged as migrations only.
+- What still needs to be checked: after migrations run, live-verify (a)
+  the 21 previously-broken embeds/queries now resolve, (b) full Sales
+  Order lifecycle (create → confirm → allocate → fulfill → cancel) works
+  end-to-end against real stock in company 51 (Infinite Legacy — TEST),
+  (c) a new PO's `po_number` is a real incrementing `LPO-2026-NNNN` value,
+  not a timestamp.
+- Risk if not checked: Sales Orders and 21 FK-dependent code paths will
+  continue failing live in production despite the code fixes being correct,
+  because the schema they depend on doesn't exist yet.
+- Recommended next review point: immediately after the user confirms all
+  three migrations have been run.
+```

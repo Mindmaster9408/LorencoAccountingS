@@ -215,11 +215,15 @@ router.post('/', requirePerm(PERM.PO_CREATE), async (req, res) => {
       .single();
     if (supErr || !supplier) return res.status(400).json({ error: 'Supplier not found for this company' });
 
-    // Generate PO number using sequence
+    // Generate PO number using sequence (see migration 154 — the nextval()
+    // RPC wrapper around po_number_seq)
     const { data: seqData, error: seqErr } = await supabase
       .rpc('nextval', { seq_name: 'po_number_seq' })
       .single();
-    const seqVal  = seqData || Date.now(); // fallback if RPC unavailable
+    if (seqErr) {
+      console.error('[purchase-orders] po_number_seq RPC failed, falling back to timestamp-based PO number:', seqErr.message);
+    }
+    const seqVal   = (!seqErr && seqData) ? seqData : Date.now(); // fallback only if RPC genuinely unavailable
     const poNumber = makePONumber(companyId, seqVal);
 
     // Compute totals
