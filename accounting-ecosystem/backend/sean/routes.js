@@ -848,7 +848,7 @@ router.get('/bank-learning/proposals', requireSuperAdmin, async (req, res) => {
 router.post('/bank-learning/proposals/:id/authorize', requireSuperAdmin, async (req, res) => {
   try {
     const proposalId = parseInt(req.params.id);
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
 
     if (!userId) return res.status(401).json({ error: 'User identity required' });
 
@@ -866,7 +866,7 @@ router.post('/bank-learning/proposals/:id/authorize', requireSuperAdmin, async (
 router.post('/bank-learning/proposals/:id/reject', requireSuperAdmin, async (req, res) => {
   try {
     const proposalId = parseInt(req.params.id);
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     const { reason } = req.body;
 
     if (!userId) return res.status(401).json({ error: 'User identity required' });
