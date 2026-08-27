@@ -27,26 +27,33 @@
  * @returns {Array<ReorderRecommendation>}
  */
 async function generateReorderRecommendations(supabase, companyId) {
-  // 1. Items at or below min_stock (with stock > 0 excluded from noise)
-  const { data: items, error: itemErr } = await supabase
+  // 1. Items at or below min_stock. PostgREST's .filter() compares a column
+  // to a literal value, not to another column — 'current_stock lte min_stock'
+  // was being sent as a literal string comparison and erroring. Fetch the
+  // broader active/min_stock>0 set and compare current_stock <= min_stock
+  // client-side instead.
+  const { data: allItems, error: itemErr } = await supabase
     .from('inventory_items')
     .select('id, name, sku, unit, current_stock, min_stock, cost_price, warehouse_id')
     .eq('company_id', companyId)
     .eq('is_active', true)
-    .gt('min_stock', 0)
-    .filter('current_stock', 'lte', 'min_stock');
+    .gt('min_stock', 0);
 
   if (itemErr) throw itemErr;
-  if (!items || !items.length) return [];
+  const items = (allItems || []).filter(i => parseFloat(i.current_stock || 0) <= parseFloat(i.min_stock || 0));
+  if (!items.length) return [];
 
   const itemIds = items.map(i => i.id);
 
-  // 2. Active reservations per item
+  // 2. Active reservations per item. Real table is stock_reservations, with
+  // a quantity_reserved/quantity_released/quantity_consumed netting model
+  // and a reservation_status column — not the "reservations"/quantity/status
+  // shape this previously assumed.
   const { data: reservations, error: resErr } = await supabase
-    .from('reservations')
-    .select('item_id, quantity')
+    .from('stock_reservations')
+    .select('item_id, quantity_reserved, quantity_released, quantity_consumed')
     .eq('company_id', companyId)
-    .in('status', ['confirmed', 'pending'])
+    .in('reservation_status', ['active', 'partially_released'])
     .in('item_id', itemIds);
   if (resErr) throw resErr;
 
@@ -60,7 +67,10 @@ async function generateReorderRecommendations(supabase, companyId) {
   // Build lookup maps
   const reservedQtyMap = {};
   (reservations || []).forEach(r => {
-    reservedQtyMap[r.item_id] = (reservedQtyMap[r.item_id] || 0) + parseFloat(r.quantity || 0);
+    // Outstanding = reserved minus whatever's already been released/consumed
+    // off it (matches the netting model reservationService.js uses).
+    const outstanding = parseFloat(r.quantity_reserved || 0) - parseFloat(r.quantity_released || 0) - parseFloat(r.quantity_consumed || 0);
+    reservedQtyMap[r.item_id] = (reservedQtyMap[r.item_id] || 0) + outstanding;
   });
 
   const onOrderMap = {};
@@ -124,7 +134,7 @@ async function generateShortageRecommendations(supabase, companyId) {
   const { data: woMaterials, error: woErr } = await supabase
     .from('work_order_materials')
     .select(`
-      id, item_id, quantity_required, quantity_issued,
+      id, item_id, required_qty, issued_qty,
       work_orders!work_order_id(id, wo_number, status, company_id)
     `)
     .in('work_orders.status', ['released', 'in_progress'])
@@ -155,7 +165,7 @@ async function generateShortageRecommendations(supabase, companyId) {
     if (!wo || wo.company_id !== companyId) continue;
     if (!['released', 'in_progress'].includes(wo.status)) continue;
 
-    const shortfall = parseFloat(m.quantity_required || 0) - parseFloat(m.quantity_issued || 0);
+    const shortfall = parseFloat(m.required_qty || 0) - parseFloat(m.issued_qty || 0);
     if (shortfall <= 0) continue;
 
     const item = itemMap[m.item_id];
