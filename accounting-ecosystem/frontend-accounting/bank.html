@@ -1793,6 +1793,19 @@
                 <button class="action-btn" onclick="bulkReconcile()">Reconcile Selected</button>
                 <button class="action-btn" onclick="bulkDelete()">Delete Selected</button>
             </div>
+
+            <!-- Mass-Accept: always visible (selects its own rows by Sean confidence,
+                 independent of manual checkbox selection above) — "active" forces
+                 display since .bulk-actions is display:none by default -->
+            <div class="bulk-actions active" style="background:#f0fdf4;border-color:#bbf7d0;">
+                <span>🤖 Sean:</span>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                    Accept suggestions ≥
+                    <input type="number" id="seanMassAcceptThreshold" value="90" min="0" max="100" style="width:56px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;">
+                    % confidence
+                </label>
+                <button class="action-btn" onclick="massAcceptSeanSuggestions()">Mass-Accept Sean Suggestions</button>
+            </div>
             
             <div class="section-header">
                 <h2>Transactions</h2>
@@ -2308,6 +2321,7 @@ Click OK to simulate uploading a file.`;
                 tbody.insertAdjacentHTML('beforeend', slice.map(txnRowHtml).join(''));
                 restoreAllocationsToUI();
                 prefillRuleSuggestions(slice); // non-blocking
+                prefillSeanSuggestions(slice); // non-blocking
             }
 
             renderPaginationBar(_allTxnData.length, page);
@@ -4062,6 +4076,49 @@ Click OK to simulate uploading a file.`;
             }));
         }
 
+        // Prefetch a Sean suggestion + confidence for every unmatched row on
+        // the current page, without opening the AI panel or touching the
+        // row's allocation selects. Mirrors prefillRuleSuggestions above
+        // (which DOES auto-fill, since bank rules are deterministic) but only
+        // caches for later use by the AI panel (instant render, no re-fetch)
+        // and the Mass-Accept action below. Non-blocking, never fails the
+        // page render.
+        async function prefillSeanSuggestions(slice) {
+            const unmatched = (slice || []).filter(t => t.status === 'unmatched');
+            if (!unmatched.length) return;
+
+            window._seanActiveSuggestion = window._seanActiveSuggestion || {};
+
+            await Promise.allSettled(unmatched.map(async txn => {
+                try {
+                    // Don't touch rows a rule, a manual selection, or an
+                    // earlier prefetch already handled.
+                    if (window._seanActiveSuggestion[txn.id]) return;
+                    const existing = transactionAllocations[txn.id];
+                    if (existing && existing.type) return;
+
+                    const txnData = getTransactionData(txn.id);
+                    if (!txnData) return;
+
+                    const localSuggestion  = seanAnalyzeTransaction(txnData);
+                    const globalSuggestion = await fetchGlobalSeanSuggestion(txnData);
+
+                    const activeSuggestion = (globalSuggestion && globalSuggestion.confidence >= localSuggestion.confidence)
+                        ? { ...localSuggestion,
+                            accountCode: globalSuggestion.accountCode,
+                            accountName: globalSuggestion.accountName,
+                            reason: globalSuggestion.reason,
+                            confidence: globalSuggestion.confidence,
+                            source: globalSuggestion.source }
+                        : localSuggestion;
+
+                    window._seanActiveSuggestion[txn.id] = activeSuggestion;
+                } catch (err) {
+                    // Non-blocking — suggestion fetch errors must never break page render
+                }
+            }));
+        }
+
         // Flip: correct import direction error (money in ↔ money out)
         async function flipTransaction(id) {
             const txnData = getTransactionData(id);
@@ -4398,6 +4455,27 @@ Click OK to simulate uploading a file.`;
             }
         }
         
+        // Fetch SEAN's global/learned-pattern suggestion for a transaction
+        // description. Shared by the per-row AI panel (toggleAISuggestion) and
+        // the Mass-Accept prefetch pass (prefillSeanSuggestions) so neither
+        // fetches twice for the same row. Returns null on any failure —
+        // callers already treat that as "no global suggestion available".
+        async function fetchGlobalSeanSuggestion(txnData) {
+            const bankName = txnData.bankName || null;
+            const qs = `?description=${encodeURIComponent(txnData.description)}${bankName ? '&bankName=' + encodeURIComponent(bankName) : ''}`;
+            try {
+                const seanToken = localStorage.getItem('token') || localStorage.getItem('eco_token');
+                const resp = await fetch(`/api/sean/bank-learning/suggest${qs}`, {
+                    headers: seanToken ? { 'Authorization': 'Bearer ' + seanToken } : {}
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.suggestion) return data.suggestion;
+                }
+            } catch (_) { /* non-blocking */ }
+            return null;
+        }
+
         async function toggleAISuggestion(id, button) {
             const row = document.getElementById('aiRow' + id);
 
@@ -4420,21 +4498,11 @@ Click OK to simulate uploading a file.`;
                     updateAISuggestionPanel(id, row, txnData, localSuggestion, null);
 
                     // Async: fetch global pattern + Codex from SEAN learning API
-                    const bankName = txnData.bankName || null;
-                    const qs = `?description=${encodeURIComponent(txnData.description)}${bankName ? '&bankName=' + encodeURIComponent(bankName) : ''}`;
-                    try {
-                        const seanToken = localStorage.getItem('token') || localStorage.getItem('eco_token');
-                        const resp = await fetch(`/api/sean/bank-learning/suggest${qs}`, {
-                            headers: seanToken ? { 'Authorization': 'Bearer ' + seanToken } : {}
-                        });
-                        if (resp.ok) {
-                            const data = await resp.json();
-                            if (data.suggestion) {
-                                // Re-render panel with SEAN global pattern data, keeping local as fallback
-                                updateAISuggestionPanel(id, row, txnData, localSuggestion, data.suggestion);
-                            }
-                        }
-                    } catch (_) { /* non-blocking — local suggestion already shown */ }
+                    const globalSuggestion = await fetchGlobalSeanSuggestion(txnData);
+                    if (globalSuggestion) {
+                        // Re-render panel with SEAN global pattern data, keeping local as fallback
+                        updateAISuggestionPanel(id, row, txnData, localSuggestion, globalSuggestion);
+                    }
                 }
 
                 row.classList.add('show');
@@ -4801,6 +4869,70 @@ Click OK to simulate uploading a file.`;
                 }
             });
             return;
+        }
+
+        // Mass-Accept: pre-fill every unmatched row whose cached Sean
+        // suggestion meets the confidence threshold, then leave it to the
+        // user to click the existing "Allocate Selected" button — two
+        // separate, deliberate confirmations (this modal, then
+        // bulkAllocate()'s own aggregate confirmation) rather than chaining
+        // straight into bulkAllocate(), which would reuse and immediately
+        // close the same shared #bankActionModal element mid-flow.
+        function massAcceptSeanSuggestions() {
+            const thresholdInput = document.getElementById('seanMassAcceptThreshold');
+            const threshold = Math.min(100, Math.max(0, parseInt(thresholdInput && thresholdInput.value, 10) || 90));
+
+            const rows = document.querySelectorAll('.transactions-table tbody tr[data-txn-id]');
+            const candidates = [];
+
+            for (const row of rows) {
+                const id = row.getAttribute('data-txn-id');
+                if (!id) continue;
+
+                const suggestion = window._seanActiveSuggestion && window._seanActiveSuggestion[id];
+                if (!suggestion || suggestion.confidence < threshold) continue;
+
+                // Don't clobber a row the user or a bank rule already handled
+                const existing = transactionAllocations[id];
+                if (existing && existing.type) continue;
+
+                const txnData = getTransactionData(id);
+                if (!txnData) continue;
+
+                candidates.push({ id, txnData, suggestion });
+            }
+
+            if (!candidates.length) {
+                showBankPageAlert(`No unallocated transactions currently have a Sean suggestion at ≥${threshold}% confidence.`, 'warning');
+                return;
+            }
+
+            const previewRows = candidates.slice(0, 15).map(c =>
+                '<tr><td>' + escapeHtml(c.txnData.description) + '</td><td>' + escapeHtml(c.suggestion.accountName || c.suggestion.accountCode) + '</td><td>' + c.suggestion.confidence + '%</td></tr>'
+            ).join('');
+            const moreNote = candidates.length > 15 ? '<p><em>…and ' + (candidates.length - 15) + ' more.</em></p>' : '';
+
+            openBankActionModal({
+                title: 'Mass-Accept Sean Suggestions',
+                detailsHtml: [
+                    '<p>Sean will pre-fill <strong>' + candidates.length + '</strong> transaction(s) at ≥' + threshold + '% confidence — nothing posts yet:</p>',
+                    '<table style="width:100%;font-size:12px;border-collapse:collapse;margin:8px 0;"><thead><tr><th style="text-align:left;">Description</th><th style="text-align:left;">Account</th><th style="text-align:left;">Confidence</th></tr></thead><tbody>' + previewRows + '</tbody></table>',
+                    moreNote,
+                    '<p>After this, review the checked rows and click <strong>Allocate Selected</strong> to actually post.</p>'
+                ].join(''),
+                confirmText: 'Pre-fill ' + candidates.length + ' transaction(s)',
+                loadingText: 'Applying…',
+                actionKey: 'massAcceptSean:' + candidates.map(c => c.id).join(','),
+                onConfirm: async () => {
+                    for (const { id, suggestion } of candidates) {
+                        applyAllocationToRow(id, suggestion.type, suggestion.accountCode);
+                        const cb = document.querySelector('tr[data-txn-id="' + id + '"] .checkbox');
+                        if (cb) cb.checked = true;
+                    }
+                    updateBulkActions();
+                    showBankPageAlert(`Pre-filled ${candidates.length} transaction(s) from Sean. Review, then click "Allocate Selected" to post.`, 'warning');
+                }
+            });
         }
 
         async function bulkReconcile() {
