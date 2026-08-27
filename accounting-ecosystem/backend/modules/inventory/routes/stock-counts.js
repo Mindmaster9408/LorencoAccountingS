@@ -248,8 +248,11 @@ router.get('/:id/history', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => 
 
     if (sessionErr || !session) return res.status(404).json({ error: 'Count session not found' });
 
+    // source_type/source_id live on stock_valuation_movements, not
+    // stock_movements (which has no such columns at all) — confirmed
+    // against the live schema.
     const { data: movements, error: movErr } = await supabase
-      .from('stock_movements')
+      .from('stock_valuation_movements')
       .select('*, inventory_items:item_id(name, sku, unit)')
       .eq('company_id', req.companyId)
       .eq('source_type', 'stock_count')
