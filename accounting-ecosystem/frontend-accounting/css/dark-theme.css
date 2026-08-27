@@ -26,8 +26,22 @@
 }
 
 /* ── Body & Base ────────────────────────────────────────────────────────────── */
+/* 2026-08-18 CORRECTED: was a full-page diagonal gradient sweeping through
+   --bg-mid (#302b63, a genuinely purple tone) at its 50% midpoint — meaning
+   roughly half the page area sat close to that purple, not a subtle accent.
+   .top-bar/.main-nav/.card/.panel are all translucent overlays (rgba black/
+   white at low opacity, see below) that let body show through significantly,
+   so that purple was visible everywhere: nav, cards, panels, dropdowns.
+   The actual visual source of truth (frontend-ecosystem/dashboard.html, the
+   Eco Hub) uses a SOLID near-black body (#090d18) — matched exactly here —
+   with purple appearing only as small, localized glow accents (already
+   built separately in frontend-accounting/css/cosmic-bg.css's .pt-bg-glow
+   layer) that fade quickly to this same near-black. --bg-dark/--bg-mid/
+   --bg-end stay defined below for the small, correctly-scoped places that
+   already use them as accents (e.g. .report-header, .modal-header
+   gradients) — only the full-page body wash was the actual mistake. */
 body {
-    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-mid) 50%, var(--bg-end) 100%) !important;
+    background: #090d18 !important;
     color: var(--text) !important;
 }
 
