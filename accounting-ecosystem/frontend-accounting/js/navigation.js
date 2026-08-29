@@ -148,7 +148,7 @@ function createNavigation() {
           <div class="dropdown-header">Analysis</div>
           <a href="/accounting/sales-analysis.html">Sales Analysis</a>
           <a href="/accounting/purchase-analysis.html">Purchase Analysis</a>
-          <a href="/accounting/vat.html">VAT Reconciliation</a>
+          <a href="/accounting/vat.html">VAT Reports</a>
           <a href="/accounting/aged-debtors.html">Aged Debtors</a>
           <a href="/accounting/aged-creditors.html">Aged Creditors</a>
           <a href="/accounting/control-account-reconciliation.html">Control Reconciliation</a>
@@ -167,7 +167,7 @@ function createNavigation() {
           <a href="/accounting/paye-reconciliation.html">PAYE Reconciliation</a>
           <a href="/accounting/paye-config.html">PAYE Configuration</a>
           <div class="dropdown-header">VAT</div>
-          <a href="/accounting/vat.html">VAT Reconciliation</a>
+          <a href="/accounting/vat.html">VAT Reports</a>
         </div>
       </div>
 

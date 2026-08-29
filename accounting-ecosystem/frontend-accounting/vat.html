@@ -10,25 +10,21 @@
     <script src="js/ledger.js"></script>
     <!--
     ═══════════════════════════════════════════════════════════════════════════════
-    VAT RECONCILIATION SYSTEM - COMPLETED AND LOCKED
+    VAT RECONCILIATION — governed reconciliation view
     ═══════════════════════════════════════════════════════════════════════════════
-    
-    STATUS: COMPLETE - DO NOT MODIFY UNLESS EXPLICITLY REQUESTED
-    
-    This VAT reconciliation system includes:
-    - VAT Reconciliation Table with auto-calculations (Total Output A, Total Input B, VAT Payable, Difference)
-    - Trial Balance section with VAT/NO VAT inputs and automatic totals
-    - Reconciliation Comparison (INCOME/EXPENSE) with automatic calculations:
-      * According to VAT Report (Excl) = Inclusive - Output
-      * According to TB = Trial Balance VAT totals
-      * Difference = TB - VAT Report
-      * Percentage = (Difference / TB) × 100
-    - All calculations update in real-time across all sections
-    
-    MODIFICATION POLICY:
-    Only modify this file if specifically requested to work on VAT reconciliation.
-    For other features, create separate files or work in designated sections.
-    
+
+    Rebuilt 2026-08-29 to remove a static, hardcoded HTML mockup (fixed 2024-2025
+    period columns, someone else's real trial-balance figures baked into the page,
+    non-functional "Authorize" buttons) that never reflected the selected company
+    or period. See docs/accounting/VAT_FORENSIC_AUDIT.md and
+    VAT_FORENSIC_FIX_PACK_01_REPORT.md for the history.
+
+    This page now reads exclusively from:
+    - GET /api/accounting/vat/report — authoritative VAT201 figures (vatReportService.js)
+    - GET /api/accounting/vat-recon/trial-balance — real TB movement per period
+    - GET /api/accounting/vat-recon/periods/:id/out-of-period — swept-forward late items
+    and ties them together in the "VAT Control Account Tie-Out" table so a non-zero
+    difference is a real, actionable signal — not a hand-typed number.
     ═══════════════════════════════════════════════════════════════════════════════
     -->
     <style>
@@ -451,6 +447,47 @@
             background: #fff3e0;
             color: #ef6c00;
         }
+        .vat-tab-btn {
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            padding: 10px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #5f6368;
+            cursor: pointer;
+            margin-bottom: -2px;
+        }
+        .vat-tab-btn:hover {
+            color: #0066cc;
+        }
+        .vat-tab-btn.active {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+        }
+        .vat-report-group-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-bottom: 22px;
+        }
+        .vat-report-group-table th {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+            background: #e8eaed;
+            font-weight: 600;
+        }
+        .vat-report-group-table td {
+            border: 1px solid #ccc;
+            padding: 6px 8px;
+        }
+        .vat-report-group-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0066cc;
+            margin: 0 0 8px;
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/cosmic-bg.css">
@@ -466,8 +503,8 @@
 
     <div class="container">
         <div class="page-header">
-            <h1>VAT Management</h1>
-            <p>VAT return submissions and compliance tracking</p>
+            <h1>VAT Reports</h1>
+            <p>VAT report, VAT201 calculation, and reconciliation for the selected period</p>
         </div>
         
         <div class="card-grid">
@@ -502,6 +539,60 @@
             <button class="btn-secondary" onclick="submitToSARS()">Submit to SARS</button>
         </div>
 
+        <div class="vat-tab-bar" style="display:flex; gap:4px; margin:22px 0 0; border-bottom:2px solid #e8eaed;">
+            <button type="button" class="vat-tab-btn" data-tab="vatReportTab" onclick="switchVatTab('vatReportTab')">VAT Report</button>
+            <button type="button" class="vat-tab-btn" data-tab="vat201Tab" onclick="switchVatTab('vat201Tab')">VAT201 Calculation</button>
+            <button type="button" class="vat-tab-btn" data-tab="reconciliationTab" onclick="switchVatTab('reconciliationTab')">Reconciliation</button>
+        </div>
+
+        <div id="vatReportTab" class="vat-tab-panel" style="display:none;">
+            <div class="report-card">
+                <div class="report-header">
+                    <h2>VAT Report</h2>
+                    <p>Itemized transactions for <span id="vatReportPeriodLabel">the selected period</span></p>
+                </div>
+                <div class="report-content">
+                    <div id="vatReportWarnings" style="display:none; background:#fff8e1; border:1px solid #ffc107; border-radius:8px; padding:14px 18px; margin-bottom:20px;">
+                        <div style="font-weight:700; color:#7c4700; margin-bottom:6px;">⚠️ Notes</div>
+                        <ul id="vatReportWarningsList" style="margin:0; padding-left:20px; color:#8b5e00; font-size:13px;"></ul>
+                    </div>
+                    <div id="vatReportGroups" style="overflow-x:auto;">
+                        <p style="color:#888; text-align:center; padding:20px;">Select a VAT period above to load the report.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="vat201Tab" class="vat-tab-panel" style="display:none;">
+            <div class="report-card">
+                <div class="report-header">
+                    <h2>VAT 201 Calculation Report</h2>
+                    <p>Draft VAT201 return worksheet — verify before submitting via SARS eFiling</p>
+                </div>
+                <div class="report-content">
+                    <div style="background:#fff3e0; border:1px solid #ffb74d; border-radius:8px; padding:12px 16px; margin-bottom:18px; font-size:13px; color:#7c4700;">
+                        These figures are a guide only and should be checked carefully. This report cannot be submitted directly to SARS.
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                            <thead>
+                                <tr style="background:#e8eaed;">
+                                    <th style="border:1px solid #ccc; padding:8px; text-align:center; width:60px;">VAT201 Code</th>
+                                    <th style="border:1px solid #ccc; padding:8px; text-align:left;">VAT201 Description</th>
+                                    <th style="border:1px solid #ccc; padding:8px; text-align:right; width:160px;">Consideration (Including VAT)</th>
+                                    <th style="border:1px solid #ccc; padding:8px; text-align:right; width:140px;">VAT</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vat201TableBody">
+                                <tr><td colspan="4" style="border:1px solid #ccc; padding:12px; text-align:center; color:#888;">Select a VAT period above to load the report.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="reconciliationTab" class="vat-tab-panel" style="display:none;">
         <div class="report-card" id="vatReconSection">
             <div class="report-header">
                 <h2 id="vatReconTitle">VAT Reconciliation</h2>
@@ -509,549 +600,92 @@
             </div>
             
             <div class="report-content">
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                        <thead>
-                            <tr style="background: white;">
-                                <th style="border: none; padding: 8px;"></th>
-                                <th colspan="6" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #e8f4f8;">Income (Output)</th>
-                                <th colspan="5" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #fff3e6;">Expenses (Input)</th>
-                                <th rowspan="4" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #d4edda;">VAT payable (A)<br>- (B)</th>
-                                <th rowspan="4" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #fff3e0;">Statement of<br>Account</th>
-                                <th rowspan="4" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #ffebee;">Difference</th>
-                                <th rowspan="4" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #f5f5f5;">Authorisation</th>
-                            </tr>
-                            <tr style="background: #e8eaed;">
-                                <th rowspan="3" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600;">VAT Period</th>
-                                <th colspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #d4e3f7;">STANDAARD UITSETTE</th>
-                                <th colspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #d4e3f7;">KAPITALE UITSETTE</th>
-                                <th rowspan="3" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600;">Zero Rate</th>
-                                <th rowspan="3" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600;">Total Output(A)</th>
-                                <th colspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; font-size: 11px; background: #ffe6cc;">Standard Inputs</th>
-                                <th rowspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; font-size: 11px; background: #ffe6cc;">Capital Goods<br>supplied to you<br>(15%)</th>
-                                <th rowspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; font-size: 11px; background: #ffe6cc;">Bad<br>Debts</th>
-                                <th rowspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; font-size: 11px; background: #ffe6cc;">Total Input<br>(B)</th>
-                            </tr>
-                            <tr style="background: #e8eaed;">
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11px; font-weight: 500;">Inclusive Income (115%)</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11px; font-weight: 500;">Output (15%)</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11px; font-weight: 500;">Standard Rate Capital Goods (115%)</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11px; font-weight: 500;">Capital Goods Output (15%)</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; font-size: 11px; background: #ffe6cc;">Inclusive Expenses<br>(115%)</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; font-size: 11px; background: #ffe6cc;">Input<br>(15%)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vatReconTable">
-                            <tr data-period="2025-03">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600; text-align: center;">2025-03</td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input output-15" data-row="2025-03" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-output-15" data-row="2025-03" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="total-output-a" data-row="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input input-15" data-row="2025-03" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-goods-15" data-row="2025-03" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input bad-debts" data-row="2025-03" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #ffe6cc;"><span class="total-input-b" data-row="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #d4edda;"><span class="vat-payable" data-row="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fff3e0;"><input type="number" step="0.01" placeholder="0.00" class="soa-input" data-row="2025-03" style="width: 90%; border: 1px solid #ccc; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #ffebee;"><span class="difference" data-row="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; background: #f5f5f5;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                            </tr>
-                            <tr data-period="2024-04">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600; text-align: center;">2024-04</td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input output-15" data-row="2024-04" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-output-15" data-row="2024-04" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="total-output-a" data-row="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input input-15" data-row="2024-04" style="width: 100%; border: none; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-goods-15" data-row="2024-04" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input bad-debts" data-row="2024-04" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #ffe6cc;"><span class="total-input-b" data-row="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #d4edda;"><span class="vat-payable" data-row="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fff3e0;"><input type="number" step="0.01" placeholder="0.00" class="soa-input" data-row="2024-04" style="width: 90%; border: 1px solid #ccc; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #ffebee;"><span class="difference" data-row="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; background: #f5f5f5;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                            </tr>
-                            <tr data-period="2024-05">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600; text-align: center;">2024-05</td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input output-15" data-row="2024-05" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-output-15" data-row="2024-05" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="total-output-a" data-row="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input input-15" data-row="2024-05" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-goods-15" data-row="2024-05" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input bad-debts" data-row="2024-05" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #ffe6cc;"><span class="total-input-b" data-row="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #d4edda;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fff3e0;"><input type="number" step="0.01" placeholder="0.00" class="soa-input" data-row="2024-05" style="width: 90%; border: 1px solid #ccc; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffebee;"><span class="difference" data-row="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; background: #f5f5f5;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                            </tr>
-                            <tr data-period="2024-06">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600; text-align: center;">2024-06</td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input output-15" data-row="2024-06" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-output-15" data-row="2024-06" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="total-output-a" data-row="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input input-15" data-row="2024-06" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-goods-15" data-row="2024-06" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input bad-debts" data-row="2024-06" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #ffe6cc;"><span class="total-input-b" data-row="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #d4edda;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fff3e0;"><input type="number" step="0.01" placeholder="0.00" class="soa-input" data-row="2024-06" style="width: 90%; border: 1px solid #ccc; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffebee;"><span class="difference" data-row="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; background: #f5f5f5;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                            </tr>
-                            <tr data-period="2024-07">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600; text-align: center;">2024-07</td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input output-15" data-row="2024-07" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-output-15" data-row="2024-07" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="total-output-a" data-row="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input input-15" data-row="2024-07" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-goods-15" data-row="2024-07" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input bad-debts" data-row="2024-07" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #ffe6cc;"><span class="total-input-b" data-row="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #d4edda;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fff3e0;"><input type="number" step="0.01" placeholder="0.00" class="soa-input" data-row="2024-07" style="width: 90%; border: 1px solid #ccc; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffebee;"><span class="difference" data-row="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; background: #f5f5f5;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                            </tr>
-                            <tr data-period="2024-08">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600; text-align: center;">2024-08</td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input output-15" data-row="2024-08" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-output-15" data-row="2024-08" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="total-output-a" data-row="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input input-15" data-row="2024-08" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input capital-goods-15" data-row="2024-08" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 4px; background: #ffe6cc;"><input type="number" step="0.01" placeholder="0.00" class="vat-input bad-debts" data-row="2024-08" style="width: 100%; border: none; padding: 4px; text-align: right; background: #ffe6cc;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #ffe6cc;"><span class="total-input-b" data-row="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #d4edda;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fff3e0;"><input type="number" step="0.01" placeholder="0.00" class="soa-input" data-row="2024-08" style="width: 90%; border: 1px solid #ccc; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffebee;"><span class="difference" data-row="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; background: #f5f5f5;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                            </tr>
-                            <tr style="background: #f5f5f5; font-weight: 600;">
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">Total</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffd9b3;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffd9b3;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffd9b3;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffd9b3;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffd9b3;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #c3e6cb; font-family: 'Courier New', monospace;">20.00</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #fff3e0; font-family: 'Courier New', monospace;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #ffebee; font-family: 'Courier New', monospace;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div id="vat201Warnings" style="display:none; background:#fff8e1; border:1px solid #ffc107; border-radius:8px; padding:14px 18px; margin-bottom:20px;">
+                    <div style="font-weight:700; color:#7c4700; margin-bottom:6px;">⚠️ VAT Report Warnings</div>
+                    <ul id="vat201WarningsList" style="margin:0; padding-left:20px; color:#8b5e00; font-size:13px;"></ul>
                 </div>
 
-                <!-- INCOME Section -->
-                <div style="margin-top: 30px; overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 30px;">
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 24px;">
                         <thead>
-                            <tr style="background: #e8eaed; font-weight: 600;">
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: left;">INCOME</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2025-03</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-04</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-05</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-06</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-07</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-08</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-09</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-10</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-11</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-12</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2025-01</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2025-02</th>
+                            <tr style="background: #e8eaed;">
+                                <th colspan="4" style="border: 1px solid #ccc; padding: 10px; text-align: left; font-weight: 700; font-size: 14px;">VAT Control Account Tie-Out — <span id="tieOutPeriodLabel">selected period</span></th>
+                            </tr>
+                            <tr style="background: #f5f5f5;">
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: left;"></th>
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Per VAT201 Report</th>
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Per TB + Out-of-Period</th>
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Difference</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td style="border: 1px solid #ccc; padding: 8px;">According to VAT Report (Excl)</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="vat-report-income" data-period="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #f0f0f0; font-weight: 600;"><span class="vat-report-income" data-period="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-income" data-period="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-income" data-period="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-income" data-period="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-income" data-period="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
+                                <td style="border: 1px solid #ccc; padding: 8px;">Output VAT (2300)</td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span id="tieOutReportOutput">0.00</span></td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span id="tieOutTbOutput">0.00</span></td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 700;"><span id="tieOutDiffOutput">0.00</span></td>
                             </tr>
                             <tr>
-                                <td style="border: 1px solid #ccc; padding: 8px;">According to TB</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"><span class="tb-income-ref" data-period="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"><span class="tb-income-ref" data-period="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-income-ref" data-period="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-income-ref" data-period="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-income-ref" data-period="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-income-ref" data-period="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
+                                <td style="border: 1px solid #ccc; padding: 8px;">Input VAT (1400)</td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span id="tieOutReportInput">0.00</span></td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span id="tieOutTbInput">0.00</span></td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 700;"><span id="tieOutDiffInput">0.00</span></td>
                             </tr>
-                            <tr style="background: #fff3e0;">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600;">Difference</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="income-diff" data-period="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="income-diff" data-period="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-diff" data-period="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-diff" data-period="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-diff" data-period="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-diff" data-period="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #ccc; padding: 8px;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-size: 11px;"><span class="income-pct" data-period="2025-03">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-size: 11px;"><span class="income-pct" data-period="2024-04">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11px; background: #f0f0f0;"><span class="income-pct" data-period="2024-05">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2024-06">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2024-07">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2024-08">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2024-09">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2024-10">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2024-11">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2024-12">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2025-01">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="income-pct" data-period="2025-02">0.00%</span></td>
-                            </tr>
-                            <tr style="background: #f5f5f5;">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600;">Authorisation</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
+                            <tr style="background: #f5f5f5; font-weight: 700;">
+                                <td style="border: 1px solid #ccc; padding: 8px;">Net VAT Payable / (Refundable)</td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span id="tieOutReportNet">0.00</span></td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">—</td>
+                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">—</td>
                             </tr>
                         </tbody>
                     </table>
+                    <div style="font-size: 12px; color: #666; margin: -14px 0 24px;">
+                        "Per TB + Out-of-Period" = the actual movement in the VAT control account for this period's dates, plus any late items swept forward from a locked period. It should match the VAT201 Report figure exactly — a non-zero difference means a posting used the wrong account or bypassed the VAT engine, and needs investigation before this period is approved.
+                    </div>
                 </div>
 
-                <!-- EXPENSES Section -->
                 <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 30px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 24px;">
                         <thead>
-                            <tr style="background: #e8eaed; font-weight: 600;">
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: left;">EXPENSES</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2025-03</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-04</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-05</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-06</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-07</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-08</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-09</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-10</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-11</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2024-12</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2025-01</th>
-                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">2025-02</th>
+                            <tr style="background: #e8eaed;">
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: 700;">Source Breakdown</th>
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">Journals</th>
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Output VAT</th>
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Input VAT</th>
+                                <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Net VAT</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr>
-                                <td style="border: 1px solid #ccc; padding: 8px;">According to VAT Report (Excl)</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="vat-report-expense" data-period="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="vat-report-expense" data-period="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-09">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-10">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-11">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2024-12">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="vat-report-expense" data-period="2025-01">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #f0f0f0;"><span class="vat-report-expense" data-period="2025-02">0.00</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #ccc; padding: 8px;">According to TB</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"><span class="tb-expense-ref" data-period="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"><span class="tb-expense-ref" data-period="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-06">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-07">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-08">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-09">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-10">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-11">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2024-12">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="tb-expense-ref" data-period="2025-01">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; background: #f0f0f0;"><span class="tb-expense-ref" data-period="2025-02">0.00</span></td>
-                            </tr>
-                            <tr style="background: #fff3e0;">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600;">Difference</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="expense-diff" data-period="2025-03">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600;"><span class="expense-diff" data-period="2024-04">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-diff" data-period="2024-05">0.00</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">-</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; background: #f0f0f0;"><span class="expense-diff" data-period="2025-02">0.00</span></td>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #ccc; padding: 8px;"></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-size: 11px;"><span class="expense-pct" data-period="2025-03">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-size: 11px;"><span class="expense-pct" data-period="2024-04">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 11px; background: #f0f0f0;"><span class="expense-pct" data-period="2024-05">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2024-06">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2024-07">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2024-08">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2024-09">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2024-10">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2024-11">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2024-12">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2025-01">0.00%</span></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;"><span class="expense-pct" data-period="2025-02">0.00%</span></td>
-                            </tr>
-                            <tr style="background: #f5f5f5;">
-                                <td style="border: 1px solid #ccc; padding: 8px; font-weight: 600;">Authorisation</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;"><button style="background: #4caf50; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 11px;">Authorize</button></td>
-                            </tr>
+                        <tbody id="vat201SourceBody">
+                            <tr><td colspan="5" style="border: 1px solid #ccc; padding: 12px; text-align: center; color: #888;">Select a VAT period to load the report.</td></tr>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- PROEFBALANS Section -->
-                <div style="overflow-x: auto;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;">
-                        <!-- INCOME PROEFBALANS -->
+                <div style="background: #fff3e0; border: 1px solid #ffb74d; border-radius: 8px; padding: 16px 18px; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;">
                         <div>
-                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                <thead>
-                                    <tr style="background: #e8eaed;">
-                                        <th style="border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: 600;">INCOME</th>
-                                        <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600;">Trial Balance</th>
-                                        <th colspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #d4e3f7;">Excl. VAT amounts</th>
-                                        <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600;">TOTAAL</th>
-                                    </tr>
-                                    <tr style="background: #f5f5f5;">
-                                        <th style="border: 1px solid #ccc; padding: 6px;"></th>
-                                        <th style="border: 1px solid #ccc; padding: 6px;"></th>
-                                        <th style="border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 11px;">VAT</th>
-                                        <th style="border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 11px;">NO VAT</th>
-                                        <th style="border: 1px solid #ccc; padding: 6px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Sales</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">73,315.48</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="income-sales" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="income-sales" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="income-sales">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Sales 0%</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">33,330.30</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="income-sales0" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="income-sales0" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="income-sales0">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Sales 15%</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">1,752,750.13</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="income-sales15" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="income-sales15" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="income-sales15">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Interest Received</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">2.45</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="income-interest" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="income-interest" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="income-interest">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td colspan="5" style="border: none; padding: 8px;"></td>
-                                    </tr>
-                                    <tr style="background: #f5f5f5; font-weight: 600;">
-                                        <td style="border: 1px solid #ccc; padding: 8px;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">1,872,058.36</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #d4e3f7;"><span class="tb-vat-total-income">0.00</span></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-novat-total-income">0.00</span></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-grand-total-income">0.00</span></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div style="font-weight: 700; color: #e65100; margin-bottom: 4px;">Statement of Account (SARS) vs Net VAT</div>
+                            <div style="font-size: 12px; color: #8b5e00;">Enter the Net VAT balance per SARS's own Statement of Account for this period.</div>
                         </div>
-
-                        <!-- EXPENSE PROEFBALANS -->
-                        <div>
-                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                <thead>
-                                    <tr style="background: #e8eaed;">
-                                        <th style="border: 1px solid #ccc; padding: 8px; text-align: left; font-weight: 600;">EXPENSE</th>
-                                        <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600;">Trial Balance</th>
-                                        <th colspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600; background: #d4e3f7;">Excl. VAT amounts</th>
-                                        <th style="border: 1px solid #ccc; padding: 8px; text-align: center; font-weight: 600;">TOTAAL</th>
-                                    </tr>
-                                    <tr style="background: #f5f5f5;">
-                                        <th style="border: 1px solid #ccc; padding: 6px;"></th>
-                                        <th style="border: 1px solid #ccc; padding: 6px;"></th>
-                                        <th style="border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 11px;">VAT</th>
-                                        <th style="border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 11px;">NO VAT</th>
-                                        <th style="border: 1px solid #ccc; padding: 6px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Purchases 15%</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">738,361.47</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-purchases15" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-purchases15" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-purchases15">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Purchases No VAT</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">512,154.50</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-purchasesnovat" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-purchasesnovat" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-purchasesnovat">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Accounting Fees</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">18,577.77</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-accounting" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-accounting" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-accounting">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Advertising</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">5,713.05</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-advertising" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-advertising" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-advertising">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Advertising No Vat</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">7,593.00</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-advertisingnovat" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-advertisingnovat" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-advertisingnovat">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Bank Charges</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">4,174.00</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-bankcharges" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-bankcharges" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-bankcharges">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Blomme</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">300.00</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-blomme" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-blomme" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-blomme">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Capitec commision and connect</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">7,253.48</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #fff59d;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-capitec" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #fff59d;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-capitec" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-capitec">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Cleaning</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">4,045.46</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-cleaning" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-cleaning" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-cleaning">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Computer Expenses</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">2,363.30</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-computer" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-computer" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-computer">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Diesel</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">15,280.00</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-diesel" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-diesel" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-diesel">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Directors Remuneration</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">51,000.00</td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #e3f2fd;"><input type="number" step="0.01" placeholder="0.00" class="tb-vat-input" data-row="expense-directors" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #e3f2fd;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 4px; text-align: right; background: #ffe6e6;"><input type="number" step="0.01" placeholder="0.00" class="tb-novat-input" data-row="expense-directors" style="width: 95%; border: 1px solid #ddd; padding: 4px; text-align: right; font-family: 'Courier New', monospace; background: #ffe6e6;"></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-total" data-row="expense-directors">0.00</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td colspan="5" style="border: none; padding: 8px;"></td>
-                                    </tr>
-                                    <tr style="background: #f5f5f5; font-weight: 600;">
-                                        <td style="border: 1px solid #ccc; padding: 8px;">Total</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">1,366,815.03</td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace; background: #d4e3f7;"><span class="tb-vat-total-expense">0.00</span></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-novat-total-expense">0.00</span></td>
-                                        <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;"><span class="tb-grand-total-expense">0.00</span></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label style="font-size: 13px; font-weight: 600;">SOA Amount:</label>
+                            <input type="number" step="0.01" id="soaAmount" placeholder="0.00" oninput="calculateSOADifference()" style="width: 130px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; text-align: right; font-family: 'Courier New', monospace;">
                         </div>
+                    </div>
+                    <div style="margin-top: 12px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                        <div id="soaDifferenceDisplay" style="font-weight: 700; font-size: 14px;">
+                            Difference: <span id="soaDifferenceValue">R 0.00</span>
+                        </div>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+                            <input type="checkbox" id="soaAuthCheckbox" onchange="handleSOAAuthChange()"> Authorized
+                        </label>
+                        <span id="soaAuthInitials" style="display:none;"></span>
+                    </div>
+                    <div style="margin-top: 14px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-top: 1px solid #ffe0b2; padding-top: 12px;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+                            <input type="checkbox" id="diffAuthCheckbox" onchange="handleDiffAuthChange()"> Control account tie-out difference authorized
+                        </label>
+                        <span id="diffAuthInitials" style="display:none;"></span>
                     </div>
                 </div>
 
@@ -1160,7 +794,8 @@
                 </div>
             </div>
         </div>
-        
+        </div>
+
         <div class="report-card">
             <div class="report-header">
                 <h2>VAT Submission History</h2>
@@ -1321,11 +956,11 @@
             }
         }
 
+        // Ticking the checklist doesn't change any stored state on its own — it's a manual
+        // self-check. This button runs the real approval (same as "Approve Reconciliation"
+        // in the action bar) once the accountant confirms the checklist.
         function completeReconciliation() {
-            if (confirm('Are you sure you want to mark this VAT period as reconciled?\n\nThis will lock the period and prepare it for submission.')) {
-                alert('✓ VAT Reconciliation completed successfully!\n\nYou can now proceed to submit your VAT return to SARS.');
-                closeVATRecon();
-            }
+            approveReconciliation();
         }
 
         // Load VAT data for the currently selected period using the real trial balance API.
@@ -1348,6 +983,7 @@
 
         // On page load: build period dropdown, auto-load current period, load submission history
         window.addEventListener('DOMContentLoaded', () => {
+            switchVatTab('vatReportTab');
             setupPeriodSelector();   // populate last 12 months; defaults to current month
             selectVATPeriod();       // auto-load current period — no click required
             loadVATSubmissionHistory();
@@ -1360,6 +996,278 @@
         const API_BASE = window.location.origin + '/api/accounting';
         let currentReconId = null;
         let currentPeriodData = null;
+        let currentVat201Report = null;
+        let currentTbTotals = null;
+        let currentOopTotals = { inputVat: 0, outputVat: 0 };
+
+        // Authoritative VAT201 figures for the selected period — same engine/endpoint as vat-return.html.
+        async function loadVat201ReportForPeriod(periodKey) {
+            try {
+                const report = await fetchAPI(`/vat/report?periodKey=${encodeURIComponent(periodKey)}&includeSources=true`);
+                currentVat201Report = report;
+
+                const fmt = v => 'R ' + Math.abs(Number(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const outEl = document.getElementById('outputVatValue');
+                const inEl  = document.getElementById('inputVatValue');
+                const payEl = document.getElementById('vatPayableValue');
+                const resetStyle = el => { el.style.color = ''; el.style.fontSize = ''; };
+                if (outEl) { outEl.textContent = fmt(report.outputVat); resetStyle(outEl); }
+                if (inEl)  { inEl.textContent  = fmt(report.inputVat);  resetStyle(inEl);  }
+                if (payEl) { payEl.textContent = fmt(report.netVatPayableRefundable); resetStyle(payEl); }
+
+                renderVat201Warnings(report);
+                renderVat201SourceBreakdown(report);
+                renderControlAccountTieOut();
+                calculateSOADifference();
+            } catch (error) {
+                console.error('Error loading VAT201 report:', error);
+                currentVat201Report = null;
+                const body = document.getElementById('vat201SourceBody');
+                if (body) body.innerHTML = `<tr><td colspan="5" style="border:1px solid #ccc; padding:12px; text-align:center; color:#b71c1c;">Error loading VAT201 report: ${error.message}</td></tr>`;
+            }
+        }
+
+        function renderVat201Warnings(report) {
+            const panel = document.getElementById('vat201Warnings');
+            const list = document.getElementById('vat201WarningsList');
+            const warnings = (report && Array.isArray(report.warnings)) ? report.warnings : [];
+            if (!panel || !list) return;
+            if (!warnings.length) { panel.style.display = 'none'; list.innerHTML = ''; return; }
+            panel.style.display = 'block';
+            list.innerHTML = warnings.map(w => `<li>${w}</li>`).join('');
+        }
+
+        function renderVat201SourceBreakdown(report) {
+            const body = document.getElementById('vat201SourceBody');
+            if (!body) return;
+            const breakdown = (report && report.sourceBreakdown) || {};
+            const fmt = v => (Number(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const rows = [
+                ['Customer Invoices', breakdown.customerInvoices],
+                ['Supplier Invoices', breakdown.supplierInvoices],
+                ['Bank Allocations', breakdown.bankAllocations],
+                ['Manual Journals', breakdown.manualJournals],
+                ['Out-of-Period', breakdown.outOfPeriod],
+            ];
+            body.innerHTML = rows.map(([label, b]) => {
+                b = b || {};
+                return `<tr>
+                    <td style="border: 1px solid #ccc; padding: 8px;">${label}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${Number(b.journalCount || 0)}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">${fmt(b.outputVat)}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">${fmt(b.inputVat)}</td>
+                    <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-family: 'Courier New', monospace;">${fmt(b.netVat)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Ties the authoritative VAT201 report to the real TB movement in accounts 1400/2300
+        // for this period, plus any out-of-period items swept forward — should always be R0.00.
+        function renderControlAccountTieOut() {
+            const label = document.getElementById('tieOutPeriodLabel');
+            if (label) label.textContent = (currentPeriodData && currentPeriodData.period_key) || 'selected period';
+
+            const report = currentVat201Report;
+            const tb = currentTbTotals;
+            if (!report || !tb) return;
+
+            const fmt = v => (Number(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const setDiff = (id, diff) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = fmt(Math.abs(diff));
+                el.style.color = Math.abs(diff) < 0.01 ? '#2e7d32' : '#b71c1c';
+            };
+
+            const reportOutput = Number(report.outputVat) || 0;
+            const reportInput  = Number(report.inputVat)  || 0;
+            const tbOutputPlusOop = (tb.vatOutput || 0) + (currentOopTotals.outputVat || 0);
+            const tbInputPlusOop  = (tb.vatInput  || 0) + (currentOopTotals.inputVat  || 0);
+
+            document.getElementById('tieOutReportOutput').textContent = fmt(reportOutput);
+            document.getElementById('tieOutTbOutput').textContent     = fmt(tbOutputPlusOop);
+            setDiff('tieOutDiffOutput', reportOutput - tbOutputPlusOop);
+
+            document.getElementById('tieOutReportInput').textContent = fmt(reportInput);
+            document.getElementById('tieOutTbInput').textContent     = fmt(tbInputPlusOop);
+            setDiff('tieOutDiffInput', reportInput - tbInputPlusOop);
+
+            document.getElementById('tieOutReportNet').textContent = fmt(report.netVatPayableRefundable);
+        }
+
+        // ========================================================
+        // VAT REPORTS TABS — "VAT Report" (itemized) + "VAT201 Calculation"
+        // ========================================================
+
+        function switchVatTab(tabName) {
+            document.querySelectorAll('.vat-tab-panel').forEach(el => { el.style.display = 'none'; });
+            document.querySelectorAll('.vat-tab-btn').forEach(btn => btn.classList.remove('active'));
+            const panel = document.getElementById(tabName);
+            if (panel) panel.style.display = 'block';
+            const btn = document.querySelector(`.vat-tab-btn[data-tab="${tabName}"]`);
+            if (btn) btn.classList.add('active');
+        }
+
+        let currentCategorizedReport = null;
+
+        async function loadCategorizedReport(periodKey) {
+            const groupsEl = document.getElementById('vatReportGroups');
+            const bodyEl = document.getElementById('vat201TableBody');
+            try {
+                const report = await fetchAPI(`/vat/categorized?periodKey=${encodeURIComponent(periodKey)}`);
+                currentCategorizedReport = report;
+
+                const periodLabelEl = document.getElementById('vatReportPeriodLabel');
+                if (periodLabelEl) periodLabelEl.textContent = `${report.dateFrom} to ${report.dateTo}`;
+
+                renderVatReportWarnings(report);
+                renderVatReportGroups(report);
+                renderVat201Table(report);
+            } catch (error) {
+                console.error('Error loading categorized VAT report:', error);
+                currentCategorizedReport = null;
+                if (groupsEl) groupsEl.innerHTML = `<p style="color:#b71c1c; text-align:center; padding:20px;">Error loading VAT report: ${error.message}</p>`;
+                if (bodyEl) bodyEl.innerHTML = `<tr><td colspan="4" style="border:1px solid #ccc; padding:12px; text-align:center; color:#b71c1c;">Error loading VAT201 report: ${error.message}</td></tr>`;
+            }
+        }
+
+        function renderVatReportWarnings(report) {
+            const panel = document.getElementById('vatReportWarnings');
+            const list = document.getElementById('vatReportWarningsList');
+            const warnings = Array.isArray(report.warnings) ? report.warnings : [];
+            if (!panel || !list) return;
+            if (!warnings.length) { panel.style.display = 'none'; list.innerHTML = ''; return; }
+            panel.style.display = 'block';
+            list.innerHTML = warnings.map(w => `<li>${w}</li>`).join('');
+        }
+
+        function renderVatReportGroups(report) {
+            const container = document.getElementById('vatReportGroups');
+            if (!container) return;
+
+            const fmtR = v => 'R ' + (Number(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const escapeHtml = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+            const groupDefs = [
+                { title: 'Standard Rate — Output VAT', direction: 'output', category: 'standard' },
+                { title: 'Zero Rate — Output VAT', direction: 'output', category: 'zero' },
+                { title: 'Bank Allocations & Manual Adjustments — Output VAT (assumed Standard Rate)', direction: 'output', category: 'bank_manual' },
+                { title: 'Old / Other Rate — Output VAT', direction: 'output', category: 'old_rate' },
+                { title: 'Standard Rate — Input VAT', direction: 'input', category: 'standard' },
+                { title: 'Zero Rate — Input VAT', direction: 'input', category: 'zero' },
+                { title: 'Bank Allocations & Manual Adjustments — Input VAT (assumed Standard Rate)', direction: 'input', category: 'bank_manual' },
+                { title: 'Old / Other Rate — Input VAT', direction: 'input', category: 'old_rate' },
+            ];
+
+            const items = report.items || [];
+            let html = '';
+            let grandExcl = 0, grandIncl = 0, grandVat = 0;
+
+            for (const def of groupDefs) {
+                const groupItems = items.filter(it => it.direction === def.direction &&
+                    (def.category === 'bank_manual' ? it.source === 'bank_or_manual' :
+                     it.source !== 'bank_or_manual' && (
+                        def.category === 'standard' ? it.rate === 15 :
+                        def.category === 'zero' ? it.rate === 0 :
+                        (it.rate !== 15 && it.rate !== 0)
+                     )));
+
+                if (groupItems.length === 0) continue;
+
+                let subExcl = 0, subIncl = 0, subVat = 0;
+                const rows = groupItems.map(it => {
+                    subExcl += it.exclusive; subIncl += it.inclusive; subVat += it.vat;
+                    return `<tr>
+                        <td>${escapeHtml(it.date)}</td>
+                        <td>${escapeHtml(it.reference)}</td>
+                        <td>${escapeHtml(it.party)}</td>
+                        <td>${escapeHtml(it.description)}</td>
+                        <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(it.exclusive)}</td>
+                        <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(it.inclusive)}</td>
+                        <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(it.vat)}</td>
+                    </tr>`;
+                }).join('');
+
+                grandExcl += subExcl; grandIncl += subIncl; grandVat += subVat;
+
+                html += `
+                    <h3 class="vat-report-group-title">${escapeHtml(def.title)}</h3>
+                    <table class="vat-report-group-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th><th>Reference</th><th>Account / Customer / Supplier</th><th>Description</th>
+                                <th style="text-align:right;">Exclusive</th><th style="text-align:right;">Inclusive</th><th style="text-align:right;">VAT</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                        <tfoot>
+                            <tr style="font-weight:700; background:#f5f5f5;">
+                                <td colspan="4">Total for ${escapeHtml(def.title)}</td>
+                                <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(subExcl)}</td>
+                                <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(subIncl)}</td>
+                                <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(subVat)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>`;
+            }
+
+            if (!html) {
+                html = '<p style="color:#888; text-align:center; padding:20px;">No VAT-bearing transactions found for this period.</p>';
+            } else {
+                html += `
+                    <div style="background:#d4edda; border-radius:8px; padding:14px 18px; font-weight:700; display:flex; justify-content:space-between; font-size:14px;">
+                        <span>Grand Total</span>
+                        <span style="font-family:'Courier New',monospace;">Excl ${fmtR(grandExcl)} &nbsp;|&nbsp; Incl ${fmtR(grandIncl)} &nbsp;|&nbsp; VAT ${fmtR(grandVat)}</span>
+                    </div>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderVat201Table(report) {
+            const body = document.getElementById('vat201TableBody');
+            if (!body) return;
+            const v = report.vat201 || {};
+            const fmtR = val => val === null || val === undefined ? '' : 'R ' + Number(val).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const rows = [
+                ['', 'Output VAT', null, null, true],
+                ['1', v.field1?.label, v.field1?.considerationInclVat, v.field1?.vat],
+                ['1A', v.field1a?.label, v.field1a?.considerationInclVat, v.field1a?.vat],
+                ['2', v.field2?.label, v.field2?.considerationInclVat, v.field2?.vat],
+                ['2A', v.field2a?.label, v.field2a?.considerationInclVat, v.field2a?.vat],
+                ['3', v.field3?.label, v.field3?.considerationInclVat, v.field3?.vat],
+                ['4', v.field4?.label, v.field4?.considerationInclVat, v.field4?.vat],
+                ['4A', v.field4a?.label, v.field4a?.considerationInclVat, v.field4a?.vat],
+                ['11', v.field11?.label, v.field11?.considerationInclVat, v.field11?.vat],
+                ['11A', v.field11a?.label, v.field11a?.considerationInclVat, v.field11a?.vat],
+                ['12', v.field12?.label, v.field12?.considerationInclVat, v.field12?.vat],
+                ['', v.totalA?.label, null, v.totalA?.vat, false, true],
+                ['', 'Input VAT', null, null, true],
+                ['14', v.field14?.label, v.field14?.considerationInclVat, v.field14?.vat],
+                ['14A', v.field14a?.label, v.field14a?.considerationInclVat, v.field14a?.vat],
+                ['15', v.field15?.label, v.field15?.considerationInclVat, v.field15?.vat],
+                ['15A', v.field15a?.label, v.field15a?.considerationInclVat, v.field15a?.vat],
+                ['16', v.field16?.label, v.field16?.considerationInclVat, v.field16?.vat],
+                ['17', v.field17?.label, v.field17?.considerationInclVat, v.field17?.vat],
+                ['18', v.field18?.label, v.field18?.considerationInclVat, v.field18?.vat],
+                ['', v.totalB?.label, null, v.totalB?.vat, false, true],
+                ['20', v.field20?.label, null, v.field20?.vat, false, true],
+            ];
+
+            body.innerHTML = rows.map(([code, label, consideration, vat, isSectionHeader, isTotal]) => {
+                if (isSectionHeader) {
+                    return `<tr style="background:#e8eaed;"><td colspan="4" style="border:1px solid #ccc; padding:8px; font-weight:700;">${label}</td></tr>`;
+                }
+                const rowStyle = isTotal ? 'background:#d4edda; font-weight:700;' : '';
+                return `<tr style="${rowStyle}">
+                    <td style="border:1px solid #ccc; padding:8px; text-align:center;">${code || ''}</td>
+                    <td style="border:1px solid #ccc; padding:8px;">${label || ''}</td>
+                    <td style="border:1px solid #ccc; padding:8px; text-align:right; font-family:'Courier New',monospace;">${fmtR(consideration)}</td>
+                    <td style="border:1px solid #ccc; padding:8px; text-align:right; font-family:'Courier New',monospace;">${fmtR(vat)}</td>
+                </tr>`;
+            }).join('');
+        }
 
         function normalizeVatPeriodKey(periodKey) {
             const raw = String(periodKey || '').trim();
@@ -1451,8 +1359,14 @@
                 // Load reconciliation for this period
                 await loadReconciliationForPeriod(periodKey);
 
-                // Load Trial Balance data (also updates stat cards + PROEFBALANS inputs)
+                // Load the authoritative VAT201 report (drives stat cards, warnings, source breakdown)
+                await loadVat201ReportForPeriod(periodKey);
+
+                // Load Trial Balance data (drives the control-account tie-out table)
                 await loadTrialBalanceForPeriod(currentPeriodData.from_date, currentPeriodData.to_date);
+
+                // Load the itemized VAT Report + VAT201 Calculation tabs
+                await loadCategorizedReport(periodKey);
 
             } catch (error) {
                 console.error('Error selecting VAT period:', error);
@@ -1480,6 +1394,20 @@
         }
 
         async function loadReconciliationForPeriod(periodKey) {
+            // Reset per-period fields first so a previous period's SOA/authorization
+            // state never bleeds into the newly selected period.
+            currentReconId = null;
+            const soaInput = document.getElementById('soaAmount');
+            if (soaInput) { soaInput.value = ''; soaInput.disabled = false; }
+            ['diffAuthCheckbox', 'soaAuthCheckbox'].forEach(id => {
+                const cb = document.getElementById(id);
+                if (cb) { cb.checked = false; cb.disabled = false; }
+            });
+            ['diffAuthInitials', 'soaAuthInitials'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
             try {
                 const result = await fetchAPI(`/vat-recon/reconciliations/period/${periodKey}`);
                 if (result.success && result.reconciliation) {
@@ -1505,11 +1433,9 @@
         }
 
         function populateTrialBalanceData(trialBalance, periodKey) {
-            if (!trialBalance || !trialBalance.length) return;
-
             let totalIncome = 0, totalExpenses = 0, vatInput = 0, vatOutput = 0;
 
-            trialBalance.forEach(acc => {
+            (trialBalance || []).forEach(acc => {
                 const code    = String(acc.account_code || '');
                 const balance = Math.abs(parseFloat(acc.amount) || 0);
                 const type    = (acc.account_type || '').toLowerCase();
@@ -1523,51 +1449,8 @@
                 if (code === '2300') vatOutput = balance; // VAT Output (Payable)
             });
 
-            // Update reconciliation comparison TB columns for selected period
-            if (periodKey) {
-                const tbInc = document.querySelector(`.tb-income-ref[data-period="${periodKey}"]`);
-                const tbExp = document.querySelector(`.tb-expense-ref[data-period="${periodKey}"]`);
-                if (tbInc) tbInc.textContent = totalIncome.toFixed(2);
-                if (tbExp) tbExp.textContent = totalExpenses.toFixed(2);
-            }
-
-            // Update summary stat cards from real VAT account balances
-            const fmt = v => 'R ' + v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            const outEl = document.getElementById('outputVatValue');
-            const inEl  = document.getElementById('inputVatValue');
-            const payEl = document.getElementById('vatPayableValue');
-            const resetStyle = el => { el.style.color = ''; el.style.fontSize = ''; };
-            if (outEl) { outEl.textContent = fmt(vatOutput); resetStyle(outEl); }
-            if (inEl)  { inEl.textContent  = fmt(vatInput);  resetStyle(inEl);  }
-            if (payEl) { payEl.textContent = fmt(Math.abs(vatOutput - vatInput)); resetStyle(payEl); }
-
-            // Pre-populate PROEFBALANS inputs for the selected period row.
-            // Only sets values when the field is still empty — preserves any manual entries.
-            if (periodKey) {
-                const outputInput = document.querySelector(`input.output-15[data-row="${periodKey}"]`);
-                const inputInput  = document.querySelector(`input.input-15[data-row="${periodKey}"]`);
-                let changed = false;
-
-                if (outputInput && !outputInput.value && vatOutput > 0) {
-                    outputInput.value = vatOutput.toFixed(2);
-                    changed = true;
-                }
-                if (inputInput && !inputInput.value && vatInput > 0) {
-                    inputInput.value = vatInput.toFixed(2);
-                    changed = true;
-                }
-
-                // Cascade all downstream calculations for this row
-                if (changed) {
-                    calculateTotalOutputA(periodKey);
-                    calculateTotalInputB(periodKey);
-                    calculateVATPayable(periodKey);
-                    calculateDifference(periodKey);
-                    if (typeof updateReconciliationComparison === 'function') {
-                        updateReconciliationComparison();
-                    }
-                }
-            }
+            currentTbTotals = { totalIncome, totalExpenses, vatInput, vatOutput };
+            renderControlAccountTieOut();
         }
 
         function populateReconciliationData(recon) {
@@ -1598,6 +1481,7 @@
                     soaInput.disabled = recon.status === 'LOCKED';
                 }
             }
+            calculateSOADifference();
 
             // Set read-only mode if locked
             if (recon.status === 'LOCKED') {
@@ -1632,58 +1516,32 @@
             }
         }
 
-        // Collect all PROEFBALANS input values and calculated totals for a given period key.
-        // Returns a lines array suitable for the vat-recon/reconciliations/draft endpoint.
-        function collectProefbalansLines(periodKey) {
-            if (!periodKey) return [];
-            const lines  = [];
-            let   order  = 0;
+        // Builds the reconciliation line snapshot from the real VAT201 report + real
+        // trial balance + out-of-period totals — never from hand-typed grid values.
+        function buildReconciliationLines() {
+            const report = currentVat201Report;
+            const tb = currentTbTotals;
+            const periodKey = currentPeriodData && currentPeriodData.period_key;
+            if (!report || !periodKey) return [];
 
-            function inputVal(cls) {
-                const el = document.querySelector(`input.${cls}[data-row="${periodKey}"]`);
-                if (!el) return null;
-                const v = parseFloat(el.value);
-                return isNaN(v) ? null : v;
-            }
-            function spanVal(cls) {
-                const el = document.querySelector(`.${cls}[data-row="${periodKey}"]`);
-                if (!el) return null;
-                const v = parseFloat(el.textContent);
-                return isNaN(v) ? null : v;
-            }
+            let order = 0;
+            const lines = [
+                { sectionKey: 'output_total', rowKey: periodKey, label: 'Total Output (A) — VAT201 Report', lineOrder: order++, vatAmount: report.outputVat },
+                { sectionKey: 'input_total',  rowKey: periodKey, label: 'Total Input (B) — VAT201 Report',  lineOrder: order++, vatAmount: report.inputVat },
+                { sectionKey: 'vat_payable',  rowKey: periodKey, label: 'VAT Payable — VAT201 Report',      lineOrder: order++, vatAmount: report.netVatPayableRefundable },
+            ];
 
-            // Output side
-            const vatOut15     = inputVal('output-15');
-            const capOut15     = inputVal('capital-output-15');
-            const totalOutputA = spanVal('total-output-a');
-            if (vatOut15     !== null) lines.push({ sectionKey: 'output',       rowKey: periodKey, label: 'VAT Output 15%',       lineOrder: order++, vatAmount: vatOut15 });
-            if (capOut15     !== null) lines.push({ sectionKey: 'output',       rowKey: periodKey, label: 'Capital Output 15%',    lineOrder: order++, vatAmount: capOut15 });
-            if (totalOutputA !== null) lines.push({ sectionKey: 'output_total', rowKey: periodKey, label: 'Total Output (A)',       lineOrder: order++, vatAmount: totalOutputA });
-
-            // Input side
-            const vatIn15      = inputVal('input-15');
-            const capGoods15   = inputVal('capital-goods-15');
-            const badDebts     = inputVal('bad-debts');
-            const totalInputB  = spanVal('total-input-b');
-            if (vatIn15      !== null) lines.push({ sectionKey: 'input',        rowKey: periodKey, label: 'VAT Input 15%',         lineOrder: order++, vatAmount: vatIn15 });
-            if (capGoods15   !== null) lines.push({ sectionKey: 'input',        rowKey: periodKey, label: 'Capital Goods 15%',      lineOrder: order++, vatAmount: capGoods15 });
-            if (badDebts     !== null) lines.push({ sectionKey: 'input',        rowKey: periodKey, label: 'Bad Debts',              lineOrder: order++, vatAmount: badDebts });
-            if (totalInputB  !== null) lines.push({ sectionKey: 'input_total',  rowKey: periodKey, label: 'Total Input (B)',         lineOrder: order++, vatAmount: totalInputB });
-
-            // VAT payable
-            const vatPayable = spanVal('vat-payable');
-            if (vatPayable !== null) lines.push({ sectionKey: 'vat_payable', rowKey: periodKey, label: 'VAT Payable', lineOrder: order++, vatAmount: vatPayable });
-
-            // SOA amount
-            const soaEl = document.querySelector(`input.soa-input[data-row="${periodKey}"]`);
-            if (soaEl) {
-                const v = parseFloat(soaEl.value);
-                if (!isNaN(v)) lines.push({ sectionKey: 'soa', rowKey: periodKey, label: 'SOA Amount', lineOrder: order++, statementAmount: v });
+            if (tb) {
+                lines.push({ sectionKey: 'tb_tie_out', rowKey: periodKey, label: 'Output VAT per TB + Out-of-Period', lineOrder: order++, tbAmount: (tb.vatOutput || 0) + (currentOopTotals.outputVat || 0) });
+                lines.push({ sectionKey: 'tb_tie_out', rowKey: periodKey, label: 'Input VAT per TB + Out-of-Period',  lineOrder: order++, tbAmount: (tb.vatInput  || 0) + (currentOopTotals.inputVat  || 0) });
             }
 
-            // Calculated difference
-            const diff = spanVal('difference');
-            if (diff !== null) lines.push({ sectionKey: 'difference', rowKey: periodKey, label: 'Difference', lineOrder: order++, differenceAmount: diff });
+            const soaEl = document.getElementById('soaAmount');
+            const soaAmount = soaEl && soaEl.value !== '' ? parseFloat(soaEl.value) : null;
+            if (soaAmount !== null && !isNaN(soaAmount)) {
+                lines.push({ sectionKey: 'soa', rowKey: periodKey, label: 'SOA Amount', lineOrder: order++, statementAmount: soaAmount });
+                lines.push({ sectionKey: 'difference', rowKey: periodKey, label: 'Difference (Net VAT − SOA)', lineOrder: order++, differenceAmount: (report.netVatPayableRefundable || 0) - soaAmount });
+            }
 
             return lines;
         }
@@ -1693,14 +1551,17 @@
                 alert('Please select a VAT period first');
                 return;
             }
+            if (!currentVat201Report) {
+                alert('The VAT201 report for this period has not loaded yet — please wait a moment and try again.');
+                return;
+            }
 
             try {
                 const soaAmountEl = document.getElementById('soaAmount');
-                const periodKey = currentPeriodData.period_key;
                 const reconData = {
                     vatPeriodId: currentPeriodData.id,
                     soaAmount: soaAmountEl ? soaAmountEl.value : null,
-                    lines: collectProefbalansLines(periodKey),
+                    lines: buildReconciliationLines(),
                     metadata: {}
                 };
 
@@ -1787,12 +1648,10 @@
 
         // Calculate difference between Net VAT and Statement of Account
         function calculateSOADifference() {
-            const soaAmount = parseFloat(document.getElementById('soaAmount').value) || 0;
-            const periodKey = currentPeriodData && currentPeriodData.period_key;
-            const netVatEl  = (periodKey && document.querySelector(`.vat-payable[data-row="${periodKey}"]`))
-                           || document.getElementById('vatPayableValue');
-            const netVat = parseFloat(netVatEl ? netVatEl.textContent.replace(/[^0-9.-]/g, '') : 0) || 0;
-            
+            const soaInput = document.getElementById('soaAmount');
+            const soaAmount = parseFloat(soaInput ? soaInput.value : 0) || 0;
+            const netVat = currentVat201Report ? (Number(currentVat201Report.netVatPayableRefundable) || 0) : 0;
+
             const difference = netVat - soaAmount;
             
             const diffDisplay = document.getElementById('soaDifferenceDisplay');
@@ -1849,17 +1708,18 @@
                 return;
             }
 
+            if (!currentVat201Report) {
+                alert('The VAT201 report for this period has not loaded yet — please wait a moment and try again.');
+                return;
+            }
+
             const submissionRef = prompt('Enter SARS submission reference (optional):');
-            
+
             try {
-                const periodKey = currentPeriodData.period_key;
-                const outputEl   = document.querySelector(`.total-output-a[data-row="${periodKey}"]`);
-                const inputEl    = document.querySelector(`.total-input-b[data-row="${periodKey}"]`);
-                const vatPayEl   = document.querySelector(`.vat-payable[data-row="${periodKey}"]`);
                 const submissionData = {
-                    outputVat: parseFloat(outputEl ? outputEl.textContent : 0) || 0,
-                    inputVat:  parseFloat(inputEl  ? inputEl.textContent  : 0) || 0,
-                    netVat:    parseFloat(vatPayEl  ? vatPayEl.textContent  : 0) || 0,
+                    outputVat: Number(currentVat201Report.outputVat) || 0,
+                    inputVat:  Number(currentVat201Report.inputVat) || 0,
+                    netVat:    Number(currentVat201Report.netVatPayableRefundable) || 0,
                     submissionReference: submissionRef,
                     paymentDate: null,
                     paymentReference: null
@@ -1938,14 +1798,23 @@
         /** Fetch and display out-of-period items for the current period. */
         async function loadOutOfPeriodItems(periodId) {
             const card = document.getElementById('oopSummaryCard');
-            if (!card || !periodId) { if (card) card.style.display = 'none'; return; }
+            currentOopTotals = { inputVat: 0, outputVat: 0 };
+
+            if (!card || !periodId) { if (card) card.style.display = 'none'; renderControlAccountTieOut(); return; }
 
             try {
                 const result = await fetchAPI(`/vat-recon/periods/${periodId}/out-of-period`);
                 if (!result.success || !result.summary || result.summary.count === 0) {
                     card.style.display = 'none';
+                    renderControlAccountTieOut();
                     return;
                 }
+
+                currentOopTotals = {
+                    inputVat:  parseFloat(result.summary.total_input_vat) || 0,
+                    outputVat: parseFloat(result.summary.total_output_vat) || 0,
+                };
+
                 card.style.display = 'block';
                 const fmt = n => 'R ' + parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
                 document.getElementById('oopCount').textContent      = result.summary.count;
@@ -1961,9 +1830,11 @@
                         (item.output_vat ? ` | Output VAT: R${parseFloat(item.output_vat).toFixed(2)}` : '')
                     ).join('<br>');
                 }
+                renderControlAccountTieOut();
             } catch (err) {
                 console.error('Error loading OOP items:', err);
                 card.style.display = 'none';
+                renderControlAccountTieOut();
             }
         }
 
@@ -2076,13 +1947,22 @@
 
         async function viewReconciliation(periodKey) {
             try {
+                const periodResult = await fetchAPI(`/vat-recon/periods/${periodKey}`);
+                currentPeriodData = (periodResult.success && periodResult.period) ? periodResult.period : { period_key: periodKey };
+
                 const result = await fetchAPI(`/vat-recon/reconciliations/period/${periodKey}`);
                 if (result.success && result.reconciliation) {
                     currentReconId = result.reconciliation.id;
-                    currentPeriodData = { period_key: periodKey };
-                    
-                    // Open recon section and populate with data
+
+                    // Open recon section and populate with the real, period-specific data —
+                    // not just the saved snapshot — so the tie-out/source panels are accurate.
                     openVATRecon();
+                    updatePeriodLockUI(currentPeriodData);
+                    await loadVat201ReportForPeriod(periodKey);
+                    if (currentPeriodData.from_date && currentPeriodData.to_date) {
+                        await loadTrialBalanceForPeriod(currentPeriodData.from_date, currentPeriodData.to_date);
+                    }
+                    if (currentPeriodData.id) await loadOutOfPeriodItems(currentPeriodData.id);
                     populateReconciliationData(result.reconciliation);
                 }
             } catch (error) {
@@ -2096,314 +1976,8 @@
             alert(`VAT Report for ${formatPeriodDisplay(periodKey)}\n\nFeature coming soon...`);
         }
 
-        // Auto-calculate Total Output (A) = Output 15% + Capital Goods Output 15%
-        // Auto-calculate Total Input (B) = Input 15% + Capital Goods 15% + Bad Debts
-        // Auto-calculate VAT Payable = Total Output (A) - Total Input (B)
-        // Auto-calculate Difference = VAT Payable - Statement of Account
-        function setupAutoCalculations() {
-            // Add event listeners to all income/output inputs
-            document.querySelectorAll('.output-15, .capital-output-15').forEach(input => {
-                input.addEventListener('input', function() {
-                    const periodKey = this.getAttribute('data-row');
-                    calculateTotalOutputA(periodKey);
-                    calculateVATPayable(periodKey);
-                    calculateDifference(periodKey);
-                    updateReconciliationComparison();
-                });
-            });
-
-            // Add event listeners to all expense/input inputs
-            document.querySelectorAll('.input-15, .capital-goods-15, .bad-debts').forEach(input => {
-                input.addEventListener('input', function() {
-                    const periodKey = this.getAttribute('data-row');
-                    calculateTotalInputB(periodKey);
-                    calculateVATPayable(periodKey);
-                    calculateDifference(periodKey);
-                    updateReconciliationComparison();
-                });
-            });
-
-            // Add event listeners to Statement of Account inputs
-            document.querySelectorAll('.soa-input').forEach(input => {
-                input.addEventListener('input', function() {
-                    const periodKey = this.getAttribute('data-row');
-                    calculateDifference(periodKey);
-                });
-            });
-
-            // Add event listeners to ALL vat-input fields for reconciliation comparison
-            document.querySelectorAll('input.vat-input').forEach(input => {
-                input.addEventListener('input', function() {
-                    updateReconciliationComparison();
-                });
-            });
-        }
-
-        function calculateTotalOutputA(periodKey) {
-            const row = document.querySelector(`tr[data-period="${periodKey}"]`);
-            if (!row) return;
-
-            const output15Input = row.querySelector('.output-15');
-            const capitalOutput15Input = row.querySelector('.capital-output-15');
-            const totalOutputSpan = row.querySelector('.total-output-a');
-
-            if (!output15Input || !capitalOutput15Input || !totalOutputSpan) return;
-
-            const output15 = parseFloat(output15Input.value) || 0;
-            const capitalOutput15 = parseFloat(capitalOutput15Input.value) || 0;
-            const total = output15 + capitalOutput15;
-
-            totalOutputSpan.textContent = total.toFixed(2);
-            return total;
-        }
-
-        function calculateTotalInputB(periodKey) {
-            const row = document.querySelector(`tr[data-period="${periodKey}"]`);
-            if (!row) return;
-
-            const input15Input = row.querySelector('.input-15');
-            const capitalGoods15Input = row.querySelector('.capital-goods-15');
-            const badDebtsInput = row.querySelector('.bad-debts');
-            const totalInputSpan = row.querySelector('.total-input-b');
-
-            if (!input15Input || !capitalGoods15Input || !badDebtsInput || !totalInputSpan) return;
-
-            const input15 = parseFloat(input15Input.value) || 0;
-            const capitalGoods15 = parseFloat(capitalGoods15Input.value) || 0;
-            const badDebts = parseFloat(badDebtsInput.value) || 0;
-            const total = input15 + capitalGoods15 + badDebts;
-
-            totalInputSpan.textContent = total.toFixed(2);
-            return total;
-        }
-
-        function calculateVATPayable(periodKey) {
-            const row = document.querySelector(`tr[data-period="${periodKey}"]`);
-            if (!row) return;
-
-            const totalOutputSpan = row.querySelector('.total-output-a');
-            const totalInputSpan = row.querySelector('.total-input-b');
-            const vatPayableSpan = row.querySelector('.vat-payable');
-
-            if (!totalOutputSpan || !totalInputSpan || !vatPayableSpan) return;
-
-            const totalOutput = parseFloat(totalOutputSpan.textContent) || 0;
-            const totalInput = parseFloat(totalInputSpan.textContent) || 0;
-            const vatPayable = totalOutput - totalInput;
-
-            vatPayableSpan.textContent = vatPayable.toFixed(2);
-        }
-
-        function calculateDifference(periodKey) {
-            const row = document.querySelector(`tr[data-period="${periodKey}"]`);
-            if (!row) return;
-
-            const vatPayableSpan = row.querySelector('.vat-payable');
-            const soaInput = row.querySelector('.soa-input');
-            const differenceSpan = row.querySelector('.difference');
-
-            if (!vatPayableSpan || !soaInput || !differenceSpan) return;
-
-            const vatPayable = parseFloat(vatPayableSpan.textContent) || 0;
-            const soa = parseFloat(soaInput.value) || 0;
-            const difference = vatPayable - soa;
-
-            differenceSpan.textContent = difference.toFixed(2);
-        }
-
-        // Initialize calculations when page loads
-        window.addEventListener('DOMContentLoaded', function() {
-            setupAutoCalculations();
-            setupTrialBalanceCalculations();
-        });
-
-        // Trial Balance calculations: TOTAAL = VAT + NO VAT
-        function setupTrialBalanceCalculations() {
-            // Add event listeners to all trial balance inputs
-            document.querySelectorAll('.tb-vat-input, .tb-novat-input').forEach(input => {
-                input.addEventListener('input', function() {
-                    const rowKey = this.getAttribute('data-row');
-                    calculateTrialBalanceTotal(rowKey);
-                    calculateTrialBalanceTotals();
-                });
-            });
-        }
-
-        function calculateTrialBalanceTotal(rowKey) {
-            const vatInput = document.querySelector(`.tb-vat-input[data-row="${rowKey}"]`);
-            const novatInput = document.querySelector(`.tb-novat-input[data-row="${rowKey}"]`);
-            const totalSpan = document.querySelector(`.tb-total[data-row="${rowKey}"]`);
-
-            if (!vatInput || !novatInput || !totalSpan) return;
-
-            const vat = parseFloat(vatInput.value) || 0;
-            const novat = parseFloat(novatInput.value) || 0;
-            const total = vat + novat;
-
-            totalSpan.textContent = total.toFixed(2);
-        }
-
-        function calculateTrialBalanceTotals() {
-            // Calculate INCOME totals
-            let incomeVatTotal = 0;
-            let incomeNovatTotal = 0;
-            document.querySelectorAll('.tb-vat-input[data-row^="income-"]').forEach(input => {
-                incomeVatTotal += parseFloat(input.value) || 0;
-            });
-            document.querySelectorAll('.tb-novat-input[data-row^="income-"]').forEach(input => {
-                incomeNovatTotal += parseFloat(input.value) || 0;
-            });
-
-            const incomeVatSpan = document.querySelector('.tb-vat-total-income');
-            const incomeNovatSpan = document.querySelector('.tb-novat-total-income');
-            const incomeGrandSpan = document.querySelector('.tb-grand-total-income');
-            
-            if (incomeVatSpan) incomeVatSpan.textContent = incomeVatTotal.toFixed(2);
-            if (incomeNovatSpan) incomeNovatSpan.textContent = incomeNovatTotal.toFixed(2);
-            if (incomeGrandSpan) incomeGrandSpan.textContent = (incomeVatTotal + incomeNovatTotal).toFixed(2);
-
-            // Calculate EXPENSE totals
-            let expenseVatTotal = 0;
-            let expenseNovatTotal = 0;
-            document.querySelectorAll('.tb-vat-input[data-row^="expense-"]').forEach(input => {
-                expenseVatTotal += parseFloat(input.value) || 0;
-            });
-            document.querySelectorAll('.tb-novat-input[data-row^="expense-"]').forEach(input => {
-                expenseNovatTotal += parseFloat(input.value) || 0;
-            });
-
-            const expenseVatSpan = document.querySelector('.tb-vat-total-expense');
-            const expenseNovatSpan = document.querySelector('.tb-novat-total-expense');
-            const expenseGrandSpan = document.querySelector('.tb-grand-total-expense');
-            
-            if (expenseVatSpan) expenseVatSpan.textContent = expenseVatTotal.toFixed(2);
-            if (expenseNovatSpan) expenseNovatSpan.textContent = expenseNovatTotal.toFixed(2);
-            if (expenseGrandSpan) expenseGrandSpan.textContent = (expenseVatTotal + expenseNovatTotal).toFixed(2);
-
-            // Update reconciliation comparison "According to TB" values
-            updateReconciliationComparison();
-        }
-
-        // Update reconciliation comparison section
-        function updateReconciliationComparison() {
-            // For now, we'll use the current period's TB totals for all periods
-            // In a real implementation, you'd have period-specific TB values
-            
-            // Get TB totals
-            const incomeVatEl = document.querySelector('.tb-vat-total-income');
-            const expenseVatEl = document.querySelector('.tb-vat-total-expense');
-            const incomeVatTotal = parseFloat(incomeVatEl ? incomeVatEl.textContent : 0) || 0;
-            const expenseVatTotal = parseFloat(expenseVatEl ? expenseVatEl.textContent : 0) || 0;
-
-            // Update "According to TB" for all periods
-            document.querySelectorAll('.tb-income-ref').forEach(span => {
-                span.textContent = incomeVatTotal.toFixed(2);
-            });
-            document.querySelectorAll('.tb-expense-ref').forEach(span => {
-                span.textContent = expenseVatTotal.toFixed(2);
-            });
-
-            // Calculate "According to VAT Report (Excl)" = Inclusive - Output
-            // For INCOME: Inclusive Income (115%) - Output (15%)
-            document.querySelectorAll('.vat-report-income').forEach(span => {
-                const periodKey = span.getAttribute('data-period');
-                const row = document.querySelector(`tr[data-period="${periodKey}"]`);
-                if (!row) return;
-
-                // Get all inputs in the row
-                const inputs = row.querySelectorAll('input.vat-input');
-                // Column 1: Inclusive Income (115%)
-                // Column 2: Output (15%)
-                const inclusiveIncome = parseFloat(inputs[0] ? inputs[0].value : 0) || 0;
-                const output15 = parseFloat(inputs[1] ? inputs[1].value : 0) || 0;
-                
-                const vatReportExcl = inclusiveIncome - output15;
-                span.textContent = vatReportExcl.toFixed(2);
-            });
-
-            // For EXPENSE: Inclusive Expenses - Input VAT
-            document.querySelectorAll('.vat-report-expense').forEach(span => {
-                const periodKey = span.getAttribute('data-period');
-                const row = document.querySelector(`tr[data-period="${periodKey}"]`);
-                if (!row) return;
-
-                // Get all inputs in the row
-                const inputs = row.querySelectorAll('input.vat-input');
-                // Column 6: Inclusive Expenses (115%)
-                // Column 7: Input (15%)
-                const inclusiveExpense = parseFloat(inputs[5] ? inputs[5].value : 0) || 0;
-                const input15 = parseFloat(inputs[6] ? inputs[6].value : 0) || 0;
-                
-                const vatReportExcl = inclusiveExpense - input15;
-                span.textContent = vatReportExcl.toFixed(2);
-            });
-
-            // Calculate differences: According to TB - According to VAT Report
-            document.querySelectorAll('.income-diff').forEach(span => {
-                const periodKey = span.getAttribute('data-period');
-                const tbSpan = document.querySelector(`.tb-income-ref[data-period="${periodKey}"]`);
-                const vatReportSpan = document.querySelector(`.vat-report-income[data-period="${periodKey}"]`);
-                
-                if (!tbSpan || !vatReportSpan) return;
-                
-                const tb = parseFloat(tbSpan.textContent) || 0;
-                const vatReport = parseFloat(vatReportSpan.textContent) || 0;
-                const diff = tb - vatReport;
-                
-                span.textContent = diff.toFixed(2);
-            });
-
-            document.querySelectorAll('.expense-diff').forEach(span => {
-                const periodKey = span.getAttribute('data-period');
-                const tbSpan = document.querySelector(`.tb-expense-ref[data-period="${periodKey}"]`);
-                const vatReportSpan = document.querySelector(`.vat-report-expense[data-period="${periodKey}"]`);
-                
-                if (!tbSpan || !vatReportSpan) return;
-                
-                const tb = parseFloat(tbSpan.textContent) || 0;
-                const vatReport = parseFloat(vatReportSpan.textContent) || 0;
-                const diff = tb - vatReport;
-                
-                span.textContent = diff.toFixed(2);
-            });
-
-            // Calculate percentages: (Difference / According to TB) * 100
-            document.querySelectorAll('.income-pct').forEach(span => {
-                const periodKey = span.getAttribute('data-period');
-                const diffSpan = document.querySelector(`.income-diff[data-period="${periodKey}"]`);
-                const tbSpan = document.querySelector(`.tb-income-ref[data-period="${periodKey}"]`);
-                
-                if (!diffSpan || !tbSpan) return;
-                
-                const diff = parseFloat(diffSpan.textContent) || 0;
-                const tb = parseFloat(tbSpan.textContent) || 0;
-                
-                if (tb === 0) {
-                    span.textContent = '-';
-                } else {
-                    const pct = (diff / tb) * 100;
-                    span.textContent = pct.toFixed(2) + '%';
-                }
-            });
-
-            document.querySelectorAll('.expense-pct').forEach(span => {
-                const periodKey = span.getAttribute('data-period');
-                const diffSpan = document.querySelector(`.expense-diff[data-period="${periodKey}"]`);
-                const tbSpan = document.querySelector(`.tb-expense-ref[data-period="${periodKey}"]`);
-                
-                if (!diffSpan || !tbSpan) return;
-                
-                const diff = parseFloat(diffSpan.textContent) || 0;
-                const tb = parseFloat(tbSpan.textContent) || 0;
-                
-                if (tb === 0) {
-                    span.textContent = '-';
-                } else {
-                    const pct = (diff / tb) * 100;
-                    span.textContent = pct.toFixed(2) + '%';
-                }
-            });
-        }
+        // Manual grid auto-calc helpers removed — VAT figures now come exclusively
+        // from /api/accounting/vat/report (see loadVat201ReportForPeriod above).
 
     </script>
     <script src="js/companyContextBadge.js"></script>
