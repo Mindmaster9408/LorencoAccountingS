@@ -20,6 +20,59 @@ const { PIN_ELIGIBLE_ROLES: PIN_ELIGIBLE_ROLES_SET } = require('../../modules/po
 
 const router = express.Router();
 
+// The permanent, paid-by-default module set every company gets regardless of
+// account type or trial state. 'sean' is deliberately always in this set —
+// it is infrastructure the other apps use, never a separately-listed,
+// separately-purchased product (dashboard.html already hides its tile from
+// anyone but a super admin; it must never be presented as a trial "unlock").
+const BASE_MODULES = ['pos', 'payroll', 'accounting', 'sean'];
+
+/**
+ * The full set of modules a company is EVER eligible for, by account type —
+ * used both to grant the 30-day full-access trial at registration and as the
+ * ceiling nothing (trial or otherwise) may exceed. Firmflow (practice) is
+ * accounting-practice-only, unconditionally, trial included — a business
+ * owner is never shown or granted it, at any point (Ruan's explicit rule).
+ */
+function trialModulesFor(holderType) {
+  if (holderType === 'accounting_practice') return [...BASE_MODULES, 'inventory', 'practice'];
+  if (holderType === 'business_owner')      return [...BASE_MODULES, 'inventory'];
+  return [...BASE_MODULES];
+}
+
+const TRIAL_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — same convention as the Paytime demo company
+
+/**
+ * Lazily reverts an expired full-access trial back to the company's real
+ * baseline. Called wherever modules_enabled is read for an access decision
+ * (login, select-company) rather than on a schedule — the first login/company
+ * fetch after expiry enforces it, no cron job needed. Idempotent: a company
+ * not on a trial (trial_expires_at is null) is returned untouched.
+ */
+async function expireTrialIfNeeded(company) {
+  if (!company || !company.trial_expires_at) return company;
+  if (new Date(company.trial_expires_at) > new Date()) return company;
+
+  const baseModules = company.trial_base_modules || BASE_MODULES;
+  const { data: updated, error } = await supabase
+    .from('companies')
+    .update({
+      modules_enabled: baseModules,
+      trial_expires_at: null,
+      trial_base_modules: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', company.id)
+    .select('id, company_name, trading_name, modules_enabled, subscription_status, practice_code, account_holder_type, trial_expires_at, trial_base_modules')
+    .single();
+
+  if (error) {
+    console.error('[auth] expireTrialIfNeeded update failed for company', company.id, ':', error.message);
+    return company; // fail safe — keep serving the (still trial) row rather than error the login
+  }
+  return updated;
+}
+
 /**
  * POST /api/auth/login
  * Authenticate user, return token + accessible companies
@@ -97,13 +150,20 @@ router.post('/login', async (req, res) => {
         role,
         is_primary,
         apps_access,
-        companies:company_id (id, company_name, trading_name, modules_enabled, practice_code, account_holder_type)
+        companies:company_id (id, company_name, trading_name, modules_enabled, practice_code, account_holder_type, trial_expires_at, trial_base_modules)
       `)
       .eq('user_id', user.id)
       .eq('is_active', true);
 
     if (compError) {
       console.error('Error fetching companies:', compError.message);
+    }
+
+    // Lazy trial expiry — reverts modules_enabled in place for any company
+    // whose 30-day full-access trial has passed, before it's ever used to
+    // decide what this login response/JWT grants. See expireTrialIfNeeded().
+    for (const row of (accessRows || [])) {
+      if (row.companies) row.companies = await expireTrialIfNeeded(row.companies);
     }
 
     const companyList = (accessRows || [])
@@ -291,15 +351,27 @@ router.post('/register', async (req, res) => {
       };
       const holderType = accountTypeMap[account_type] || null;
 
+      // Full-access trial (2026-08-29, Ruan's explicit call): every new signup
+      // gets everything they're eligible for immediately — including Firmflow
+      // for an accounting practice, which previously wasn't granted at all
+      // (BASE_MODULES never included 'practice', and nothing else added it at
+      // registration time) — for 30 days, then automatically reverts to
+      // BASE_MODULES via expireTrialIfNeeded() on their first login/company
+      // fetch after that. A business owner is never eligible for 'practice'
+      // even during the trial — trialModulesFor() enforces that ceiling.
+      const trialExpiresAt = new Date(Date.now() + TRIAL_PERIOD_MS).toISOString();
+
       const { data: newCompany, error: compError } = await supabase
         .from('companies')
         .insert({
           company_name: companyName,
           trading_name: companyTradingName,
           is_active: true,
-          modules_enabled: ['pos', 'payroll', 'accounting', 'sean'],
+          modules_enabled: trialModulesFor(holderType),
           subscription_status: 'active',
           account_holder_type: holderType,
+          trial_expires_at: trialExpiresAt,
+          trial_base_modules: BASE_MODULES,
         })
         .select()
         .single();
@@ -492,9 +564,9 @@ router.post('/select-company', authenticateToken, async (req, res) => {
     let role = null;
 
     // Fetch company details (needed by POS and other frontends)
-    const { data: company, error: compErr } = await supabase
+    let { data: company, error: compErr } = await supabase
       .from('companies')
-      .select('id, company_name, trading_name, modules_enabled, subscription_status, practice_code, account_holder_type')
+      .select('id, company_name, trading_name, modules_enabled, subscription_status, practice_code, account_holder_type, trial_expires_at, trial_base_modules')
       .eq('id', parsedCompanyId)
       .eq('is_active', true)
       .single();
@@ -502,6 +574,9 @@ router.post('/select-company', authenticateToken, async (req, res) => {
     if (compErr || !company) {
       return res.status(404).json({ error: 'Company not found or inactive' });
     }
+
+    // Lazy trial expiry — see expireTrialIfNeeded() above login.
+    company = await expireTrialIfNeeded(company);
 
     let appsAccess = null;
     if (isSuperAdmin) {
@@ -671,13 +746,18 @@ router.get('/companies', authenticateToken, async (req, res) => {
       .from('user_company_access')
       .select(`
         company_id, role, is_primary,
-        companies:company_id (id, company_name, trading_name, modules_enabled, practice_code, account_holder_type)
+        companies:company_id (id, company_name, trading_name, modules_enabled, practice_code, account_holder_type, trial_expires_at, trial_base_modules)
       `)
       .eq('user_id', req.user.userId)
       .eq('is_active', true);
 
     if (error) {
       return res.status(500).json({ error: 'Database error' });
+    }
+
+    // Lazy trial expiry — see expireTrialIfNeeded() near the top of this file.
+    for (const row of (accessRows || [])) {
+      if (row.companies) row.companies = await expireTrialIfNeeded(row.companies);
     }
 
     const rawList = (accessRows || [])
@@ -1080,7 +1160,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
     if (resolvedCompanyId) {
       const { data: companyData } = await supabase
         .from('companies')
-        .select('id, company_name, trading_name, modules_enabled, account_holder_type')
+        .select('id, company_name, trading_name, modules_enabled, account_holder_type, trial_expires_at, trial_base_modules')
         .eq('id', resolvedCompanyId)
         .single();
       company = companyData;
@@ -1088,6 +1168,10 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
     if (!company) {
       return res.status(400).json({ error: 'No active company found. Please create or join a company first.' });
     }
+    // Lazy trial expiry — this is the actual per-app launch gate, so it's the
+    // most important of the three call sites for this to run before deciding
+    // access. See expireTrialIfNeeded() near the top of this file.
+    company = await expireTrialIfNeeded(company);
 
     // Per-user app access gate — mirrors module-check.js Tier 3.
     // If the user has explicit app grants for this (user, company) pair,
