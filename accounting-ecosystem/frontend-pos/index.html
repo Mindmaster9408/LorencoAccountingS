@@ -6830,14 +6830,26 @@
 
         async function checkSession() {
             try {
-                const response = await fetch(`${API_URL}/pos/sessions?status=open`, {
+                // BUG FIX (found live, Pennygrow, 2026-08-29): this used to call
+                // GET /pos/sessions?status=open, which for a management-tier user
+                // (store_manager etc.) is NOT scoped to that user OR to any
+                // specific till — TILLS.MANAGE bypasses the user_id filter
+                // entirely (see sessions.js), so it returned literally any open
+                // session anywhere in the company, and this code took the first
+                // one. A store_manager logging into a DIFFERENT till than the one
+                // actually open elsewhere would see THAT other till's session
+                // misattributed as their own "Till Open" status. GET
+                // /pos/sessions/current already exists and correctly scopes to
+                // req.user.userId regardless of role — this just needed to call
+                // the right endpoint.
+                const response = await fetch(`${API_URL}/pos/sessions/current`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
                 const result = await response.json();
 
-                if (result.sessions && result.sessions.length > 0) {
-                    currentSession = result.sessions[0];
+                if (result.session) {
+                    currentSession = result.session;
                     document.getElementById('sessionStatus').textContent = 'Till Open';
                     document.getElementById('checkoutBtn').disabled = cart.length === 0;
                 } else {
