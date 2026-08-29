@@ -1008,10 +1008,18 @@ router.post('/gl-sync/generate-invoice', authenticate, hasPermission('pos.reconc
       return res.status(409).json({ error: `A till invoice for ${date} already exists`, code: 'ALREADY_GENERATED', existingInvoiceId: dupResult.rows[0].id });
     }
 
+    // payment_method != 'account' (2026-08-29): account-tender sales now get
+    // their own real, per-customer draft invoice (createDraftAccountInvoice()
+    // in modules/pos/routes/sales.js, sale_id-linked) the moment the sale
+    // completes. Sweeping them into this generic aggregate too — as this
+    // query always did before — would recognise the same revenue twice in
+    // the GL once both are posted. Cash/card sales are unaffected; this
+    // generator's whole job is still exactly what it always was for them.
     const { data: salesRows, error: salesError } = await supabase
       .from('sales')
       .select('id')
       .eq('company_id', companyId).eq('status', 'completed')
+      .neq('payment_method', 'account')
       .gte('created_at', saDateToUtcStart(date)).lte('created_at', saDateToUtcEnd(date));
     if (salesError) throw new Error(salesError.message);
     if (!salesRows || salesRows.length === 0) {

@@ -7354,46 +7354,38 @@
 
                 if (result.sessions && result.sessions.length > 0) {
                     section.style.display = 'block';
-                    list.innerHTML = result.sessions.map(session => {
-                        // BUG FIX (found live, Workstream 97): the query returns nested
-                        // join objects (tills / users), not flat till_name / user_name —
-                        // this card has always rendered "undefined - undefined" for the
-                        // till and cashier name, and a NaN "sales" figure the backend
-                        // never actually computes. Fixed to read the real nested fields
-                        // and drop the fabricated sales-count line (the accurate
-                        // per-payment-method breakdown is shown once you open the
-                        // Complete Cashup modal, sourced from the reconciliation API).
+                    // Dropdown instead of one card per session (2026-08-29,
+                    // manager request) — a manager reconciling several
+                    // cashiers' tills picks ONE from a single list (name +
+                    // outstanding amount right there in the option) instead
+                    // of scrolling a stack of identical cards. Selecting one
+                    // shows its detail below and enables the button —
+                    // exactly the same showPendingCashupModal() as before,
+                    // just triggered from here instead of from a per-card
+                    // button.
+                    _pendingCashupSessions = result.sessions;
+                    const options = result.sessions.map((session, i) => {
                         const tillName = session.tills?.till_name || session.tills?.till_number || `Till #${session.till_id}`;
                         const userName = session.users?.full_name || session.users?.username || 'Unknown cashier';
-                        // still_open (found live, 2026-07-31): a cashier logging out
-                        // without hitting "Close Till" leaves the session status='open'
-                        // forever — /pending-cashup now surfaces those too (previously
-                        // invisible entirely). expected_balance was never computed for
-                        // these (that only happens at /close), so showing it would be
-                        // the exact misleading "Expected: R0.00" this fix exists to
-                        // avoid — badge it instead and let the modal's live
-                        // reconciliation fetch show the real figures.
-                        const statusLine = session.still_open
-                            ? `<span style="color:#c62828;font-weight:600;">⚠ Still open — never closed</span>`
-                            : `Expected: R ${parseFloat(session.expected_balance || 0).toFixed(2)}`;
-                        return `
-                        <div style="background: var(--surface); border: 1px solid ${session.still_open ? '#c62828' : 'var(--border)'}; border-radius: 8px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <div style="font-weight: bold; color: var(--text);">
-                                    ${tillName} - ${userName}
-                                </div>
-                                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">
-                                    Opened: ${new Date(session.opened_at).toLocaleString()} |
-                                    ${statusLine}
-                                </div>
+                        const amountLabel = session.still_open
+                            ? 'still open — never closed'
+                            : `Uitstaande: R ${parseFloat(session.expected_balance || 0).toFixed(2)}`;
+                        return `<option value="${i}">${tillName} — ${userName} (${amountLabel})</option>`;
+                    }).join('');
+                    list.innerHTML = `
+                        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:280px;">
+                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Select cashier / session</label>
+                                <select id="pendingCashupSelect" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                                    ${options}
+                                </select>
                             </div>
-                            <button onclick="showPendingCashupModal(${session.id}, ${session.expected_balance || 0}, '${tillName.replace(/'/g, "\\'")}', '${userName.replace(/'/g, "\\'")}', ${!!session.still_open})"
-                                    style="background: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                            <button onclick="openSelectedPendingCashup()"
+                                    style="background: #4caf50; color: white; border: none; padding: 11px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
                                 Complete Cashup
                             </button>
                         </div>
                     `;
-                    }).join('');
                 } else {
                     section.style.display = 'none';
                     list.innerHTML = '';
@@ -7698,6 +7690,21 @@
         // sessionId) can still build an accurate print slip afterwards.
         let _pendingCashupContext = null;
 
+        // The full session list behind the pending-cashups dropdown — kept so
+        // openSelectedPendingCashup() can look up the selected option's full
+        // record (the <select> itself only carries an index).
+        let _pendingCashupSessions = [];
+
+        function openSelectedPendingCashup() {
+            const select = document.getElementById('pendingCashupSelect');
+            if (!select || select.value === '') return;
+            const session = _pendingCashupSessions[parseInt(select.value, 10)];
+            if (!session) return;
+            const tillName = session.tills?.till_name || session.tills?.till_number || `Till #${session.till_id}`;
+            const userName = session.users?.full_name || session.users?.username || 'Unknown cashier';
+            showPendingCashupModal(session.id, session.expected_balance || 0, tillName, userName, !!session.still_open);
+        }
+
         async function showPendingCashupModal(sessionId, expectedBalance, tillName, userName, stillOpen) {
             let recon = null;
             try {
@@ -7752,30 +7759,34 @@
                                 Expected balance: <strong style="color:var(--text);">R ${parseFloat(expectedBalance).toFixed(2)}</strong> (detailed breakdown unavailable)
                             </div>
                         `}
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                            <div>
-                                <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Cash</label>
-                                <input type="number" id="pcCountedCash" step="0.01" value="0" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                            </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Cash</label>
+                            <input type="number" id="pcCountedCash" step="0.01" value="0" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+                        </div>
+                        <!-- Card/EFT/Account (2026-08-29, manager request): only shown
+                             when that method actually had a sale amount today — no
+                             point counting/entering a figure for a method nobody used
+                             on this session. Same "hide if zero" convention the
+                             cashier's own Cash Up tab already uses
+                             (renderOtherPaymentCountRows()) applied here too. Each
+                             still gets its own field (2026-07-24 fix, unchanged) —
+                             never recombined into one "Counted Other" bucket. -->
+                        <div id="pcOtherMethodsRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:12px;">
+                            ${parseFloat(payments.card || 0) > 0 ? `
                             <div>
                                 <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Card</label>
                                 <input type="number" id="pcCountedCard" step="0.01" value="${parseFloat(payments.card || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                            </div>
-                        </div>
-                        <!-- EFT/Account each get their own counted field (2026-07-24 —
-                             was one combined "Counted Other" bucket that couldn't tell
-                             EFT and Account variances apart, same fix as the main Cash
-                             Up tab's "Count Other Payment Methods" section). Pre-filled
-                             with the system figure, same convention as Card above. -->
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                            </div>` : ''}
+                            ${parseFloat(payments.eft || 0) > 0 ? `
                             <div>
                                 <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted EFT</label>
                                 <input type="number" id="pcCountedEft" step="0.01" value="${parseFloat(payments.eft || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                            </div>
+                            </div>` : ''}
+                            ${parseFloat(payments.account || 0) > 0 ? `
                             <div>
                                 <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Counted Account</label>
                                 <input type="number" id="pcCountedAccount" step="0.01" value="${parseFloat(payments.account || 0).toFixed(2)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
-                            </div>
+                            </div>` : ''}
                         </div>
                         <div>
                             <label style="font-weight:600;display:block;margin-bottom:5px;color:var(--text);">Notes (optional)</label>
@@ -7797,10 +7808,19 @@
         }
 
         async function completePendingCashup(sessionId) {
-            const counted_cash    = parseFloat(document.getElementById('pcCountedCash').value)    || 0;
-            const counted_card    = parseFloat(document.getElementById('pcCountedCard').value)    || 0;
-            const counted_eft     = parseFloat(document.getElementById('pcCountedEft').value)     || 0;
-            const counted_account = parseFloat(document.getElementById('pcCountedAccount').value) || 0;
+            const counted_cash = parseFloat(document.getElementById('pcCountedCash').value) || 0;
+            // Card/EFT/Account fields (2026-08-29) only exist in the DOM when that
+            // method actually had sales — a missing field means "not counted" and
+            // must be sent as undefined (omitted), not 0, so the backend's own
+            // "not counted vs counted zero" distinction (complete-cashup's
+            // per-method variance calc) stays correct instead of reporting a
+            // false variance against a method nobody was asked to count.
+            const cardEl    = document.getElementById('pcCountedCard');
+            const eftEl     = document.getElementById('pcCountedEft');
+            const accountEl = document.getElementById('pcCountedAccount');
+            const counted_card    = cardEl    ? (parseFloat(cardEl.value)    || 0) : undefined;
+            const counted_eft     = eftEl     ? (parseFloat(eftEl.value)     || 0) : undefined;
+            const counted_account = accountEl ? (parseFloat(accountEl.value) || 0) : undefined;
             const notes = document.getElementById('pcNotes').value || '';
 
             try {

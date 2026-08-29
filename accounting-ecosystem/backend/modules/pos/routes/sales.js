@@ -248,6 +248,110 @@ async function postAccountCharge({ companyId, customerId, saleId, saleNumber, am
 }
 
 /**
+ * Real per-customer draft invoice in Leo for an account-tender sale
+ * (2026-08-29). Until now, an "Account" sale only ever updated
+ * customers.current_balance + customer_account_transactions — a POS-only
+ * ledger that never created a real customer_invoice, never posted to the
+ * GL, and never appeared on Leo's own aging report (see
+ * docs/charlie-leo-customer-account-integration.md for the full prior
+ * audit). This closes that gap the same way OCR uploads and the
+ * company-link feature already do it: arrives as a DRAFT, changes nothing
+ * in the GL until a bookkeeper reviews and explicitly posts it via the
+ * exact same POST /customer-invoices/:id/post route every other invoice
+ * uses.
+ *
+ * GL account is deliberately left unmapped (null) on every line — which
+ * revenue account this hits is Leo's own chart-of-accounts decision, not
+ * something POS should guess at by reaching into another module's
+ * account-provisioning logic. The existing "Checkout Charlie - Sales"
+ * daily till-invoice generator (pos-bridge.js) now excludes
+ * payment_method='account' sales from its own aggregate for exactly this
+ * reason — see that file's matching comment — so this is the one and only
+ * place an account sale's revenue is ever recognised, never double-counted.
+ *
+ * customer_invoices.sale_id (confirmed unused by any currently-live code —
+ * only the retired modules/accounting/index.js.bak ever wrote it) is the
+ * idempotency key: a second call for the same sale (retry, replay) finds
+ * the existing draft and does nothing, rather than creating a duplicate.
+ *
+ * Best-effort and non-fatal by design, same as postAccountCharge's own
+ * caller — a failure here must never roll back or fail the already-
+ * completed sale.
+ *
+ * accountAmount may be LESS than the sale's full total on a split
+ * cash+account payment — only that portion belongs to the customer's
+ * account, so only that portion is invoiced. A full-account sale (the
+ * common case) gets one line per product, straight from the sale's own
+ * already-computed line totals; a split payment gets one lump-sum line for
+ * the account-funded share, since there's no correct way to attribute a
+ * partial payment to specific line items after the fact.
+ */
+async function createDraftAccountInvoice({ companyId, saleId, saleNumber, customerId, accountAmount, totalAmount, vatTotal, enrichedItems, userId }) {
+  const { data: existing } = await supabase
+    .from('customer_invoices').select('id')
+    .eq('company_id', companyId).eq('sale_id', saleId).maybeSingle();
+  if (existing) return; // already created (retry/replay) — idempotent no-op
+
+  const isFullAccountSale = Math.abs(accountAmount - totalAmount) < 0.01;
+
+  let lines;
+  let subtotal, vatAmount;
+  if (isFullAccountSale) {
+    lines = (enrichedItems || []).map(item => ({
+      description: item.product?.product_name || 'Item',
+      account_id:  null,
+      line_type:   'account_sale',
+      quantity:    item.quantity,
+      unit_price:  item.effective_price,
+      vat_rate:    item.product?.vat_rate || 0,
+      line_total:  item.line_total,
+    }));
+    subtotal  = Math.round((totalAmount - vatTotal) * 100) / 100;
+    vatAmount = vatTotal;
+  } else {
+    // Split payment — proportional VAT allocation for the account-funded
+    // share only. Approximate by construction; noted on the line itself so
+    // it's never mistaken for an exact per-item figure.
+    subtotal  = Math.round((accountAmount - (vatTotal * (accountAmount / totalAmount))) * 100) / 100;
+    vatAmount = Math.round((vatTotal * (accountAmount / totalAmount)) * 100) / 100;
+    lines = [{
+      description: `Account-funded portion of sale ${saleNumber} (split payment — approximate VAT allocation)`,
+      account_id:  null,
+      line_type:   'account_sale',
+      quantity:    1,
+      unit_price:  subtotal,
+      vat_rate:    totalAmount > 0 ? Math.round((vatTotal / (totalAmount - vatTotal)) * 10000) / 100 : 0,
+      line_total:  subtotal,
+    }];
+  }
+
+  const { data: invoice, error: invErr } = await supabase
+    .from('customer_invoices')
+    .insert({
+      company_id: companyId,
+      customer_id: customerId,
+      sale_id: saleId,
+      invoice_number: saleNumber,
+      date: new Date().toISOString().substring(0, 10),
+      status: 'draft',
+      vat_mode: 'inclusive',
+      subtotal,
+      vat_amount: vatAmount,
+      total_amount: accountAmount,
+      amount_paid: 0,
+      balance_due: accountAmount,
+      notes: 'Auto-created from Checkout Charlie account sale — map a GL account on each line, then review and post.',
+      created_by: userId,
+    })
+    .select('id').single();
+  if (invErr) throw new Error(invErr.message);
+
+  const lineRows = lines.map(l => ({ invoice_id: invoice.id, ...l }));
+  const { error: lineErr } = await supabase.from('customer_invoice_lines').insert(lineRows);
+  if (lineErr) throw new Error(lineErr.message);
+}
+
+/**
  * Reverse a previously-posted account charge when its sale is voided
  * (Workstream 91). Never edits the original 'charge' row — appends an
  * offsetting 'charge_reversal' row instead, so financial history is never
@@ -1016,6 +1120,21 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
             });
           } catch (syncErr) {
             console.error('[Sales] syncAccountSaleToLinkedBuyerPO threw:', syncErr.message);
+          }
+
+          // Real draft customer_invoice in Leo for this account sale
+          // (2026-08-29) — see createDraftAccountInvoice() above for the
+          // full explanation. Best-effort, same reasoning as the sync call
+          // right above it: never rolls back or fails an already-completed
+          // sale.
+          try {
+            await createDraftAccountInvoice({
+              companyId: req.companyId, saleId: rpcResult.sale_id, saleNumber,
+              customerId: customer_id, accountAmount, totalAmount: total_amount,
+              vatTotal: vat_total_for_rpc, enrichedItems, userId: req.user.userId,
+            });
+          } catch (draftErr) {
+            console.error('[Sales] createDraftAccountInvoice failed (non-fatal):', draftErr.message);
           }
         } else {
           // CRITICAL: the sale already succeeded and stock already moved —
