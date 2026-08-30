@@ -12143,9 +12143,9 @@
                     </thead>
                     <tbody>
                         ${sales.map(s => `
-                            <tr>
+                            <tr onclick="viewSaleDetail(${s.id})" style="cursor:pointer;" title="Click to view full sale details / reprint">
                                 <td>${new Date(s.created_at).toLocaleString('en-ZA')}</td>
-                                <td>${s.sale_number}</td>
+                                <td style="color:#667eea;text-decoration:underline;">${s.sale_number}</td>
                                 <td>${s.cashier}</td>
                                 <td>${formatCurrency(s.subtotal)}</td>
                                 <td>${formatCurrency(s.discount_amount)}</td>

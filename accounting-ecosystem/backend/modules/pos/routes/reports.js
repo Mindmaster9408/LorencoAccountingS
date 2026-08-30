@@ -936,6 +936,7 @@ async function fetchSalesWithDiscounts(companyId, start, end) {
     const subtotal = parseFloat(sale.subtotal || 0);
     const discount_amount = parseFloat(sale.discount_amount || 0);
     return {
+      id: sale.id, // lets the frontend open the existing Sale Details modal (view/reprint) on click
       sale_number: sale.sale_number || sale.receipt_number,
       cashier: sale.users?.full_name || sale.users?.username || 'Unknown',
       user_id: sale.user_id,
