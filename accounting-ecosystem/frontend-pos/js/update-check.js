@@ -2,8 +2,7 @@
  * ============================================================================
  * update-check.js — Shared App Update Detection Utility
  * ============================================================================
- * Detects when a new deployment has occurred and shows a non-blocking update
- * banner, inviting the user to refresh. Works for both:
+ * Detects when a new deployment has occurred. Works for both:
  *
  *   A. Pages WITHOUT a service worker (ecosystem: dashboard, admin, login)
  *      → Polls GET /api/version on load + on tab focus + every 5 minutes
@@ -12,7 +11,11 @@
  *   B. Pages WITH a service worker (POS, Payroll)
  *      → Listens for SW postMessage { type: 'SW_UPDATED' }
  *      → Also listens for SW registration 'updatefound' event
- *      → Shows the update banner when new SW activates
+ *      → Calls registration.update() the moment a new deployment is detected
+ *        via the version poll, so the browser actually re-checks the SW file
+ *        immediately instead of waiting for its own infrequent (~24h) check —
+ *        a kiosk till that never navigates/reloads for weeks would otherwise
+ *        never trigger that check on its own.
  *
  * Include this file in any HTML page's <head> or end of <body>:
  *   <script src="/js/update-check.js"></script>
@@ -21,10 +24,22 @@
  * registration to enable the updatefound listener.
  *
  * UX philosophy:
- *   - Non-blocking banner (not a modal, not an alert)
- *   - User can dismiss and continue working
- *   - "Refresh Now" reloads cleanly
- *   - Does NOT auto-reload — never interrupts active form work
+ *   - Default: non-blocking banner (not a modal, not an alert). User can
+ *     dismiss and continue working. "Refresh Now" reloads cleanly.
+ *   - Opt-in silent auto-reload: if the host page defines a global
+ *     `window.isSafeToAutoReload()` predicate, this file waits for it to
+ *     return true (polling every 15s once an update is known) and reloads
+ *     on its own — no banner, no click, nothing left in anyone's hands.
+ *     Pages that don't define this predicate keep the exact banner-only
+ *     behavior described above; this is opt-in per page, not a default.
+ *     If the predicate itself throws, that is treated as "not safe" for
+ *     that check (never silently reload on an error) and falls back to the
+ *     manual banner after a few failures so an update is never lost.
+ *   - `force_update` is unchanged by any of the above — it still shows the
+ *     existing non-dismissible blocking overlay immediately, regardless of
+ *     idle state. That path is for breaking changes where continuing to run
+ *     old code at all is the greater risk; it is intentionally NOT made to
+ *     wait for idle.
  * ============================================================================
  */
 (function () {
@@ -32,7 +47,9 @@
 
   // ── Configuration ──────────────────────────────────────────────────────────
   const VERSION_ENDPOINT     = '/api/version';
-  const POLL_INTERVAL_MS     = 5 * 60 * 1000; // 5 minutes
+  const POLL_INTERVAL_MS     = 5 * 60 * 1000;  // 5 minutes
+  const IDLE_POLL_INTERVAL_MS = 15 * 1000;     // 15 seconds, only once an update is pending
+  const IDLE_PREDICATE_MAX_ERRORS = 3;         // fall back to the manual banner after this many thrown errors
   const BANNER_ID            = 'app-update-banner';
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -40,6 +57,10 @@
   let bannerShown         = false;
   let forcedUpdateActive  = false;
   let pollTimer           = null;
+  let swRegistration      = null;  // set by initSWUpdateCheck(), used to force an SW re-check
+  let awaitingIdleReload  = false;
+  let idlePollTimer       = null;
+  let idlePredicateErrorCount = 0;
 
   // Expose current app version so it can be stamped on offline sale records
   window.__posAppVersion = null;
@@ -171,7 +192,53 @@
     });
   }
 
-  // ── Version polling (for pages without SW) ─────────────────────────────────
+  // ── Soft-update handling: silent idle reload where opted in, banner otherwise ──
+  // Single entry point for all three "a new soft update exists" signals
+  // (version poll, SW updatefound/installed, SW_UPDATED message) so there is
+  // exactly one reload-waiting cycle, never several racing each other.
+  function handleSoftUpdateDetected(message) {
+    if (typeof window.isSafeToAutoReload !== 'function') {
+      // This page hasn't opted in — unchanged behavior, exactly as before.
+      showUpdateBanner(message);
+      return;
+    }
+    startIdleReloadWait();
+  }
+
+  function startIdleReloadWait() {
+    if (awaitingIdleReload) return;
+    awaitingIdleReload = true;
+
+    const tryReload = () => {
+      let safe;
+      try {
+        safe = window.isSafeToAutoReload();
+      } catch (err) {
+        // Never treat a throwing predicate as "safe" — count it and, after a
+        // few failures, give up on silence and fall back to the manual
+        // banner so the update is never lost outright.
+        console.warn('[update-check] isSafeToAutoReload() threw:', err);
+        idlePredicateErrorCount++;
+        if (idlePredicateErrorCount >= IDLE_PREDICATE_MAX_ERRORS) {
+          clearInterval(idlePollTimer);
+          idlePollTimer = null;
+          awaitingIdleReload = false;
+          showUpdateBanner();
+        }
+        return;
+      }
+      if (safe === true) {
+        clearInterval(idlePollTimer);
+        idlePollTimer = null;
+        window.location.reload();
+      }
+    };
+
+    idlePollTimer = setInterval(tryReload, IDLE_POLL_INTERVAL_MS);
+    tryReload(); // also check immediately — no reason to wait a full interval
+  }
+
+  // ── Version polling (for pages without SW, and as the trigger for SW pages) ──
   async function checkVersion() {
     try {
       const res  = await fetch(VERSION_ENDPOINT, { cache: 'no-store' });
@@ -188,11 +255,20 @@
 
       if (v !== knownVersion) {
         console.log('[update-check] New version detected:', v, '(was:', knownVersion + ')');
+
+        // Force the browser to actually re-check the SW file now, rather than
+        // waiting for its own infrequent automatic check — this is what makes
+        // the whole SW update cascade (skipWaiting/activate/clients.claim,
+        // already correctly built into the SW itself) actually fire promptly.
+        if (swRegistration) {
+          swRegistration.update().catch(() => {});
+        }
+
         if (data.force_update) {
           triggerForcedUpdate(v);
           stopPolling();
         } else {
-          showUpdateBanner();
+          handleSoftUpdateDetected();
           stopPolling();
         }
       }
@@ -222,6 +298,7 @@
   // Pass the ServiceWorkerRegistration object.
   window.initSWUpdateCheck = function (registration) {
     if (!registration) return;
+    swRegistration = registration;
 
     // Listen for a new SW entering 'installing' state
     registration.addEventListener('updatefound', () => {
@@ -229,9 +306,9 @@
       if (!newSW) return;
       newSW.addEventListener('statechange', () => {
         if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-          // A new SW is installed and waiting — show banner
+          // A new SW is installed and waiting — handle per the page's opt-in.
           console.log('[update-check] New SW installed and waiting');
-          showUpdateBanner('Refresh to activate the new version.');
+          handleSoftUpdateDetected('Refresh to activate the new version.');
         }
       });
     });
@@ -240,7 +317,7 @@
     navigator.serviceWorker.addEventListener('message', event => {
       if (event.data?.type === 'SW_UPDATED') {
         console.log('[update-check] SW activated:', event.data.version);
-        showUpdateBanner();
+        handleSoftUpdateDetected();
       }
       // Existing PAYTIME_SYNC_DONE messages pass through untouched
     });

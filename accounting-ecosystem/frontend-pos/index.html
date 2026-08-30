@@ -6100,6 +6100,44 @@
                         }
                     };
 
+                    // Silent auto-reload predicate (2026-08-29) — read by update-check.js.
+                    // When a soft update is detected, update-check.js polls this every 15s
+                    // and reloads the moment it returns true — no banner, no tap, nothing
+                    // left in the cashier's hands. Every condition below must independently
+                    // default to "not safe" — this must never wrongly say true.
+                    //
+                    // Deliberately conservative: rather than trying to track every
+                    // settings/reports/cash-up screen's own dirty-input state individually,
+                    // ANY screen other than the idle Till view is treated as unsafe. Only
+                    // the specific known-safe conditions below (empty cart, no modal, no
+                    // popover, not mid-checkout, not mid-sync/scan, on the Till screen)
+                    // are ever allowed to add up to "safe" — see the full idle-reload
+                    // safety audit (2026-08-29) for the reasoning behind each check.
+                    window.isSafeToAutoReload = function () {
+                        if (typeof checkoutInFlight !== 'undefined' && checkoutInFlight) return false;
+                        if (typeof cart !== 'undefined' && cart.length > 0) return false;
+                        if (typeof syncInProgress !== 'undefined' && syncInProgress) return false;
+                        if (typeof globalScanInProgress !== 'undefined' && globalScanInProgress) return false;
+                        if (typeof _pendingManagerAuth !== 'undefined' && _pendingManagerAuth) return false;
+                        if (typeof splitPaymentMode !== 'undefined' && splitPaymentMode) return false;
+                        if (typeof isAnyModalOpen === 'function' && isAnyModalOpen()) return false;
+
+                        const discountPanel = document.getElementById('discountPopoverPanel');
+                        if (discountPanel && discountPanel.classList.contains('open')) return false;
+
+                        const morePanel = document.getElementById('paymentMorePanel');
+                        if (morePanel && morePanel.classList.contains('open')) return false;
+
+                        const splitSection = document.getElementById('splitPaymentSection');
+                        if (splitSection && splitSection.classList.contains('active')) return false;
+
+                        // Only the idle Till screen itself is a known-safe view.
+                        const tillInterface = document.getElementById('tillInterface');
+                        if (!tillInterface || tillInterface.style.display === 'none') return false;
+
+                        return true;
+                    };
+
                     // Listen for sync messages from service worker
                     navigator.serviceWorker.addEventListener('message', (event) => {
                         if (event.data.type === 'SYNC_SALES') {
@@ -9831,6 +9869,14 @@
             return result.error || 'Checkout failed';
         }
 
+        // True from the moment a checkout attempt actually begins (all early-return
+        // guards above have passed) until it fully resolves — success, server
+        // error, or falls back to an offline save. Exists so anything that could
+        // silently interrupt the app (e.g. the auto-reload idle check) can see a
+        // checkout is mid-flight even though `cart` briefly reads empty in some
+        // exit paths. Read-only outside checkout() — never set it from elsewhere.
+        let checkoutInFlight = false;
+
         async function checkout() {
             if (forceUpdatePending) {
                 showNotification('A required update is pending. Please refresh before continuing.', 'error');
@@ -9862,6 +9908,9 @@
                     cashTenderedForSlip = tendered;
                 }
             }
+
+            checkoutInFlight = true;
+            try {
 
             const saleData = {
                 // Generated once per checkout attempt. Persists with the
@@ -10049,6 +10098,9 @@
                 } catch (offlineError) {
                     showNotification('Checkout failed: ' + error.message, 'error');
                 }
+            }
+            } finally {
+                checkoutInFlight = false;
             }
         }
 
