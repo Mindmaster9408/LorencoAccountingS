@@ -17,11 +17,11 @@ const API_BASE = window.location.origin;
 const APP_DEFS = [
   { key: 'pos',        name: 'Checkout Charlie',   subtitle: 'Point of Sale',          icon: '🛒',  logo: 'assets/branding/checkout-charlie/checkout-charlie-logo-secondary.png', path: '/pos',        css: 'pos' },
   { key: 'payroll',    name: 'Lorenco Paytime',     subtitle: 'Payroll Management',     icon: '💰',  logo: 'assets/branding/paytime/paytime-logo.png',                            path: '/payroll',    css: 'payroll' },
-  { key: 'accounting', name: 'Lorenco Accounting',  subtitle: 'General Ledger',         icon: '📊',  logo: null,                                                                  path: '/accounting', css: 'accounting' },
+  { key: 'accounting', name: 'Ledger Leo',          subtitle: 'General Ledger',         icon: '📊',  logo: null,                                                                  path: '/accounting', css: 'accounting' },
   { key: 'sean',       name: 'SEAN AI',             subtitle: 'Smart Assistant',        icon: '🤖',  logo: null,                                                                  path: '/sean',       css: 'sean' },
   { key: 'coaching',   name: 'Coaching',            subtitle: 'Business Coaching',      icon: '⭐',  logo: null,                                                                  path: '/coaching',   css: 'coaching' },
-  { key: 'inventory',  name: 'Lorenco Storehouse',  subtitle: 'Inventory Management',   icon: '📦',  logo: null,                                                                  path: '/inventory',  css: 'inventory' },
-  { key: 'practice',   name: 'Lorenco Practice',    subtitle: 'Practice Management',    icon: '📋',  logo: null,                                                                  path: '/practice',   css: 'practice' },
+  { key: 'inventory',  name: 'Stockton',            subtitle: 'Inventory Management',   icon: '📦',  logo: null,                                                                  path: '/inventory',  css: 'inventory' },
+  { key: 'practice',   name: 'Firmflow',            subtitle: 'Practice Management',    icon: '📋',  logo: null,                                                                  path: '/practice',   css: 'practice' },
 ];
 
 // ── Session State ─────────────────────────────────────────────────────────────
