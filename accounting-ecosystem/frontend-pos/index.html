@@ -4027,6 +4027,38 @@
                             <button class="btn btn-primary" onclick="saveReceiptSettings()" style="margin-top: 15px;">Save Settings</button>
                         </div>
 
+                        <!-- Direct Windows Printing — the no-extra-software alternative to
+                             both WebUSB pairing (below) and the Local Print Relay (below
+                             that). See DIRECT WINDOWS PRINTING comment above
+                             isKioskPrintingEnabled() for the full story. Listed FIRST,
+                             above both other options, since it's now the recommended
+                             starting point for any till that hasn't already been set up
+                             one of the other two ways. -->
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <h4 style="margin: 0 0 5px 0;">Direct Windows Printing <span style="font-size:11px;font-weight:600;color:#10b981;background:#eff8f0;padding:2px 8px;border-radius:10px;">Recommended — no extra software</span></h4>
+                            <p style="color:#666;font-size:13px;margin:0 0 15px;">
+                                Prints through the printer's normal Windows driver — the same one every other
+                                program on this PC already uses — so nothing ever claims the printer exclusively
+                                and no background program needs to be installed or kept running. Requires a
+                                one-time change to this till's browser shortcut (see setup steps).
+                            </p>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 10px;">
+                                <input type="checkbox" id="kioskPrintingEnabled" onchange="toggleKioskPrinting()">
+                                This till uses Direct Windows Printing
+                            </label>
+                            <p style="color:#999;font-size:12px;margin:0;">
+                                One-time setup: 1) make sure the printer is installed normally in Windows (if it
+                                was ever set up for USB pairing/Zadig below, undo that first — see
+                                DIRECT_PRINTING.md in the local-print-relay folder for exact steps), 2) set it as
+                                the Windows default printer, 3) edit this till's Charlie desktop shortcut and add
+                                <code>--kiosk-printing</code> to the end of the Target field, 4) restart the browser
+                                from that shortcut. Without step 3, this still works but will show the normal
+                                print dialog on every sale instead of printing silently.
+                                Note: the cash drawer does not auto-open on this path yet — open it manually,
+                                or use USB pairing / Print Relay below if auto-open is essential for this till.
+                            </p>
+                        </div>
+
                         <!-- Local Print Relay — a small locally-run tool (local-print-relay/)
                              that sends receipts to the printer through its normal SHARED
                              Windows driver instead of WebUSB's exclusive claim. Added
@@ -10247,6 +10279,7 @@
                             <span>@ ${fmt(item.unit_price)}</span>
                             <span>${fmt(item.total_price)}</span>
                         </div>
+                        ${parseFloat(item.discount_amount || 0) > 0 ? `<div style="display:flex;justify-content:space-between;padding-left:8px;font-size:11px;"><span>Discount</span><span>-${fmt(item.discount_amount)}</span></div>` : ''}
                     </div>`).join('');
                 const paymentsHtml = (r.payments || []).map(p =>
                     ROW((p.payment_method || 'Cash').toUpperCase() + ':', fmt(p.amount))
@@ -10281,6 +10314,7 @@
                     ${itemsHtml}
                     ${LINE}
                     ${ROW('Subtotal:', fmt(r.sale.subtotal))}
+                    ${parseFloat(r.sale.discount_amount || 0) > 0 ? ROW('Discount:', '-' + fmt(r.sale.discount_amount)) : ''}
                     ${ROW('VAT incl.:', fmt(r.sale.vat_amount))}
                     ${DLINE}
                     <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(r.sale.total_amount)}</span></div>
@@ -10308,6 +10342,27 @@
         // account), not just cash — there was no gate on payment method at
         // all, only on the openDrawerEnabled setting.
         async function printReceipt(saleId, isFreshCashSale = false) {
+            // Direct Windows Printing (2026-08-21) — opt-in, per-till. Skips the
+            // relay AND WebUSB entirely and goes straight to the browser/OS print
+            // path (same one relay/WebUSB already fall back to on failure), the
+            // same "print through the printer's own normal shared driver" idea
+            // the relay exists for — but with zero extra software running on the
+            // till, and critically, zero WebUSB pairing, so nothing ever claims
+            // the printer exclusively in the first place. Only silent (no dialog)
+            // when this till's browser shortcut is launched with the
+            // --kiosk-printing flag — see local-print-relay/DIRECT_PRINTING.md.
+            // Left off by default: existing relay/WebUSB tills are completely
+            // unaffected by this flag existing.
+            if (isKioskPrintingEnabled()) {
+                await printReceiptViaBrowser(saleId);
+                // No drawer auto-kick on this path — window.print() hands a
+                // rendered page to the OS driver, which doesn't reliably forward
+                // an embedded ESC/POS drawer-kick command the way raw relay/USB
+                // bytes do (varies by printer model). Cashier opens the drawer
+                // manually on this path for now.
+                return;
+            }
+
             // Local Print Relay — tried first if it's running on this till (see
             // local-print-relay/README.md). Prints via the printer's normal
             // shared Windows driver rather than WebUSB's exclusive claim, so a
@@ -10449,6 +10504,44 @@
 
             // Clear after print dialog closes
             setTimeout(() => { document.getElementById('printReceiptArea').innerHTML = ''; }, 1500);
+        }
+
+        // ========== DIRECT WINDOWS PRINTING (no extra software) ==========
+        // 2026-08-21 — the alternative to both WebUSB pairing (Zadig) AND the
+        // Local Print Relay below, built after a live incident: a client's
+        // printer stopped working for their OTHER software once WebUSB claimed
+        // it exclusively, and reversing that (undo Zadig, get the printer back
+        // to a normal shared Windows driver) turned into a whole ordeal — bad
+        // enough the client didn't want to touch Charlie's printing again.
+        // This path never touches WebUSB/Zadig at all: it prints through the
+        // browser's own window.print() (same code as the relay/WebUSB fallback
+        // already uses — printReceiptViaBrowser), which always goes through the
+        // printer's ordinary Windows driver, shared, exactly like any other
+        // program. The one thing that makes THIS silent (no print dialog popping
+        // up on every sale) instead of just a fallback is launching the till's
+        // browser shortcut with the --kiosk-printing flag — a one-time,
+        // per-till desktop-shortcut change, no background service to keep
+        // running or crash. See local-print-relay/DIRECT_PRINTING.md.
+        // Opt-in per till (localStorage — a device/display preference, not
+        // business data) so every existing relay/WebUSB till is completely
+        // unaffected unless someone deliberately switches it over.
+        const KIOSK_PRINTING_KEY = 'pos_kiosk_printing_enabled';
+        function isKioskPrintingEnabled() {
+            try { return localStorage.getItem(KIOSK_PRINTING_KEY) === 'true'; } catch (e) { return false; }
+        }
+        function loadKioskPrintingSetting() {
+            const checkbox = document.getElementById('kioskPrintingEnabled');
+            if (checkbox) checkbox.checked = isKioskPrintingEnabled();
+        }
+        function toggleKioskPrinting() {
+            const checkbox = document.getElementById('kioskPrintingEnabled');
+            try { localStorage.setItem(KIOSK_PRINTING_KEY, checkbox.checked ? 'true' : 'false'); } catch (e) {}
+            showNotification(
+                checkbox.checked
+                    ? 'Direct Windows Printing enabled for this till — see setup steps below if not done yet.'
+                    : 'Direct Windows Printing disabled — back to Print Relay / USB.',
+                'info'
+            );
         }
 
         // ========== LOCAL PRINT RELAY ==========
@@ -10712,10 +10805,16 @@
                 const name = item.products?.product_name || 'Item';
                 parts.push(`${item.quantity} x ${name}\n`);
                 parts.push(escPosRow(`  @ ${fmt(item.unit_price)}`, fmt(item.total_price), width));
+                if (parseFloat(item.discount_amount || 0) > 0) {
+                    parts.push(escPosRow('  Discount', '-' + fmt(item.discount_amount), width));
+                }
             });
             parts.push('-'.repeat(width) + '\n');
 
             parts.push(escPosRow('Subtotal:', fmt(r.sale.subtotal), width));
+            if (parseFloat(r.sale.discount_amount || 0) > 0) {
+                parts.push(escPosRow('Discount:', '-' + fmt(r.sale.discount_amount), width));
+            }
             parts.push(escPosRow('VAT incl.:', fmt(r.sale.vat_amount), width));
             parts.push(ESC_POS.BOLD_ON, ESC_POS.DOUBLE_ON, escPosRow('TOTAL', fmt(r.sale.total_amount), Math.floor(width * 0.7)), ESC_POS.DOUBLE_OFF, ESC_POS.BOLD_OFF);
             parts.push('-'.repeat(width) + '\n');
@@ -10877,6 +10976,7 @@
                 ${itemsHtml}
                 ${LINE}
                 ${ROW('Subtotal:', fmt(sale.subtotal))}
+                ${sale.discountPercent ? ROW('Discount:', sale.discountPercent + '%') : ''}
                 ${ROW('VAT incl.:', fmt(sale.vatAmount))}
                 ${DLINE}
                 <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(sale.totalAmount)}</span></div>
@@ -10988,6 +11088,7 @@
                 loadReceiptSettings();
                 refreshUsbPrinterStatus();
                 refreshPrintRelayStatus();
+                loadKioskPrintingSetting();
             } else if (section === 'general') {
                 document.getElementById('generalSection').style.display = 'block';
                 loadGeneralSettings();
@@ -14143,6 +14244,7 @@
                                 <th>Product</th>
                                 <th>Qty</th>
                                 <th>Price</th>
+                                <th>Discount</th>
                                 <th>Total</th>
                             </tr>
                         </thead>
@@ -14152,6 +14254,7 @@
                                     <td>${item.product_name}</td>
                                     <td>${item.quantity}</td>
                                     <td>R ${parseFloat(item.unit_price).toFixed(2)}</td>
+                                    <td>${parseFloat(item.discount_amount || 0) > 0 ? `<span style="color:#e74c3c;">-R ${parseFloat(item.discount_amount).toFixed(2)}</span>` : '—'}</td>
                                     <td>R ${parseFloat(item.total_price).toFixed(2)}</td>
                                 </tr>
                             `).join('')}
@@ -14159,6 +14262,7 @@
                     </table>
                     <div style="margin-top: 15px; text-align: right;">
                         <div>Subtotal: R ${parseFloat(result.sale.subtotal).toFixed(2)}</div>
+                        ${parseFloat(result.sale.discount_amount || 0) > 0 ? `<div style="color:#e74c3c;">Discount: -R ${parseFloat(result.sale.discount_amount).toFixed(2)}</div>` : ''}
                         <div>VAT: R ${parseFloat(result.sale.vat_amount).toFixed(2)}</div>
                         <div style="font-size: 18px; font-weight: bold; color: #667eea;">Total: R ${parseFloat(result.sale.total_amount).toFixed(2)}</div>
                     </div>
