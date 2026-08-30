@@ -17,8 +17,28 @@ const { auditFromReq } = require('../../middleware/audit');
 const { getRolePermissions, canManageRole } = require('../../config/permissions');
 const { logPosEvent, POS_EVENTS } = require('../../modules/pos/services/posAuditLogger');
 const { PIN_ELIGIBLE_ROLES: PIN_ELIGIBLE_ROLES_SET } = require('../../modules/pos/routes/pin');
+const tfa = require('../../services/twoFactorAuth');
 
 const router = express.Router();
+
+// ── 2FA login-challenge pending store ────────────────────────────────────────
+// Holds everything needed to finish issuing a login JWT once the 2FA code is
+// verified, keyed by a random opaque token (NOT a JWT — no session exists
+// yet, on purpose, so there is nothing for any other route to accidentally
+// accept). Lives in server memory only, same pattern as twoFactor.js's own
+// _pendingSetup store. maxAttempts guards against a brute-force loop against
+// the same pending login within its TTL.
+const _pendingLogins = new Map();
+const PENDING_LOGIN_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PENDING_LOGIN_MAX_ATTEMPTS = 5;
+
+function _cleanPendingLogins() {
+  const now = Date.now();
+  for (const [key, val] of _pendingLogins.entries()) {
+    if (val.expiresAt < now) _pendingLogins.delete(key);
+  }
+}
+setInterval(_cleanPendingLogins, 5 * 60 * 1000).unref();
 
 // The permanent, paid-by-default module set every company gets regardless of
 // account type or trial state. 'sean' is deliberately always in this set —
@@ -208,29 +228,48 @@ router.post('/login', async (req, res) => {
       tokenPayload.role = selectedCompany.role;
     }
 
-    // ── 2FA DORMANT GATE ────────────────────────────────────────────────────
-    // This block does nothing until TWO_FACTOR_AUTH_ENABLED=true is set in env.
-    // When activated, users with two_factor_enabled=true will receive a
-    // 2FA_REQUIRED challenge instead of a full token, and must call
-    // POST /api/auth/2fa/verify to complete login.
+    // ── 2FA LOGIN CHALLENGE GATE ──────────────────────────────────────────────
+    // Does nothing until TWO_FACTOR_AUTH_ENABLED=true is set in env — until
+    // then this branch is unreached and login behaves exactly as before.
     //
-    // DO NOT enable without: feature flag active + user comms + UI challenge screen.
+    // No JWT is issued here — a random opaque pendingToken (not a session
+    // token) is returned instead, and the real token is only signed inside
+    // POST /2fa/login-verify once the code checks out. This means no other
+    // route anywhere needs to know or care about "partial" sessions; there
+    // simply isn't one until 2FA passes.
     if (
       process.env.TWO_FACTOR_AUTH_ENABLED === 'true' &&
       user.two_factor_enabled === true &&
       user.two_factor_confirmed_at
     ) {
-      // Placeholder: return a partial token that can only call /api/auth/2fa/verify
-      // Implementation: replace this comment with the 2FA challenge flow when activating.
-      // For now this branch is unreachable because TWO_FACTOR_AUTH_ENABLED is unset.
+      const pendingToken = crypto.randomBytes(32).toString('hex');
+      _pendingLogins.set(pendingToken, {
+        userId: user.id,
+        tokenPayload,
+        responseUser: {
+          id: user.id,
+          username: user.username,
+          fullName: user.full_name,
+          email: user.email,
+          isSuperAdmin: isSuperAdmin,
+          hasCoachingAccess: !!(user.has_coaching_access),
+        },
+        companyList,
+        selectedCompany,
+        attempts: 0,
+        expiresAt: Date.now() + PENDING_LOGIN_TTL_MS,
+      });
+
       return res.status(200).json({
         success: false,
         requires2FA: true,
         code: '2FA_REQUIRED',
+        pendingToken,
+        expiresInMinutes: PENDING_LOGIN_TTL_MS / 60000,
         message: 'Please complete two-factor authentication to continue.',
       });
     }
-    // ── END 2FA DORMANT GATE ────────────────────────────────────────────────
+    // ── END 2FA LOGIN CHALLENGE GATE ──────────────────────────────────────────
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '12h' });
 
@@ -258,6 +297,115 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/login-verify
+ * Completes a login that was paused by the 2FA challenge gate above.
+ * Public route (no authenticateToken) — by design, there is no session yet
+ * to authenticate; the pendingToken from the /login response IS the proof
+ * that the password step already succeeded.
+ *
+ * Accepts either a 6-digit TOTP code or a backup code (same dual check as
+ * the existing authenticated /2fa/verify, which this does not reuse
+ * directly since that route requires a token that doesn't exist yet here).
+ *
+ * On success: signs and returns the exact same shape /login would have
+ * returned directly. On failure: counts the attempt against this specific
+ * pending login and invalidates it after PENDING_LOGIN_MAX_ATTEMPTS,
+ * forcing a fresh username+password login rather than allowing unlimited
+ * guesses against one password-verified session.
+ */
+router.post('/2fa/login-verify', async (req, res) => {
+  try {
+    const { pendingToken, code } = req.body;
+    if (!pendingToken || !code) {
+      return res.status(400).json({ error: 'pendingToken and code are required.' });
+    }
+
+    const pending = _pendingLogins.get(pendingToken);
+    if (!pending || pending.expiresAt < Date.now()) {
+      _pendingLogins.delete(pendingToken);
+      return res.status(401).json({
+        error: 'This login attempt has expired. Please log in again.',
+        code: '2FA_LOGIN_EXPIRED',
+      });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, two_factor_enabled, two_factor_secret_encrypted, two_factor_backup_codes_hash, two_factor_confirmed_at')
+      .eq('id', pending.userId)
+      .single();
+
+    if (error || !user || !user.two_factor_enabled || !user.two_factor_confirmed_at) {
+      _pendingLogins.delete(pendingToken);
+      return res.status(400).json({ error: '2FA is no longer set up for this account. Please log in again.' });
+    }
+
+    const trimmedCode = String(code).trim();
+    let verified = false;
+    let usedBackup = false;
+
+    if (/^\d{6}$/.test(trimmedCode)) {
+      verified = tfa.verifyCode(user.two_factor_secret_encrypted, trimmedCode);
+    }
+    if (!verified && user.two_factor_backup_codes_hash?.length > 0) {
+      const idx = await tfa.verifyBackupCode(trimmedCode, user.two_factor_backup_codes_hash);
+      if (idx >= 0) {
+        verified = true;
+        usedBackup = true;
+        const updatedHashes = [...user.two_factor_backup_codes_hash];
+        updatedHashes.splice(idx, 1);
+        await supabase.from('users').update({
+          two_factor_backup_codes_hash: updatedHashes,
+          two_factor_recovery_used_at: new Date().toISOString(),
+        }).eq('id', user.id);
+      }
+    }
+
+    if (!verified) {
+      pending.attempts += 1;
+      if (pending.attempts >= PENDING_LOGIN_MAX_ATTEMPTS) {
+        _pendingLogins.delete(pendingToken);
+        return res.status(401).json({
+          error: 'Too many incorrect codes. Please log in again.',
+          code: '2FA_LOGIN_LOCKED',
+        });
+      }
+      return res.status(422).json({
+        error: 'Invalid code. Please check your authenticator app and try again.',
+        code: '2FA_INVALID_CODE',
+        attemptsRemaining: PENDING_LOGIN_MAX_ATTEMPTS - pending.attempts,
+      });
+    }
+
+    // Verified — issue the real session now, and only now.
+    _pendingLogins.delete(pendingToken);
+
+    await supabase.from('users').update({
+      two_factor_last_verified_at: new Date().toISOString(),
+    }).eq('id', user.id);
+
+    const token = jwt.sign(pending.tokenPayload, JWT_SECRET, { expiresIn: '12h' });
+
+    await auditFromReq(req, usedBackup ? '2FA_LOGIN_BACKUP_USED' : 'LOGIN_2FA_VERIFIED', 'user', user.id, {
+      module: 'shared',
+      metadata: { companiesAvailable: pending.companyList.length },
+    });
+
+    res.json({
+      success: true,
+      token,
+      user: pending.responseUser,
+      companies: pending.companyList,
+      selectedCompany: pending.selectedCompany,
+      requiresCompanySelection: pending.companyList.length > 1,
+    });
+  } catch (err) {
+    console.error('[2FA] login-verify error:', err);
+    res.status(500).json({ error: 'Server error during 2FA verification' });
   }
 });
 

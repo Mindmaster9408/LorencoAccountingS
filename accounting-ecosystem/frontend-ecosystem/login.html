@@ -820,7 +820,28 @@
                     </button>
                 </form>
 
-                <button type="button" class="btn-register" onclick="openRegister()">
+                <!-- 2FA login challenge — hidden until /login responds with requires2FA.
+                     Password has already been verified by this point; this step only
+                     confirms the second factor. No session exists yet either way. -->
+                <form id="tfaLoginForm" style="display:none;" onsubmit="handleTfaLoginSubmit(event)">
+                    <div class="form-group">
+                        <label>6-digit code from your authenticator app</label>
+                        <input type="text" id="tfaLoginCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code"
+                               placeholder="000000" style="letter-spacing:4px;text-align:center;font-size:1.2rem;" autofocus>
+                        <div style="font-size:0.78rem;color:var(--text-muted,#888);margin-top:8px;">
+                            Lost your device? Enter one of your backup codes instead.
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-login" id="btnTfaLogin">
+                        <span class="btn-text">Verify &amp; Sign In</span>
+                        <span class="spinner"></span>
+                    </button>
+                    <button type="button" class="btn-register" onclick="cancelTfaLogin()">
+                        Back to Sign In
+                    </button>
+                </form>
+
+                <button type="button" class="btn-register" id="btnCreateAccount" onclick="openRegister()">
                     Create an Account
                 </button>
 
@@ -1178,13 +1199,80 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Login failed');
 
-                localStorage.setItem('eco_token', data.token);
-                localStorage.setItem('eco_user', JSON.stringify(data.user));
-                // Always overwrite eco_companies — never leave stale data from a previous session
-                localStorage.setItem('eco_companies', JSON.stringify(data.companies || []));
-                if (data.user?.isSuperAdmin) localStorage.setItem('eco_super_admin', 'true');
-                else localStorage.removeItem('eco_super_admin');
-                window.location.href = '/dashboard';
+                if (data.requires2FA) {
+                    _pendingTfaToken = data.pendingToken;
+                    showTfaLoginStep();
+                    return;
+                }
+
+                _completeLogin(data);
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        }
+
+        // Shared by both the normal login response and the post-2FA response —
+        // they return the exact same shape, so there is exactly one place that
+        // ever writes the session into localStorage and redirects.
+        function _completeLogin(data) {
+            localStorage.setItem('eco_token', data.token);
+            localStorage.setItem('eco_user', JSON.stringify(data.user));
+            // Always overwrite eco_companies — never leave stale data from a previous session
+            localStorage.setItem('eco_companies', JSON.stringify(data.companies || []));
+            if (data.user?.isSuperAdmin) localStorage.setItem('eco_super_admin', 'true');
+            else localStorage.removeItem('eco_super_admin');
+            window.location.href = '/dashboard';
+        }
+
+        // ── 2FA login challenge ──────────────────────────────────────────────
+        let _pendingTfaToken = null;
+
+        function showTfaLoginStep() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('btnCreateAccount').style.display = 'none';
+            document.getElementById('tfaLoginForm').style.display = 'block';
+            document.getElementById('tfaLoginCode').value = '';
+            document.getElementById('tfaLoginCode').focus();
+        }
+
+        function cancelTfaLogin() {
+            _pendingTfaToken = null;
+            document.getElementById('tfaLoginForm').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('btnCreateAccount').style.display = 'block';
+            document.getElementById('password').value = '';
+        }
+
+        async function handleTfaLoginSubmit(e) {
+            e.preventDefault();
+            const code = document.getElementById('tfaLoginCode').value.trim();
+            if (!code) return showError('Enter the 6-digit code from your authenticator app.');
+            if (!_pendingTfaToken) return showError('Your login attempt expired. Please sign in again.');
+
+            const btn = document.getElementById('btnTfaLogin');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            try {
+                const res = await fetch(`${API_BASE}/api/auth/2fa/login-verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pendingToken: _pendingTfaToken, code })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    // Expired or locked out — the pending attempt is dead server-side
+                    // either way, so send them back to a fresh username+password login
+                    // rather than leaving a broken code box on screen.
+                    if (data.code === '2FA_LOGIN_EXPIRED' || data.code === '2FA_LOGIN_LOCKED') {
+                        cancelTfaLogin();
+                    }
+                    throw new Error(data.error || 'Verification failed');
+                }
+                _pendingTfaToken = null;
+                _completeLogin(data);
             } catch (err) {
                 showError(err.message);
             } finally {
@@ -1303,6 +1391,12 @@
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Invalid credentials');
+                    if (data.requires2FA) {
+                        // This flow has no code-entry step of its own — send them to
+                        // the main Sign In form instead, where the real 2FA challenge
+                        // (see handleTfaLoginSubmit) is fully supported.
+                        throw new Error('This account has 2FA enabled. Please use the main Sign In form instead.');
+                    }
                     regState.existingUser = {
                         id: data.user.id,
                         email: data.user.email,
