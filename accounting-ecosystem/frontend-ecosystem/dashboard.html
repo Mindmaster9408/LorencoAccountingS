@@ -1606,20 +1606,53 @@
                         </div>
                     </div>
 
-                    <!-- ── Security Settings (2FA placeholder — dormant) ── -->
+                    <!-- ── Security Settings (2FA — super admin preview) ── -->
                     <div id="securitySettingsSection" style="border-top:1px solid var(--border);margin:20px 0 0 0;padding-top:20px;display:none;">
                         <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:14px;">Security</div>
-                        <div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;">
-                            <div style="font-size:1.5rem;flex-shrink:0;">&#128274;</div>
-                            <div style="flex:1;">
-                                <div style="font-size:0.88rem;font-weight:700;color:rgba(255,255,255,0.85);margin-bottom:3px;">Two-Factor Authentication</div>
-                                <div style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;">
-                                    Google / Microsoft Authenticator support is being prepared for this account.<br>
-                                    <span id="tfa2faStatus" style="color:rgba(99,102,241,0.8);font-weight:600;">Status: Coming Soon</span>
+                        <div style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);border-radius:12px;padding:16px 18px;">
+                            <div style="display:flex;align-items:center;gap:14px;">
+                                <div style="font-size:1.5rem;flex-shrink:0;">&#128274;</div>
+                                <div style="flex:1;">
+                                    <div style="font-size:0.88rem;font-weight:700;color:rgba(255,255,255,0.85);margin-bottom:3px;">Two-Factor Authentication</div>
+                                    <div style="font-size:0.78rem;color:var(--text-muted);line-height:1.5;">
+                                        Google / Microsoft Authenticator, Authy, 1Password, or any TOTP app.<br>
+                                        <span id="tfa2faStatus" style="color:rgba(99,102,241,0.8);font-weight:600;">Checking status…</span>
+                                    </div>
+                                </div>
+                                <div id="tfa2faBadge" style="flex-shrink:0;">
+                                    <span style="background:rgba(99,102,241,0.15);color:rgba(99,102,241,0.75);font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:0.5px;">…</span>
                                 </div>
                             </div>
-                            <div style="flex-shrink:0;">
-                                <span style="background:rgba(99,102,241,0.15);color:rgba(99,102,241,0.75);font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:0.5px;">NOT ACTIVE</span>
+                            <div id="tfa2faActions" style="margin-top:14px;"></div>
+
+                            <!-- Step 1: QR code + confirm code (shown after "Set Up 2FA") -->
+                            <div id="tfa2faSetupPanel" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(99,102,241,0.18);">
+                                <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">
+                                    1. Scan this QR code with your authenticator app, then enter the 6-digit code it shows.
+                                </div>
+                                <div style="text-align:center;margin-bottom:12px;">
+                                    <img id="tfa2faQrImage" style="width:180px;height:180px;border-radius:8px;background:#fff;padding:8px;" alt="2FA QR code">
+                                </div>
+                                <div style="font-size:0.72rem;color:var(--text-muted);text-align:center;margin-bottom:14px;word-break:break-all;">
+                                    Can't scan? Enter manually: <span id="tfa2faManualKey" style="color:rgba(255,255,255,0.7);"></span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-field">
+                                        <label>6-digit code</label>
+                                        <input type="text" id="tfa2faConfirmCode" maxlength="6" inputmode="numeric" placeholder="000000" style="letter-spacing:4px;text-align:center;font-size:1.1rem;">
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:10px;margin-top:6px;">
+                                    <button type="button" class="btn-form cancel" onclick="_cancel2faSetup()">Cancel</button>
+                                    <button type="button" class="btn-form save" onclick="_confirm2faSetup()" id="tfa2faConfirmBtn">Confirm &amp; Enable</button>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: backup codes (shown once, immediately after confirm) -->
+                            <div id="tfa2faBackupPanel" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(99,102,241,0.18);">
+                                <div style="font-size:0.82rem;font-weight:700;color:#f87171;margin-bottom:8px;">&#9888; Save these backup codes now — they will not be shown again.</div>
+                                <div id="tfa2faBackupCodes" style="font-family:monospace;font-size:0.85rem;line-height:1.9;color:rgba(255,255,255,0.85);background:rgba(0,0,0,0.25);border-radius:8px;padding:10px 14px;margin-bottom:12px;"></div>
+                                <button type="button" class="btn-form save" onclick="_done2faBackupCodes()">I've saved these — Done</button>
                             </div>
                         </div>
                     </div>
@@ -3411,37 +3444,146 @@
             document.getElementById('profCurrentPwd').value = '';
             document.getElementById('profNewPwd').value = '';
             document.getElementById('profileModal').classList.add('show');
-            _load2faStatusPlaceholder();
+            _load2faStatus();
         }
 
-        // Populate dormant 2FA placeholder in the profile modal.
-        // Only shown to super admins as a preview of the coming feature.
-        // When the feature flag becomes active, this will show real status.
-        async function _load2faStatusPlaceholder() {
+        function _2faAuthHeaders() {
+            const token = localStorage.getItem('eco_token') || localStorage.getItem('token');
+            return token ? { Authorization: 'Bearer ' + token } : {};
+        }
+
+        // Loads real 2FA status into the profile modal's Security section and
+        // renders the matching action (Set Up / Disable). Only shown to super
+        // admins for now — feature_available already covers this server-side
+        // too (super admins bypass the feature flag), this is just so a
+        // non-super-admin never even sees the section while it's still
+        // superuser-only rollout.
+        async function _load2faStatus() {
             const section = document.getElementById('securitySettingsSection');
             if (!section) return;
             const isSuperAdmin = currentUser && (currentUser.isSuperAdmin || currentUser.is_super_admin);
-            if (!isSuperAdmin) return; // only show preview to super admins
+            if (!isSuperAdmin) return;
             section.style.display = 'block';
-            const statusEl = document.getElementById('tfa2faStatus');
+
+            // Reset any in-progress setup UI left over from a previous open.
+            document.getElementById('tfa2faSetupPanel').style.display = 'none';
+            document.getElementById('tfa2faBackupPanel').style.display = 'none';
+
+            const statusEl  = document.getElementById('tfa2faStatus');
+            const badgeEl   = document.getElementById('tfa2faBadge');
+            const actionsEl = document.getElementById('tfa2faActions');
+
+            const badge = (label, color) =>
+                `<span style="background:${color}22;color:${color};font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:0.5px;">${label}</span>`;
+
             try {
-                const token = localStorage.getItem('eco_token') || localStorage.getItem('token');
-                const res = await fetch('/api/auth/2fa/status', {
-                    headers: token ? { Authorization: 'Bearer ' + token } : {}
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (statusEl) {
-                        if (data.enforcement_active) {
-                            statusEl.textContent = data.enabled ? 'Status: Enabled' : 'Status: Not Set Up';
-                            statusEl.style.color = data.enabled ? '#34d399' : '#f87171';
-                        } else {
-                            statusEl.textContent = 'Status: Coming Soon (Foundation Ready)';
-                        }
-                    }
+                const res = await fetch('/api/auth/2fa/status', { headers: _2faAuthHeaders() });
+                if (!res.ok) throw new Error('status check failed');
+                const data = await res.json();
+
+                if (!data.feature_available) {
+                    statusEl.textContent = 'Status: Coming Soon';
+                    statusEl.style.color = 'rgba(99,102,241,0.8)';
+                    badgeEl.innerHTML = badge('NOT ACTIVE', '#6366f1');
+                    actionsEl.innerHTML = '';
+                } else if (data.enabled) {
+                    statusEl.textContent = 'Status: Enabled';
+                    statusEl.style.color = '#34d399';
+                    badgeEl.innerHTML = badge('ENABLED', '#34d399');
+                    actionsEl.innerHTML = '<button type="button" class="btn-form cancel" onclick="_disable2fa()">Disable 2FA</button>';
+                } else {
+                    statusEl.textContent = 'Status: Not set up';
+                    statusEl.style.color = '#f87171';
+                    badgeEl.innerHTML = badge('NOT SET UP', '#f87171');
+                    actionsEl.innerHTML = '<button type="button" class="btn-form save" onclick="_start2faSetup()">Set Up 2FA</button>';
                 }
             } catch {
-                // Non-fatal — status label stays as "Coming Soon"
+                statusEl.textContent = 'Status: Unable to check right now';
+                badgeEl.innerHTML = '';
+                actionsEl.innerHTML = '';
+            }
+        }
+
+        function _extractTotpSecret(otpauthUrl) {
+            try { return new URL(otpauthUrl).searchParams.get('secret') || otpauthUrl; }
+            catch { return otpauthUrl; }
+        }
+
+        async function _start2faSetup() {
+            try {
+                const res = await fetch('/api/auth/2fa/setup/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ..._2faAuthHeaders() }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not start 2FA setup');
+
+                document.getElementById('tfa2faQrImage').src = data.qrCodeDataUrl;
+                document.getElementById('tfa2faManualKey').textContent = _extractTotpSecret(data.otpauthUrl);
+                document.getElementById('tfa2faConfirmCode').value = '';
+                document.getElementById('tfa2faActions').innerHTML = '';
+                document.getElementById('tfa2faSetupPanel').style.display = 'block';
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
+        }
+
+        function _cancel2faSetup() {
+            document.getElementById('tfa2faSetupPanel').style.display = 'none';
+            _load2faStatus();
+        }
+
+        async function _confirm2faSetup() {
+            const code = document.getElementById('tfa2faConfirmCode').value.trim();
+            if (!/^\d{6}$/.test(code)) {
+                showToast('Enter the 6-digit code from your authenticator app', true);
+                return;
+            }
+            const btn = document.getElementById('tfa2faConfirmBtn');
+            btn.disabled = true;
+            btn.textContent = 'Confirming...';
+            try {
+                const res = await fetch('/api/auth/2fa/setup/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ..._2faAuthHeaders() },
+                    body: JSON.stringify({ code })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Invalid code');
+
+                document.getElementById('tfa2faSetupPanel').style.display = 'none';
+                document.getElementById('tfa2faBackupCodes').innerHTML =
+                    (data.backupCodes || []).map(c => `<div>${c}</div>`).join('');
+                document.getElementById('tfa2faBackupPanel').style.display = 'block';
+                showToast('✅ 2FA enabled');
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Confirm & Enable';
+            }
+        }
+
+        function _done2faBackupCodes() {
+            document.getElementById('tfa2faBackupPanel').style.display = 'none';
+            _load2faStatus();
+        }
+
+        async function _disable2fa() {
+            const password = prompt('Enter your current password to disable 2FA:');
+            if (!password) return;
+            try {
+                const res = await fetch('/api/auth/2fa/disable', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ..._2faAuthHeaders() },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not disable 2FA');
+                showToast('✅ 2FA disabled');
+                _load2faStatus();
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
             }
         }
 
