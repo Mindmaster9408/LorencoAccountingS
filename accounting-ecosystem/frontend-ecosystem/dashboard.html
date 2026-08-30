@@ -3469,39 +3469,44 @@
             document.getElementById('tfa2faSetupPanel').style.display = 'none';
             document.getElementById('tfa2faBackupPanel').style.display = 'none';
 
-            const statusEl  = document.getElementById('tfa2faStatus');
-            const badgeEl   = document.getElementById('tfa2faBadge');
-            const actionsEl = document.getElementById('tfa2faActions');
-
-            const badge = (label, color) =>
-                `<span style="background:${color}22;color:${color};font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:0.5px;">${label}</span>`;
-
             try {
                 const res = await fetch('/api/auth/2fa/status', { headers: _2faAuthHeaders() });
                 if (!res.ok) throw new Error('status check failed');
                 const data = await res.json();
 
                 if (!data.feature_available) {
-                    statusEl.textContent = 'Status: Coming Soon';
-                    statusEl.style.color = 'rgba(99,102,241,0.8)';
-                    badgeEl.innerHTML = badge('NOT ACTIVE', '#6366f1');
-                    actionsEl.innerHTML = '';
+                    _2faRenderStatus('Status: Coming Soon', 'rgba(99,102,241,0.8)', 'NOT ACTIVE', '#6366f1', '');
                 } else if (data.enabled) {
-                    statusEl.textContent = 'Status: Enabled';
-                    statusEl.style.color = '#34d399';
-                    badgeEl.innerHTML = badge('ENABLED', '#34d399');
-                    actionsEl.innerHTML = '<button type="button" class="btn-form cancel" onclick="_disable2fa()">Disable 2FA</button>';
+                    _2faShowEnabledStatus();
                 } else {
-                    statusEl.textContent = 'Status: Not set up';
-                    statusEl.style.color = '#f87171';
-                    badgeEl.innerHTML = badge('NOT SET UP', '#f87171');
-                    actionsEl.innerHTML = '<button type="button" class="btn-form save" onclick="_start2faSetup()">Set Up 2FA</button>';
+                    _2faRenderStatus('Status: Not set up', '#f87171', 'NOT SET UP', '#f87171',
+                        '<button type="button" class="btn-form save" onclick="_start2faSetup()">Set Up 2FA</button>');
                 }
             } catch {
-                statusEl.textContent = 'Status: Unable to check right now';
-                badgeEl.innerHTML = '';
-                actionsEl.innerHTML = '';
+                _2faRenderStatus('Status: Unable to check right now', 'var(--text-muted)', '', '', '');
             }
+        }
+
+        // Shared renderer for the status line + badge + action button so
+        // every place that changes 2FA state (status load, and immediately
+        // after a successful confirm) shows the same, always-consistent UI —
+        // no path is allowed to update the badge without also updating the
+        // status text, or vice versa.
+        function _2faRenderStatus(statusText, statusColor, badgeLabel, badgeColor, actionsHtml) {
+            const statusEl  = document.getElementById('tfa2faStatus');
+            const badgeEl   = document.getElementById('tfa2faBadge');
+            const actionsEl = document.getElementById('tfa2faActions');
+            statusEl.textContent = statusText;
+            statusEl.style.color = statusColor;
+            badgeEl.innerHTML = badgeLabel
+                ? `<span style="background:${badgeColor}22;color:${badgeColor};font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:0.5px;">${badgeLabel}</span>`
+                : '';
+            actionsEl.innerHTML = actionsHtml;
+        }
+
+        function _2faShowEnabledStatus() {
+            _2faRenderStatus('Status: Enabled', '#34d399', 'ENABLED', '#34d399',
+                '<button type="button" class="btn-form cancel" onclick="_disable2fa()">Disable 2FA</button>');
         }
 
         function _extractTotpSecret(otpauthUrl) {
@@ -3555,6 +3560,11 @@
                 document.getElementById('tfa2faBackupCodes').innerHTML =
                     (data.backupCodes || []).map(c => `<div>${c}</div>`).join('');
                 document.getElementById('tfa2faBackupPanel').style.display = 'block';
+                // Update the status line/badge immediately — otherwise it keeps
+                // showing the stale "Not set up" state right above the backup
+                // codes panel, which reads as if setup somehow failed even
+                // though it just succeeded (found live, 2026-08-30).
+                _2faShowEnabledStatus();
                 showToast('✅ 2FA enabled');
             } catch (err) {
                 showToast('❌ ' + err.message, true);
