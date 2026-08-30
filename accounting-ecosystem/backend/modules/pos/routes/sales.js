@@ -43,6 +43,57 @@ function generateSaleNumber() {
 }
 
 /**
+ * Fetch the two discount sources resolveEffectivePrices()/computeEffectivePrices()
+ * needs — split out (checkout-speed audit, 2026-08-30) so these two
+ * independent, read-only queries (they need only companyId/productIds/
+ * customerId — never productMap) can run in Promise.all alongside the
+ * products lookup and customer-discount lookup in POST / below, instead of
+ * being sequenced after the products lookup for no real dependency reason.
+ * Each ~200ms round-trip that used to run in series now overlaps instead.
+ *
+ * @returns {Promise<{dailyDiscountByProduct: Map, customerProductDiscountByProduct: Map}>}
+ */
+async function fetchDiscountData({ companyId, productIds, customerId }) {
+  if (productIds.length === 0) {
+    return { dailyDiscountByProduct: new Map(), customerProductDiscountByProduct: new Map() };
+  }
+
+  // Store-wide Daily Discount — same query/window as GET /api/pos/products
+  // (products.js) and discounts.js's default GET, shared via discountWindow.js
+  // so the three routes can't drift out of sync on what "active today" means.
+  const window = getBusinessDayBounds();
+  const dailyDiscountsPromise = supabase
+    .from('pos_daily_discounts')
+    .select('product_id, discount_type, discount_value')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .in('product_id', productIds)
+    .or(`valid_from.is.null,valid_from.lte.${window.day}`)
+    .or(activeDiscountOrFilter(window));
+
+  // This customer's product-specific overrides (customer_product_discounts)
+  const customerProductDiscountsPromise = customerId
+    ? supabase
+        .from('customer_product_discounts')
+        .select('product_id, discount_type, discount_value')
+        .eq('company_id', companyId)
+        .eq('customer_id', customerId)
+        .eq('is_active', true)
+        .in('product_id', productIds)
+    : Promise.resolve({ data: null });
+
+  const [{ data: dailyDiscounts }, { data: customerProductDiscountRows }] = await Promise.all([
+    dailyDiscountsPromise,
+    customerProductDiscountsPromise,
+  ]);
+
+  return {
+    dailyDiscountByProduct: new Map((dailyDiscounts || []).map(d => [d.product_id, d])),
+    customerProductDiscountByProduct: new Map((customerProductDiscountRows || []).map(d => [d.product_id, d])),
+  };
+}
+
+/**
  * Resolve the actual price to charge for each product in a sale, reconciling
  * three independent discount sources (customer-discount feature,
  * 2026-07-31 — see that session's handoff for the confirmed precedence):
@@ -57,38 +108,15 @@ function generateSaleNumber() {
  * Whichever applicable candidate is LOWEST wins — a customer is never worse
  * off than the public Daily Discount promotion.
  *
- * @returns {Promise<Map<number, number>>} product_id -> effective unit price
+ * Pure/synchronous (checkout-speed audit, 2026-08-30) — takes the two maps
+ * fetchDiscountData() above already fetched, instead of fetching them
+ * itself, so this can run immediately after Promise.all resolves with no
+ * further DB round-trip.
+ *
+ * @returns {Map<number, number>} product_id -> effective unit price
  */
-async function resolveEffectivePrices({ companyId, productIds, productMap, customerId, customerDiscountPercent }) {
+function computeEffectivePrices({ productIds, productMap, customerDiscountPercent, dailyDiscountByProduct, customerProductDiscountByProduct }) {
   const effectivePriceByProduct = new Map();
-  if (productIds.length === 0) return effectivePriceByProduct;
-
-  // Store-wide Daily Discount — same query/window as GET /api/pos/products
-  // (products.js) and discounts.js's default GET, shared via discountWindow.js
-  // so the three routes can't drift out of sync on what "active today" means.
-  const window = getBusinessDayBounds();
-  const { data: dailyDiscounts } = await supabase
-    .from('pos_daily_discounts')
-    .select('product_id, discount_type, discount_value')
-    .eq('company_id', companyId)
-    .eq('is_active', true)
-    .in('product_id', productIds)
-    .or(`valid_from.is.null,valid_from.lte.${window.day}`)
-    .or(activeDiscountOrFilter(window));
-  const dailyDiscountByProduct = new Map((dailyDiscounts || []).map(d => [d.product_id, d]));
-
-  // This customer's product-specific overrides (customer_product_discounts)
-  let customerProductDiscountByProduct = new Map();
-  if (customerId) {
-    const { data: rows } = await supabase
-      .from('customer_product_discounts')
-      .select('product_id, discount_type, discount_value')
-      .eq('company_id', companyId)
-      .eq('customer_id', customerId)
-      .eq('is_active', true)
-      .in('product_id', productIds);
-    customerProductDiscountByProduct = new Map((rows || []).map(d => [d.product_id, d]));
-  }
 
   for (const productId of productIds) {
     const prod = productMap[productId];
@@ -114,6 +142,22 @@ async function resolveEffectivePrices({ companyId, productIds, productMap, custo
   }
 
   return effectivePriceByProduct;
+}
+
+/**
+ * Backward-compatible combined async wrapper — the "place order" route
+ * below still calls this exact original shape (fetch-then-compute in one
+ * step). Kept as a thin wrapper over fetchDiscountData()/
+ * computeEffectivePrices() (checkout-speed audit, 2026-08-30) rather than
+ * changing that route too — its own checkout-speed characteristics are out
+ * of scope for this fix.
+ *
+ * @returns {Promise<Map<number, number>>} product_id -> effective unit price
+ */
+async function resolveEffectivePrices({ companyId, productIds, productMap, customerId, customerDiscountPercent }) {
+  if (productIds.length === 0) return new Map();
+  const { dailyDiscountByProduct, customerProductDiscountByProduct } = await fetchDiscountData({ companyId, productIds, customerId });
+  return computeEffectivePrices({ productIds, productMap, customerDiscountPercent, dailyDiscountByProduct, customerProductDiscountByProduct });
 }
 
 /**
@@ -694,44 +738,59 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       return res.status(400).json({ error: 'Items must include valid product IDs' });
     }
 
-    // Deliberately NOT filtered by is_active here — a deactivated product
-    // must still be distinguishable from one that was never found at all.
-    // Found live (2026-07-22): a product got deactivated by an unrelated
-    // price edit, and every checkout attempt against it came back as
-    // "Product 5051 not found" bucketed under "Stock check failed" — cashier
-    // and manager both read that as a stock problem (with 5000 units showing
-    // in the UI) when the real, fixable cause was "this product is inactive".
-    const { data: productRows, error: prodErr } = await supabase
-      .from('products')
-      .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity, is_active')
-      .in('id', productIds)
-      .eq('company_id', req.companyId);
+    // ── 1a-2a. Four independent, read-only lookups — fired together ────────
+    // (checkout-speed audit, 2026-08-30) None of these four depend on each
+    // other's results — they only need productIds/customerId/companyId,
+    // all already known from the request body. Previously sequenced one
+    // after another (products → customer discount → stock policy →
+    // fetchDiscountData's two queries) purely by call order, costing one
+    // full network round-trip per step (~200ms each on this connection) for
+    // no real reason. Running them concurrently collapses that to roughly
+    // one round-trip's worth of wall-clock time. All read-only, so there's
+    // no harm in having fetched them even if the sale is later rejected by
+    // the stock check below.
+    //
+    // Deliberately NOT filtered by is_active on products — a deactivated
+    // product must still be distinguishable from one that was never found
+    // at all. Found live (2026-07-22): a product got deactivated by an
+    // unrelated price edit, and every checkout attempt against it came back
+    // as "Product 5051 not found" bucketed under "Stock check failed" —
+    // cashier and manager both read that as a stock problem (with 5000
+    // units showing in the UI) when the real, fixable cause was "this
+    // product is inactive".
+    const [
+      { data: productRows, error: prodErr },
+      { data: custRow },
+      allowNegativeStock,
+      { dailyDiscountByProduct, customerProductDiscountByProduct },
+    ] = await Promise.all([
+      supabase
+        .from('products')
+        .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity, is_active')
+        .in('id', productIds)
+        .eq('company_id', req.companyId),
+      // Customer standard discount — server-derived, not client-trusted.
+      // discount_percent (below) has always been accepted verbatim from the
+      // request body with no validation against anything; a customer's own
+      // discount_percentage is looked up here instead so a cashier/client
+      // can't apply an arbitrary discount by tampering with the request.
+      // Wins over any client-supplied discount_percent when the customer
+      // actually has one.
+      customer_id
+        ? supabase.from('customers').select('discount_percentage').eq('id', customer_id).eq('company_id', req.companyId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      // Company stock policy — 60-second server-side cache. DB remains
+      // authoritative; cache refreshes on every TTL expiry or miss.
+      getStockPolicy(req.companyId, supabase),
+      fetchDiscountData({ companyId: req.companyId, productIds, customerId: customer_id }),
+    ]);
 
     if (prodErr) return res.status(500).json({ error: prodErr.message });
 
     const productMap = {};
     for (const p of (productRows || [])) productMap[p.id] = p;
 
-    // ── 1b. Customer standard discount — server-derived, not client-trusted ──
-    // discount_percent (below) has always been accepted verbatim from the
-    // request body with no validation against anything; a customer's own
-    // discount_percentage is looked up here instead so a cashier/client can't
-    // apply an arbitrary discount by tampering with the request. Wins over
-    // any client-supplied discount_percent when the customer actually has one.
-    let customerDiscountPercent = 0;
-    if (customer_id) {
-      const { data: custRow } = await supabase
-        .from('customers')
-        .select('discount_percentage')
-        .eq('id', customer_id)
-        .eq('company_id', req.companyId)
-        .maybeSingle();
-      customerDiscountPercent = parseFloat(custRow?.discount_percentage) || 0;
-    }
-
-    // ── 2a. Company stock policy — 60-second server-side cache ──────────────
-    // DB remains authoritative; cache refreshes on every TTL expiry or miss.
-    const allowNegativeStock = await getStockPolicy(req.companyId, supabase);
+    const customerDiscountPercent = parseFloat(custRow?.discount_percentage) || 0;
 
     // ── 2b. Stock pre-check ────────────────────────────────────────────────
     // Strict mode (allowNegativeStock = false): any insufficient item → 422.
@@ -792,13 +851,14 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
     // ── 1c. Resolve effective per-line prices ──────────────────────────────
     // Reconciles Daily Discount, this customer's product-specific override,
     // and their blanket discount_percentage per line — see
-    // resolveEffectivePrices() above for the precedence rules.
-    const effectivePriceByProduct = await resolveEffectivePrices({
-      companyId: req.companyId,
+    // computeEffectivePrices() above for the precedence rules. Synchronous —
+    // the two discount maps were already fetched in the Promise.all above.
+    const effectivePriceByProduct = computeEffectivePrices({
       productIds,
       productMap,
-      customerId: customer_id,
       customerDiscountPercent,
+      dailyDiscountByProduct,
+      customerProductDiscountByProduct,
     });
 
     // ── 1d. Per-line manager-authorized override (2026-08-21) ─────────────
