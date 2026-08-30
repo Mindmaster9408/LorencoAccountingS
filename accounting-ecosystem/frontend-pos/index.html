@@ -3344,6 +3344,7 @@
                     <div class="settings-menu-item report-financial-only" onclick="showReport('gross-profit-by-product', event)">Gross Profit by Product</div>
                     <div class="settings-menu-item" onclick="showReport('daily-summary', event)">Sales Daily Summary</div>
                     <div class="settings-menu-item report-financial-only" onclick="showReport('audit-trail', event)">Sales Audit Trail</div>
+                    <div class="settings-menu-item report-financial-only" onclick="showReport('discounts', event)">Discount Report</div>
                     <div class="settings-menu-item report-financial-only" onclick="showReport('forensic-audit', event)">Forensic Audit Log</div>
                     <div class="settings-menu-item" onclick="showReport('payment-methods', event)">Payment Methods</div>
                     <div class="settings-menu-item" onclick="showReport('suspicious-activity', event)">Suspicious Activity</div>
@@ -11718,6 +11719,9 @@
                 case 'audit-trail':
                     renderAuditTrailReport(data, container);
                     break;
+                case 'discounts':
+                    renderDiscountReport(data, container);
+                    break;
                 case 'vat-detail':
                     renderVatDetailReport(data, container);
                     break;
@@ -12072,6 +12076,89 @@
             });
 
             html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+
+        // Accountant/management only (REPORTS.VIEW_FINANCIAL, same tier as
+        // Gross Profit/VAT/Forensic Audit — a cashier must never see who
+        // discounted what). discount_type: 'cart' = whole-sale discount, no
+        // specific product; 'product' = one or more specific line items
+        // discounted (discounted_products lists which).
+        function renderDiscountReport(data, container) {
+            const { sales, byCashier, summary } = data;
+            let html = `
+                <h2 style="margin-bottom: 20px;">Discount Report</h2>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
+                    <div style="background: #ffebee; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; color: #666;">Total Discount Given</div>
+                        <div style="font-size: 24px; font-weight: bold;">${formatCurrency(summary.totalDiscountGiven)}</div>
+                    </div>
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; color: #666;">Discounted Sales</div>
+                        <div style="font-size: 24px; font-weight: bold;">${summary.discountedSaleCount} of ${summary.totalSaleCount}</div>
+                    </div>
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; color: #666;">Discount Rate</div>
+                        <div style="font-size: 24px; font-weight: bold;">${summary.discountRate}%</div>
+                    </div>
+                    <div style="background: #f3e5f5; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; color: #666;">Cashiers Involved</div>
+                        <div style="font-size: 24px; font-weight: bold;">${byCashier.length}</div>
+                    </div>
+                </div>
+
+                <h3 style="margin: 20px 0 10px;">By Cashier</h3>
+                <table class="products-table">
+                    <thead>
+                        <tr>
+                            <th>Cashier</th>
+                            <th>Discounted Sales</th>
+                            <th>Total Discount Given</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${byCashier.map(c => `
+                            <tr>
+                                <td>${c.cashier}</td>
+                                <td>${c.discount_count}</td>
+                                <td>${formatCurrency(c.total_discount)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+
+                <h3 style="margin: 20px 0 10px;">All Discounted Sales</h3>
+                <table class="products-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Sale #</th>
+                            <th>Cashier</th>
+                            <th>Subtotal</th>
+                            <th>Discount</th>
+                            <th>%</th>
+                            <th>Type</th>
+                            <th>Products Discounted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sales.map(s => `
+                            <tr>
+                                <td>${new Date(s.created_at).toLocaleString('en-ZA')}</td>
+                                <td>${s.sale_number}</td>
+                                <td>${s.cashier}</td>
+                                <td>${formatCurrency(s.subtotal)}</td>
+                                <td>${formatCurrency(s.discount_amount)}</td>
+                                <td>${s.discount_percent}%</td>
+                                <td>${s.discount_type === 'cart' ? 'Whole Sale' : 'Product'}</td>
+                                <td>${s.discounted_products.length
+                                    ? s.discounted_products.map(p => `${p.product_name} (-${formatCurrency(p.discount_amount)})`).join(', ')
+                                    : '—'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
             container.innerHTML = html;
         }
 

@@ -882,6 +882,127 @@ function dateRangeFromQuery(query) {
 }
 
 /**
+ * Fetch completed, discounted sales in range plus their discounted line
+ * items — the data source for GET /discounts below. Deliberately a
+ * separate helper from fetchSalesWithProfit() above (not a shared one)
+ * even though the shape is similar: that function is already relied on by
+ * 3 existing reports (gross-profit/-by-person/-by-product), none of which
+ * select sale_items.discount_amount — adding it there risks those callers
+ * for no shared benefit, since this report's needs (discount classification,
+ * not cost/margin) don't overlap with theirs.
+ *
+ * Classifies each sale as:
+ *   'cart'    — sale.discount_amount > 0 with no line carrying its own
+ *               discount_amount (a whole-cart discount, e.g. the
+ *               10%-of-subtotal pattern found in the Pennygrow audit).
+ *   'product' — one or more sale_items.discount_amount > 0 (a discount on
+ *               specific product(s) only). sale.discount_amount already
+ *               equals the sum of these lines (confirmed live during that
+ *               audit), so no extra arithmetic is needed here — just
+ *               presence-checking which lines carry their own discount.
+ */
+async function fetchSalesWithDiscounts(companyId, start, end) {
+  const sales = await fetchAllRows(() => supabase
+    .from('sales')
+    .select('id, sale_number, receipt_number, user_id, subtotal, discount_amount, total_amount, created_at, users:user_id(username, full_name)')
+    .eq('company_id', companyId)
+    .eq('status', 'completed')
+    .gt('discount_amount', 0)
+    .gte('created_at', start)
+    .lte('created_at', end)
+    .order('created_at', { ascending: false }));
+
+  const saleIds = (sales || []).map(s => s.id);
+  let items = [];
+  if (saleIds.length > 0) {
+    items = await fetchAllRows(() => supabase
+      .from('sale_items')
+      .select('sale_id, product_name, discount_amount')
+      .in('sale_id', saleIds)
+      .gt('discount_amount', 0));
+  }
+
+  const discountedItemsBySale = {};
+  items.forEach(i => {
+    if (!discountedItemsBySale[i.sale_id]) discountedItemsBySale[i.sale_id] = [];
+    discountedItemsBySale[i.sale_id].push({
+      product_name: i.product_name,
+      discount_amount: parseFloat(i.discount_amount || 0),
+    });
+  });
+
+  return (sales || []).map(sale => {
+    const discounted_products = discountedItemsBySale[sale.id] || [];
+    const subtotal = parseFloat(sale.subtotal || 0);
+    const discount_amount = parseFloat(sale.discount_amount || 0);
+    return {
+      sale_number: sale.sale_number || sale.receipt_number,
+      cashier: sale.users?.full_name || sale.users?.username || 'Unknown',
+      user_id: sale.user_id,
+      created_at: sale.created_at,
+      subtotal,
+      discount_amount,
+      discount_percent: subtotal > 0 ? Math.round((discount_amount / subtotal) * 1000) / 10 : 0,
+      discount_type: discounted_products.length > 0 ? 'product' : 'cart',
+      discounted_products,
+    };
+  });
+}
+
+/**
+ * GET /api/reports/discounts
+ * Which sales had a discount, how much, whether it was a whole-cart
+ * discount or applied to specific product(s), and a per-cashier breakdown —
+ * accountant/management only (same REPORTS_FINANCIAL_ROLES tier as Gross
+ * Profit / VAT / Forensic Audit; a cashier must never see who discounted
+ * what).
+ */
+router.get('/discounts', reportsFinancialGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+    const sales = await fetchSalesWithDiscounts(req.companyId, start, end);
+
+    // Lightweight count-only query for "X of Y sales had a discount" context —
+    // fetchSalesWithDiscounts() above only ever fetches the discounted subset.
+    const { count: totalSaleCount, error: countErr } = await supabase
+      .from('sales')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', req.companyId)
+      .eq('status', 'completed')
+      .gte('created_at', start)
+      .lte('created_at', end);
+    if (countErr) return res.status(500).json({ error: countErr.message });
+
+    const byCashierMap = {};
+    sales.forEach(s => {
+      const key = s.user_id || 'unknown';
+      if (!byCashierMap[key]) byCashierMap[key] = { cashier: s.cashier, discount_count: 0, total_discount: 0 };
+      byCashierMap[key].discount_count++;
+      byCashierMap[key].total_discount += s.discount_amount;
+    });
+    const byCashier = Object.values(byCashierMap)
+      .map(c => ({ ...c, total_discount: Math.round(c.total_discount * 100) / 100 }))
+      .sort((a, b) => b.total_discount - a.total_discount);
+
+    const totalDiscountGiven = Math.round(sales.reduce((sum, s) => sum + s.discount_amount, 0) * 100) / 100;
+
+    res.json({
+      sales: sales.map(({ user_id, ...rest }) => rest),
+      byCashier,
+      summary: {
+        totalDiscountGiven,
+        discountedSaleCount: sales.length,
+        totalSaleCount: totalSaleCount || 0,
+        discountRate: totalSaleCount > 0 ? Math.round((sales.length / totalSaleCount) * 1000) / 10 : 0,
+      },
+    });
+  } catch (err) {
+    console.error('[reports] discounts:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * GET /api/reports/gross-profit
  * Per-sale gross profit — see cost-price note above.
  */
