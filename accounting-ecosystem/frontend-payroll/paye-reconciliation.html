@@ -252,6 +252,7 @@
                 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                     <span class="company-badge" id="company-name-badge">Loading…</span>
                     <button class="btn btn-info btn-sm" onclick="exportCSV()">📥 Export CSV</button>
+                    <button class="btn btn-info btn-sm" onclick="exportEmployeeAnnualTotals()" title="Per-employee annual totals (gross/PAYE/UIF/SDL/net) for the selected tax year — an EMP501 reconciliation reference, NOT a SARS source-code-detailed IRP5/e@syFile submission file. Today's payroll snapshots don't record a breakdown by IRP5 source code.">📥 Export Employee Totals</button>
                     <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print</button>
                 </div>
             </div>
@@ -1201,6 +1202,66 @@
             a.download = 'PAYE_Recon_' + currentTaxYear.replace('/','-') + '.csv';
             a.click();
             URL.revokeObjectURL(a.href);
+        };
+
+        // Per-employee ANNUAL totals for the selected tax year — distinct from
+        // exportCSV() above (that one is the month-by-month, company-level
+        // calculated-vs-SARS-declared reconciliation). Sums the already-loaded
+        // empBreakdown (built from /payroll/recon/summary, same data already
+        // rendered on this page) across every period in the tax year, one row
+        // per employee. Useful as an EMP501 reconciliation reference — NOT a
+        // SARS source-code-detailed IRP5/e@syFile submission file: today's
+        // payroll_snapshots (both Paytime's own engine and imported historical
+        // data — checked live across 227 real snapshots) store only flat
+        // gross/paye/uif/sdl/net totals, with no breakdown by IRP5 source code
+        // (3601/3605/3606/3701/etc.) anywhere in the data model. Building that
+        // would mean changing the payroll calculation engine itself (CRITICAL-
+        // tier, CLAUDE.md Rule E) to persist it going forward — a separate,
+        // deliberately-scoped project, not attempted here.
+        window.exportEmployeeAnnualTotals = function() {
+            if (!currentTaxYear || filteredPeriods.length === 0) { alert('Please select a tax year first.'); return; }
+            if (!empBreakdown || empBreakdown.length === 0) { alert('No employee data for this tax year.'); return; }
+
+            apiGet('/payroll/employees').then(function(data) {
+                var empLookup = {};
+                (data.employees || []).forEach(function(e) { empLookup[e.id] = e; });
+
+                var annualRows = empBreakdown.map(function(entry) {
+                    var totals = { gross: 0, paye: 0, uif: 0, sdl: 0, net: 0 };
+                    entry.rows.forEach(function(r) {
+                        totals.gross += r.gross || 0;
+                        totals.paye  += r.paye  || 0;
+                        totals.uif   += r.uif   || 0;
+                        totals.sdl   += r.sdl   || 0;
+                        totals.net   += r.net   || 0;
+                    });
+                    var e = empLookup[entry.emp.id] || {};
+                    return {
+                        full_name:  entry.emp.full_name,
+                        id_number:  e.id_number  || '',
+                        tax_number: e.tax_number || '',
+                        gross: ReconService.round2(totals.gross),
+                        paye:  ReconService.round2(totals.paye),
+                        uif:   ReconService.round2(totals.uif),
+                        sdl:   ReconService.round2(totals.sdl),
+                        net:   ReconService.round2(totals.net)
+                    };
+                }).sort(function(a, b) { return a.full_name.localeCompare(b.full_name); });
+
+                var rows = [['Employee','ID Number','Tax Number','Gross Income','PAYE','UIF','SDL','Net Pay']];
+                annualRows.forEach(function(r) {
+                    rows.push([r.full_name, r.id_number, r.tax_number, r.gross, r.paye, r.uif, r.sdl, r.net]);
+                });
+                var csv = rows.map(function(r) { return r.map(function(c){ return '"'+c+'"'; }).join(','); }).join('\n');
+                var blob = new Blob([csv], { type: 'text/csv' });
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'Employee_Annual_Totals_' + currentTaxYear.replace('/','-') + '.csv';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }).catch(function() {
+                alert('Could not load employee details for export.');
+            });
         };
 
         // ─── Helpers ─────────────────────────────────────────────────────────
