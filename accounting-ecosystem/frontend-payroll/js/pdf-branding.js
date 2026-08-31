@@ -287,6 +287,19 @@ const PDFBranding = {
         var netStr = this.formatMoney(displayNet);
         doc.text(netStr, pageWidth - margin - 5 - doc.getTextWidth(netStr), y + 8);
 
+        // The NET PAY bar drawn above is 12 units tall (roundedRect(..., 12, ...)
+        // at line ~282) — every other section's bar is only 6 units tall, and
+        // the "+= 7 before the next rect" gap used throughout this file (see
+        // EARNINGS/DEDUCTIONS/RATES sections) assumes that shorter height.
+        // Missing this advance meant Company Contributions' own "y += 7" below
+        // started only 7 units past NET PAY's TOP, not its bottom — landing
+        // 5 units inside it and drawing the two bars on top of each other,
+        // exactly as reported live (screenshot: "NET PAY"/"COMPANY
+        // CONTRIBUTIONS" text overlapping, unreadable). Clearing the full
+        // 12-unit bar height here restores the same visual gap every other
+        // section already has.
+        y += 12;
+
         // ---- Company Contributions Section (informational — employer-paid amounts, ----
         // ---- not part of the employee's earnings/deductions/net pay arithmetic)     ----
         var companySDL = parseFloat(calc.sdl || 0);
