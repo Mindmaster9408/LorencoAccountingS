@@ -2637,7 +2637,7 @@ Click OK to simulate uploading a file.`;
                 const dupBadge = t.isDuplicate ? '<span class="duplicate-badge">DUPLICATE</span>' : '';
                 return `
                     <tr class="${t.isDuplicate ? 'is-duplicate' : ''}">
-                        <td><input type="checkbox" class="pdf-txn-check" data-index="${i}" ${t.isDuplicate ? '' : 'checked'} style="cursor:pointer;"></td>
+                        <td><input type="checkbox" class="pdf-txn-check" data-index="${i}" checked style="cursor:pointer;"></td>
                         <td>${t.date}</td>
                         <td>${escapeHtml(t.description)}${dupBadge}</td>
                         <td style="color:#34a853; white-space:nowrap;">${moneyIn}</td>
@@ -2646,9 +2646,10 @@ Click OK to simulate uploading a file.`;
                     </tr>`;
             }).join('');
 
-            // Select all checkbox reflects state
-            document.getElementById('pdfSelectAll').checked =
-                txns.every((t, i) => !t.isDuplicate);
+            // Select all checkbox reflects state — every row (including
+            // duplicate-flagged ones) starts checked now, matching the
+            // "Deselect them to skip" instruction above.
+            document.getElementById('pdfSelectAll').checked = true;
         }
 
         function pdfToggleSelectAll(checkbox) {
