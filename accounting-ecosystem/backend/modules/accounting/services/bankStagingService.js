@@ -488,28 +488,66 @@ const BankStagingService = {
       return { confirmed: [], skipped };
     }
 
+    // ── Claim these staging rows atomically before inserting ───────────────
+    // Two overlapping calls to this function with the same stagingIds (e.g. a
+    // double-click on "Confirm All Visible", or a network retry) used to both
+    // pass the match_status check above (both reads happened before either
+    // write), then both bulk-insert the same rows into bank_transactions —
+    // this is exactly how 15 real transactions became 30 for one Dronedog
+    // Studio import. Fixed at the root: flip match_status to CONFIRMED here,
+    // conditioned on it still being NOT IN ('CONFIRMED','REJECTED'), and keep
+    // only the rows this call actually won the claim on. A losing concurrent
+    // call gets back zero rows for anything the winner already claimed,
+    // instead of silently double-inserting. See migration 163 (unique index
+    // on bank_transactions(bank_account_id, external_id)) for the
+    // belt-and-braces DB-level guarantee behind this.
+    const claimIds = toInsert.map(i => i.staging_row.id);
+    const { data: claimedRows, error: claimErr } = await supabase
+      .from('bank_transaction_staging')
+      .update({ match_status: 'CONFIRMED', updated_at: new Date().toISOString() })
+      .eq('company_id', companyId)
+      .in('id', claimIds)
+      .not('match_status', 'in', '(CONFIRMED,REJECTED)')
+      .select('id');
+
+    if (claimErr) throw new Error(`Failed to claim staging rows: ${claimErr.message}`);
+
+    const claimedIdSet = new Set((claimedRows || []).map(r => r.id));
+    const lostClaim     = claimIds.filter(id => !claimedIdSet.has(id));
+    const toActuallyInsert = toInsert.filter(i => claimedIdSet.has(i.staging_row.id));
+
+    lostClaim.forEach(id => skipped.push(id));
+
+    if (toActuallyInsert.length === 0) {
+      return { confirmed: [], skipped };
+    }
+
     // Bulk insert into bank_transactions
     const { data: inserted, error: insertErr } = await supabase
       .from('bank_transactions')
-      .insert(toInsert.map(i => i.bankTxn))
+      .insert(toActuallyInsert.map(i => i.bankTxn))
       .select();
 
-    if (insertErr) throw new Error(`Failed to create bank transactions: ${insertErr.message}`);
-
-    // Update staging rows with confirmed_txn_id and match_status=CONFIRMED
-    // Map inserted rows back to staging rows by position (same order guaranteed by bulk insert)
-    const updates = (inserted || []).map((txn, idx) => ({
-      id:              toInsert[idx].staging_row.id,
-      confirmed_txn_id: txn.id,
-      match_status:    'CONFIRMED',
-      updated_at:      new Date().toISOString(),
-    }));
-
-    for (const upd of updates) {
+    if (insertErr) {
+      // Roll the claim back so these rows can still be confirmed later —
+      // otherwise a failed insert would leave them stuck as CONFIRMED with
+      // no bank_transactions row to show for it.
       await supabase
         .from('bank_transaction_staging')
-        .update({ confirmed_txn_id: upd.confirmed_txn_id, match_status: 'CONFIRMED' })
-        .eq('id', upd.id)
+        .update({ match_status: 'UNMATCHED', updated_at: new Date().toISOString() })
+        .eq('company_id', companyId)
+        .in('id', toActuallyInsert.map(i => i.staging_row.id));
+      throw new Error(`Failed to create bank transactions: ${insertErr.message}`);
+    }
+
+    // Attach confirmed_txn_id now that we know each row's real bank_transactions id
+    // (order matches toActuallyInsert since bulk insert preserves row order)
+    for (let idx = 0; idx < (inserted || []).length; idx++) {
+      const txn = inserted[idx];
+      await supabase
+        .from('bank_transaction_staging')
+        .update({ confirmed_txn_id: txn.id })
+        .eq('id', toActuallyInsert[idx].staging_row.id)
         .eq('company_id', companyId);
     }
 

@@ -1353,14 +1353,22 @@
         );
         if (!confirmed) return;
 
-        // Build a query for all UNMATCHED/REVIEW_REQUIRED/DUPLICATE_SUSPECTED rows
-        const acct  = document.getElementById('filterAccount').value;
-        const batch = document.getElementById('filterBatch').value;
-        let qs = '?matchStatus=UNMATCHED,REVIEW_REQUIRED,DUPLICATE_SUSPECTED&limit=500&offset=0';
-        if (acct)  qs += '&bankAccountId=' + acct;
-        if (batch) qs += '&batchId=' + batch;
+        // Disable immediately — a double-click (or a slow response tempting a
+        // second click) previously fired this same bulk-confirm twice, racing
+        // past confirmStaged()'s read-then-write check and creating duplicate
+        // bank_transactions rows. Every other action button in this file
+        // already disables itself first; this one did not. See migration 163.
+        const btn = document.getElementById('confirmAllBtn');
+        if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.textContent = 'Confirming…'; }
 
         try {
+            // Build a query for all UNMATCHED/REVIEW_REQUIRED/DUPLICATE_SUSPECTED rows
+            const acct  = document.getElementById('filterAccount').value;
+            const batch = document.getElementById('filterBatch').value;
+            let qs = '?matchStatus=UNMATCHED,REVIEW_REQUIRED,DUPLICATE_SUSPECTED&limit=500&offset=0';
+            if (acct)  qs += '&bankAccountId=' + acct;
+            if (batch) qs += '&batchId=' + batch;
+
             const data = await apiGet('/bank/staging' + qs);
             const ids  = (data.staging || []).map(r => r.id);
             if (ids.length === 0) {
@@ -1372,6 +1380,8 @@
             await loadPage();
         } catch (e) {
             showBanner('error', 'Bulk confirm failed: ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || 'Confirm All Visible'; }
         }
     }
 
