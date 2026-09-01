@@ -6940,42 +6940,122 @@
                 // sitting as an unrestricted button on the till screen itself.
                 showManageTillModal();
             } else {
-                const balance = prompt('Enter opening balance:', '0');
-                if (balance !== null) {
-                    try {
-                        const tillsResponse = await fetch(`${API_URL}/pos/tills`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        const tillsResult = await tillsResponse.json();
+                await showOpenTillModal();
+            }
+        }
 
-                        if (tillsResult.tills.length === 0) {
-                            showNotification('No active till configured. Go to Settings → Tills to create one.', 'error');
-                            return;
-                        }
+        // BUG FIX (found live, Pennygrow, 2026-08-30): opening a till used to
+        // silently take tillsResult.tills[0] — GET /pos/tills orders by
+        // till_number, so this is always the LOWEST-numbered till regardless of
+        // which physical till/computer the cashier is actually sitting at, with
+        // no way to choose otherwise. A relief cashier covering a specific till
+        // (e.g. Till 2) could never actually open it — the app always tried
+        // Till 1 instead, which either failed with "already has an open
+        // session" (reads exactly like "the till won't open") or, worse, opened
+        // the WRONG till without the cashier realizing it. Fixed by adding a
+        // real till picker instead of guessing.
+        async function showOpenTillModal() {
+            let tillsResult;
+            try {
+                const tillsResponse = await fetch(`${API_URL}/pos/tills`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                tillsResult = await tillsResponse.json();
+            } catch (error) {
+                showNotification('Error loading tills', 'error');
+                return;
+            }
 
-                        const response = await fetch(`${API_URL}/pos/sessions/open`, {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                till_id: tillsResult.tills[0].id,
-                                opening_balance: parseFloat(balance)
-                            })
-                        });
+            if (!tillsResult.tills || tillsResult.tills.length === 0) {
+                showNotification('No active till configured. Go to Settings → Tills to create one.', 'error');
+                return;
+            }
 
-                        const result = await response.json();
-                        if (response.ok) {
-                            showNotification('Session opened', 'success');
-                            await checkSession();
-                        } else {
-                            showNotification(result.error || 'Error opening session', 'error');
-                        }
-                    } catch (error) {
-                        showNotification('Error opening session', 'error');
-                    }
+            let modal = document.getElementById('openTillModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'openTillModal';
+                modal.className = 'modal-overlay';
+                document.body.appendChild(modal);
+            }
+
+            // This device's own known till (set once during Device Activation —
+            // see trustedDevice/checkDeviceIdentity() — server-validated, not a
+            // spoofable localStorage guess) — pre-select it instead of making
+            // the cashier choose from scratch every time, while still showing
+            // the choice openly and allowing override (e.g. a manager covering
+            // from a shared/untrusted machine, or a genuine relief situation).
+            const knownTillId = trustedDevice && trustedDevice.till_id ? String(trustedDevice.till_id) : null;
+            const knownNote = knownTillId
+                ? `<p style="margin:0;font-size:13px;color:#4caf50;">✓ This device is set up as <strong>${escHtml(tillsResult.tills.find(t => String(t.id) === knownTillId)?.till_name || ('Till ' + knownTillId))}</strong> — confirm or change below.</p>`
+                : `<p style="margin:0;font-size:13px;color:#999;">This device isn't set up for a specific till yet — choose which one you're opening.</p>`;
+
+            const tillOptions = tillsResult.tills.map(t =>
+                `<option value="${t.id}"${String(t.id) === knownTillId ? ' selected' : ''}>${escHtml(t.till_name || ('Till ' + t.till_number))}</option>`
+            ).join('');
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 380px;">
+                    <div class="modal-header">
+                        <h2>Open Till</h2>
+                        <button class="close-btn" onclick="closeOpenTillModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px; display:flex; flex-direction:column; gap:14px;">
+                        ${knownNote}
+                        <div class="form-group">
+                            <label>Which till are you opening?</label>
+                            <select id="openTillSelect" style="width:100%;padding:8px;border-radius:6px;">
+                                ${tillOptions}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Opening balance</label>
+                            <input type="number" id="openTillBalance" value="0" min="0" step="0.01" style="width:100%;padding:8px;">
+                        </div>
+                        <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="confirmOpenTill()">Open Till</button>
+                    </div>
+                </div>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function closeOpenTillModal() {
+            const modal = document.getElementById('openTillModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function confirmOpenTill() {
+            const tillId = document.getElementById('openTillSelect').value;
+            const balanceInput = document.getElementById('openTillBalance');
+            const balance = parseFloat(balanceInput.value);
+
+            if (isNaN(balance) || balance < 0) {
+                showNotification('Enter a valid opening balance (0 or more)', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/pos/sessions/open`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        till_id: parseInt(tillId, 10),
+                        opening_balance: balance
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    closeOpenTillModal();
+                    showNotification('Session opened', 'success');
+                    await checkSession();
+                } else {
+                    showNotification(result.error || 'Error opening session', 'error');
                 }
+            } catch (error) {
+                showNotification('Error opening session', 'error');
             }
         }
 
