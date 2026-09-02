@@ -768,6 +768,16 @@
             });
 
             let html = '';
+            // Summed from the same per-row dr/cr values actually rendered below —
+            // NOT the backend's summary.total (that's gross debit/credit activity
+            // across the whole company, a different number from what any row on
+            // screen shows). Found live (2026-09-02, WJM Beleggings): every account
+            // netted to a zero balance ("–" in every row) yet the TOTAL row showed
+            // R63,200 from the gross figure, with nothing on screen explaining
+            // where it came from. The TOTAL a trial balance is supposed to prove
+            // balanced is the sum of what it's showing, not a different metric.
+            let runningDr = 0;
+            let runningCr = 0;
             Object.values(groups).forEach(group => {
                 if (!group.accounts.length) return;
                 html += `<tr class="section-header"><td colspan="4">${group.label}</td></tr>`;
@@ -783,6 +793,8 @@
                     // balance = DR - CR. Positive = net debit → DR column. Negative = net credit → CR column.
                     const dr = bal > 0 ? bal : 0;
                     const cr = bal < 0 ? -bal : 0;
+                    runningDr += dr;
+                    runningCr += cr;
                     const isChild  = !!acc.parent_id;
                     const isParent = childIds.has(acc.id);
 
@@ -812,9 +824,8 @@
                 html += '<tr><td colspan="4" style="height:10px"></td></tr>';
             });
 
-            const s = data.summary || {};
-            const totalDr = parseFloat(s.total ? s.total.debit : 0);
-            const totalCr = parseFloat(s.total ? s.total.credit : 0);
+            const totalDr = runningDr;
+            const totalCr = runningCr;
             html += `<tr class="grand-total">
                 <td colspan="2"><strong>TOTAL</strong></td>
                 <td class="amount"><strong>${fmtAmt(totalDr)}</strong></td>
