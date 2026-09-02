@@ -22,6 +22,9 @@ const db = require('../config/database');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
 const { authenticate, hasPermission } = require('../middleware/auth');
+const { generateInvoicePdf } = require('../services/invoicePdfService');
+const { generateAgingPdf } = require('../services/reportPdfService');
+const { sendEmail } = require('../../../shared/services/email');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +46,10 @@ function calcLineVAT(quantity, unitPrice, vatRate, vatInclusive) {
     totalIncVat   = Math.round((subtotalExVat + vatAmount) * 100) / 100;
   }
   return { subtotalExVat, vatAmount, totalIncVat };
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 async function findAccountByCode(companyId, code) {
@@ -1122,6 +1129,110 @@ router.post('/:id/post', authenticate, hasPermission('ar.invoice.post'), async (
   }
 });
 
+// ─── Email Invoice to Customer ──────────────────────────────────────────────
+// Separate, additive fact from `status` — GL-posting flips status to 'sent'
+// as a bookkeeping transition unrelated to whether anyone actually emailed
+// the customer (see 160_customer_invoice_email_tracking.sql). Sending is
+// allowed any number of times (re-send is a normal, expected action), so
+// this only ever 200s or fails — it never blocks on "already sent".
+
+router.post('/:id/send', authenticate, hasPermission('ar.invoice.send'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const invoiceId = parseInt(req.params.id);
+
+  try {
+    const { data: invoice, error: invErr } = await supabase
+      .from('customer_invoices')
+      .select('*')
+      .eq('id', invoiceId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (invErr) throw new Error(invErr.message);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (invoice.status === 'draft') {
+      return res.status(409).json({ error: 'Post this invoice to the General Ledger before emailing it to the customer.' });
+    }
+
+    const { data: customer, error: custErr } = await supabase
+      .from('customers')
+      .select('id, name, email, vat_number')
+      .eq('id', invoice.customer_id)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (custErr) throw new Error(custErr.message);
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+    // Explicit override lets a one-off send go to a different address
+    // (e.g. the customer asked for a copy at a second address) without
+    // requiring the customer record itself to be edited first.
+    const recipientEmail = (req.body?.email || customer.email || '').trim();
+    if (!recipientEmail) {
+      return res.status(400).json({
+        error: `${customer.name} has no email address on file. Add one to the customer record, or provide one for this send.`,
+        errorCode: 'NO_CUSTOMER_EMAIL',
+      });
+    }
+
+    const { data: lines, error: linesErr } = await supabase
+      .from('customer_invoice_lines')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('id');
+    if (linesErr) throw new Error(linesErr.message);
+
+    const { data: company, error: companyErr } = await supabase
+      .from('companies')
+      .select('company_name, trading_name, registration_number, vat_number, address_street, address_suburb, address_city, contact_email, contact_phone, logo_url, bank_name, bank_account_holder, bank_account_number, bank_branch_code')
+      .eq('id', companyId)
+      .maybeSingle();
+    if (companyErr) throw new Error(companyErr.message);
+
+    const pdfBuffer = await generateInvoicePdf(invoice, lines || [], company || {}, customer);
+
+    const emailResult = await sendEmail({
+      to: recipientEmail,
+      subject: `Invoice ${invoice.invoice_number} from ${company?.trading_name || company?.company_name || 'us'}`,
+      html: `<p>Dear ${escapeHtml(customer.name)},</p><p>Please find attached invoice ${escapeHtml(invoice.invoice_number)} for ${escapeHtml(String(invoice.total_amount))}.</p><p>Kind regards</p>`,
+      body: `Dear ${customer.name},\n\nPlease find attached invoice ${invoice.invoice_number}.\n\nKind regards`,
+      attachments: [{ filename: `Invoice-${invoice.invoice_number}.pdf`, content: pdfBuffer }],
+    });
+
+    if (!emailResult.success) {
+      return res.status(502).json({ error: emailResult.message || 'Failed to send email.' });
+    }
+
+    const { data: updated, error: updErr } = await supabase
+      .from('customer_invoices')
+      .update({
+        emailed_at: new Date().toISOString(),
+        emailed_to: recipientEmail,
+        email_count: (invoice.email_count || 0) + 1,
+      })
+      .eq('id', invoiceId)
+      .eq('company_id', companyId)
+      .select()
+      .maybeSingle();
+    if (updErr) console.error('[CustomerAR] Failed to record invoice email send (email itself succeeded):', updErr.message);
+
+    await AuditLogger.log({
+      companyId,
+      actorType: 'USER', actorId: userId(req),
+      actionType: 'CUSTOMER_INVOICE_EMAILED',
+      entityType: 'CUSTOMER_INVOICE', entityId: invoiceId,
+      beforeJson: null,
+      afterJson: { invoiceId, recipientEmail, emailCount: (invoice.email_count || 0) + 1 },
+      reason: 'Invoice emailed to customer',
+      ipAddress: req.ip, userAgent: req.get('user-agent'),
+    });
+
+    res.json({ message: `Invoice emailed to ${recipientEmail}`, emailedAt: updated?.emailed_at || new Date().toISOString(), emailedTo: recipientEmail });
+  } catch (err) {
+    console.error('POST /customer-invoices/:id/send error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Void Invoice ─────────────────────────────────────────────────────────────
 
 router.post('/:id/void', authenticate, hasPermission('ar.invoice.void'), async (req, res) => {
@@ -1948,15 +2059,9 @@ router.post('/payments/:id/void', authenticate, hasPermission('ar.payment.void')
 // into ageing periods.  Null due_date → current (with noDueDateCount flag).
 // Grouping: customer_id when set, fallback to normalised customer_name.
 
-router.get('/aging', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
-  if (!supabase) return res.status(503).json({ error: 'Database not available' });
-  const companyId       = req.companyId;
-  const asAt            = req.query.asAt || new Date().toISOString().slice(0, 10);
-  const customerIdFilter = req.query.customerId ? parseInt(req.query.customerId) : null;
-  const includeZero     = req.query.includeZero === 'true';
-  const asAtDate        = new Date(asAt + 'T00:00:00Z');
-
-  try {
+async function computeAgedDebtors(companyId, asAt, customerIdFilter, includeZero) {
+  const asAtDate = new Date(asAt + 'T00:00:00Z');
+  {
     let q = supabase
       .from('customer_invoices')
       .select('id, customer_id, invoice_number, date, due_date, total_amount, amount_paid')
@@ -2029,9 +2134,48 @@ router.get('/aging', authenticate, hasPermission('ar.invoice.view'), async (req,
       total:      Math.round((acc.total      + c.total)      * 100) / 100,
     }), { current: 0, days30: 0, days60: 0, days90: 0, days90plus: 0, total: 0 });
 
-    res.json({ asAt, customers, totals });
+    return { asAt, customers, totals };
+  }
+}
+
+router.get('/aging', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  try {
+    const asAt = req.query.asAt || new Date().toISOString().slice(0, 10);
+    const customerIdFilter = req.query.customerId ? parseInt(req.query.customerId) : null;
+    const includeZero = req.query.includeZero === 'true';
+    const result = await computeAgedDebtors(req.companyId, asAt, customerIdFilter, includeZero);
+    res.json(result);
   } catch (err) {
     console.error('GET /customer-invoices/aging error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /aging/pdf
+ * Same computeAgedDebtors() as /aging above, rendered as a downloadable PDF.
+ */
+router.get('/aging/pdf', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  try {
+    const asAt = req.query.asAt || new Date().toISOString().slice(0, 10);
+    const customerIdFilter = req.query.customerId ? parseInt(req.query.customerId) : null;
+    const includeZero = req.query.includeZero === 'true';
+    const { customers, totals } = await computeAgedDebtors(req.companyId, asAt, customerIdFilter, includeZero);
+
+    const { data: company } = await supabase
+      .from('companies')
+      .select('company_name, trading_name, registration_number, vat_number')
+      .eq('id', req.companyId)
+      .maybeSingle();
+
+    const pdfBuffer = await generateAgingPdf({ company: company || {}, asAt, title: 'AGED DEBTORS', customers, totals });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="aged-debtors-${asAt}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('GET /customer-invoices/aging/pdf error:', err);
     res.status(500).json({ error: err.message });
   }
 });

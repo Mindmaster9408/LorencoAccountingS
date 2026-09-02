@@ -445,7 +445,7 @@
                 </select>
             </div>
             <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
-            <button type="button" class="btn-secondary" disabled title="Coming soon">Export PDF</button>
+            <button type="button" class="btn-secondary" id="exportPdfBtn" onclick="exportPdf()">Export PDF</button>
             <button type="button" class="btn-secondary" disabled title="Coming soon">Export Excel</button>
         </div>
         <div id="errorBanner" class="error-banner ar-hidden"></div>
@@ -610,6 +610,32 @@
             } finally {
                 btn.disabled    = false;
                 btn.textContent = 'Generate Report';
+            }
+        }
+
+        async function exportPdf() {
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+            try {
+                const res = await fetch('/api/accounting/suppliers/aging/pdf', { headers: getAuthHeaders() });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(blob),
+                    download: `aged-creditors-${new Date().toISOString().slice(0,10)}.pdf`
+                });
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (e) {
+                showError('Failed to generate PDF: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
             }
         }
     </script>

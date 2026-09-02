@@ -445,7 +445,7 @@
                 </select>
             </div>
             <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
-            <button type="button" class="btn-secondary" disabled title="Coming soon">Export PDF</button>
+            <button type="button" class="btn-secondary" id="exportPdfBtn" onclick="exportPdf()">Export PDF</button>
             <button type="button" class="btn-secondary" disabled title="Coming soon">Export Excel</button>
         </div>
         <div id="errorBanner" class="error-banner ar-hidden"></div>
@@ -470,6 +470,7 @@
                             <th class="amount">90+ Days</th>
                             <th class="amount">Total</th>
                             <th class="amount">Invoices</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="reportBody"></tbody>
@@ -507,6 +508,50 @@
 
         function hide(id)   { document.getElementById(id).classList.add('ar-hidden');    }
         function show(id)   { document.getElementById(id).classList.remove('ar-hidden'); }
+
+        // ── Send Statement (v1: simple prompts, no dedicated date-range UI yet) ──
+        const _sendingStatementIds = new Set();
+
+        async function sendCustomerStatement(customerId, customerName) {
+            if (_sendingStatementIds.has(customerId)) return;
+
+            const yearStart = new Date().getFullYear() + '-01-01';
+            const periodStart = prompt('Statement period start (YYYY-MM-DD) for ' + customerName + ':', yearStart);
+            if (!periodStart) return;
+            const periodEnd = document.getElementById('asAtDate').value || new Date().toISOString().slice(0, 10);
+
+            _sendingStatementIds.add(customerId);
+            try {
+                const res = await fetch('/api/accounting/customer-statements/' + customerId + '/statement/send', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ periodStart, periodEnd }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    if (data.errorCode === 'NO_CUSTOMER_EMAIL') {
+                        const override = prompt(data.error + '\n\nEnter an email address to send to just this once:');
+                        if (override && override.trim()) {
+                            const res2 = await fetch('/api/accounting/customer-statements/' + customerId + '/statement/send', {
+                                method: 'POST', headers: getAuthHeaders(),
+                                body: JSON.stringify({ periodStart, periodEnd, email: override.trim() }),
+                            });
+                            const data2 = await res2.json().catch(() => ({}));
+                            if (!res2.ok) alert(data2.error || 'Failed to send statement.');
+                            else alert('Statement sent.');
+                        }
+                        return;
+                    }
+                    alert(data.error || 'Failed to send statement.');
+                    return;
+                }
+                alert('Statement sent to ' + customerName + '.');
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            } finally {
+                _sendingStatementIds.delete(customerId);
+            }
+        }
 
         async function generateReport() {
             const asAt        = document.getElementById('asAtDate').value;
@@ -575,6 +620,7 @@
                         '<td class="amount ' + (hasOverdue ? 'negative' : '') + '">' + fmtAmt(c.days90plus) + '</td>' +
                         '<td class="amount ' + totalClass + '">' + fmtAmt(c.total) + '</td>' +
                         '<td class="amount">' + (c.invoiceCount || 0) + '</td>' +
+                        '<td>' + (c.customerId ? '<button type="button" onclick="sendCustomerStatement(' + c.customerId + ', ' + JSON.stringify(c.customerName) + ')" style="font-size:11px;padding:4px 10px;border:1px solid #0066cc;background:#fff;color:#0066cc;border-radius:4px;cursor:pointer;">📧 Send Statement</button>' : '') + '</td>' +
                         '</tr>'
                     );
                 });
@@ -582,7 +628,7 @@
                 // Totals row
                 const hasOverdueTot = totals.days90plus > 0;
                 tbody.insertAdjacentHTML('beforeend',
-                    '<tr><td colspan="8" class="ar-spacer"></td></tr>' +
+                    '<tr><td colspan="9" class="ar-spacer"></td></tr>' +
                     '<tr class="grand-total">' +
                     '<td><strong>TOTAL</strong></td>' +
                     '<td class="amount"><strong>' + fmtAmt(totals.current)    + '</strong></td>' +
@@ -592,6 +638,7 @@
                     '<td class="amount ' + (hasOverdueTot ? 'negative' : '') + '"><strong>' + fmtAmt(totals.days90plus) + '</strong></td>' +
                     '<td class="amount"><strong>' + fmtAmt(totals.total)      + '</strong></td>' +
                     '<td class="amount"></td>' +
+                    '<td></td>' +
                     '</tr>'
                 );
 
@@ -603,6 +650,37 @@
             } finally {
                 btn.disabled    = false;
                 btn.textContent = 'Generate Report';
+            }
+        }
+
+        async function exportPdf() {
+            const asAt        = document.getElementById('asAtDate').value;
+            const includeZero = document.getElementById('includeZero').value;
+            if (!asAt) { showError('Please select an As At date.'); return; }
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+            try {
+                const url = '/api/accounting/customer-invoices/aging/pdf?asAt=' + encodeURIComponent(asAt)
+                          + '&includeZero=' + encodeURIComponent(includeZero);
+                const res = await fetch(url, { headers: getAuthHeaders() });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || 'HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(blob),
+                    download: `aged-debtors-${asAt}.pdf`
+                });
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (e) {
+                showError('Failed to generate PDF: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
             }
         }
     </script>

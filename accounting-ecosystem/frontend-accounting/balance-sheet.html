@@ -443,6 +443,7 @@
             </div>
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
             <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
+            <button class="btn-secondary" id="exportPdfBtn" onclick="exportPdf()">Export PDF</button>
         </div>
         <div id="bsError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
         <div id="truthBadgeWrap" class="truth-badge-wrap"></div>
@@ -734,6 +735,37 @@
                 download: 'balance-sheet.csv'
             });
             a.click();
+        }
+
+        async function exportPdf() {
+            if (!lastResult) { alert('Generate the report first.'); return; }
+            const asOfDate = document.getElementById('bsAsAtDate').value;
+            const fromDate = document.getElementById('bsFromDate').value;
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+            try {
+                let url = `/api/accounting/reports/balance-sheet/pdf?asOfDate=${asOfDate}`;
+                if (fromDate) url += `&fromDate=${fromDate}`;
+                const res = await fetch(url, { headers: authH() });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(blob),
+                    download: `balance-sheet-${asOfDate}.pdf`
+                });
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (err) {
+                alert('Failed to generate PDF: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
         }
 
         document.addEventListener('DOMContentLoaded', generateReport);

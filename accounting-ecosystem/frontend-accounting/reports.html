@@ -430,6 +430,7 @@
             </div>
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
             <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
+            <button class="btn-secondary" id="exportPdfBtn" onclick="exportPdf()">Export PDF</button>
             <button class="btn-secondary" onclick="window.location.href='paye-reconciliation.html'" style="background: #28a745;">PAYE Reconciliation</button>
             <div class="control-group" id="segmentControlGroup" style="display:none">
                 <label>Segment</label>
@@ -710,6 +711,38 @@
                 download: `profit-and-loss-${d.fromDate}-to-${d.toDate}.csv`
             });
             link.click();
+        }
+
+        async function exportPdf() {
+            if (!lastResult) { alert('Generate the report first.'); return; }
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate = document.getElementById('dateTo').value;
+            const segmentValueId = document.getElementById('segmentSelect').value;
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+            try {
+                let url = `/api/accounting/reports/profit-loss/pdf?fromDate=${fromDate}&toDate=${toDate}`;
+                if (segmentValueId) url += `&segmentValueId=${segmentValueId}`;
+                const res = await fetch(url, { headers: authH() });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(blob),
+                    download: `profit-and-loss-${fromDate}-to-${toDate}.pdf`
+                });
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (err) {
+                alert('Failed to generate PDF: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => { loadSegments(); generateReport(); });

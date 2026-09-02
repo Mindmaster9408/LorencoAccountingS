@@ -21,6 +21,7 @@ const JournalService     = require('../services/journalService');
 const InvoiceOcrService  = require('../../../sean/invoice-ocr-service');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const AuditLogger        = require('../services/auditLogger');
+const { generateAgingPdf } = require('../services/reportPdfService');
 
 // ── Multer: in-memory file upload for OCR invoice scanning ────────────────────
 const invoiceUpload = multer({
@@ -2361,9 +2362,7 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
 
 // ─── Supplier Aging Report ────────────────────────────────────────────────────
 
-router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
-  const companyId = req.companyId;
-  try {
+async function computeAgedCreditors(companyId) {
     // Fetch unpaid / part-paid invoices with supplier details.
     // Column names verified against the live PostgREST schema (2026-08-24) —
     // supplier_invoices has date/total_amount, not invoice_date/total_inc_vat;
@@ -2430,9 +2429,45 @@ router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req,
       total:      Math.round(s.total      * 100) / 100,
     }));
 
+    return aging;
+}
+
+router.get('/aging', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
+  try {
+    const aging = await computeAgedCreditors(req.companyId);
     res.json({ aging });
   } catch (err) {
     console.error('GET /suppliers/aging error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /aging/pdf
+ * Same computeAgedCreditors() as /aging above, rendered as a downloadable PDF.
+ */
+router.get('/aging/pdf', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
+  try {
+    const aging = await computeAgedCreditors(req.companyId);
+    const customers = aging.map(s => ({ customerName: s.supplier_name, current: s.current, days30: s.days30, days60: s.days60, days90: s.days90, days90plus: s.days90plus, total: s.total }));
+    const totals = customers.reduce((acc, c) => ({
+      current: acc.current + c.current, days30: acc.days30 + c.days30, days60: acc.days60 + c.days60,
+      days90: acc.days90 + c.days90, days90plus: acc.days90plus + c.days90plus, total: acc.total + c.total,
+    }), { current: 0, days30: 0, days60: 0, days90: 0, days90plus: 0, total: 0 });
+
+    const { data: company } = await supabase
+      .from('companies')
+      .select('company_name, trading_name, registration_number, vat_number')
+      .eq('id', req.companyId)
+      .maybeSingle();
+
+    const asAt = new Date().toISOString().slice(0, 10);
+    const pdfBuffer = await generateAgingPdf({ company: company || {}, asAt, title: 'AGED CREDITORS', customers, totals });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="aged-creditors-${asAt}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('GET /suppliers/aging/pdf error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -3,7 +3,22 @@ const { supabase } = require('../../../config/database');
 const db = require('../config/database'); // direct pg Pool — avoids .in() URL-length limits
 const { authenticate, hasPermission } = require('../middleware/auth');
 const { getBadge } = require('../services/reportTruthBadge');
-const { generateTrialBalancePdf } = require('../services/reportPdfService');
+const {
+  generateTrialBalancePdf,
+  generateBalanceSheetPdf,
+  generateProfitLossPdf,
+  generateGeneralLedgerPdf,
+} = require('../services/reportPdfService');
+
+// Shared by every /*/pdf route below — same company fields, same lookup.
+async function fetchCompanyForPdf(companyId) {
+  const { data } = await supabase
+    .from('companies')
+    .select('company_name, trading_name, registration_number, vat_number')
+    .eq('id', companyId)
+    .maybeSingle();
+  return data || {};
+}
 
 const router = express.Router();
 
@@ -170,13 +185,8 @@ router.get('/trial-balance/pdf', authenticate, hasPermission('report.view'), asy
       return { ...a, balance: d - c };
     }).sort((a, b) => a.code.localeCompare(b.code));
 
-    const { data: company } = await supabase
-      .from('companies')
-      .select('company_name, trading_name, registration_number, vat_number')
-      .eq('id', req.user.companyId)
-      .maybeSingle();
-
-    const pdfBuffer = await generateTrialBalancePdf({ company: company || {}, fromDate, toDate, accounts: result });
+    const company = await fetchCompanyForPdf(req.user.companyId);
+    const pdfBuffer = await generateTrialBalancePdf({ company, fromDate, toDate, accounts: result });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="trial-balance-${fromDate}-to-${toDate}.pdf"`);
@@ -275,6 +285,70 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
   } catch (error) {
     console.error('Error generating general ledger:', error);
     res.status(500).json({ error: 'Failed to generate general ledger' });
+  }
+});
+
+/**
+ * GET /api/reports/general-ledger/pdf
+ * Same data/logic as /general-ledger above, rendered as a downloadable PDF.
+ */
+router.get('/general-ledger/pdf', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { accountId, fromDate, toDate, journalSourceMode: rawMode } = req.query;
+    if (!accountId) return res.status(400).json({ error: 'accountId is required' });
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+    let glSourceClause = '';
+    if (journalSourceMode === 'manual') glSourceClause = ` AND (j.source_type IS NULL OR j.source_type = 'manual')`;
+    else if (journalSourceMode === 'system') glSourceClause = ` AND j.source_type IS NOT NULL AND j.source_type != 'manual'`;
+
+    const { data: account, error: aErr } = await supabase
+      .from('accounts').select('*')
+      .eq('id', accountId).eq('company_id', req.user.companyId).single();
+    if (aErr || !account) return res.status(404).json({ error: 'Account not found' });
+
+    const obParams = fromDate ? [req.user.companyId, fromDate, accountId] : null;
+    const periodParams = [req.user.companyId, accountId];
+    let periodDateClauses = '';
+    if (fromDate) { periodParams.push(fromDate); periodDateClauses += ` AND j.date >= $${periodParams.length}`; }
+    if (toDate)   { periodParams.push(toDate);   periodDateClauses += ` AND j.date <= $${periodParams.length}`; }
+
+    const [obResult, periodResult] = await Promise.all([
+      obParams
+        ? db.query(
+            `SELECT jl.debit, jl.credit FROM journal_lines jl INNER JOIN journals j ON j.id = jl.journal_id
+             WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed') AND j.date < $2 AND jl.account_id = $3${glSourceClause}`,
+            obParams
+          )
+        : Promise.resolve({ rows: [] }),
+      db.query(
+        `SELECT jl.journal_id, jl.description AS line_description, jl.debit, jl.credit,
+                j.date::text AS date, j.reference, j.description AS journal_description
+         FROM journal_lines jl INNER JOIN journals j ON j.id = jl.journal_id
+         WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed') AND jl.account_id = $2${periodDateClauses}${glSourceClause}`,
+        periodParams
+      ),
+    ]);
+
+    let openingBalance = 0;
+    for (const l of obResult.rows) openingBalance += parseFloat(l.debit || 0) - parseFloat(l.credit || 0);
+
+    const mapped = periodResult.rows.map(l => ({
+      date: l.date, reference: l.reference, journal_description: l.journal_description,
+      line_description: l.line_description, debit: parseFloat(l.debit || 0), credit: parseFloat(l.credit || 0),
+    }));
+    mapped.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    let running = openingBalance;
+    const transactions = mapped.map(line => { running += line.debit - line.credit; return { ...line, balance: running }; });
+
+    const company = await fetchCompanyForPdf(req.user.companyId);
+    const pdfBuffer = await generateGeneralLedgerPdf({ company, account, fromDate, toDate, openingBalance, transactions });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="general-ledger-${account.code}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating general ledger PDF:', error);
+    res.status(500).json({ error: 'Failed to generate general ledger PDF' });
   }
 });
 
@@ -411,6 +485,58 @@ router.get('/balance-sheet', authenticate, hasPermission('report.view'), async (
 });
 
 /**
+ * GET /api/reports/balance-sheet/pdf
+ * Same data/logic as /balance-sheet above, rendered as a downloadable PDF.
+ */
+router.get('/balance-sheet/pdf', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { asOfDate, fromDate } = req.query;
+    if (!asOfDate) return res.status(400).json({ error: 'asOfDate is required' });
+    const companyId = req.user.companyId;
+
+    const { accounts: bsAccounts, lines: bsLines } = await fetchAccountBalances(companyId, { asOfDate, types: ['asset', 'liability', 'equity'] });
+    const bsAgg = aggregateLines(bsLines);
+    const { accounts: plAccounts, lines: plLines } = await fetchAccountBalances(companyId, { asOfDate, fromDate, types: ['income', 'expense'] });
+    const plAgg = aggregateLines(plLines);
+
+    let totalIncome = 0, totalExpense = 0;
+    for (const a of plAccounts) {
+      const d = parseFloat(plAgg[a.id]?.debit  || 0);
+      const c = parseFloat(plAgg[a.id]?.credit || 0);
+      if (a.type === 'income')  totalIncome  += c - d;
+      if (a.type === 'expense') totalExpense += d - c;
+    }
+    const netIncome = totalIncome - totalExpense;
+
+    const assets = [], liabilities = [], equity = [];
+    for (const a of bsAccounts) {
+      const d = parseFloat(bsAgg[a.id]?.debit  || 0);
+      const c = parseFloat(bsAgg[a.id]?.credit || 0);
+      const entry = { code: a.code, name: a.name, balance: a.type === 'asset' ? (d - c) : (c - d) };
+      if (a.type === 'asset') assets.push(entry);
+      else if (a.type === 'liability') liabilities.push(entry);
+      else equity.push(entry);
+    }
+    const totalAssets      = assets.reduce((s, a) => s + a.balance, 0);
+    const totalLiabilities = liabilities.reduce((s, a) => s + a.balance, 0);
+    const totalEquity      = equity.reduce((s, a) => s + a.balance, 0) + netIncome;
+
+    const company = await fetchCompanyForPdf(companyId);
+    const pdfBuffer = await generateBalanceSheetPdf({
+      company, asOfDate, assets, liabilities, equity, currentYearEarnings: netIncome,
+      totals: { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity, liabilitiesAndEquity: totalLiabilities + totalEquity },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="balance-sheet-${asOfDate}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating balance sheet PDF:', error);
+    res.status(500).json({ error: 'Failed to generate balance sheet PDF' });
+  }
+});
+
+/**
  * GET /api/reports/profit-loss
  */
 router.get('/profit-loss', authenticate, hasPermission('report.view'), async (req, res) => {
@@ -474,6 +600,62 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
   } catch (error) {
     console.error('Error generating profit & loss:', error);
     res.status(500).json({ error: 'Failed to generate profit & loss report' });
+  }
+});
+
+/**
+ * GET /api/reports/profit-loss/pdf
+ * Same data/logic as /profit-loss above, rendered as a downloadable PDF.
+ */
+router.get('/profit-loss/pdf', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate, segmentValueId, journalSourceMode: rawMode } = req.query;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+    const companyId = req.user.companyId;
+
+    const { accounts, lines } = await fetchAccountBalances(companyId, {
+      fromDate, toDate, types: ['income', 'expense'], segmentValueId: segmentValueId || null, journalSourceMode
+    });
+    const agg = aggregateLines(lines);
+
+    const sections = { operating_income: [], other_income: [], cost_of_sales: [], operating_expense: [], depreciation_amort: [], finance_cost: [] };
+    for (const a of accounts) {
+      const d = parseFloat(agg[a.id]?.debit  || 0);
+      const c = parseFloat(agg[a.id]?.credit || 0);
+      const effectiveSubType = a.sub_type || (a.type === 'income' ? 'operating_income' : 'operating_expense');
+      const entry = { code: a.code, name: a.name, balance: a.type === 'income' ? (c - d) : (d - c) };
+      if (sections[effectiveSubType]) sections[effectiveSubType].push(entry);
+      else if (a.type === 'income') sections.operating_income.push(entry);
+      else sections.operating_expense.push(entry);
+    }
+
+    const sum = arr => arr.reduce((s, a) => s + a.balance, 0);
+    const totalOperatingIncome   = sum(sections.operating_income);
+    const totalOtherIncome       = sum(sections.other_income);
+    const totalCostOfSales       = sum(sections.cost_of_sales);
+    const totalOperatingExpenses = sum(sections.operating_expense);
+    const totalDepreciation      = sum(sections.depreciation_amort);
+    const totalFinanceCosts      = sum(sections.finance_cost);
+    const grossProfit     = totalOperatingIncome - totalCostOfSales;
+    const operatingProfit = grossProfit + totalOtherIncome - totalOperatingExpenses - totalDepreciation;
+    const netProfit       = operatingProfit - totalFinanceCosts;
+
+    const company = await fetchCompanyForPdf(companyId);
+    const pdfBuffer = await generateProfitLossPdf({
+      company, fromDate, toDate,
+      operatingIncome: sections.operating_income, costOfSales: sections.cost_of_sales,
+      otherIncome: sections.other_income, operatingExpenses: sections.operating_expense,
+      depreciation: sections.depreciation_amort, financeCosts: sections.finance_cost,
+      totals: { grossProfit, operatingProfit, netProfit },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="profit-loss-${fromDate}-to-${toDate}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating profit & loss PDF:', error);
+    res.status(500).json({ error: 'Failed to generate profit & loss PDF' });
   }
 });
 
