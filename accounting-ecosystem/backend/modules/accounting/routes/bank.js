@@ -420,6 +420,105 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// reorderSameDayByBalanceChain / chainOrder
+// ─────────────────────────────────────────────────────────────────────────────
+// Found live (2026-09-01, user-reported "the Balance column doesn't look
+// right"): confirmed against real data (Dronedog Studio, bank_account 9) —
+// 15 of 55 consecutive rows didn't reconcile (this row's balance != previous
+// row's balance + this row's amount), and EVERY mismatch fell on a date with
+// more than one transaction. Each transaction's own `balance` value is
+// correct (it comes straight from the bank statement) — the bug is display
+// ORDER: the query sorts by (date, id), but `id` is import/insert order,
+// which doesn't necessarily match the bank's own true intra-day sequence.
+// There's no column that captures the statement's original line order.
+//
+// Root-cause fix rather than a tiebreaker patch: since every transaction
+// already carries the bank's own stated running balance, that balance is
+// itself the one reliable signal of true sequence. A transaction's
+// "balance before" (balance - amount) must equal the PRECEDING
+// transaction's ending balance — so for any date with multiple
+// transactions, the true order can be reconstructed by chaining each one
+// to whichever other one its own balance math points to, rather than
+// trusting import order at all.
+//
+// Falls back to leaving a date-group's original order untouched whenever no
+// valid chain can be found (a genuine data gap, e.g. a transaction from
+// this account never imported into Leo) — never guesses a wrong order.
+function reorderSameDayByBalanceChain(transactions) {
+  const groups = [];
+  let currentGroup = [];
+  let currentDate = null;
+  for (const t of transactions) {
+    if (t.date !== currentDate) {
+      if (currentGroup.length) groups.push(currentGroup);
+      currentGroup = [];
+      currentDate = t.date;
+    }
+    currentGroup.push(t);
+  }
+  if (currentGroup.length) groups.push(currentGroup);
+
+  const result = [];
+  let priorBalance = null; // last known ending balance, carried from the previous date's group
+
+  for (const group of groups) {
+    if (group.length <= 1 || group.some(t => t.balance == null || t.amount == null)) {
+      // Nothing to reorder, or can't reliably chain (missing balance/amount data)
+      result.push(...group);
+      const lastWithBalance = [...group].reverse().find(t => t.balance != null);
+      if (lastWithBalance) priorBalance = lastWithBalance.balance;
+      continue;
+    }
+
+    const ordered = chainOrder(group, priorBalance);
+    result.push(...ordered);
+    priorBalance = ordered[ordered.length - 1].balance;
+  }
+
+  return result;
+}
+
+function chainOrder(group, knownStartBalance) {
+  const EPS = 0.015; // cents-level rounding tolerance
+
+  function tryChain(startBalance) {
+    const pool = [...group];
+    const chain = [];
+    let anchor = startBalance;
+    while (pool.length) {
+      const idx = pool.findIndex(t => Math.abs((t.balance - t.amount) - anchor) < EPS);
+      if (idx === -1) return null; // chain broke — no valid continuation
+      const [next] = pool.splice(idx, 1);
+      chain.push(next);
+      anchor = next.balance;
+    }
+    return chain;
+  }
+
+  if (knownStartBalance != null) {
+    const chain = tryChain(knownStartBalance);
+    if (chain) return chain;
+  }
+
+  // Unknown starting balance (first date-group in the result set) or the
+  // known anchor didn't produce a full chain — try each member as a
+  // candidate chain-start and keep the first that successfully chains
+  // through the rest of the group. Capped at a sane group size; a same-day
+  // transaction count beyond this is unheard of in practice and the O(n^3)
+  // exhaustive search isn't worth it — falls back to original order instead.
+  if (group.length <= 30) {
+    for (const candidate of group) {
+      const chain = tryChain(candidate.balance - candidate.amount);
+      if (chain) return chain;
+    }
+  }
+
+  // No valid chain found at all (real data gap/inconsistency) — leave as-is
+  // rather than guessing wrong.
+  return group;
+}
+
 /**
  * GET /api/bank/transactions
  * List bank transactions
@@ -480,10 +579,10 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
       if (error) throw new Error(error.message);
     }
 
-    const transactions = (data || []).map(t => ({
+    const transactions = reorderSameDayByBalanceChain((data || []).map(t => ({
       ...t,
       bank_account_name: t.bank_accounts?.name ?? null
-    }));
+    })));
 
     // count is the real total matching the filters, not just this page's row
     // length — dashboard.html's "Unmatched Transactions" stat tile reads this

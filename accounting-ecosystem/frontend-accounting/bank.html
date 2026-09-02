@@ -2199,6 +2199,42 @@ Click OK to simulate uploading a file.`;
             return 'R\u00a0' + Math.abs(num).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        // Flags each transaction with `_balanceMismatch`/`_balanceExpected` when
+        // its stated balance doesn't equal the immediately preceding transaction's
+        // balance plus its own amount — the same reconciliation check that found
+        // WJM Beleggings' data gap (2026-09-02): a bank statement's own balance
+        // column is normally self-consistent, so a mismatch here means either a
+        // transaction is missing from the import, or (rarer, now largely fixed
+        // server-side by reorderSameDayByBalanceChain) same-day rows are in the
+        // wrong order. Grouped by bank_account_id so accounts are never chained
+        // against each other when "All accounts" is selected. Mutates txns in
+        // place; assumes txns already arrive in the correct chain order from the
+        // API (date ascending) — does not re-sort.
+        function computeBalanceMismatches(txns) {
+            const byAccount = {};
+            for (const t of txns) {
+                (byAccount[t.bank_account_id] = byAccount[t.bank_account_id] || []).push(t);
+            }
+            for (const acctTxns of Object.values(byAccount)) {
+                let priorBalance = null;
+                for (const t of acctTxns) {
+                    if (priorBalance != null && t.balance != null && t.amount != null) {
+                        const expected = Math.round((priorBalance + t.amount) * 100) / 100;
+                        const actual   = Math.round(t.balance * 100) / 100;
+                        if (Math.abs(expected - actual) > 0.02) {
+                            t._balanceMismatch = true;
+                            t._balanceExpected = expected;
+                        } else {
+                            t._balanceMismatch = false;
+                        }
+                    } else {
+                        t._balanceMismatch = false;
+                    }
+                    if (t.balance != null) priorBalance = t.balance;
+                }
+            }
+        }
+
         function statusBadgeHtml(status) {
             const cls = { unmatched: 'status-unmatched', matched: 'status-matched', reconciled: 'status-reconciled' }[status] || 'status-unmatched';
             const label = { unmatched: 'Unmatched', matched: 'Matched', reconciled: 'Reconciled' }[status] || status;
@@ -2220,6 +2256,9 @@ Click OK to simulate uploading a file.`;
                 ? `<td class="transaction-amount amount-out">${formatAmount(txn.amount)}</td>`
                 : '<td style="color:#9aa0a6">—</td>';
             const bal = txn.balance != null ? formatAmount(txn.balance) : '—';
+            const balCell = txn._balanceMismatch
+                ? `<td style="color:#d93025;" title="Balance doesn't reconcile — expected ${formatAmount(txn._balanceExpected)} based on the previous transaction. Usually means a transaction is missing from the import.">⚠️ ${bal}</td>`
+                : `<td>${bal}</td>`;
             return `
             <tr data-txn-id="${txn.id}">
                 <td><input type="checkbox" class="checkbox" data-txn-id="txn-${txn.id}" onchange="updateBulkActions()"></td>
@@ -2230,7 +2269,7 @@ Click OK to simulate uploading a file.`;
                 </td>
                 ${moneyInCell}
                 ${moneyOutCell}
-                <td>${bal}</td>
+                ${balCell}
                 ${txn.status === 'unmatched'
                     ? `<td>
                     <select class="allocation-select" onchange="updateAllocation(this,'${txn.id}')" title="For a customer or supplier payment against a specific invoice, use Record Payment on the Customers/Suppliers page instead — allocating it here only posts to the control account, not the invoice.">
@@ -2395,6 +2434,12 @@ Click OK to simulate uploading a file.`;
                     if (typeFilter === 'out') return txn.amount < 0;
                     return true;
                 });
+                // Flag balance-chain mismatches BEFORE the reviewed/unreviewed tab
+                // split below, so the check always walks the true, complete
+                // chronological chain per bank account — never just whichever
+                // rows happen to be visible in the current tab.
+                computeBalanceMismatches(filtered);
+
                 // Keep full set for tab switching; _allTxnData holds current-tab slice
                 window._allTxnDataUnfiltered = filtered;
                 _allTxnData = currentTab === 'reviewed'
