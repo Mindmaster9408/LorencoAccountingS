@@ -48,13 +48,13 @@ async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, typ
     FROM journal_lines jl
     INNER JOIN journals j ON j.id = jl.journal_id
     WHERE j.company_id = $1
-      AND j.status = 'posted'${dateClauses}${segClause}${sourceClause}
+      AND j.status IN ('posted', 'reversed')${dateClauses}${segClause}${sourceClause}
   `;
   const countSql = `
     SELECT COUNT(DISTINCT j.id)::int AS count
     FROM journals j
     WHERE j.company_id = $1
-      AND j.status = 'posted'${dateClauses}${sourceClause}
+      AND j.status IN ('posted', 'reversed')${dateClauses}${sourceClause}
   `;
 
   const [linesResult, countResult] = await Promise.all([
@@ -180,7 +180,7 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
             `SELECT jl.debit, jl.credit
              FROM journal_lines jl
              INNER JOIN journals j ON j.id = jl.journal_id
-             WHERE j.company_id = $1 AND j.status = 'posted'
+             WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed')
                AND j.date < $2 AND jl.account_id = $3${glSourceClause}`,
             obParams
           )
@@ -191,7 +191,7 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
                 j.description AS journal_description, j.source_type
          FROM journal_lines jl
          INNER JOIN journals j ON j.id = jl.journal_id
-         WHERE j.company_id = $1 AND j.status = 'posted'
+         WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed')
            AND jl.account_id = $2${periodDateClauses}${glSourceClause}`,
         periodParams
       ),
@@ -273,7 +273,7 @@ router.get('/bank-reconciliation', authenticate, hasPermission('report.view'), a
          FROM journal_lines jl
          INNER JOIN journals j ON j.id = jl.journal_id
          WHERE j.company_id = $1
-           AND j.status = 'posted'
+           AND j.status IN ('posted', 'reversed')
            AND j.date <= $2
            AND jl.account_id = $3`,
         [req.user.companyId, date, bankAccount.ledger_account_id]
@@ -947,7 +947,7 @@ async function buildARReconciliation(companyId, asAt) {
        FROM journal_lines jl
        INNER JOIN journals j ON j.id = jl.journal_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND j.date <= $2
          AND jl.account_id = $3`,
       [companyId, asAt, acct.id]
@@ -962,7 +962,7 @@ async function buildARReconciliation(companyId, asAt) {
        FROM journal_lines jl
        INNER JOIN journals j ON j.id = jl.journal_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND j.date <= $2
          AND jl.account_id = $3
          AND (j.source_type = 'manual' OR j.source_type IS NULL)`,
@@ -1082,7 +1082,7 @@ async function buildAPReconciliation(companyId, asAt) {
        FROM journal_lines jl
        INNER JOIN journals j ON j.id = jl.journal_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND j.date <= $2
          AND jl.account_id = $3`,
       [companyId, asAt, acct.id]
@@ -1097,7 +1097,7 @@ async function buildAPReconciliation(companyId, asAt) {
        FROM journal_lines jl
        INNER JOIN journals j ON j.id = jl.journal_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND j.date <= $2
          AND jl.account_id = $3
          AND (j.source_type = 'manual' OR j.source_type IS NULL)`,
