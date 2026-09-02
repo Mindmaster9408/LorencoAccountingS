@@ -29,12 +29,25 @@
 -- there is no data to migrate/reconcile -- this is purely a constraint fix.
 -- =============================================================================
 
-ALTER TABLE bank_transactions
-  DROP CONSTRAINT IF EXISTS bank_transactions_allocated_account_id_fkey;
+-- Wrapped in a DO block so this migration is safe to re-run — the CI
+-- pipeline (.github/workflows/apply-migrations.yml) re-executes every file
+-- in this folder on every push, forever, with no tracking of what already
+-- ran. Plain `ADD CONSTRAINT` has no `IF NOT EXISTS` form in Postgres, so
+-- without this guard the second-ever run would error "constraint already
+-- exists" and (via the workflow's `set -e`) permanently halt every
+-- migration numbered above this one on every future push.
+DO $$
+BEGIN
+  ALTER TABLE bank_transactions
+    DROP CONSTRAINT IF EXISTS bank_transactions_allocated_account_id_fkey;
 
-ALTER TABLE bank_transactions
-  ADD CONSTRAINT bank_transactions_allocated_account_id_fkey
-  FOREIGN KEY (allocated_account_id) REFERENCES accounts(id);
+  ALTER TABLE bank_transactions
+    ADD CONSTRAINT bank_transactions_allocated_account_id_fkey
+    FOREIGN KEY (allocated_account_id) REFERENCES accounts(id);
+EXCEPTION
+  WHEN duplicate_object THEN
+    NULL; -- constraint already correct from a previous run — nothing to do
+END $$;
 
 -- ─── Verification ─────────────────────────────────────────────────────────────
 -- Should show the constraint now pointing at accounts, not chart_of_accounts:
