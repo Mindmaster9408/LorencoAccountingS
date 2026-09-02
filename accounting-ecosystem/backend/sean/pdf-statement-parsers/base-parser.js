@@ -248,7 +248,22 @@ class BaseParser {
       /^=+$/.test(line) ||
       // Header rows with "Debit Credit Balance" column names
       /\bdebit\s+credit\s+balance\b/i.test(line) ||
-      /\bamount\s+balance\b/i.test(line)
+      /\bamount\s+balance\b/i.test(line) ||
+      // Account-summary / footer lines mentioning VAT (e.g. "VAT on Bank
+      // Charges 10.94", "VAT Registration Number ..."). Found live
+      // (2026-09-02, WJM Beleggings): a VAT-summary figure got merged into
+      // the LAST transaction line on a statement via joinContinuationLines
+      // (nothing here previously recognised it as noise), corrupting that
+      // transaction's extracted balance with the VAT total instead. Safe to
+      // match broadly — a real dated transaction line is already captured
+      // by the `isDateLine(line)` check earlier in joinContinuationLines'
+      // `||` chain before isPageNoise() is ever consulted, so this can never
+      // misfire against a genuine transaction whose description happens to
+      // mention VAT.
+      /^\s*vat\b/i.test(line) ||
+      /\bvat\s+(?:on|reg(?:istration)?|no\.?|number|charged|payable)\b/i.test(line) ||
+      /\byour\s+pricing\s+plan\b/i.test(line) ||
+      /\bcredit\s+interest\s+rate\b/i.test(line)
     );
   }
 
