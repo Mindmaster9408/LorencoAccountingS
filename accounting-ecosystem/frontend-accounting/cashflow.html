@@ -440,7 +440,7 @@
                 <input type="date" id="dateTo">
             </div>
             <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
-            <button type="button" class="btn-secondary" disabled title="Coming soon">Export PDF</button>
+            <button type="button" class="btn-secondary" id="exportPdfBtn" onclick="exportPdf()">Export PDF</button>
             <button type="button" class="btn-secondary" disabled title="Coming soon">Export Excel</button>
         </div>
         <div id="errorBanner" class="error-banner cf-hidden"></div>
@@ -596,6 +596,36 @@
             } finally {
                 btn.disabled    = false;
                 btn.textContent = 'Generate Report';
+            }
+        }
+
+        async function exportPdf() {
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate   = document.getElementById('dateTo').value;
+            if (!fromDate || !toDate) { showError('Please select From Date and To Date.'); return; }
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+            try {
+                const url = `/api/accounting/reports/cash-flow/pdf?fromDate=${fromDate}&toDate=${toDate}`;
+                const res = await fetch(url, { headers: getAuthHeaders() });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(blob),
+                    download: `cash-flow-${fromDate}-to-${toDate}.pdf`
+                });
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (e) {
+                showError('Failed to generate PDF: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
             }
         }
     </script>

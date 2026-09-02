@@ -23,7 +23,7 @@ const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const { generateInvoicePdf } = require('../services/invoicePdfService');
-const { generateAgingPdf } = require('../services/reportPdfService');
+const { generateAgingPdf, generateAnalysisPdf } = require('../services/reportPdfService');
 const { sendEmail } = require('../../../shared/services/email');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -450,6 +450,75 @@ router.get('/sales-analysis', authenticate, hasPermission('ar.invoice.view'), as
     res.json({ byCustomer, byAccount, monthlyTrend, totals });
   } catch (err) {
     console.error('GET /customer-invoices/sales-analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /sales-analysis/pdf
+ * Re-fetches via the same query shape as /sales-analysis above (kept as a
+ * second, independent query for the same reason as purchase-analysis/pdf —
+ * see that route's comment).
+ */
+router.get('/sales-analysis/pdf', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const { fromDate, toDate } = req.query;
+
+  try {
+    let q = supabase
+      .from('customer_invoices')
+      .select('id, customer_id, date, subtotal, total_amount')
+      .eq('company_id', companyId)
+      .not('status', 'in', '("draft","void","cancelled")');
+    if (fromDate) q = q.gte('date', fromDate);
+    if (toDate)   q = q.lte('date', toDate);
+    const { data: rawInvoices, error } = await q;
+    if (error) throw new Error(error.message);
+    const invoices = await attachCustomerNames(companyId, rawInvoices || []);
+
+    const byCustomerMap = {};
+    const byMonthMap = {};
+    for (const inv of invoices) {
+      const revenue = parseFloat(inv.subtotal) || 0;
+      const custKey = inv.customer_id ? `id:${inv.customer_id}` : 'unknown';
+      if (!byCustomerMap[custKey]) byCustomerMap[custKey] = { name: inv.customer_name, invoiceCount: 0, amount: 0 };
+      byCustomerMap[custKey].invoiceCount++;
+      byCustomerMap[custKey].amount = Math.round((byCustomerMap[custKey].amount + revenue) * 100) / 100;
+      const monthKey = (inv.date || '').slice(0, 7);
+      if (monthKey) byMonthMap[monthKey] = Math.round(((byMonthMap[monthKey] || 0) + revenue) * 100) / 100;
+    }
+
+    let byAccount = [];
+    if (invoices.length) {
+      const invoiceIds = invoices.map(i => i.id);
+      const { data: lines } = await supabase
+        .from('customer_invoice_lines')
+        .select('line_total, account_id, accounts!account_id(code, name)')
+        .in('invoice_id', invoiceIds);
+      const byAccountMap = {};
+      (lines || []).forEach(l => {
+        const key = l.account_id || 'unassigned';
+        if (!byAccountMap[key]) byAccountMap[key] = { accountCode: l.accounts?.code || null, accountName: l.accounts?.name || 'Unassigned', amount: 0 };
+        byAccountMap[key].amount = Math.round((byAccountMap[key].amount + (parseFloat(l.line_total) || 0)) * 100) / 100;
+      });
+      byAccount = Object.values(byAccountMap).sort((a, b) => b.amount - a.amount);
+    }
+
+    const byEntity = Object.values(byCustomerMap).sort((a, b) => b.amount - a.amount);
+    const monthlyTrend = Object.entries(byMonthMap).sort(([a], [b]) => a.localeCompare(b)).map(([monthKey, amount]) => ({ monthKey, amount }));
+    const totals = { invoiceCount: invoices.length, amount: Math.round(byEntity.reduce((s, c) => s + c.amount, 0) * 100) / 100 };
+
+    const { data: company } = await supabase.from('companies').select('company_name, trading_name, registration_number, vat_number').eq('id', companyId).maybeSingle();
+    const pdfBuffer = await generateAnalysisPdf({
+      company: company || {}, title: 'SALES ANALYSIS', entityLabel: 'CUSTOMER', amountLabel: 'REVENUE',
+      fromDate: fromDate || '—', toDate: toDate || '—', byEntity, byAccount, monthlyTrend, totals,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="sales-analysis.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('GET /customer-invoices/sales-analysis/pdf error:', err);
     res.status(500).json({ error: err.message });
   }
 });

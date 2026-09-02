@@ -441,7 +441,7 @@
                 <input type="date" id="dateTo">
             </div>
             <button type="button" class="btn-primary" id="generateBtn" onclick="generateReport()">Generate Report</button>
-            <button type="button" class="btn-secondary" disabled title="Coming soon">Export PDF</button>
+            <button type="button" class="btn-secondary" id="exportPdfBtn" onclick="exportPdf()">Export PDF</button>
             <button type="button" class="btn-secondary" disabled title="Coming soon">Export Excel</button>
         </div>
         <div id="errorBanner" class="error-banner an-hidden"></div>
@@ -619,6 +619,39 @@
             } finally {
                 btn.disabled    = false;
                 btn.textContent = 'Generate Report';
+            }
+        }
+
+        async function exportPdf() {
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate   = document.getElementById('dateTo').value;
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+            try {
+                let url = '/api/accounting/suppliers/purchase-analysis/pdf';
+                const qs = [];
+                if (fromDate) qs.push('fromDate=' + fromDate);
+                if (toDate)   qs.push('toDate=' + toDate);
+                if (qs.length) url += '?' + qs.join('&');
+                const res = await fetch(url, { headers: getAuthHeaders() });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(blob),
+                    download: 'purchase-analysis.pdf'
+                });
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (e) {
+                showError('Failed to generate PDF: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
             }
         }
 

@@ -21,7 +21,7 @@ const JournalService     = require('../services/journalService');
 const InvoiceOcrService  = require('../../../sean/invoice-ocr-service');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const AuditLogger        = require('../services/auditLogger');
-const { generateAgingPdf } = require('../services/reportPdfService');
+const { generateAgingPdf, generateAnalysisPdf } = require('../services/reportPdfService');
 
 // ── Multer: in-memory file upload for OCR invoice scanning ────────────────────
 const invoiceUpload = multer({
@@ -2356,6 +2356,76 @@ router.get('/purchase-analysis', authenticate, hasPermission('ap.invoice.view'),
     res.json({ bySupplier, byAccount, monthlyTrend, totals });
   } catch (err) {
     console.error('GET /suppliers/purchase-analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /purchase-analysis/pdf
+ * Re-fetches via the same query shape as /purchase-analysis above (kept as
+ * a second, independent query rather than refactoring that route into a
+ * shared helper — this report's aggregation is short enough that the
+ * duplication risk is low and it avoids a larger diff on a route with real
+ * production traffic).
+ */
+router.get('/purchase-analysis/pdf', authenticate, hasPermission('ap.invoice.view'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const { fromDate, toDate } = req.query;
+
+  try {
+    let q = supabase
+      .from('supplier_invoices')
+      .select('id, supplier_id, date, subtotal, suppliers!supplier_id(name)')
+      .eq('company_id', companyId)
+      .not('status', 'in', '("draft","void","cancelled")');
+    if (fromDate) q = q.gte('date', fromDate);
+    if (toDate)   q = q.lte('date', toDate);
+    const { data: invoices, error } = await q;
+    if (error) throw new Error(error.message);
+
+    const bySupplierMap = {};
+    const byMonthMap = {};
+    for (const inv of invoices || []) {
+      const spend = parseFloat(inv.subtotal) || 0;
+      const supKey = inv.supplier_id ? `id:${inv.supplier_id}` : 'unknown';
+      if (!bySupplierMap[supKey]) bySupplierMap[supKey] = { name: inv.suppliers?.name || 'Unknown', invoiceCount: 0, amount: 0 };
+      bySupplierMap[supKey].invoiceCount++;
+      bySupplierMap[supKey].amount = Math.round((bySupplierMap[supKey].amount + spend) * 100) / 100;
+      const monthKey = (inv.date || '').slice(0, 7);
+      if (monthKey) byMonthMap[monthKey] = Math.round(((byMonthMap[monthKey] || 0) + spend) * 100) / 100;
+    }
+
+    let byAccount = [];
+    if ((invoices || []).length) {
+      const invoiceIds = invoices.map(i => i.id);
+      const { data: lines } = await supabase
+        .from('supplier_invoice_lines')
+        .select('line_total, account_id, accounts!account_id(code, name)')
+        .in('invoice_id', invoiceIds);
+      const byAccountMap = {};
+      (lines || []).forEach(l => {
+        const key = l.account_id || 'unassigned';
+        if (!byAccountMap[key]) byAccountMap[key] = { accountCode: l.accounts?.code || null, accountName: l.accounts?.name || 'Unassigned', amount: 0 };
+        byAccountMap[key].amount = Math.round((byAccountMap[key].amount + (parseFloat(l.line_total) || 0)) * 100) / 100;
+      });
+      byAccount = Object.values(byAccountMap).sort((a, b) => b.amount - a.amount);
+    }
+
+    const byEntity = Object.values(bySupplierMap).sort((a, b) => b.amount - a.amount);
+    const monthlyTrend = Object.entries(byMonthMap).sort(([a], [b]) => a.localeCompare(b)).map(([monthKey, amount]) => ({ monthKey, amount }));
+    const totals = { invoiceCount: (invoices || []).length, amount: Math.round(byEntity.reduce((s, c) => s + c.amount, 0) * 100) / 100 };
+
+    const { data: company } = await supabase.from('companies').select('company_name, trading_name, registration_number, vat_number').eq('id', companyId).maybeSingle();
+    const pdfBuffer = await generateAnalysisPdf({
+      company: company || {}, title: 'PURCHASE ANALYSIS', entityLabel: 'SUPPLIER', amountLabel: 'SPEND',
+      fromDate: fromDate || '—', toDate: toDate || '—', byEntity, byAccount, monthlyTrend, totals,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="purchase-analysis.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('GET /suppliers/purchase-analysis/pdf error:', err);
     res.status(500).json({ error: err.message });
   }
 });

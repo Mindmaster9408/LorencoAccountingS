@@ -8,6 +8,7 @@ const {
   generateBalanceSheetPdf,
   generateProfitLossPdf,
   generateGeneralLedgerPdf,
+  generateCashFlowPdf,
 } = require('../services/reportPdfService');
 
 // Shared by every /*/pdf route below — same company fields, same lookup.
@@ -681,13 +682,7 @@ router.get('/profit-loss/pdf', authenticate, hasPermission('report.view'), async
  *     classification didn't account for (e.g. missing sub_type/reporting_group) —
  *     surfaced honestly rather than silently shown as reconciled.
  */
-router.get('/cash-flow', authenticate, hasPermission('report.view'), async (req, res) => {
-  try {
-    const { fromDate, toDate } = req.query;
-    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
-
-    const companyId = req.user.companyId;
-
+async function computeCashFlow(companyId, fromDate, toDate) {
     // Net income + depreciation add-back, from the period's posted P&L activity.
     const { accounts: plAccounts, lines: plLines } = await fetchAccountBalances(companyId, {
       fromDate, toDate, types: ['income', 'expense'],
@@ -764,7 +759,7 @@ router.get('/cash-flow', authenticate, hasPermission('report.view'), async (req,
     openingCash = Math.round(openingCash * 100) / 100;
     closingCash = Math.round(closingCash * 100) / 100;
 
-    res.json({
+    return {
       fromDate, toDate,
       netIncome: Math.round(netIncome * 100) / 100,
       depreciationAddBack: Math.round(depreciationAddBack * 100) / 100,
@@ -778,12 +773,39 @@ router.get('/cash-flow', authenticate, hasPermission('report.view'), async (req,
       openingCash, closingCash,
       bankCashMovement,
       isBalanced: Math.abs(netChangeInCash - bankCashMovement) < 0.01,
-      reportTruth: getBadge('posted_gl_only'),
-    });
+    };
+}
 
+router.get('/cash-flow', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.query;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+    const result = await computeCashFlow(req.user.companyId, fromDate, toDate);
+    res.json({ ...result, reportTruth: getBadge('posted_gl_only') });
   } catch (error) {
     console.error('Error generating cash flow statement:', error);
     res.status(500).json({ error: 'Failed to generate cash flow statement' });
+  }
+});
+
+/**
+ * GET /api/reports/cash-flow/pdf
+ * Same computeCashFlow() as /cash-flow above, rendered as a downloadable PDF.
+ */
+router.get('/cash-flow/pdf', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate } = req.query;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+    const result = await computeCashFlow(req.user.companyId, fromDate, toDate);
+    const company = await fetchCompanyForPdf(req.user.companyId);
+    const pdfBuffer = await generateCashFlowPdf({ company, ...result });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="cash-flow-${fromDate}-to-${toDate}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating cash flow PDF:', error);
+    res.status(500).json({ error: 'Failed to generate cash flow PDF' });
   }
 });
 

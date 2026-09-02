@@ -410,12 +410,160 @@ function generateGeneralLedgerPdf({ company, account, fromDate, toDate, openingB
   });
 }
 
+/**
+ * @param {object} params.company
+ * @param {string} params.fromDate, params.toDate
+ * @param {number} params.netIncome, params.depreciationAddBack, params.openingCash, params.closingCash
+ * @param {object[]} params.operatingWorkingCapital, params.investing, params.financing - [{code, name, movement}]
+ * @param {object} params.totals - {operating, investing, financing, netChangeInCash}
+ * @returns {Promise<Buffer>}
+ */
+function generateCashFlowPdf({ company, fromDate, toDate, netIncome, depreciationAddBack, operatingWorkingCapital, investing, financing, totals, openingCash, closingCash }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 45, info: { Title: 'Cash Flow Statement', Author: company.trading_name || company.company_name || 'Ledger Leo' } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const L = doc.page.margins.left;
+      const W = doc.page.width - L - doc.page.margins.right;
+      const nameW = W - 130;
+      let y = drawReportHeader(doc, company, 'CASH FLOW STATEMENT', `${fmtDate(fromDate)} — ${fmtDate(toDate)}`);
+
+      const line = (label, value, opts = {}) => {
+        if (y > doc.page.height - 60) { doc.addPage(); y = doc.page.margins.top; }
+        if (opts.fill) doc.rect(L, y, W, 16).fill(opts.fill);
+        doc.fontSize(opts.bold ? 9 : 8).font(opts.bold ? 'Helvetica-Bold' : (opts.italic ? 'Helvetica-Oblique' : 'Helvetica'))
+          .fillColor(opts.color || DARKTEXT)
+          .text(label, L + (opts.indent || 8), y + 4, { width: nameW - (opts.indent || 8), lineBreak: false });
+        if (value != null) {
+          doc.fontSize(opts.bold ? 9 : 8).font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fillColor(opts.color || DARKTEXT)
+            .text(fmtMoney(value), L + nameW, y + 4, { width: 130 - 8, align: 'right', lineBreak: false });
+        }
+        y += 16;
+      };
+
+      y = drawSectionHeader(doc, L, W, y, 'OPERATING ACTIVITIES');
+      line('Net Income', netIncome);
+      line('Depreciation & Amortisation', depreciationAddBack);
+      for (const a of operatingWorkingCapital) line(`${a.code}  ${a.name}`, a.movement, { indent: 16 });
+      line('Net Cash from Operating Activities', totals.operating, { bold: true, fill: '#e5e7eb' });
+      y += 6;
+
+      y = drawSectionHeader(doc, L, W, y, 'INVESTING ACTIVITIES');
+      for (const a of investing) line(`${a.code}  ${a.name}`, a.movement, { indent: 16 });
+      if (!investing.length) line('No investing activity in this period', null, { italic: true, color: MUTED });
+      line('Net Cash from Investing Activities', totals.investing, { bold: true, fill: '#e5e7eb' });
+      y += 6;
+
+      y = drawSectionHeader(doc, L, W, y, 'FINANCING ACTIVITIES');
+      for (const a of financing) line(`${a.code}  ${a.name}`, a.movement, { indent: 16 });
+      if (!financing.length) line('No financing activity in this period', null, { italic: true, color: MUTED });
+      line('Net Cash from Financing Activities', totals.financing, { bold: true, fill: '#e5e7eb' });
+      y += 10;
+
+      line('Net Change in Cash', totals.netChangeInCash, { bold: true, fill: '#111827', color: '#ffffff' });
+      line('Opening Cash Balance', openingCash);
+      line('Closing Cash Balance', closingCash, { bold: true });
+
+      doc.end();
+    } catch (err) { reject(err); }
+  });
+}
+
+/**
+ * Shared by Purchase Analysis and Sales Analysis — same shape (an entity
+ * breakdown, an account breakdown, a monthly trend), different labels.
+ * @param {object} params.company
+ * @param {string} params.title - 'PURCHASE ANALYSIS' | 'SALES ANALYSIS'
+ * @param {string} params.entityLabel - 'SUPPLIER' | 'CUSTOMER'
+ * @param {string} params.amountLabel - 'SPEND' | 'REVENUE'
+ * @param {string} params.fromDate, params.toDate
+ * @param {object[]} params.byEntity - [{name, invoiceCount, amount}]
+ * @param {object[]} params.byAccount - [{accountCode, accountName, amount}]
+ * @param {object[]} params.monthlyTrend - [{monthKey, amount}]
+ * @param {object} params.totals - {invoiceCount, amount}
+ * @returns {Promise<Buffer>}
+ */
+function generateAnalysisPdf({ company, title, entityLabel, amountLabel, fromDate, toDate, byEntity, byAccount, monthlyTrend, totals }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 45, info: { Title: title, Author: company.trading_name || company.company_name || 'Ledger Leo' } });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const L = doc.page.margins.left;
+      const W = doc.page.width - L - doc.page.margins.right;
+      let y = drawReportHeader(doc, company, title, `${fmtDate(fromDate)} — ${fmtDate(toDate)}`);
+
+      const table = (heading, cols, rows, valueKeys) => {
+        if (!rows.length) return;
+        if (y > doc.page.height - 100) { doc.addPage(); y = doc.page.margins.top; }
+        y = drawSectionHeader(doc, L, W, y, heading);
+        doc.rect(L, y, W, 16).fill(ACCENT);
+        let x = L;
+        for (const col of cols) {
+          doc.fontSize(7).font('Helvetica-Bold').fillColor('#ffffff').text(col.label, x + 6, y + 4, { width: col.width - 12, align: col.align || 'left', lineBreak: false });
+          x += col.width;
+        }
+        y += 16;
+        let zebra = false;
+        for (const row of rows) {
+          if (y > doc.page.height - 60) { doc.addPage(); y = doc.page.margins.top; }
+          if (zebra) doc.rect(L, y, W, 15).fill('#fafafa');
+          x = L;
+          for (let i = 0; i < cols.length; i++) {
+            const raw = valueKeys[i](row);
+            doc.fontSize(8).font('Helvetica').fillColor(DARKTEXT)
+              .text(typeof raw === 'number' ? fmtMoney(raw) : raw, x + 6, y + 3, { width: cols[i].width - 12, align: cols[i].align || 'left', lineBreak: false });
+            x += cols[i].width;
+          }
+          y += 15;
+          zebra = !zebra;
+        }
+        y += 10;
+      };
+
+      table(`BY ${entityLabel}`, [
+        { label: entityLabel, width: W * 0.5 },
+        { label: 'INVOICES', width: W * 0.2, align: 'right' },
+        { label: amountLabel, width: W * 0.3, align: 'right' },
+      ], byEntity, [r => r.name, r => String(r.invoiceCount), r => r.amount]);
+
+      table('BY ACCOUNT', [
+        { label: 'CODE', width: W * 0.15 },
+        { label: 'ACCOUNT', width: W * 0.55 },
+        { label: amountLabel, width: W * 0.3, align: 'right' },
+      ], byAccount, [r => r.accountCode || '—', r => r.accountName, r => r.amount]);
+
+      table('MONTHLY TREND', [
+        { label: 'MONTH', width: W * 0.7 },
+        { label: amountLabel, width: W * 0.3, align: 'right' },
+      ], monthlyTrend, [r => r.monthKey, r => r.amount]);
+
+      if (y > doc.page.height - 60) { doc.addPage(); y = doc.page.margins.top; }
+      doc.rect(L, y, W, 20).fill('#111827');
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
+      doc.text(`TOTAL (${totals.invoiceCount} invoices)`, L + 8, y + 6, { width: W - 150, lineBreak: false });
+      doc.text(fmtMoney(totals.amount), L + W - 138, y + 6, { width: 130, align: 'right', lineBreak: false });
+
+      doc.end();
+    } catch (err) { reject(err); }
+  });
+}
+
 module.exports = {
   generateTrialBalancePdf,
   generateBalanceSheetPdf,
   generateProfitLossPdf,
   generateAgingPdf,
   generateGeneralLedgerPdf,
+  generateCashFlowPdf,
+  generateAnalysisPdf,
   fmtMoney,
   fmtDate,
 };
