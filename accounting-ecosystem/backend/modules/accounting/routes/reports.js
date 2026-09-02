@@ -3,6 +3,7 @@ const { supabase } = require('../../../config/database');
 const db = require('../config/database'); // direct pg Pool — avoids .in() URL-length limits
 const { authenticate, hasPermission } = require('../middleware/auth');
 const { getBadge } = require('../services/reportTruthBadge');
+const { generateTrialBalancePdf } = require('../services/reportPdfService');
 
 const router = express.Router();
 
@@ -143,6 +144,46 @@ router.get('/trial-balance', authenticate, hasPermission('report.view'), async (
   } catch (error) {
     console.error('Error generating trial balance:', error);
     res.status(500).json({ error: 'Failed to generate trial balance' });
+  }
+});
+
+/**
+ * GET /api/reports/trial-balance/pdf
+ * Same data/logic as /trial-balance above, rendered as a downloadable PDF
+ * instead of JSON. Kept as its own route (not a `?format=pdf` flag on the
+ * JSON one) so the response Content-Type is unambiguous and cacheable
+ * correctly by any intermediary.
+ */
+router.get('/trial-balance/pdf', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate, journalSourceMode: rawMode } = req.query;
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ error: 'fromDate and toDate are required' });
+    }
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+
+    const { accounts, lines } = await fetchAccountBalances(req.user.companyId, { fromDate, toDate, journalSourceMode });
+    const agg = aggregateLines(lines);
+    const result = accounts.map(a => {
+      const d = parseFloat(agg[a.id]?.debit  || 0);
+      const c = parseFloat(agg[a.id]?.credit || 0);
+      return { ...a, balance: d - c };
+    }).sort((a, b) => a.code.localeCompare(b.code));
+
+    const { data: company } = await supabase
+      .from('companies')
+      .select('company_name, trading_name, registration_number, vat_number')
+      .eq('id', req.user.companyId)
+      .maybeSingle();
+
+    const pdfBuffer = await generateTrialBalancePdf({ company: company || {}, fromDate, toDate, accounts: result });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="trial-balance-${fromDate}-to-${toDate}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating trial balance PDF:', error);
+    res.status(500).json({ error: 'Failed to generate trial balance PDF' });
   }
 });
 

@@ -467,6 +467,7 @@
             </div>
             <button class="btn-primary" onclick="generateReport()">Generate Report</button>
             <button class="btn-secondary" onclick="exportExcel()">Export CSV</button>
+            <button class="btn-secondary" id="exportPdfBtn" onclick="exportPdf()">Export PDF</button>
         </div>
         <div id="tbError" style="display:none;background:#fce4ec;color:#c62828;padding:10px 16px;border-radius:8px;margin:0 0 12px;font-weight:600;font-size:13px;"></div>
         <div id="truthBadgeWrap" class="truth-badge-wrap"></div>
@@ -856,19 +857,55 @@
         function exportExcel() {
             if (!lastResult) { alert('Generate the report first.'); return; }
             let csv = 'Account Code,Account Name,Debit,Credit\n';
+            let csvDr = 0, csvCr = 0;
             (lastResult.accounts || []).forEach(acc => {
                 const bal = parseFloat(acc.balance || 0);
                 const dr = bal > 0 ? bal : 0;
                 const cr = bal < 0 ? -bal : 0;
+                csvDr += dr;
+                csvCr += cr;
                 csv += `"${acc.code}","${acc.name}",${dr ? dr.toFixed(2) : ''},${cr ? cr.toFixed(2) : ''}\n`;
             });
-            const s = lastResult.summary || {};
-            csv += `"TOTAL","",${(s.total ? s.total.debit : 0).toFixed(2)},${(s.total ? s.total.credit : 0).toFixed(2)}\n`;
+            // Sum of the same dr/cr values just written above — not the backend's
+            // gross summary.total (see 2026-09-02 fix to the on-screen render for
+            // why those two numbers can differ and which one is right here).
+            csv += `"TOTAL","",${csvDr.toFixed(2)},${csvCr.toFixed(2)}\n`;
             const a = Object.assign(document.createElement('a'), {
                 href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
                 download: 'trial-balance.csv'
             });
             a.click();
+        }
+
+        async function exportPdf() {
+            if (!lastResult) { alert('Generate the report first.'); return; }
+            const fromDate   = document.getElementById('tbFromDate').value;
+            const toDate     = document.getElementById('tbToDate').value;
+            const sourceMode = document.getElementById('tbSourceMode').value;
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+            try {
+                const url = `/api/accounting/reports/trial-balance/pdf?fromDate=${fromDate}&toDate=${toDate}&journalSourceMode=${sourceMode}`;
+                const res = await fetch(url, { headers: authH() });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(blob),
+                    download: `trial-balance-${fromDate}-to-${toDate}.pdf`
+                });
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (err) {
+                alert('Failed to generate PDF: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
         }
 
         // Auto-load on page ready
