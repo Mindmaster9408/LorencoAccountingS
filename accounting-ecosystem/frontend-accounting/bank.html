@@ -4311,7 +4311,16 @@ Click OK to simulate uploading a file.`;
             if (!modal) return;
             document.getElementById('bankActionModalTitle').textContent = title;
             document.getElementById('bankActionModalBody').innerHTML = detailsHtml || '';
-            document.getElementById('bankActionModalConfirm').textContent = confirmText;
+            const confirmBtnEl = document.getElementById('bankActionModalConfirm');
+            confirmBtnEl.textContent = confirmText;
+            // This modal is one shared element reused for every action. A
+            // successful confirm previously left it disabled forever — only the
+            // catch/error path re-enabled it — so the modal silently did nothing
+            // on every action after the first successful one (found live,
+            // 2026-09-02: "works once, then never again until page reload").
+            // Always reset to enabled on open, regardless of how it was left.
+            confirmBtnEl.disabled = false;
+            document.getElementById('bankActionModalCancel').disabled = false;
             setBankActionModalError('');
             modal.style.display = 'flex';
             document.body.style.overflow = 'hidden';
@@ -4347,6 +4356,12 @@ Click OK to simulate uploading a file.`;
             document.body.style.overflow = '';
             setBankActionModalError('');
             window._bankActionModalConfirmCallback = null;
+            // Belt-and-braces alongside the reset in openBankActionModal() —
+            // never leave this shared button stuck disabled for the next action.
+            const confirmBtnEl = document.getElementById('bankActionModalConfirm');
+            const cancelBtnEl  = document.getElementById('bankActionModalCancel');
+            if (confirmBtnEl) confirmBtnEl.disabled = false;
+            if (cancelBtnEl)  cancelBtnEl.disabled  = false;
         }
 
         async function confirmBankAction() {
