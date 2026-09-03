@@ -1475,6 +1475,33 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   </div>
 </div>
 
+<!-- Issue Materials — 2026-09-01, was entirely missing. Completing a WO
+     requires issued_qty >= required_qty per material (work-orders.js's
+     /:id/complete pre-check), but nothing anywhere called the already-built
+     backend POST /:id/issue-materials — every completion attempt 422'd,
+     silently to the user, no matter what quantity/wastage was entered,
+     because materials were reserved (via Release) but never actually issued.
+     See openIssueModal()/confirmIssueMaterials() below. -->
+<div class="modal-overlay" id="woIssueModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Issue Materials</h3>
+      <button class="modal-close" onclick="closeModal('woIssueModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:14px;">
+        Deducts these quantities from stock and marks them issued to this work order.
+        Required for Complete to accept the finished-goods receipt.
+      </div>
+      <div id="woIssueRows"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('woIssueModal')">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="confirmIssueMaterials()">Issue Materials</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- PO RECEIVE MODAL -->
 <div class="modal-overlay" id="poReceiveModal">
   <div class="modal modal-lg">
@@ -3893,7 +3920,16 @@ async function viewWo(id) {
     let actionHtml = '';
     if (w.status==='draft')       actionHtml = `<button class="btn btn-primary btn-sm" onclick="releaseWo(${w.id}); closeModal('woDetailModal')">Release</button>`;
     if (w.status==='released')    actionHtml = `<button class="btn btn-primary btn-sm" onclick="startWo(${w.id}); closeModal('woDetailModal')">Start Production</button>`;
-    if (w.status==='in_progress') actionHtml = `<button class="btn btn-success btn-sm" onclick="closeModal('woDetailModal'); openCompleteModal(${w.id},${w.quantity_to_produce})">Receive & Complete</button>`;
+    if (w.status==='in_progress') {
+      // Only offer Issue Materials while something is actually still owed —
+      // once fully issued, skip straight to Complete (matches the pattern
+      // release/start already use: only show the action that applies now).
+      const stillOwed = (w.materials||[]).some(m => parseFloat(m.required_qty||0) - parseFloat(m.issued_qty||0) > 0.0001);
+      if (stillOwed) {
+        actionHtml = `<button class="btn btn-primary btn-sm" onclick="closeModal('woDetailModal'); openIssueModal(${w.id})">Issue Materials</button>`;
+      }
+      actionHtml += ` <button class="btn btn-success btn-sm" onclick="closeModal('woDetailModal'); openCompleteModal(${w.id},${w.quantity_to_produce})">Receive & Complete</button>`;
+    }
     if (['draft','released','in_progress'].includes(w.status)) {
       actionHtml += ` <button class="btn btn-danger btn-sm" onclick="cancelWo(${w.id}); closeModal('woDetailModal')">Cancel WO</button>`;
     }
@@ -3975,6 +4011,58 @@ async function cancelWo(id) {
     await apiFetch('/work-orders/'+id+'/cancel', { method:'POST' });
     showToast('Work order cancelled.');
     await loadWorkOrders(); await loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+let _woIssueId = null;
+
+// 2026-09-01 — see the modal comment above and work-orders.js's own
+// "PRE-COMPLETION SAFETY CHECK" comment: /:id/complete 422s whenever any
+// material's issued_qty is still short of required_qty, and nothing in
+// this file ever called /:id/issue-materials before now. Fetches fresh
+// (not the cached detail-view data) so the Remaining figures are always
+// current, per the same reasoning as the stale-Items-grid bug elsewhere —
+// don't add a second place this can go stale.
+async function openIssueModal(id) {
+  try {
+    const d = await apiFetch('/work-orders/'+id);
+    const w = d.work_order;
+    _woIssueId = id;
+    const materials = w.materials || [];
+    const rows = materials
+      .map(m => ({ m, rem: Math.max(0, parseFloat(m.required_qty||0) - parseFloat(m.issued_qty||0)) }))
+      .filter(x => x.rem > 0.0001);
+    if (rows.length === 0) {
+      showToast('Nothing left to issue — all materials already fully issued.');
+      return;
+    }
+    document.getElementById('woIssueRows').innerHTML = rows.map(({m, rem}) => `
+      <div class="form-field" style="margin-bottom:12px;" data-material-id="${m.id}">
+        <label>${esc(m.inventory_items?.name||'?')} — required ${fmtQty(m.required_qty,m.inventory_items?.unit||'')}, issued ${fmtQty(m.issued_qty,m.inventory_items?.unit||'')}, remaining ${fmtQty(rem,m.inventory_items?.unit||'')}</label>
+        <input type="number" step="0.001" min="0" max="${rem}" value="${rem}" data-issue-qty>
+      </div>
+    `).join('');
+    openModal('woIssueModal');
+  } catch(e) { showToast(e.message, true); }
+}
+
+async function confirmIssueMaterials() {
+  const rowEls = document.querySelectorAll('#woIssueRows [data-material-id]');
+  const issues = [];
+  for (const row of rowEls) {
+    const materialId = row.getAttribute('data-material-id');
+    const qty = parseFloat(row.querySelector('[data-issue-qty]').value);
+    if (!isNaN(qty) && qty > 0) issues.push({ material_id: materialId, qty });
+  }
+  if (issues.length === 0) { showToast('Enter a quantity to issue for at least one material.', true); return; }
+  try {
+    await apiFetch('/work-orders/'+_woIssueId+'/issue-materials', {
+      method: 'POST',
+      body: JSON.stringify({ issues })
+    });
+    closeModal('woIssueModal');
+    showToast('Materials issued.');
+    await loadWorkOrders(); await loadItems(); await loadDashboard();
   } catch(e) { showToast(e.message, true); }
 }
 
