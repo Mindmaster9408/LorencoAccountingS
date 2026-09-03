@@ -863,8 +863,14 @@ function normalizeCalculationInput(
     // Controls which PAYE bucket this item enters:
     //   FIXED_RECURRING / VARIABLE_AVERAGE → periodicTaxable (projected via YTD averaging × 12)
     //   ONCE_OFF                           → onceOffTaxable  (added once, never projected forward)
-    // Default VARIABLE_AVERAGE is the conservative safe choice for unclassified items.
-    paye_projection_type: item.paye_projection_type || 'VARIABLE_AVERAGE',
+    // Default ONCE_OFF (changed 2026-09-03; was VARIABLE_AVERAGE): a "Current Input" with no
+    // matching payroll_items_master entry is, by definition, an ad-hoc one-time entry for this
+    // period only — not a recurring item (those belong under Regular Inputs instead). Defaulting
+    // it to VARIABLE_AVERAGE caused its tax to be silently averaged and projected across the
+    // whole tax year instead of collected in the period it was actually paid — under-withholding
+    // SARS's required tax, the worse failure mode. Confirmed with Ruan: unclassified current
+    // inputs should default to full-tax-now, matching SARS's treatment of irregular income.
+    paye_projection_type: item.paye_projection_type || 'ONCE_OFF',
     // taxable_percentage: live-overridden from payroll_items_master in fetchPeriodInputs
     // above (never read from payroll_period_inputs directly — see the caution comment
     // there about unconfirmed columns on that specific table). Default 100.

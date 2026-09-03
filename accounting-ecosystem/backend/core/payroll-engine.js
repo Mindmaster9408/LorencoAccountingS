@@ -732,10 +732,15 @@ const PayrollEngine = {
         });
 
         // Current period inputs: routing controlled by paye_projection_type.
-        // FIXED_RECURRING / VARIABLE_AVERAGE (or no type) → periodicTaxable.
+        // FIXED_RECURRING / VARIABLE_AVERAGE → periodicTaxable.
         //   Both are projected via YTD averaging (× 12 / monthInTaxYear) so commission
         //   entered as a current input correctly builds an annualised PAYE projection.
-        // ONCE_OFF → onceOffTaxable. Added once to the annual equivalent, never projected.
+        // ONCE_OFF (or no type — default changed 2026-09-03) → onceOffTaxable.
+        //   Added once to the annual equivalent, never projected. A current input is by
+        //   definition a one-time entry for this period (recurring items belong under
+        //   Regular Inputs instead), so unclassified defaults to ONCE_OFF, not
+        //   VARIABLE_AVERAGE — matching PayrollDataService.normalizeCalculationInput's
+        //   same default change. Confirmed with Ruan.
         // UIF basis is independent of PAYE bucket — controlled only by affects_uif.
         (currentInputs || []).forEach(function(ci) {
             if (ci.type !== 'deduction') {
@@ -754,7 +759,7 @@ const PayrollEngine = {
                     nonTaxableIncome += amt;
                 } else {
                     nonTaxableIncome += nonTaxablePortion;
-                    var projType = ci.paye_projection_type || 'VARIABLE_AVERAGE';
+                    var projType = ci.paye_projection_type || 'ONCE_OFF';
                     if (projType === 'ONCE_OFF') {
                         onceOffTaxable += taxablePortion;
                     } else {
@@ -926,10 +931,14 @@ const PayrollEngine = {
                 // After the engine routing fix, FIXED_RECURRING and VARIABLE_AVERAGE current inputs
                 // are in periodicTaxable (not onceOffTaxable), so they must be classified here.
                 // ONCE_OFF current inputs remain in onceOffTaxable and are captured below.
+                // Default must match the routing default above (ONCE_OFF, not VARIABLE_AVERAGE) —
+                // otherwise an unclassified item would be excluded from periodicTaxable up there
+                // but still counted here, double-counting it (once via _ptOnceOff, again via
+                // _variableAvgMonthly's ×12 projection).
                 (currentInputs || []).forEach(function(ci) {
                     if (ci.type === 'deduction' || ci.is_taxable === false) return;
                     var amt = parseFloat(ci.amount) || 0;
-                    var projType = ci.paye_projection_type || 'VARIABLE_AVERAGE';
+                    var projType = ci.paye_projection_type || 'ONCE_OFF';
                     if      (projType === 'FIXED_RECURRING') { _ptFixed    += amt; }
                     else if (projType !== 'ONCE_OFF')        { _ptVariable += amt; }
                     // ONCE_OFF falls through to the onceOffTaxable accumulator below
@@ -946,27 +955,49 @@ const PayrollEngine = {
                 var _variableToDate     = _priorVariableProxy + _ptVariable;
                 var _variableAvgMonthly = monthInTaxYear > 0 ? _variableToDate / monthInTaxYear : _ptVariable;
 
-                var _projAnnual    = PayrollEngine.r2(
+                // FIXED + VARIABLE income is genuinely recurring/ongoing, so its tax is
+                // correctly smoothed evenly across the remaining months of the tax year.
+                //
+                // ONCE_OFF income (bonuses, one-off current inputs) must NEVER be smoothed
+                // — SARS requires the full incremental tax it causes to be withheld in the
+                // period it is actually paid. (Fixed 2026-09-03: previously _ptOnceOff was
+                // folded into the same _projAnnual that then had its ENTIRE resulting tax
+                // divided by _remainingMonths — meaning even a correctly-classified ONCE_OFF
+                // item had its tax spread over every remaining month of the year, not just
+                // caught up faster. This mirrors the identical principle already fixed the
+                // same day in calculateMonthlyPAYE_YTD/calculateMonthlyPAYE for the simpler
+                // average_taxable_ytd method — see that fix's commit for the full writeup.)
+                var _monthlyMed = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
+                var _priorTotalPAYEPaid = ytdData.prior_total_paye_paid !== undefined
+                    ? ytdData.prior_total_paye_paid : _ytdPriorPAYE;
+
+                // Smoothed component: FIXED + VARIABLE only, no once-off baked in.
+                var _projAnnualNoOnceOff = PayrollEngine.r2(
                     _ytdPriorTaxable              // prior periods: all actual taxable (already happened)
                   + (_ptFixed * _remainingMonths) // project current fixed for remaining months (incl. current)
                   + (_variableAvgMonthly * 12)    // full-year variable estimate (YTD average × 12)
-                  + _ptOnceOff                    // current month once-off: counted once only
                 );
-                var _annualPAYE    = PayrollEngine.calculateAnnualPAYE(_projAnnual, opts.age, tables);
-                var _monthlyMed    = opts.medicalMembers ? PayrollEngine.calculateMedicalCredit(opts.medicalMembers, tables) : 0;
-                // Spreading formula: (annualTax_net_of_medCredit - priorTotalPAYEPaid_incl_voluntary) / remainingMonths.
-                // prior_total_paye_paid = sum of paye (incl. voluntary) from locked snapshots.
-                // Falls back to prior_paye_paid (statutory only) for snapshots that predate this field.
-                var _priorTotalPAYEPaid = ytdData.prior_total_paye_paid !== undefined
-                    ? ytdData.prior_total_paye_paid : _ytdPriorPAYE;
+                var _annualPAYENoOnceOff      = PayrollEngine.calculateAnnualPAYE(_projAnnualNoOnceOff, opts.age, tables);
+                var _annualTaxNetMedNoOnceOff = PayrollEngine.r2(_annualPAYENoOnceOff - (_monthlyMed * 12));
+                var _remainingTaxNoOnceOff    = PayrollEngine.r2(Math.max(_annualTaxNetMedNoOnceOff - _priorTotalPAYEPaid, 0));
+                var _smoothedPAYE             = PayrollEngine.r2(_remainingTaxNoOnceOff / _remainingMonths);
+
+                // Once-off component: the FULL incremental tax caused by this month's
+                // once-off income, collected entirely now (never divided by remainingMonths).
+                var _projAnnual      = PayrollEngine.r2(_projAnnualNoOnceOff + _ptOnceOff);
+                var _annualPAYE      = PayrollEngine.calculateAnnualPAYE(_projAnnual, opts.age, tables);
                 var _annualTaxNetMed = PayrollEngine.r2(_annualPAYE - (_monthlyMed * 12));
-                var _remainingTax    = PayrollEngine.r2(Math.max(_annualTaxNetMed - _priorTotalPAYEPaid, 0));
-                paye = PayrollEngine.r2(_remainingTax / _remainingMonths);
+                var _onceOffPAYE     = PayrollEngine.r2(Math.max(_annualTaxNetMed - _annualTaxNetMedNoOnceOff, 0));
+
+                var _remainingTax = PayrollEngine.r2(_remainingTaxNoOnceOff + _onceOffPAYE);
+                paye = PayrollEngine.r2(_smoothedPAYE + _onceOffPAYE);
                 var _ptBracket = _ytdGetBracket(_projAnnual);
                 _ytdCalc = {
                     method:                    'projection_type_ytd',
                     currentMonthNumber:        monthInTaxYear,
                     remainingMonths:           _remainingMonths,
+                    smoothedPAYE:              _smoothedPAYE,
+                    onceOffPAYE:               _onceOffPAYE,
                     priorTaxableGross:         PayrollEngine.r2(_ytdPriorTaxable),
                     currentTaxableGross:       PayrollEngine.r2(periodicTaxable + onceOffTaxable),
                     taxableGrossToDate:        PayrollEngine.r2(_ytdPriorTaxable + periodicTaxable + onceOffTaxable),
