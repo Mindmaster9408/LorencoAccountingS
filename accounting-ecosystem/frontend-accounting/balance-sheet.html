@@ -355,6 +355,18 @@
             background: rgba(0,102,204,0.08);
             border-top: 2px solid #0066cc;
         }
+
+        .amount-link {
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            border-bottom: 1px dashed rgba(0,102,204,0.5);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .amount-link:hover {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+        }
         
         .grand-total {
             font-weight: 700;
@@ -610,6 +622,14 @@
 
         function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
         function fmtAmt(n) { if (!n || n === 0) return '-'; return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        // Drill-down: an account's balance links through to its General Ledger detail,
+        // showing every transaction up to the report's As At date (no fromDate — a
+        // balance sheet figure is a cumulative-since-inception balance, not a period movement).
+        function glLink(accountId, amountHtml, asOfDate) {
+            if (!accountId || amountHtml === '-') return amountHtml;
+            const url = `/accounting/general-ledger.html?accountId=${accountId}&toDate=${asOfDate}`;
+            return `<a class="amount-link" href="${url}">${amountHtml}</a>`;
+        }
 
         // Set default dates: today as asOfDate, year start as fromDate
         (function() {
@@ -647,7 +667,7 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
                 lastResult = data;
-                renderBalanceSheet(data);
+                renderBalanceSheet(data, asOfDate);
                 renderTruthBadge(data.reportTruth);
 
                 const hdr = document.querySelector('.report-header p');
@@ -659,7 +679,7 @@
             }
         }
 
-        function renderBalanceSheet(data) {
+        function renderBalanceSheet(data, asOfDate) {
             const tbody = document.getElementById('bsBody');
             let html = '';
 
@@ -674,12 +694,13 @@
                 accounts.forEach(acc => {
                     const isChild  = !!acc.parent_id;
                     const isParent = childParentIds.has(acc.id);
+                    const amt = glLink(acc.id, fmtAmt(acc.balance), asOfDate);
                     if (isChild) {
-                        rows += `<tr class="account-child"><td class="indent-1"><span style="padding-left:16px;color:#5f6368">↳ ${acc.code} — ${acc.name}</span></td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
+                        rows += `<tr class="account-child"><td class="indent-1"><span style="padding-left:16px;color:#5f6368">↳ ${acc.code} — ${acc.name}</span></td><td class="amount">${amt}</td></tr>`;
                     } else if (isParent) {
-                        rows += `<tr class="account-parent"><td class="indent-1"><strong>${acc.code} — ${acc.name}</strong></td><td class="amount"><strong>${fmtAmt(acc.balance)}</strong></td></tr>`;
+                        rows += `<tr class="account-parent"><td class="indent-1"><strong>${acc.code} — ${acc.name}</strong></td><td class="amount"><strong>${amt}</strong></td></tr>`;
                     } else {
-                        rows += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${fmtAmt(acc.balance)}</td></tr>`;
+                        rows += `<tr><td class="indent-1">${acc.code} — ${acc.name}</td><td class="amount">${amt}</td></tr>`;
                     }
                 });
                 return rows;

@@ -355,6 +355,18 @@
             background: rgba(0,102,204,0.08);
             border-top: 2px solid #0066cc;
         }
+
+        .amount-link {
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            border-bottom: 1px dashed rgba(0,102,204,0.5);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .amount-link:hover {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+        }
         
         .grand-total {
             font-weight: 700;
@@ -557,6 +569,13 @@
         function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
         function fmtAmt(n) { if (!n || n === 0) return '-'; return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
         function fmtTot(n) { const abs = Math.abs(n || 0); const f = 'R ' + abs.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return (n || 0) < 0 ? '(' + f + ')' : f; }
+        // Drill-down: an account line links through to its General Ledger detail for the
+        // same period the report was run for.
+        function glLink(accountId, amountHtml, fromDate, toDate) {
+            if (!accountId || amountHtml === '-') return amountHtml;
+            const url = `/accounting/general-ledger.html?accountId=${accountId}&fromDate=${fromDate}&toDate=${toDate}`;
+            return `<a class="amount-link" href="${url}">${amountHtml}</a>`;
+        }
 
         // Default: current year
         (function() {
@@ -627,11 +646,13 @@
         function renderPL(data) {
             const tbody = document.getElementById('plBody');
             const t = data.totals || {};
+            const fromDate = data.fromDate;
+            const toDate   = data.toDate;
             let html = '';
 
             const spacer  = () => `<tr><td colspan="2" style="height:15px"></td></tr>`;
             const sHdr    = label  => `<tr class="section-header"><td colspan="2">${label}</td></tr>`;
-            const sLine   = (code, name, amt) => `<tr><td class="indent-1">${esc(code)} — ${esc(name)}</td><td class="amount">${fmtAmt(amt)}</td></tr>`;
+            const sLine   = (id, code, name, amt) => `<tr><td class="indent-1">${esc(code)} — ${esc(name)}</td><td class="amount">${glLink(id, fmtAmt(amt), fromDate, toDate)}</td></tr>`;
             const sTot    = (label, amt)  => `<tr class="section-total"><td><strong>${label}</strong></td><td class="amount"><strong>${fmtTot(amt)}</strong></td></tr>`;
             const sProfit = (label, amt)  => {
                 const cls = (amt || 0) >= 0 ? 'positive' : 'negative';
@@ -641,7 +662,7 @@
             function section(hdr, accounts, totLabel, totAmt) {
                 if (!(accounts || []).length) return '';
                 let s = sHdr(hdr);
-                accounts.forEach(a => { s += sLine(a.code, a.name, a.balance); });
+                accounts.forEach(a => { s += sLine(a.id, a.code, a.name, a.balance); });
                 s += sTot(totLabel, totAmt);
                 s += spacer();
                 return s;

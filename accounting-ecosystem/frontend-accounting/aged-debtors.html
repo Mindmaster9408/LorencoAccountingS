@@ -367,6 +367,17 @@
             text-align: right;
             font-family: 'Courier New', monospace;
         }
+        .amount-link {
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            border-bottom: 1px dashed rgba(0,102,204,0.5);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .amount-link:hover {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+        }
         
         .positive {
             color: #34a853;
@@ -495,6 +506,15 @@
             return 'R ' + Math.abs(v).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        // Drill-down: any bucket/total amount for a customer links through to
+        // their full transaction history (customer-transactions.html).
+        function custLink(customerId, amountHtml) {
+            if (!customerId || amountHtml.indexOf('0.00') !== -1) return amountHtml;
+            const back = encodeURIComponent(window.location.pathname);
+            const url = '/accounting/customer-transactions.html?customerId=' + customerId + '&back=' + back;
+            return '<a class="amount-link" href="' + url + '">' + amountHtml + '</a>';
+        }
+
         function escHtml(s) {
             return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
@@ -613,12 +633,12 @@
                     tbody.insertAdjacentHTML('beforeend',
                         '<tr>' +
                         '<td>' + escHtml(c.customerName) + noDue + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.current)    + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.days30)     + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.days60)     + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.days90)     + '</td>' +
-                        '<td class="amount ' + (hasOverdue ? 'negative' : '') + '">' + fmtAmt(c.days90plus) + '</td>' +
-                        '<td class="amount ' + totalClass + '">' + fmtAmt(c.total) + '</td>' +
+                        '<td class="amount">' + custLink(c.customerId, fmtAmt(c.current))    + '</td>' +
+                        '<td class="amount">' + custLink(c.customerId, fmtAmt(c.days30))     + '</td>' +
+                        '<td class="amount">' + custLink(c.customerId, fmtAmt(c.days60))     + '</td>' +
+                        '<td class="amount">' + custLink(c.customerId, fmtAmt(c.days90))     + '</td>' +
+                        '<td class="amount ' + (hasOverdue ? 'negative' : '') + '">' + custLink(c.customerId, fmtAmt(c.days90plus)) + '</td>' +
+                        '<td class="amount ' + totalClass + '">' + custLink(c.customerId, fmtAmt(c.total)) + '</td>' +
                         '<td class="amount">' + (c.invoiceCount || 0) + '</td>' +
                         '<td>' + (c.customerId ? '<button type="button" onclick="sendCustomerStatement(' + c.customerId + ', ' + JSON.stringify(c.customerName) + ')" style="font-size:11px;padding:4px 10px;border:1px solid #0066cc;background:#fff;color:#0066cc;border-radius:4px;cursor:pointer;">📧 Send Statement</button>' : '') + '</td>' +
                         '</tr>'

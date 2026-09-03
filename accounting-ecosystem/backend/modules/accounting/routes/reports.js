@@ -199,6 +199,127 @@ router.get('/trial-balance/pdf', authenticate, hasPermission('report.view'), asy
 });
 
 /**
+ * GET /api/reports/general-ledger/full
+ *
+ * The whole General Ledger — every active account's transactions, opening
+ * and closing balance — in one report, instead of drilling into one account
+ * at a time. Registered BEFORE /general-ledger/:something-style routes would
+ * be, and before the plain /general-ledger route below, so "full" is never
+ * captured as an :accountId-shaped param by an earlier, broader route.
+ *
+ * By default, accounts with no opening balance AND no activity in the period
+ * are omitted (an inactive/never-used account adds noise, not information).
+ * Pass includeZeroActivity=true to list every active account regardless.
+ */
+router.get('/general-ledger/full', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate, journalSourceMode: rawMode, includeZeroActivity } = req.query;
+    const companyId = req.user.companyId;
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+    let glSourceClause = '';
+    if (journalSourceMode === 'manual') {
+      glSourceClause = ` AND (j.source_type IS NULL OR j.source_type = 'manual')`;
+    } else if (journalSourceMode === 'system') {
+      glSourceClause = ` AND j.source_type IS NOT NULL AND j.source_type != 'manual'`;
+    }
+
+    const { data: accounts, error: acctErr } = await supabase
+      .from('accounts')
+      .select('id, code, name, type, sub_type, reporting_group')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('code');
+    if (acctErr) throw new Error(acctErr.message);
+
+    // One query for opening-balance lines (everything before fromDate), one for
+    // in-period lines — across ALL accounts at once, grouped by account_id in JS
+    // below. This is the same "single JOIN, no .in() batching" approach the
+    // single-account /general-ledger route uses, just without the account filter.
+    const obParams = fromDate ? [companyId, fromDate] : null;
+    const periodParams = [companyId];
+    let periodDateClauses = '';
+    if (fromDate) { periodParams.push(fromDate); periodDateClauses += ` AND j.date >= $${periodParams.length}`; }
+    if (toDate)   { periodParams.push(toDate);   periodDateClauses += ` AND j.date <= $${periodParams.length}`; }
+
+    const [obResult, periodResult] = await Promise.all([
+      obParams
+        ? db.query(
+            `SELECT jl.account_id, jl.debit, jl.credit
+             FROM journal_lines jl
+             INNER JOIN journals j ON j.id = jl.journal_id
+             WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed')
+               AND j.date < $2${glSourceClause}`,
+            obParams
+          )
+        : Promise.resolve({ rows: [] }),
+      db.query(
+        `SELECT jl.account_id, jl.journal_id, jl.description AS line_description, jl.debit, jl.credit,
+                j.date::text AS date, j.reference, j.description AS journal_description, j.source_type
+         FROM journal_lines jl
+         INNER JOIN journals j ON j.id = jl.journal_id
+         WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed')${periodDateClauses}${glSourceClause}`,
+        periodParams
+      ),
+    ]);
+
+    // Group opening balances by account
+    const openingByAccount = {};
+    for (const l of obResult.rows) {
+      const id = l.account_id;
+      openingByAccount[id] = (openingByAccount[id] || 0) + parseFloat(l.debit || 0) - parseFloat(l.credit || 0);
+    }
+
+    // Group period lines by account
+    const linesByAccount = {};
+    for (const l of periodResult.rows) {
+      const id = l.account_id;
+      if (!linesByAccount[id]) linesByAccount[id] = [];
+      linesByAccount[id].push({
+        journal_id: l.journal_id,
+        date: l.date,
+        reference: l.reference,
+        journal_description: l.journal_description,
+        line_description: l.line_description,
+        source_type: l.source_type,
+        debit: parseFloat(l.debit || 0),
+        credit: parseFloat(l.credit || 0),
+      });
+    }
+
+    const wantZero = includeZeroActivity === 'true';
+    const ledger = [];
+    for (const account of accounts) {
+      const openingBalance = openingByAccount[account.id] || 0;
+      const lines = (linesByAccount[account.id] || []).slice()
+        .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.journal_id - b.journal_id);
+
+      if (!wantZero && openingBalance === 0 && lines.length === 0) continue;
+
+      let running = openingBalance;
+      const transactions = lines.map(line => {
+        running += line.debit - line.credit;
+        return { ...line, balance: running };
+      });
+      const totalDebit  = transactions.reduce((s, t) => s + t.debit,  0);
+      const totalCredit = transactions.reduce((s, t) => s + t.credit, 0);
+      const closingBalance = openingBalance + totalDebit - totalCredit;
+
+      ledger.push({ account, openingBalance, transactions, totalDebit, totalCredit, closingBalance });
+    }
+
+    res.json({
+      fromDate: fromDate || null, toDate: toDate || null,
+      accountCount: ledger.length,
+      ledger,
+      reportTruth: getBadge('posted_gl_only', { journalSourceMode }),
+    });
+  } catch (error) {
+    console.error('Error generating full general ledger:', error);
+    res.status(500).json({ error: 'Failed to generate full general ledger' });
+  }
+});
+
+/**
  * GET /api/reports/general-ledger
  */
 router.get('/general-ledger', authenticate, hasPermission('report.view'), async (req, res) => {

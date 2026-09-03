@@ -12,6 +12,16 @@
   }
 })();
 
+// ─── Inject Sean AI chat widget (2026-08-30, super-admins only for now) ────
+(function() {
+  if (!document.getElementById('sean-chat-widget-script')) {
+    const script = document.createElement('script');
+    script.id = 'sean-chat-widget-script';
+    script.src = '/accounting/js/sean-chat-widget.js';
+    document.head.appendChild(script);
+  }
+})();
+
 function createNavigation() {
   // Strip /accounting/ prefix for current page detection
   const pathname = window.location.pathname.replace(/^\/accounting\/?/, '');
@@ -125,12 +135,13 @@ function createNavigation() {
         </div>
       </div>
 
-      <div class="nav-item ${currentPage === 'accounts.html' || currentPage === 'journals.html' || currentPage === 'trial-balance.html' || currentPage === 'general-ledger.html' || currentPage === 'accounting-periods.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage === 'accounts.html' || currentPage === 'journals.html' || currentPage === 'trial-balance.html' || currentPage === 'general-ledger.html' || currentPage === 'general-ledger-full.html' || currentPage === 'accounting-periods.html' ? 'active' : ''}">
         <a href="/accounting/accounts.html">Accounts</a>
         <div class="dropdown">
           <a href="/accounting/accounts.html">Chart of Accounts</a>
           <a href="/accounting/journals.html">Journal Entries</a>
           <a href="/accounting/general-ledger.html">General Ledger</a>
+          <a href="/accounting/general-ledger-full.html">Full General Ledger</a>
           <a href="/accounting/trial-balance.html">Trial Balance</a>
           <a href="/accounting/accounting-periods.html">Period Management</a>
         </div>

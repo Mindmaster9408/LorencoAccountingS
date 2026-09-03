@@ -367,6 +367,17 @@
             text-align: right;
             font-family: 'Courier New', monospace;
         }
+        .amount-link {
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            border-bottom: 1px dashed rgba(0,102,204,0.5);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .amount-link:hover {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+        }
 
         .positive {
             color: #34a853;
@@ -494,6 +505,15 @@
             return 'R ' + Math.abs(v).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        // Drill-down: any bucket/total amount for a supplier links through to
+        // their full transaction history (supplier-transactions.html).
+        function supLink(supplierId, amountHtml) {
+            if (!supplierId || amountHtml.indexOf('0.00') !== -1) return amountHtml;
+            const back = encodeURIComponent(window.location.pathname);
+            const url = '/accounting/supplier-transactions.html?supplierId=' + supplierId + '&back=' + back;
+            return '<a class="amount-link" href="' + url + '">' + amountHtml + '</a>';
+        }
+
         function escHtml(s) {
             return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
@@ -575,12 +595,12 @@
                     tbody.insertAdjacentHTML('beforeend',
                         '<tr>' +
                         '<td>' + escHtml(c.supplier_name) + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.current)    + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.days30)     + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.days60)     + '</td>' +
-                        '<td class="amount">' + fmtAmt(c.days90)     + '</td>' +
-                        '<td class="amount ' + (hasOverdue ? 'negative' : '') + '">' + fmtAmt(c.days90plus) + '</td>' +
-                        '<td class="amount ' + totalClass + '">' + fmtAmt(c.total) + '</td>' +
+                        '<td class="amount">' + supLink(c.supplier_id, fmtAmt(c.current))    + '</td>' +
+                        '<td class="amount">' + supLink(c.supplier_id, fmtAmt(c.days30))     + '</td>' +
+                        '<td class="amount">' + supLink(c.supplier_id, fmtAmt(c.days60))     + '</td>' +
+                        '<td class="amount">' + supLink(c.supplier_id, fmtAmt(c.days90))     + '</td>' +
+                        '<td class="amount ' + (hasOverdue ? 'negative' : '') + '">' + supLink(c.supplier_id, fmtAmt(c.days90plus)) + '</td>' +
+                        '<td class="amount ' + totalClass + '">' + supLink(c.supplier_id, fmtAmt(c.total)) + '</td>' +
                         '<td class="amount">—</td>' +
                         '</tr>'
                     );

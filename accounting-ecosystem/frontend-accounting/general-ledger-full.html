@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full General Ledger - Ledger Leo</title>
+    <script src="js/navigation.js"></script>
+    <script src="js/theme-guard.js"></script>
+    <script src="js/polyfills.js"></script>
+    <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/cosmic-bg.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+        .gl-toolbar {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+            padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08);
+            position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px);
+            background: rgba(10,10,20,0.6);
+        }
+        .gl-toolbar .back-btn {
+            display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+            border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.75);
+            font-size: 13px; cursor: pointer; text-decoration: none; transition: background 0.15s;
+        }
+        .gl-toolbar .back-btn:hover { background: rgba(255,255,255,0.10); color: #fff; }
+        .gl-toolbar label { font-size: 12px; color: rgba(255,255,255,0.55); white-space: nowrap; }
+        .gl-toolbar input[type="date"], .gl-toolbar select {
+            padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.06); color: #fff; font-size: 13px;
+        }
+        .gl-toolbar .btn-primary {
+            padding: 7px 16px; border-radius: 6px; border: none; background: #f59e0b;
+            color: #000; font-weight: 600; font-size: 13px; cursor: pointer;
+        }
+        .gl-toolbar .btn-primary:hover { background: #d97706; }
+        .gl-toolbar .btn-secondary {
+            padding: 7px 16px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); font-size: 13px; cursor: pointer;
+        }
+        .gl-toolbar .btn-secondary:hover { background: rgba(255,255,255,0.10); }
+        .gl-toolbar .spacer { margin-left: auto; font-size: 12px; color: rgba(255,255,255,0.4); }
+
+        .page-header { padding: 20px 24px 4px; }
+        .page-header h2 { font-size: 22px; font-weight: 700; color: #fff; }
+
+        .gl-error {
+            margin: 12px 24px; padding: 12px 16px; border-radius: 8px;
+            background: rgba(220,38,38,0.15); border: 1px solid rgba(220,38,38,0.3);
+            color: #fca5a5; font-size: 13px; display: none;
+        }
+
+        .accounts-wrap { padding: 8px 24px 60px; }
+
+        .account-section {
+            margin-bottom: 28px;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .account-section-header {
+            padding: 12px 16px;
+            background: rgba(245,158,11,0.10);
+            border-bottom: 1px solid rgba(245,158,11,0.2);
+            display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+        }
+        .account-section-header .code { color: #fbbf24; font-weight: 700; font-size: 14px; }
+        .account-section-header .name { color: #fff; font-weight: 600; font-size: 14px; }
+        .account-section-header .type { color: rgba(255,255,255,0.45); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+        .gl-table-wrap { overflow-x: auto; }
+        table.gl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .gl-table thead th {
+            padding: 8px 14px; text-align: left; font-size: 10px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4);
+            border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap;
+        }
+        .gl-table thead th.num { text-align: right; }
+        .gl-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .gl-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+        .gl-table td { padding: 7px 14px; color: rgba(255,255,255,0.82); vertical-align: top; }
+        .gl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .gl-table td.date-col { white-space: nowrap; color: rgba(255,255,255,0.5); font-size: 12px; }
+        .gl-table td.balance-col { color: rgba(255,255,255,0.85); font-weight: 500; }
+        .gl-table td.balance-col.negative { color: #f87171; }
+        .gl-table td.debit-col  { color: #34d399; }
+        .gl-table td.credit-col { color: #f87171; }
+
+        .row-opening td, .row-closing td {
+            background: rgba(245,158,11,0.06) !important; font-weight: 600;
+        }
+        .row-closing td { border-top: 1px solid rgba(245,158,11,0.2); }
+
+        .gl-empty { text-align: center; padding: 60px 24px; color: rgba(255,255,255,0.35); font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
+    <div id="nav-placeholder"></div>
+
+    <div class="page-content" style="margin-left:var(--nav-width,220px);padding-top:0">
+
+        <div class="gl-toolbar">
+            <a href="/accounting/trial-balance.html" class="back-btn">← Trial Balance</a>
+            <label>From</label>
+            <input type="date" id="fromDate">
+            <label>To</label>
+            <input type="date" id="toDate">
+            <label><input type="checkbox" id="includeZero"> Include accounts with no activity</label>
+            <button class="btn-primary" onclick="load()">Generate</button>
+            <button class="btn-secondary" onclick="exportCSV()">Export CSV</button>
+            <span class="spacer" id="accountCountLabel"></span>
+        </div>
+
+        <div class="page-header">
+            <h2>Full General Ledger</h2>
+        </div>
+
+        <div class="gl-error" id="errEl"></div>
+
+        <div class="accounts-wrap" id="accountsWrap">
+            <div class="gl-empty">Select a date range and click Generate — this pulls every account's activity in one report.</div>
+        </div>
+    </div>
+
+<script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/';
+    function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+    function fmt(n) {
+        if (n === null || n === undefined || n === 0) return '-';
+        return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    let lastResult = null;
+
+    // Default: current SA financial year to date (Mar 1 → today) — a sensible
+    // starting range for "the whole GL", editable before generating.
+    (function() {
+        const now = new Date();
+        const fyStartYear = now.getMonth() >= 2 ? now.getFullYear() : now.getFullYear() - 1; // Mar=index 2
+        document.getElementById('fromDate').value = fyStartYear + '-03-01';
+        document.getElementById('toDate').value   = now.toISOString().slice(0, 10);
+    })();
+
+    async function load() {
+        const fromDate = document.getElementById('fromDate').value;
+        const toDate   = document.getElementById('toDate').value;
+        const includeZero = document.getElementById('includeZero').checked;
+        const errEl = document.getElementById('errEl');
+        errEl.style.display = 'none';
+        document.getElementById('accountsWrap').innerHTML =
+            '<div class="gl-empty">Loading — this pulls every account, may take a moment…</div>';
+
+        try {
+            let url = '/api/accounting/reports/general-ledger/full?includeZeroActivity=' + includeZero;
+            if (fromDate) url += '&fromDate=' + fromDate;
+            if (toDate)   url += '&toDate=' + toDate;
+            const res = await fetch(url, { headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            lastResult = data;
+            render(data);
+        } catch (err) {
+            errEl.textContent = 'Failed to generate report: ' + err.message;
+            errEl.style.display = 'block';
+            document.getElementById('accountsWrap').innerHTML = '';
+        }
+    }
+
+    function render(data) {
+        document.getElementById('accountCountLabel').textContent =
+            data.accountCount + ' account(s) · ' + (data.fromDate || 'inception') + ' to ' + (data.toDate || 'today');
+
+        if (!data.ledger.length) {
+            document.getElementById('accountsWrap').innerHTML =
+                '<div class="gl-empty">No account activity found for this period.</div>';
+            return;
+        }
+
+        let html = '';
+        data.ledger.forEach(sec => {
+            const a = sec.account;
+            html += `<div class="account-section">
+                <div class="account-section-header">
+                    <span class="code">${esc(a.code)}</span>
+                    <span class="name">${esc(a.name)}</span>
+                    <span class="type">${esc(a.type)}</span>
+                </div>
+                <div class="gl-table-wrap">
+                <table class="gl-table">
+                    <thead><tr>
+                        <th>Date</th><th>Reference</th><th>Description</th>
+                        <th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th>
+                    </tr></thead>
+                    <tbody>
+                        <tr class="row-opening">
+                            <td class="date-col">${data.fromDate || ''}</td><td></td><td>Opening Balance</td>
+                            <td class="num">-</td><td class="num">-</td>
+                            <td class="num balance-col${sec.openingBalance < 0 ? ' negative' : ''}">${fmt(sec.openingBalance)}</td>
+                        </tr>`;
+            if (!sec.transactions.length) {
+                html += '<tr><td colspan="6" style="text-align:center;padding:14px;color:rgba(255,255,255,0.3)">No movement in this period.</td></tr>';
+            } else {
+                sec.transactions.forEach(t => {
+                    html += `<tr>
+                        <td class="date-col">${t.date}</td>
+                        <td>${esc(t.reference || '')}</td>
+                        <td>${esc(t.line_description || t.journal_description || '')}</td>
+                        <td class="num debit-col">${t.debit ? fmt(t.debit) : '-'}</td>
+                        <td class="num credit-col">${t.credit ? fmt(t.credit) : '-'}</td>
+                        <td class="num balance-col${t.balance < 0 ? ' negative' : ''}">${fmt(t.balance)}</td>
+                    </tr>`;
+                });
+            }
+            html += `<tr class="row-closing">
+                            <td class="date-col">${data.toDate || ''}</td><td></td><td>Closing Balance</td>
+                            <td class="num">${fmt(sec.totalDebit)}</td><td class="num">${fmt(sec.totalCredit)}</td>
+                            <td class="num balance-col${sec.closingBalance < 0 ? ' negative' : ''}">${fmt(sec.closingBalance)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                </div>
+            </div>`;
+        });
+        document.getElementById('accountsWrap').innerHTML = html;
+    }
+
+    function exportCSV() {
+        if (!lastResult) { alert('Generate the report first.'); return; }
+        let csv = 'Account Code,Account Name,Date,Reference,Description,Debit,Credit,Balance\n';
+        const row = (code, name, date, ref, desc, d, c, bal) =>
+            `"${code}","${name}","${date}","${(ref||'').replace(/"/g,'""')}","${(desc||'').replace(/"/g,'""')}",${(d||0).toFixed(2)},${(c||0).toFixed(2)},${(bal||0).toFixed(2)}\n`;
+        lastResult.ledger.forEach(sec => {
+            const a = sec.account;
+            csv += row(a.code, a.name, lastResult.fromDate || '', '', 'Opening Balance', 0, 0, sec.openingBalance);
+            sec.transactions.forEach(t => {
+                csv += row(a.code, a.name, t.date, t.reference, t.line_description || t.journal_description, t.debit, t.credit, t.balance);
+            });
+            csv += row(a.code, a.name, lastResult.toDate || '', '', 'Closing Balance', sec.totalDebit, sec.totalCredit, sec.closingBalance);
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `general-ledger-full-${lastResult.fromDate}-to-${lastResult.toDate}.csv`;
+        link.click();
+    }
+</script>
+</body>
+</html>

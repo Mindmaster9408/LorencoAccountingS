@@ -367,6 +367,17 @@
             text-align: right;
             font-family: 'Courier New', monospace;
         }
+        .amount-link {
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            border-bottom: 1px dashed rgba(0,102,204,0.5);
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .amount-link:hover {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+        }
         
         .positive {
             color: #34a853;
@@ -514,6 +525,23 @@
             return 'R ' + v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        // Drill-down: a supplier's spend amount links to their transaction history;
+        // an expense account's amount links to its General Ledger detail for the report's period.
+        function supLink(supplierId, amountHtml) {
+            if (!supplierId) return amountHtml;
+            const back = encodeURIComponent(window.location.pathname);
+            return '<a class="amount-link" href="/accounting/supplier-transactions.html?supplierId=' + supplierId + '&back=' + back + '">' + amountHtml + '</a>';
+        }
+        function glLink(accountId, amountHtml) {
+            if (!accountId) return amountHtml;
+            const fromDate = document.getElementById('dateFrom').value;
+            const toDate   = document.getElementById('dateTo').value;
+            let url = '/accounting/general-ledger.html?accountId=' + accountId;
+            if (fromDate) url += '&fromDate=' + fromDate;
+            if (toDate)   url += '&toDate=' + toDate;
+            return '<a class="amount-link" href="' + url + '">' + amountHtml + '</a>';
+        }
+
         function escHtml(s) {
             return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
@@ -587,7 +615,7 @@
                     supBody.insertAdjacentHTML('beforeend',
                         '<tr><td>' + escHtml(s.supplierName || 'Unknown') + '</td>' +
                         '<td class="amount">' + (s.invoiceCount || 0) + '</td>' +
-                        '<td class="amount">' + fmtAmt(s.spend) + '</td></tr>');
+                        '<td class="amount">' + supLink(s.supplierId, fmtAmt(s.spend)) + '</td></tr>');
                 });
                 const supTotal = bySupplier.reduce((sum, s) => sum + (parseFloat(s.spend) || 0), 0);
                 supBody.insertAdjacentHTML('beforeend',
@@ -600,7 +628,7 @@
                 byAccount.forEach(a => {
                     acctBody.insertAdjacentHTML('beforeend',
                         '<tr><td>' + escHtml((a.accountCode ? a.accountCode + ' — ' : '') + a.accountName) + '</td>' +
-                        '<td class="amount">' + fmtAmt(a.spend) + '</td></tr>');
+                        '<td class="amount">' + glLink(a.accountId, fmtAmt(a.spend)) + '</td></tr>');
                 });
 
                 const monthBody = document.getElementById('byMonthBody');

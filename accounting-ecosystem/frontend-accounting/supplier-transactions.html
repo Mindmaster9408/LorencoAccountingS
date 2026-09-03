@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supplier Transaction History - Ledger Leo</title>
+    <script src="js/navigation.js"></script>
+    <script src="js/theme-guard.js"></script>
+    <script src="js/polyfills.js"></script>
+    <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/cosmic-bg.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+        .gl-toolbar {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+            padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .gl-toolbar .back-btn {
+            display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+            border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.75);
+            font-size: 13px; cursor: pointer; text-decoration: none; transition: background 0.15s;
+        }
+        .gl-toolbar .back-btn:hover { background: rgba(255,255,255,0.10); color: #fff; }
+        .gl-toolbar .filter-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+        .gl-toolbar label { font-size: 12px; color: rgba(255,255,255,0.55); white-space: nowrap; }
+        .gl-toolbar input[type="date"] {
+            padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.06); color: #fff; font-size: 13px;
+        }
+        .gl-toolbar .btn-primary {
+            padding: 7px 16px; border-radius: 6px; border: none; background: #f59e0b;
+            color: #000; font-weight: 600; font-size: 13px; cursor: pointer;
+        }
+        .gl-toolbar .btn-primary:hover { background: #d97706; }
+
+        .gl-account-header { padding: 20px 24px 12px; }
+        .gl-account-header h2 { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+        .gl-account-header .gl-meta { font-size: 13px; color: rgba(255,255,255,0.5); }
+        .gl-account-header .gl-meta span + span::before { content: ' · '; }
+
+        .gl-error {
+            margin: 0 24px 12px; padding: 12px 16px; border-radius: 8px;
+            background: rgba(220,38,38,0.15); border: 1px solid rgba(220,38,38,0.3);
+            color: #fca5a5; font-size: 13px; display: none;
+        }
+
+        .gl-table-wrap { padding: 0 24px 40px; overflow-x: auto; }
+        table.gl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .gl-table thead th {
+            padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.45);
+            border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap;
+        }
+        .gl-table thead th.num { text-align: right; }
+        .gl-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.1s; }
+        .gl-table tbody tr:hover { background: rgba(255,255,255,0.04); }
+        .gl-table td { padding: 9px 14px; color: rgba(255,255,255,0.85); vertical-align: top; }
+        .gl-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .gl-table td.date-col { white-space: nowrap; color: rgba(255,255,255,0.55); font-size: 12px; }
+        .gl-table td.balance-col { color: rgba(255,255,255,0.85); font-weight: 500; }
+        .gl-table td.balance-col.negative { color: #f87171; }
+
+        .type-badge {
+            display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 10px;
+            font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .type-badge.invoice { background: rgba(245,158,11,0.2); color: #fbbf24; }
+        .type-badge.payment { background: rgba(59,130,246,0.2); color: #93c5fd; }
+
+        .row-opening, .row-closing { font-weight: 600; }
+        .row-opening td, .row-closing td {
+            background: rgba(245,158,11,0.08) !important; color: rgba(255,255,255,0.9) !important;
+            border-top: 1px solid rgba(245,158,11,0.2); border-bottom: 1px solid rgba(245,158,11,0.2);
+        }
+        .row-closing td { border-top: 2px solid rgba(245,158,11,0.35); }
+
+        .gl-empty { text-align: center; padding: 60px 24px; color: rgba(255,255,255,0.35); font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="pt-cosmic-bg" aria-hidden="true">
+        <div class="pt-bg-glow g1"></div>
+        <div class="pt-bg-glow g2"></div>
+        <div class="pt-bg-glow g3"></div>
+        <canvas id="pt-bgCanvas"></canvas>
+    </div>
+
+    <div id="nav-placeholder"></div>
+
+    <div class="page-content" style="margin-left:var(--nav-width,220px);padding-top:60px">
+
+        <div class="gl-toolbar">
+            <a id="backBtn" href="/accounting/aged-creditors.html" class="back-btn">← Back</a>
+            <span id="supLabel" style="font-size:14px;font-weight:600;color:#fff"></span>
+            <div class="filter-group">
+                <label>From</label>
+                <input type="date" id="fromDate">
+                <label>To</label>
+                <input type="date" id="toDate">
+                <button class="btn-primary" onclick="load()">Refresh</button>
+            </div>
+        </div>
+
+        <div class="gl-account-header">
+            <h2 id="heading">Supplier Transaction History</h2>
+            <div class="gl-meta" id="metaLine"></div>
+        </div>
+
+        <div class="gl-error" id="errEl"></div>
+
+        <div class="gl-table-wrap">
+            <table class="gl-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Reference</th>
+                        <th class="num">Amount (ZAR)</th>
+                        <th class="num">Balance (ZAR)</th>
+                    </tr>
+                </thead>
+                <tbody id="body">
+                    <tr><td colspan="5" style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+<script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/';
+    function authH() { return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }; }
+    function fmt(n) {
+        if (n === null || n === undefined || n === 0) return '-';
+        return 'R ' + Math.abs(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    const params    = new URLSearchParams(window.location.search);
+    const supplierId = params.get('supplierId');
+    const backParam   = params.get('back');
+    if (backParam) document.getElementById('backBtn').href = decodeURIComponent(backParam);
+
+    if (!supplierId) {
+        document.getElementById('body').innerHTML =
+            '<tr><td colspan="5" class="gl-empty">No supplier specified. Go back and click an amount to drill in.</td></tr>';
+    } else {
+        // Default range: from a date well before any realistic invoice, to today —
+        // shows the supplier's FULL transaction history unless the user narrows it.
+        document.getElementById('fromDate').value = '2000-01-01';
+        document.getElementById('toDate').value   = new Date().toISOString().slice(0, 10);
+        load();
+    }
+
+    async function load() {
+        if (!supplierId) return;
+        const fromDate = document.getElementById('fromDate').value;
+        const toDate   = document.getElementById('toDate').value;
+        const errEl = document.getElementById('errEl');
+        errEl.style.display = 'none';
+        document.getElementById('body').innerHTML =
+            '<tr><td colspan="5" style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">Loading…</td></tr>';
+
+        try {
+            let url = `/api/accounting/supplier-statements/${encodeURIComponent(supplierId)}/statement?periodStart=${fromDate}`;
+            if (toDate) url += `&periodEnd=${toDate}`;
+            const res = await fetch(url, { headers: authH() });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            render(data);
+        } catch (err) {
+            errEl.textContent = 'Failed to load transaction history: ' + err.message;
+            errEl.style.display = 'block';
+            document.getElementById('body').innerHTML =
+                '<tr><td colspan="5" class="gl-empty">Error loading transaction history.</td></tr>';
+        }
+    }
+
+    function render(data) {
+        const { supplier, openingBalance, movements, closingBalance, periodStart, periodEnd } = data;
+
+        document.getElementById('supLabel').textContent = supplier.name;
+        document.getElementById('heading').textContent = supplier.name + ' — Transaction History';
+        const metaParts = [];
+        if (supplier.email) metaParts.push(esc(supplier.email));
+        if (supplier.vat_number) metaParts.push('VAT ' + esc(supplier.vat_number));
+        metaParts.push(`${periodStart} to ${periodEnd}`);
+        document.getElementById('metaLine').innerHTML = metaParts.map(p => `<span>${p}</span>`).join('');
+
+        let html = `<tr class="row-opening">
+            <td class="date-col">${periodStart}</td>
+            <td></td>
+            <td>Opening Balance</td>
+            <td class="num">-</td>
+            <td class="num balance-col${openingBalance < 0 ? ' negative' : ''}">${fmt(openingBalance)}</td>
+        </tr>`;
+
+        if (!movements.length) {
+            html += '<tr><td colspan="5" class="gl-empty" style="padding:24px">No movements in this period.</td></tr>';
+        } else {
+            movements.forEach(m => {
+                const badge = m.type === 'invoice'
+                    ? '<span class="type-badge invoice">Invoice</span>'
+                    : '<span class="type-badge payment">Payment</span>';
+                html += `<tr>
+                    <td class="date-col">${m.date}</td>
+                    <td>${badge}</td>
+                    <td>${esc(m.reference)}</td>
+                    <td class="num">${m.amount < 0 ? '(' + fmt(m.amount) + ')' : fmt(m.amount)}</td>
+                    <td class="num balance-col${m.runningBalance < 0 ? ' negative' : ''}">${fmt(m.runningBalance)}</td>
+                </tr>`;
+            });
+        }
+
+        html += `<tr class="row-closing">
+            <td class="date-col">${periodEnd}</td>
+            <td></td>
+            <td>Closing Balance</td>
+            <td class="num">-</td>
+            <td class="num balance-col${closingBalance < 0 ? ' negative' : ''}">${fmt(closingBalance)}</td>
+        </tr>`;
+
+        document.getElementById('body').innerHTML = html;
+    }
+</script>
+</body>
+</html>
