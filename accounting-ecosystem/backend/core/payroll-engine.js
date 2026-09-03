@@ -438,8 +438,15 @@ const PayrollEngine = {
             return this.r2((monthlyGross + onceOffGross) * (opts.taxDirective / 100));
         }
 
-        var annualTax = this.calculateAnnualPAYE(monthlyGross * 12 + onceOffGross, opts.age, tbls);
-        var monthlyTax = annualTax / 12;
+        // Periodic income is annualized and divided by 12 as normal. Once-off income
+        // (bonus/current input) is NEVER divided by 12 — its full incremental annual
+        // tax is collected in this same period, matching calculateMonthlyPAYE_YTD's
+        // treatment (fixed 2026-09-03) so behaviour is identical whether or not YTD
+        // history exists yet (e.g. a bonus paid in the employee's very first period).
+        var annualTaxPeriodicOnly = this.calculateAnnualPAYE(monthlyGross * 12, opts.age, tbls);
+        var annualTaxWithOnceOff  = this.calculateAnnualPAYE(monthlyGross * 12 + onceOffGross, opts.age, tbls);
+        var onceOffTax = Math.max(annualTaxWithOnceOff - annualTaxPeriodicOnly, 0);
+        var monthlyTax = (annualTaxPeriodicOnly / 12) + onceOffTax;
 
         // Subtract medical tax credits
         if (opts.medicalMembers && opts.medicalMembers > 0) {
@@ -511,20 +518,41 @@ const PayrollEngine = {
         var accumulatedPeriodic = ytdPeriodicGross + currentPeriodicGross;
         var totalOnceOff        = ytdOnceOffGross  + currentOnceOffGross;
 
-        // Periodic income is projected to annual based on elapsed months.
-        // Once-off income is added directly — never annualised.
-        var annualEquivalent = monthInTaxYear > 0
-            ? accumulatedPeriodic * (12 / monthInTaxYear) + totalOnceOff
-            : accumulatedPeriodic * 12 + totalOnceOff;
+        // Periodic income is projected to annual based on elapsed months and run
+        // through the standard SARS run-to-date smoothing method below.
+        //
+        // Once-off income (bonuses, current inputs, overtime) must NEVER be smoothed
+        // across months — SARS requires the full incremental tax caused by an
+        // irregular/once-off amount to be withheld in the period it is actually paid.
+        // (Fixed 2026-09-03: previously the once-off amount was folded into the same
+        // annualEquivalent that then got multiplied by monthInTaxYear/12, which meant
+        // only a fraction of a bonus's tax was collected in the month it was paid, with
+        // the remainder silently smeared into later months. Mirrors the identical fix
+        // applied the same day to frontend-payroll/js/payroll-engine.js — these two
+        // files are a duplicated, manually-synced pair; see follow-up note to unify them.)
+        var annualPeriodicEquivalent = monthInTaxYear > 0
+            ? accumulatedPeriodic * (12 / monthInTaxYear)
+            : accumulatedPeriodic * 12;
 
-        var annualPAYE   = this.calculateAnnualPAYE(annualEquivalent, options.age, tables);
-        var monthlyMed   = options.medicalMembers ? this.calculateMedicalCredit(options.medicalMembers, tables) : 0;
+        var monthlyMed = options.medicalMembers ? this.calculateMedicalCredit(options.medicalMembers, tables) : 0;
 
-        // Total YTD liability = annualPAYE × elapsed/12, minus all monthly medical credits
-        var ytdLiability = (annualPAYE * monthInTaxYear / 12) - (monthlyMed * monthInTaxYear);
+        // Periodic component: smoothed run-to-date exactly as before, but computed on
+        // periodic income ALONE (no once-off baked in), so the monthInTaxYear/12
+        // fraction never touches once-off tax.
+        var annualPeriodicPAYE = this.calculateAnnualPAYE(annualPeriodicEquivalent, options.age, tables);
+        var ytdPeriodicLiability = (annualPeriodicPAYE * monthInTaxYear / 12) - (monthlyMed * monthInTaxYear);
+
+        // Once-off component: the FULL incremental annual tax caused by all once-off
+        // income received so far this tax year (prior periods' once-off amounts were
+        // already collected in full when they were paid, under this same formula, so
+        // subtracting ytdPAYE below correctly isolates just today's new increment).
+        var annualPAYEWithOnceOff = this.calculateAnnualPAYE(annualPeriodicEquivalent + totalOnceOff, options.age, tables);
+        var cumulativeOnceOffTax = Math.max(annualPAYEWithOnceOff - annualPeriodicPAYE, 0);
+
+        var totalLiabilityToDate = ytdPeriodicLiability + cumulativeOnceOffTax;
 
         // Current month PAYE = what still needs to be withheld (never negative)
-        return this.r2(Math.max(ytdLiability - ytdPAYE, 0));
+        return this.r2(Math.max(totalLiabilityToDate - ytdPAYE, 0));
     },
 
     /**
