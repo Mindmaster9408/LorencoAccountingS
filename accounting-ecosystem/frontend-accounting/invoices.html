@@ -599,6 +599,13 @@ async function apiPut(url, body) {
 
 function fmtR(v) { return 'R ' + parseFloat(v || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtDate(d) { if (!d) return '—'; const p = d.split('T')[0].split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
+// Adds N days to a 'YYYY-MM-DD' string, returning a new 'YYYY-MM-DD' string.
+// Used to default a new invoice's due date to invoice date + standard terms.
+function addDaysToDateStr(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split('T')[0];
+}
 function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ═══════════════════════════════════════════════════════
@@ -951,6 +958,10 @@ function buildInvActions(inv) {
     btns.push(`<button class="btn btn-success btn-sm" onclick="openPaymentModalForCustomer('${esc(inv.customer_name)}')">Pay</button>`);
     btns.push(`<button class="btn btn-secondary btn-sm" onclick="window.location.href='/accounting/credit-notes.html?fromInvoice=${inv.id}'">Credit Note</button>`);
   }
+  if (inv.status !== 'draft' && inv.status !== 'void') {
+    const sentTitle = inv.emailed_at ? `title="Sent to ${esc(inv.emailed_to)} on ${fmtDate(inv.emailed_at)}${inv.email_count > 1 ? ' (' + inv.email_count + 'x)' : ''}"` : '';
+    btns.push(`<button class="btn btn-secondary btn-sm" ${sentTitle} onclick="sendInvoiceEmail(${inv.id})">${inv.emailed_at ? '📧 Re-send' : '📧 Send'}</button>`);
+  }
   if (inv.status !== 'void' && inv.status !== 'paid' && parseFloat(inv.amount_paid || 0) === 0) {
     btns.push(`<button class="btn btn-danger btn-sm" onclick="openCustInvVoid(${inv.id})">Void</button>`);
   }
@@ -985,8 +996,17 @@ function openInvoiceModal(inv) {
   closeCustDrop();
   document.getElementById('invNumber').value          = inv ? inv.invoice_number : '';
   document.getElementById('invRef').value             = inv ? (inv.reference || '') : '';
-  document.getElementById('invDate').value            = inv ? inv.invoice_date?.split('T')[0] : new Date().toISOString().split('T')[0];
-  document.getElementById('invDueDate').value         = inv ? (inv.due_date?.split('T')[0] || '') : '';
+  const _todayStr = new Date().toISOString().split('T')[0];
+  document.getElementById('invDate').value            = inv ? inv.invoice_date?.split('T')[0] : _todayStr;
+  // Default due date on a NEW invoice to invoice date + 30 days (standard terms) —
+  // left blank previously, which meant every invoice's due_date stayed NULL unless
+  // someone manually typed one in. Aged debtors buckets a NULL due_date as "current"
+  // regardless of actual age, so this silently broke aging analysis for any invoice
+  // nobody bothered to hand-type a due date on. The field remains fully editable —
+  // this is only the starting default, not a forced value.
+  document.getElementById('invDueDate').value         = inv
+    ? (inv.due_date?.split('T')[0] || '')
+    : addDaysToDateStr(_todayStr, 30);
   document.getElementById('invNotes').value           = inv ? (inv.notes || '') : '';
 
   // Restore the toggle to whatever mode the invoice was actually saved
@@ -1283,6 +1303,38 @@ async function confirmPostInvoice() {
 }
 
 function postInvoice(id) { openPostInvoiceModal(id); }
+
+// ── Email invoice to customer ────────────────────────────────────────────────
+// Separate from posting/GL status — an invoice can be re-sent any number of
+// times, so this never blocks on "already sent", it just records each send.
+const _sendingInvoiceIds = new Set();
+
+async function sendInvoiceEmail(id) {
+  if (_sendingInvoiceIds.has(id)) return;
+  _sendingInvoiceIds.add(id);
+  try {
+    const r = await apiPost(`${BASE}/${id}/send`, {});
+    if (!r.ok) {
+      if (r.data?.errorCode === 'NO_CUSTOMER_EMAIL') {
+        const override = prompt(r.data.error + '\n\nEnter an email address to send to just this once:');
+        if (override && override.trim()) {
+          const r2 = await apiPost(`${BASE}/${id}/send`, { email: override.trim() });
+          if (!r2.ok) { alert(r2.data?.error || 'Failed to send invoice.'); return; }
+          await loadInvoices();
+          return;
+        }
+        return;
+      }
+      alert(r.data?.error || 'Failed to send invoice.');
+      return;
+    }
+    await loadInvoices();
+  } catch (err) {
+    alert('Network error: ' + err.message);
+  } finally {
+    _sendingInvoiceIds.delete(id);
+  }
+}
 
 // ── Customer invoice void modal (ACC-HARDEN-026) ─────────────────────────────
 // In-flight guard prevents double-click. Backend is the authoritative guard

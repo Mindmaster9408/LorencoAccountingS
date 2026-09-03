@@ -1224,12 +1224,12 @@ async function buildARReconciliation(companyId, asAt) {
 
   // 3. Sub-ledger: outstanding customer invoices as at asAt
   const slRes = await db.query(
-    `SELECT COALESCE(SUM(total_inc_vat - amount_paid), 0) AS subledger_balance, COUNT(*) AS invoice_count
+    `SELECT COALESCE(SUM(total_amount - amount_paid), 0) AS subledger_balance, COUNT(*) AS invoice_count
      FROM customer_invoices
      WHERE company_id = $1
-       AND invoice_date <= $2
+       AND date <= $2
        AND status NOT IN ('draft', 'void', 'cancelled')
-       AND (total_inc_vat - amount_paid) > 0.005`,
+       AND (total_amount - amount_paid) > 0.005`,
     [companyId, asAt]
   );
   const subledgerBalance = Math.round(parseFloat(slRes.rows[0].subledger_balance || 0) * 100) / 100;
@@ -1265,19 +1265,17 @@ async function buildARReconciliation(companyId, asAt) {
   // 6. Detail breakdown by customer
   const detailRes = await db.query(
     `SELECT
-       CASE WHEN customer_id IS NOT NULL THEN 'id:' || customer_id::text
-            ELSE 'name:' || lower(trim(customer_name)) END AS group_key,
-       MAX(customer_name)  AS customer_name,
-       MAX(customer_id)    AS customer_id,
+       ci.customer_id,
+       MAX(COALESCE(c.name, 'Unknown Customer')) AS customer_name,
        COUNT(*)            AS invoice_count,
-       COALESCE(SUM(total_inc_vat - amount_paid), 0) AS outstanding
-     FROM customer_invoices
-     WHERE company_id = $1
-       AND invoice_date <= $2
-       AND status NOT IN ('draft', 'void', 'cancelled')
-       AND (total_inc_vat - amount_paid) > 0.005
-     GROUP BY CASE WHEN customer_id IS NOT NULL THEN 'id:' || customer_id::text
-                   ELSE 'name:' || lower(trim(customer_name)) END
+       COALESCE(SUM(ci.total_amount - ci.amount_paid), 0) AS outstanding
+     FROM customer_invoices ci
+     LEFT JOIN customers c ON c.id = ci.customer_id AND c.company_id = ci.company_id
+     WHERE ci.company_id = $1
+       AND ci.date <= $2
+       AND ci.status NOT IN ('draft', 'void', 'cancelled')
+       AND (ci.total_amount - ci.amount_paid) > 0.005
+     GROUP BY ci.customer_id
      ORDER BY outstanding DESC`,
     [companyId, asAt]
   );
@@ -1359,12 +1357,12 @@ async function buildAPReconciliation(companyId, asAt) {
 
   // 3. Sub-ledger: outstanding supplier invoices as at asAt
   const slRes = await db.query(
-    `SELECT COALESCE(SUM(total_inc_vat - amount_paid), 0) AS subledger_balance, COUNT(*) AS invoice_count
+    `SELECT COALESCE(SUM(total_amount - amount_paid), 0) AS subledger_balance, COUNT(*) AS invoice_count
      FROM supplier_invoices
      WHERE company_id = $1
-       AND invoice_date <= $2
+       AND date <= $2
        AND status NOT IN ('draft', 'cancelled')
-       AND (total_inc_vat - amount_paid) > 0.005`,
+       AND (total_amount - amount_paid) > 0.005`,
     [companyId, asAt]
   );
   const subledgerBalance = Math.round(parseFloat(slRes.rows[0].subledger_balance || 0) * 100) / 100;
@@ -1403,13 +1401,13 @@ async function buildAPReconciliation(companyId, asAt) {
        si.supplier_id,
        MAX(s.name)  AS supplier_name,
        COUNT(*)     AS invoice_count,
-       COALESCE(SUM(si.total_inc_vat - si.amount_paid), 0) AS outstanding
+       COALESCE(SUM(si.total_amount - si.amount_paid), 0) AS outstanding
      FROM supplier_invoices si
      LEFT JOIN suppliers s ON s.id = si.supplier_id AND s.company_id = si.company_id
      WHERE si.company_id = $1
-       AND si.invoice_date <= $2
+       AND si.date <= $2
        AND si.status NOT IN ('draft', 'cancelled')
-       AND (si.total_inc_vat - si.amount_paid) > 0.005
+       AND (si.total_amount - si.amount_paid) > 0.005
      GROUP BY si.supplier_id
      ORDER BY outstanding DESC`,
     [companyId, asAt]
