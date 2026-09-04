@@ -32,7 +32,7 @@
   // ─── Team members (for action assignee picker) ────────────────────────────────
 
   function loadTeamMembers() {
-    PracticeAPI.fetch('/api/practice/team?active=true')
+    PracticeAPI.json('/api/practice/team?active=true')
       .then(function (d) { _teamMembers = d.members || []; })
       .catch(function () { _teamMembers = []; });
   }
@@ -48,7 +48,7 @@
   // ─── Summary stats ────────────────────────────────────────────────────────────
 
   function loadSummary() {
-    PracticeAPI.fetch('/api/practice/client-health/summary')
+    PracticeAPI.json('/api/practice/client-health/summary')
       .then(function (d) {
         setText('hsTotalVal',   d.total_clients ?? '—');
         setText('hsGoodVal',    d.good          ?? '—');
@@ -71,7 +71,7 @@
     hide('listEmpty');
     hide('listError');
 
-    PracticeAPI.fetch('/api/practice/client-health?limit=500')
+    PracticeAPI.json('/api/practice/client-health?limit=500')
       .then(function (d) {
         hide('listLoading');
         _allClients = d.clients || [];
@@ -180,7 +180,7 @@
     btn.textContent = 'Recalculating…';
     btn.disabled    = true;
 
-    PracticeAPI.fetch('/api/practice/client-health/recalculate', {
+    PracticeAPI.json('/api/practice/client-health/recalculate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({}),
@@ -201,7 +201,7 @@
   }
 
   function recalcOne(clientId) {
-    PracticeAPI.fetch('/api/practice/client-health/recalculate', {
+    PracticeAPI.json('/api/practice/client-health/recalculate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ client_id: clientId }),
@@ -235,7 +235,7 @@
     document.getElementById('hdModal').classList.remove('hidden');
     document.getElementById('hdRecalcBtn').dataset.clientId = clientId;
 
-    PracticeAPI.fetch('/api/practice/client-health/' + clientId)
+    PracticeAPI.json('/api/practice/client-health/' + clientId)
       .then(function (d) {
         renderHdModal(d);
       })
@@ -346,7 +346,7 @@
     btn.textContent = 'Recalculating…';
     btn.disabled    = true;
 
-    PracticeAPI.fetch('/api/practice/client-health/recalculate', {
+    PracticeAPI.json('/api/practice/client-health/recalculate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ client_id: clientId }),
@@ -373,7 +373,7 @@
     if (!el || !clientId) return;
     el.innerHTML = '<div class="action-list-loading">Loading actions…</div>';
 
-    PracticeAPI.fetch('/api/practice/client-health/' + clientId + '/actions')
+    PracticeAPI.json('/api/practice/client-health/' + clientId + '/actions')
       .then(function (d) {
         renderActionsList(d.actions || []);
       })
@@ -502,7 +502,7 @@
           assigned_team_member_id: assignee || null,
           due_date: due || null, notes: notes || null };
 
-    PracticeAPI.fetch(endpoint, {
+    PracticeAPI.json(endpoint, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
@@ -529,7 +529,7 @@
   // ─── Actions — complete / dismiss ────────────────────────────────────────────
 
   function completeAction(actionId) {
-    PracticeAPI.fetch('/api/practice/client-health/actions/' + actionId + '/complete', {
+    PracticeAPI.json('/api/practice/client-health/actions/' + actionId + '/complete', {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({}),
@@ -540,7 +540,7 @@
 
   function dismissAction(actionId) {
     if (!confirm('Dismiss this action?')) return;
-    PracticeAPI.fetch('/api/practice/client-health/actions/' + actionId + '/dismiss', {
+    PracticeAPI.json('/api/practice/client-health/actions/' + actionId + '/dismiss', {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({}),

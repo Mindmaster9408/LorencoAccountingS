@@ -38,6 +38,24 @@
         return res;
     }
 
+    // PracticeAPI.fetch() intentionally returns the raw, unparsed Response —
+    // some callers need it raw (blob/text downloads, or code that wants to
+    // inspect res.status itself). Most callers just want the parsed JSON body
+    // and to have a bad status surface as a real, catchable error instead of
+    // silently reading undefined off a Response object. Use PracticeAPI.json()
+    // for that — it's the fix for a real, shipped bug (2026-09-04): several
+    // pages called PracticeAPI.fetch() and then read properties straight off
+    // the Response (e.g. `res.entries`, `res.members`), which are always
+    // undefined, so every read silently came back empty regardless of what
+    // the server returned. Root cause of "approved time never reaches
+    // Billing/WIP" and "no team members found" despite both existing server-side.
+    async function apiJson(path, options) {
+        var res = await apiFetch(path, options);
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+        return data;
+    }
+
     function escHtml(str) {
         var d = document.createElement('div');
         d.textContent = str || '';
@@ -54,6 +72,7 @@
 
     window.PracticeAPI = {
         fetch: apiFetch,
+        json: apiJson,
         getHeaders: getHeaders,
         getToken: getToken,
         escHtml: escHtml,

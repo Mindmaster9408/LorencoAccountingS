@@ -8,6 +8,16 @@ var _writeoffLineId  = null;  // line open in write-off modal
 
 var esc = PracticeAPI.escHtml;
 
+// Use PracticeAPI.json() (not PracticeAPI.fetch()) everywhere in this file —
+// see api.js for why: fetch() returns a raw, unparsed Response, and this file
+// used to read properties straight off it (res.entries, res.pack, etc.),
+// which are always undefined, so every read silently came back empty/zero
+// regardless of what the server returned. Root cause of "approved time never
+// reaches Billing/WIP". json() also throws with the server's real error
+// message on a non-2xx status, so the existing try/catch blocks around
+// action calls (approve/lock/write-off/etc.) actually fire on failure.
+var apiJson = PracticeAPI.json;
+
 var PACK_STATUS_LABELS = {
   draft:     'Draft',
   reviewed:  'Reviewed',
@@ -48,7 +58,7 @@ async function init() {
 
 async function loadClients() {
   try {
-    var res = await PracticeAPI.fetch('/api/practice/clients?is_active=true');
+    var res = await apiJson('/api/practice/clients?is_active=true');
     _allClients = (res.clients || []).sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) {
     _allClients = [];
@@ -70,7 +80,7 @@ async function loadClients() {
 
 async function loadBillingStats() {
   try {
-    var wipRes = await PracticeAPI.fetch('/api/practice/billing/wip');
+    var wipRes = await apiJson('/api/practice/billing/wip');
 
     document.getElementById('statWipRecoverable').textContent =
       formatMoney(wipRes.grand_total_recoverable || 0);
@@ -78,7 +88,7 @@ async function loadBillingStats() {
       (wipRes.grand_total_hours || 0).toFixed(1) + ' hrs — ready to pack';
 
     // Open packs: fetch non-cancelled/non-locked packs
-    var packsRes = await PracticeAPI.fetch('/api/practice/billing/packs?limit=200');
+    var packsRes = await apiJson('/api/practice/billing/packs?limit=200');
     var openPacks = (packsRes.packs || []).filter(p =>
       !['cancelled', 'locked'].includes(p.status)
     );
@@ -111,7 +121,7 @@ async function loadWip() {
 
   try {
     var qs = clientId ? '?client_id=' + clientId : '';
-    var res = await PracticeAPI.fetch('/api/practice/billing/wip' + qs);
+    var res = await apiJson('/api/practice/billing/wip' + qs);
     _wipEntries = res.entries || [];
     renderWip(res.by_client || [], res.entries || []);
   } catch (e) {
@@ -306,7 +316,7 @@ async function createPack() {
   btn.textContent = 'Creating…';
 
   try {
-    var res = await PracticeAPI.fetch('/api/practice/billing/packs', {
+    var res = await apiJson('/api/practice/billing/packs', {
       method: 'POST',
       body: JSON.stringify({
         client_id:       parseInt(clientId),
@@ -355,7 +365,7 @@ async function loadPacks() {
     if (status)   qs.push('status=' + status);
     qs.push('limit=100');
 
-    var res = await PracticeAPI.fetch('/api/practice/billing/packs?' + qs.join('&'));
+    var res = await apiJson('/api/practice/billing/packs?' + qs.join('&'));
     renderPacks(res.packs || []);
   } catch (e) {
     container.innerHTML = '<div class="error-banner">Failed to load packs: ' + esc(e.message) + '</div>';
@@ -418,7 +428,7 @@ async function openPackDetail(packId) {
   document.getElementById('packDetailModal').classList.add('show');
 
   try {
-    var res  = await PracticeAPI.fetch('/api/practice/billing/packs/' + packId);
+    var res  = await apiJson('/api/practice/billing/packs/' + packId);
     var pack = res.pack;
     var lines = res.lines || [];
 
@@ -552,7 +562,7 @@ async function savePackNotes() {
   var notes    = document.getElementById('pdNotes').value.trim();
 
   try {
-    await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId, {
+    await apiJson('/api/practice/billing/packs/' + _currentPackId, {
       method: 'PUT',
       body: JSON.stringify({
         proposed_invoice_value: proposed ? parseFloat(proposed) : null,
@@ -569,7 +579,7 @@ async function savePackNotes() {
 async function recalculatePack() {
   if (!_currentPackId) return;
   try {
-    await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId + '/recalculate', {
+    await apiJson('/api/practice/billing/packs/' + _currentPackId + '/recalculate', {
       method: 'PUT', body: '{}'
     });
     showToast('Totals recalculated');
@@ -584,7 +594,7 @@ async function approvePack() {
   if (!_currentPackId) return;
   if (!confirm('Approve this billing pack? The partner has reviewed all entries.')) return;
   try {
-    await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId + '/approve', {
+    await apiJson('/api/practice/billing/packs/' + _currentPackId + '/approve', {
       method: 'PUT', body: '{}'
     });
     showToast('Pack approved');
@@ -598,7 +608,7 @@ async function lockPack() {
   if (!_currentPackId) return;
   if (!confirm('Lock this billing pack? This will mark all included time entries as BILLED. This cannot be undone.')) return;
   try {
-    await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId + '/lock', {
+    await apiJson('/api/practice/billing/packs/' + _currentPackId + '/lock', {
       method: 'PUT', body: '{}'
     });
     showToast('Pack locked — entries marked as billed');
@@ -612,7 +622,7 @@ async function cancelPack() {
   if (!_currentPackId) return;
   if (!confirm('Cancel this billing pack? Time entries will be returned to Approved status and can be re-packed.')) return;
   try {
-    await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId, {
+    await apiJson('/api/practice/billing/packs/' + _currentPackId, {
       method: 'DELETE'
     });
     showToast('Pack cancelled — entries returned to approved');
@@ -625,7 +635,7 @@ async function cancelPack() {
 
 async function refreshPackDetail() {
   if (!_currentPackId) return;
-  var res   = await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId);
+  var res   = await apiJson('/api/practice/billing/packs/' + _currentPackId);
   renderPackDetail(res.pack, res.lines || []);
 }
 
@@ -646,7 +656,7 @@ async function submitWriteoff() {
   btn.disabled = true; btn.textContent = 'Writing off…';
 
   try {
-    await PracticeAPI.fetch(
+    await apiJson(
       '/api/practice/billing/packs/' + _currentPackId + '/lines/' + _writeoffLineId + '/writeoff',
       { method: 'PUT', body: JSON.stringify({ reason }) }
     );
@@ -665,7 +675,7 @@ async function excludeLine(lineId) {
   if (!confirm('Exclude this entry? It will be removed from billing totals and returned to approved status so it can be added to another pack.')) return;
 
   try {
-    await PracticeAPI.fetch(
+    await apiJson(
       '/api/practice/billing/packs/' + _currentPackId + '/lines/' + lineId + '/exclude',
       { method: 'PUT', body: '{}' }
     );
@@ -685,7 +695,7 @@ async function openHistoryModal() {
   document.getElementById('historyModal').classList.add('show');
 
   try {
-    var res = await PracticeAPI.fetch('/api/practice/billing/packs/' + _currentPackId + '/history');
+    var res = await apiJson('/api/practice/billing/packs/' + _currentPackId + '/history');
     renderPackHistory(res.events || []);
   } catch (e) {
     listEl.innerHTML = '<div class="error-banner">Failed to load history: ' + esc(e.message) + '</div>';
