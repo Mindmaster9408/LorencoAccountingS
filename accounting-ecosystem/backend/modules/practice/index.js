@@ -1623,6 +1623,14 @@ router.put('/tasks/:id/approve-review', async (req, res) => {
     approval_status: needsApproval ? 'pending' : task.approval_status,
     updated_at:     now
   };
+  // Review-only workflow (no separate approval step): this IS the final QA
+  // sign-off, so the task itself is done. (Previously the task's own status
+  // never left 'open' even after full QA approval — see approve-final below
+  // for the mirrored fix on the approval-required path.)
+  if (!needsApproval) {
+    updates.status       = 'completed';
+    updates.completed_at = now;
+  }
 
   const { data, error } = await supabase
     .from('practice_tasks')
@@ -1725,6 +1733,13 @@ router.put('/tasks/:id/approve-final', async (req, res) => {
       approved_by:     actorId,
       approval_notes:  notes || task.approval_notes || null,
       qa_status:       'approved',
+      // This endpoint is only reachable once every required QA step has
+      // passed (guarded above), so it IS the task's final sign-off — the
+      // task itself is done. Previously only qa_status moved to 'approved'
+      // while status stayed 'open' forever, so a fully QA-approved task
+      // still counted as active/open work everywhere status is read.
+      status:          'completed',
+      completed_at:    now,
       updated_at:      now
     })
     .eq('id', req.params.id)
