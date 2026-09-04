@@ -210,10 +210,14 @@ router.get('/trial-balance/pdf', authenticate, hasPermission('report.view'), asy
  * By default, accounts with no opening balance AND no activity in the period
  * are omitted (an inactive/never-used account adds noise, not information).
  * Pass includeZeroActivity=true to list every active account regardless.
+ *
+ * Pass accountIds=1,2,3 to restrict the report to just those accounts (the
+ * "pick which accounts, or All" selector on general-ledger-full.html) —
+ * omit it, or pass it empty, for every account.
  */
 router.get('/general-ledger/full', authenticate, hasPermission('report.view'), async (req, res) => {
   try {
-    const { fromDate, toDate, journalSourceMode: rawMode, includeZeroActivity } = req.query;
+    const { fromDate, toDate, journalSourceMode: rawMode, includeZeroActivity, accountIds } = req.query;
     const companyId = req.user.companyId;
     const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
     let glSourceClause = '';
@@ -223,12 +227,19 @@ router.get('/general-ledger/full', authenticate, hasPermission('report.view'), a
       glSourceClause = ` AND j.source_type IS NOT NULL AND j.source_type != 'manual'`;
     }
 
-    const { data: accounts, error: acctErr } = await supabase
+    let acctQ = supabase
       .from('accounts')
       .select('id, code, name, type, sub_type, reporting_group')
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('code');
+
+    if (accountIds) {
+      const idList = String(accountIds).split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      if (idList.length) acctQ = acctQ.in('id', idList);
+    }
+
+    const { data: accounts, error: acctErr } = await acctQ;
     if (acctErr) throw new Error(acctErr.message);
 
     // One query for opening-balance lines (everything before fromDate), one for
@@ -286,7 +297,12 @@ router.get('/general-ledger/full', authenticate, hasPermission('report.view'), a
       });
     }
 
-    const wantZero = includeZeroActivity === 'true';
+    // Accounts explicitly picked by the user should always show, even with zero
+    // activity — otherwise picking "Bank" for a bank with no movement this period
+    // just makes it silently vanish, which reads as a bug, not a filter. Only
+    // fall back to hiding zero-activity accounts when no explicit pick was made
+    // (i.e. "All accounts"), and even then only unless the caller opts in.
+    const wantZero = includeZeroActivity === 'true' || !!accountIds;
     const ledger = [];
     for (const account of accounts) {
       const openingBalance = openingByAccount[account.id] || 0;

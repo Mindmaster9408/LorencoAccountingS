@@ -43,6 +43,50 @@
         .gl-toolbar .btn-secondary:hover { background: rgba(255,255,255,0.10); }
         .gl-toolbar .spacer { margin-left: auto; font-size: 12px; color: rgba(255,255,255,0.4); }
 
+        .acct-picker { position: relative; }
+        .acct-panel {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            width: 300px;
+            max-height: 380px;
+            background: #17171f;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+            z-index: 20;
+            display: none;
+            flex-direction: column;
+        }
+        .acct-panel.open { display: flex; }
+        .acct-panel-actions {
+            display: flex; gap: 8px; padding: 8px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .acct-panel-actions button {
+            font-size: 11px; padding: 4px 8px; border-radius: 5px;
+            border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.75); cursor: pointer;
+        }
+        .acct-panel-actions button:hover { background: rgba(255,255,255,0.12); }
+        .acct-panel-list { overflow-y: auto; padding: 6px 4px; flex: 1; }
+        .acct-panel-group-label {
+            padding: 6px 10px 2px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.05em; color: rgba(245,158,11,0.8);
+        }
+        .acct-panel-item {
+            display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+            font-size: 13px; color: rgba(255,255,255,0.85); cursor: pointer; border-radius: 5px;
+        }
+        .acct-panel-item:hover { background: rgba(255,255,255,0.06); }
+        .acct-panel-item input { cursor: pointer; }
+        .acct-panel-footer {
+            padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.08);
+            display: flex; justify-content: flex-end;
+        }
+        .acct-panel-footer .btn-primary { padding: 6px 14px; font-size: 12px; }
+
         .page-header { padding: 20px 24px 4px; }
         .page-header h2 { font-size: 22px; font-weight: 700; color: #fff; }
 
@@ -114,6 +158,23 @@
             <input type="date" id="fromDate">
             <label>To</label>
             <input type="date" id="toDate">
+
+            <div class="acct-picker" id="acctPicker">
+                <button type="button" class="btn-secondary" id="acctPickerBtn" onclick="toggleAcctPanel()">Accounts: All ▾</button>
+                <div class="acct-panel" id="acctPanel">
+                    <div class="acct-panel-actions">
+                        <button type="button" onclick="setAllAccounts(true)">Select All</button>
+                        <button type="button" onclick="setAllAccounts(false)">Clear</button>
+                    </div>
+                    <div class="acct-panel-list" id="acctPanelList">
+                        <div style="padding:10px;color:rgba(255,255,255,0.4);font-size:12px">Loading accounts…</div>
+                    </div>
+                    <div class="acct-panel-footer">
+                        <button type="button" class="btn-primary" onclick="applyAccountSelection()">Apply</button>
+                    </div>
+                </div>
+            </div>
+
             <label><input type="checkbox" id="includeZero"> Include accounts with no activity</label>
             <button class="btn-primary" onclick="load()">Generate</button>
             <button class="btn-secondary" onclick="exportCSV()">Export CSV</button>
@@ -143,6 +204,75 @@
 
     let lastResult = null;
 
+    // ── Account picker: "All" by default, or an explicit subset ─────────────
+    let allAccounts = [];          // [{id, code, name, type}, ...]
+    let selectedAccountIds = null; // null = All; Set of ids = explicit subset
+
+    async function loadAccountList() {
+        try {
+            const res = await fetch('/api/accounting/accounts', { headers: authH() });
+            const data = await res.json();
+            allAccounts = data.accounts || [];
+            renderAcctPanel();
+        } catch (e) {
+            document.getElementById('acctPanelList').innerHTML =
+                '<div style="padding:10px;color:#fca5a5;font-size:12px">Could not load accounts: ' + esc(e.message) + '</div>';
+        }
+    }
+
+    function renderAcctPanel() {
+        const groups = {};
+        allAccounts.forEach(a => {
+            const g = a.type || 'other';
+            if (!groups[g]) groups[g] = [];
+            groups[g].push(a);
+        });
+        let html = '';
+        Object.keys(groups).sort().forEach(type => {
+            html += '<div class="acct-panel-group-label">' + esc(type) + '</div>';
+            groups[type].forEach(a => {
+                const checked = !selectedAccountIds || selectedAccountIds.has(a.id) ? 'checked' : '';
+                html += '<label class="acct-panel-item">' +
+                    '<input type="checkbox" value="' + a.id + '" ' + checked + '> ' +
+                    esc(a.code) + ' — ' + esc(a.name) +
+                    '</label>';
+            });
+        });
+        document.getElementById('acctPanelList').innerHTML = html;
+    }
+
+    function toggleAcctPanel() {
+        document.getElementById('acctPanel').classList.toggle('open');
+    }
+
+    function setAllAccounts(select) {
+        document.querySelectorAll('#acctPanelList input[type="checkbox"]').forEach(cb => { cb.checked = select; });
+    }
+
+    function applyAccountSelection() {
+        const boxes = document.querySelectorAll('#acctPanelList input[type="checkbox"]');
+        const checkedIds = [...boxes].filter(cb => cb.checked).map(cb => parseInt(cb.value, 10));
+        const btn = document.getElementById('acctPickerBtn');
+        if (checkedIds.length === 0 || checkedIds.length === allAccounts.length) {
+            selectedAccountIds = null;
+            btn.textContent = 'Accounts: All ▾';
+        } else {
+            selectedAccountIds = new Set(checkedIds);
+            btn.textContent = 'Accounts: ' + checkedIds.length + ' selected ▾';
+        }
+        document.getElementById('acctPanel').classList.remove('open');
+    }
+
+    // Close the panel when clicking outside it.
+    document.addEventListener('click', (e) => {
+        const picker = document.getElementById('acctPicker');
+        if (picker && !picker.contains(e.target)) {
+            document.getElementById('acctPanel').classList.remove('open');
+        }
+    });
+
+    loadAccountList();
+
     // Default: current SA financial year to date (Mar 1 → today) — a sensible
     // starting range for "the whole GL", editable before generating.
     (function() {
@@ -165,6 +295,7 @@
             let url = '/api/accounting/reports/general-ledger/full?includeZeroActivity=' + includeZero;
             if (fromDate) url += '&fromDate=' + fromDate;
             if (toDate)   url += '&toDate=' + toDate;
+            if (selectedAccountIds) url += '&accountIds=' + [...selectedAccountIds].join(',');
             const res = await fetch(url, { headers: authH() });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
