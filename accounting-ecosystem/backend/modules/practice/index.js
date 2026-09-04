@@ -1283,7 +1283,7 @@ async function logReviewEvent(companyId, taskId, eventType, opts = {}) {
 
 router.get('/tasks', async (req, res) => {
   const {
-    client_id, status, assigned_to, type, due_before, due_after,
+    client_id, status, status_not_in, assigned_to, type, due_before, due_after,
     review_status, approval_status, qa_status,
     reviewer_id, preparer_id
   } = req.query;
@@ -1307,6 +1307,7 @@ router.get('/tasks', async (req, res) => {
 
   if (client_id)       q = q.eq('client_id',                   parseInt(client_id));
   if (status)          q = q.eq('status',                       status);
+  if (status_not_in)   q = q.not('status', 'in', '(' + status_not_in.split(',').map(s => s.trim()).join(',') + ')');
   if (assigned_to)     q = q.eq('assigned_to',                  parseInt(assigned_to));
   if (type)            q = q.eq('type',                         type);
   if (due_before)      q = q.lte('due_date',                    due_before);

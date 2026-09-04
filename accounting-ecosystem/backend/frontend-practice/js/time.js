@@ -90,7 +90,10 @@ async function loadTasksForClient() {
   sel.innerHTML = '<option value="">None</option>';
   if (!clientId) return;
   try {
-    var res = await PracticeAPI.fetch('/api/practice/tasks?client_id=' + clientId + '&status=in_progress&limit=100');
+    // Any non-terminal task should be bookable against — a freshly created task
+    // defaults to 'open', not 'in_progress', so filtering to in_progress only
+    // (previous behaviour) meant a brand new task could never be selected here.
+    var res = await PracticeAPI.fetch('/api/practice/tasks?client_id=' + clientId + '&status_not_in=completed,cancelled&limit=100');
     if (!res.ok) return;
     var d = await res.json();
     (d.tasks || []).forEach(function(t) {
