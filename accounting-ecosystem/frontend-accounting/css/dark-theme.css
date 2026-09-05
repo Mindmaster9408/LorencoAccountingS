@@ -332,7 +332,27 @@ select option {
     box-sizing: border-box !important;
 }
 .modal-overlay,
-.overlay {
+.overlay,
+/* .modal plays two DIFFERENT roles across this app depending on the page:
+   on quotes.html/invoices.html/credit-notes.html/products-services.html/
+   suppliers.html/customer-list.html/customer-receipts.html it's the outer,
+   full-viewport backdrop (position:fixed;inset:0) wrapping a separate
+   .modal-dialog or .modal-content box — same role as .modal-overlay/
+   .overlay above, just a different class name. On accounts.html/
+   journals.html/bank-rules.html/pilot-controls.html/users-permissions.html
+   etc. .modal IS the sized dialog box itself, directly containing form
+   fields, with no nested .modal-dialog/.modal-content at all — that
+   variant correctly keeps the solid fill below. :has() distinguishes the
+   two without touching either page's own HTML/CSS: only a .modal that
+   actually wraps one of those inner-box classes gets the translucent
+   backdrop treatment.
+   Found live 2026-09-05 on quotes.html's New Quote modal (reported as
+   "no stars showing") — this .modal was getting the INNER box's solid
+   #1a1a2e fill applied to the OUTER full-viewport backdrop, so the
+   entire screen behind the modal, stars included, went 100% opaque
+   instead of a translucent dimmer letting some of it show through. */
+.modal:has(.modal-dialog),
+.modal:has(.modal-content) {
     /* rgba(9,13,24) = body's own #090d18 near-black, at 85% opacity as a
        backdrop dimmer. Previously rgba(15,12,41) = the old purple #0f0c29
        --bg-dark value — same mistake as the modal box below, just less
