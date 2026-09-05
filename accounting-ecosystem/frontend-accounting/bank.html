@@ -2199,38 +2199,50 @@ Click OK to simulate uploading a file.`;
             return 'R\u00a0' + Math.abs(num).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        // Flags each transaction with `_balanceMismatch`/`_balanceExpected` when
-        // its stated balance doesn't equal the immediately preceding transaction's
-        // balance plus its own amount — the same reconciliation check that found
-        // WJM Beleggings' data gap (2026-09-02): a bank statement's own balance
-        // column is normally self-consistent, so a mismatch here means either a
-        // transaction is missing from the import, or (rarer, now largely fixed
-        // server-side by reorderSameDayByBalanceChain) same-day rows are in the
-        // wrong order. Grouped by bank_account_id so accounts are never chained
-        // against each other when "All accounts" is selected. Mutates txns in
-        // place; assumes txns already arrive in the correct chain order from the
-        // API (date ascending) — does not re-sort.
-        function computeBalanceMismatches(txns) {
+        // Computes each transaction's running balance the accounting way — the
+        // bank account's own opening balance (its TB starting point, from
+        // bank_accounts.opening_balance) plus every money-in, minus every
+        // money-out, accumulated in chronological order:
+        //   balance = openingBalance + Σ(money in) − Σ(money out)
+        // Stored as `_computedBalance` and used for the Balance column display —
+        // this always has a value, unlike the bank statement's own imported
+        // `balance` field (often missing entirely for manual/CSV-without-balance
+        // entries) and it ties directly back to the account's TB rather than
+        // whatever the statement happens to say.
+        //
+        // Also flags `_balanceMismatch`/`_balanceExpected` whenever the imported
+        // statement DOES carry its own balance and it disagrees with our
+        // TB-anchored figure — the same reconciliation check that found WJM
+        // Beleggings' data gap (2026-09-02), now anchored to the account's TB
+        // instead of resetting its reference point to whatever raw balance last
+        // appeared (which could mask a real drift instead of surfacing it).
+        //
+        // Grouped by bank_account_id so accounts are never chained against each
+        // other when "All accounts" is selected. Mutates txns in place; assumes
+        // txns already arrive in the correct chain order from the API (date
+        // ascending) — does not re-sort.
+        function computeRunningBalances(txns) {
             const byAccount = {};
             for (const t of txns) {
                 (byAccount[t.bank_account_id] = byAccount[t.bank_account_id] || []).push(t);
             }
-            for (const acctTxns of Object.values(byAccount)) {
-                let priorBalance = null;
+            for (const [bankAccountId, acctTxns] of Object.entries(byAccount)) {
+                const acct = bankAccountsData.find(a => String(a.id) === String(bankAccountId));
+                let running = parseFloat(acct?.opening_balance) || 0;
                 for (const t of acctTxns) {
-                    if (priorBalance != null && t.balance != null && t.amount != null) {
-                        const expected = Math.round((priorBalance + t.amount) * 100) / 100;
-                        const actual   = Math.round(t.balance * 100) / 100;
-                        if (Math.abs(expected - actual) > 0.02) {
+                    running = Math.round((running + (parseFloat(t.amount) || 0)) * 100) / 100;
+                    t._computedBalance = running;
+                    if (t.balance != null) {
+                        const actual = Math.round(t.balance * 100) / 100;
+                        if (Math.abs(running - actual) > 0.02) {
                             t._balanceMismatch = true;
-                            t._balanceExpected = expected;
+                            t._balanceExpected = running;
                         } else {
                             t._balanceMismatch = false;
                         }
                     } else {
                         t._balanceMismatch = false;
                     }
-                    if (t.balance != null) priorBalance = t.balance;
                 }
             }
         }
@@ -2255,9 +2267,14 @@ Click OK to simulate uploading a file.`;
             const moneyOutCell = !isIn
                 ? `<td class="transaction-amount amount-out">${formatAmount(txn.amount)}</td>`
                 : '<td style="color:#9aa0a6">—</td>';
-            const bal = txn.balance != null ? formatAmount(txn.balance) : '—';
+            // Balance column shows the accounting-computed running balance (bank
+            // account's TB opening balance + cumulative money in − money out),
+            // not the bank statement's own imported balance field — that raw
+            // value is often missing entirely and, when present, is only used
+            // above to flag a mismatch against this computed figure.
+            const bal = txn._computedBalance != null ? formatAmount(txn._computedBalance) : '—';
             const balCell = txn._balanceMismatch
-                ? `<td style="color:#d93025;" title="Balance doesn't reconcile — expected ${formatAmount(txn._balanceExpected)} based on the previous transaction. Usually means a transaction is missing from the import.">⚠️ ${bal}</td>`
+                ? `<td style="color:#d93025;" title="Statement shows ${formatAmount(txn.balance)} — our records compute ${formatAmount(txn._balanceExpected)} from the account's opening balance. Usually means a transaction is missing or duplicated.">⚠️ ${bal}</td>`
                 : `<td>${bal}</td>`;
             return `
             <tr data-txn-id="${txn.id}">
@@ -2438,7 +2455,7 @@ Click OK to simulate uploading a file.`;
                 // split below, so the check always walks the true, complete
                 // chronological chain per bank account — never just whichever
                 // rows happen to be visible in the current tab.
-                computeBalanceMismatches(filtered);
+                computeRunningBalances(filtered);
 
                 // Keep full set for tab switching; _allTxnData holds current-tab slice
                 window._allTxnDataUnfiltered = filtered;
@@ -2453,12 +2470,15 @@ Click OK to simulate uploading a file.`;
                     return;
                 }
 
-                // Update balance display on account cards — use last row (most recent, ASC order)
+                // Update balance display on account cards — use last row (most recent, ASC
+                // order). Prefer the accounting-computed running balance (always present)
+                // over the statement's own raw balance field (often missing).
                 if (txns.length && selectedBankAccountId) {
                     const latest = txns[txns.length - 1];
-                    if (latest.balance != null) {
+                    const latestBal = latest._computedBalance != null ? latest._computedBalance : latest.balance;
+                    if (latestBal != null) {
                         const balEl = document.getElementById('acctBal' + selectedBankAccountId);
-                        if (balEl) balEl.textContent = formatAmount(latest.balance);
+                        if (balEl) balEl.textContent = formatAmount(latestBal);
                     }
                 }
 
