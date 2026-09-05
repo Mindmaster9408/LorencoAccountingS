@@ -441,6 +441,18 @@ class OpeningBalancesService {
     });
 
     await this._resetBatchToDraft(batchId, companyId);
+    // Refresh totals: unmapLine doubles as "restore an excluded line" (the
+    // frontend's includeLineAgain() calls this same endpoint on an excluded
+    // line to bring it back to 'unmapped'). That crosses excludeLine's
+    // totals boundary — the line starts counting again — so the batch's
+    // stored debit_total/credit_total/variance must be recalculated here
+    // too, exactly as excludeLine() already does for the reverse direction.
+    // Previously this returned without refreshing: the Variance Panel kept
+    // showing stale (understated) totals after "Include Again" until some
+    // unrelated line edit happened to trigger a refresh. Harmless no-op
+    // extra query on a plain mapped→unmapped call, where totals can't
+    // have changed anyway.
+    await this._refreshBatchTotals(batchId, companyId);
   }
 
   /**
