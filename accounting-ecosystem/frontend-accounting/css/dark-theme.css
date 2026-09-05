@@ -377,6 +377,17 @@ select option {
 .modal-footer {
     border-top-color: var(--border) !important;
 }
+/* Customer-search dropdown inside a modal — same "accent-off-tone fills a
+   surface" mistake as .modal-dialog above, just under two different
+   copy-pasted class names: invoices.html/credit-notes.html use
+   .cust-dropdown at #1e1b3a, quotes.html independently uses .cust-drop at
+   an even more saturated #1a1740. Reported live on quotes.html's New Quote
+   modal (2026-09-05) — same #1a1a2e Eco-Hub-surface fix as the modal body,
+   so the dropdown no longer visibly mismatches the surface it floats over. */
+.cust-drop,
+.cust-dropdown {
+    background: #1a1a2e !important;
+}
 .close-btn,
 .modal-close {
     background: transparent !important;
