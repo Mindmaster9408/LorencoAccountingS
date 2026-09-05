@@ -1241,11 +1241,23 @@ td.negative,
 
 /* ══════════════════════════════════════════════════════════════════════════════
  * MODAL ENHANCEMENTS — contacts.html and bank.html both define .modal-header
- * as a blue gradient. Override to amber. .modal-footer blue/light bg → dark.
+ * as a blue gradient; .modal-footer as a blue/light bg. Both overridden to dark.
+ *
+ * NOTE (2026-09-04): .modal-header was previously overridden to a solid amber
+ * gradient (blue → amber) instead of flat dark. That repeats the exact mistake
+ * already root-caused and fixed for the page body — see
+ * reference_eco_dark_cosmic_visual_pattern: an accent colour must never fill a
+ * large, prominent surface as a dominant gradient; it belongs in small,
+ * separate, low-opacity accents layered onto a solid dark base. A modal header
+ * bar is exactly such a large surface once real content (a page-wide "New
+ * Invoice" modal, etc.) sits under it. Fixed the same way the body was: flat
+ * dark surface, with the accent kept only as a thin border — never baked into
+ * the fill.
  * ══════════════════════════════════════════════════════════════════════════════ */
 
 .modal-header {
-    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent) 100%) !important;
+    background: var(--surface) !important;
+    border-bottom: 2px solid var(--accent) !important;
     color: var(--text) !important;
 }
 .modal-header h2,
