@@ -333,12 +333,24 @@ select option {
 }
 .modal-overlay,
 .overlay {
-    background: rgba(15,12,41,0.85) !important;
+    /* rgba(9,13,24) = body's own #090d18 near-black, at 85% opacity as a
+       backdrop dimmer. Previously rgba(15,12,41) = the old purple #0f0c29
+       --bg-dark value — same mistake as the modal box below, just less
+       visible since it's a translucent dimmer rather than a solid fill. */
+    background: rgba(9,13,24,0.85) !important;
 }
 .modal,
 .modal-content,
 .modal-box {
-    background: #1e1b3a !important;
+    /* #1a1a2e matches frontend-ecosystem/dashboard-v2.css's --surface-2 —
+       the Eco Hub's own confirmed-correct elevated-surface color (see the
+       body-background comment above for why that page is the source of
+       truth). Previously #1e1b3a, a distinctly purple-violet tone, was the
+       same "accent/off-tone fills a large surface" mistake already fixed
+       on the page body and the modal header — just never applied to the
+       modal's own base fill. Reported live on invoices.html's New Invoice
+       modal, but this rule is shared across every modal in the app. */
+    background: #1a1a2e !important;
     border: 1px solid var(--border);
     color: var(--text) !important;
 }
