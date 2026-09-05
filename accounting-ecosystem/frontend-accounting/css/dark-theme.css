@@ -341,7 +341,8 @@ select option {
 }
 .modal,
 .modal-content,
-.modal-box {
+.modal-box,
+.modal-dialog {
     /* #1a1a2e matches frontend-ecosystem/dashboard-v2.css's --surface-2 —
        the Eco Hub's own confirmed-correct elevated-surface color (see the
        body-background comment above for why that page is the source of
@@ -349,7 +350,18 @@ select option {
        same "accent/off-tone fills a large surface" mistake already fixed
        on the page body and the modal header — just never applied to the
        modal's own base fill. Reported live on invoices.html's New Invoice
-       modal, but this rule is shared across every modal in the app. */
+       modal, but this rule is shared across every modal in the app.
+       .modal-dialog added 2026-09-05: invoices.html, credit-notes.html,
+       products-services.html and suppliers.html each define their OWN
+       inline .modal-dialog{background:#1e1b3a} (identical copy-pasted
+       mistake, no !important, so this shared !important rule — which
+       loads after those inline <style> blocks in every one of those
+       pages — now overrides it), and quotes.html independently used an
+       even more saturated #1a1740. Fixing at this one shared source
+       instead of editing five separate inline copies. Does not affect
+       suppliers.html's #modalSupPayDetail .modal-dialog print-view
+       override, which stays white/black via a higher-specificity ID
+       selector plus its own !important. */
     background: #1a1a2e !important;
     border: 1px solid var(--border);
     color: var(--text) !important;
