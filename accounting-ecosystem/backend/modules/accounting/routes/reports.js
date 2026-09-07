@@ -369,7 +369,7 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
             `SELECT jl.debit, jl.credit
              FROM journal_lines jl
              INNER JOIN journals j ON j.id = jl.journal_id
-             WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed')
+             WHERE j.company_id = $1 AND j.status = 'posted' AND j.reversal_of_journal_id IS NULL
                AND j.date < $2 AND jl.account_id = $3${glSourceClause}`,
             obParams
           )
@@ -380,7 +380,7 @@ router.get('/general-ledger', authenticate, hasPermission('report.view'), async 
                 j.description AS journal_description, j.source_type
          FROM journal_lines jl
          INNER JOIN journals j ON j.id = jl.journal_id
-         WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed')
+         WHERE j.company_id = $1 AND j.status = 'posted' AND j.reversal_of_journal_id IS NULL
            AND jl.account_id = $2${periodDateClauses}${glSourceClause}`,
         periodParams
       ),
@@ -454,7 +454,7 @@ router.get('/general-ledger/pdf', authenticate, hasPermission('report.view'), as
       obParams
         ? db.query(
             `SELECT jl.debit, jl.credit FROM journal_lines jl INNER JOIN journals j ON j.id = jl.journal_id
-             WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed') AND j.date < $2 AND jl.account_id = $3${glSourceClause}`,
+             WHERE j.company_id = $1 AND j.status = 'posted' AND j.reversal_of_journal_id IS NULL AND j.date < $2 AND jl.account_id = $3${glSourceClause}`,
             obParams
           )
         : Promise.resolve({ rows: [] }),
@@ -462,7 +462,7 @@ router.get('/general-ledger/pdf', authenticate, hasPermission('report.view'), as
         `SELECT jl.journal_id, jl.description AS line_description, jl.debit, jl.credit,
                 j.date::text AS date, j.reference, j.description AS journal_description
          FROM journal_lines jl INNER JOIN journals j ON j.id = jl.journal_id
-         WHERE j.company_id = $1 AND j.status IN ('posted', 'reversed') AND jl.account_id = $2${periodDateClauses}${glSourceClause}`,
+         WHERE j.company_id = $1 AND j.status = 'posted' AND j.reversal_of_journal_id IS NULL AND jl.account_id = $2${periodDateClauses}${glSourceClause}`,
         periodParams
       ),
     ]);
