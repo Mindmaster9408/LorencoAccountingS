@@ -2311,11 +2311,37 @@ router.delete('/transactions/bulk', authenticate, hasPermission('bank.manage'), 
       }
     }
 
-    if (eligible.length === 0) {
+    // Reverse the linked journal for every matched transaction BEFORE deleting
+    // it — a force-deleted transaction used to just vanish, leaving its
+    // posted journal permanently orphaned in the GL (found live on a real
+    // client: two deleted transactions were each re-allocated via a later
+    // import, double-booking the GL because the original journal was never
+    // reversed). Any row whose reversal fails is pulled OUT of the delete
+    // set and into `blocked` instead — it is never deleted without its
+    // journal being reversed first, so the transaction list and the GL can
+    // never drift out of sync with each other.
+    const toDelete = [];
+    for (const txn of eligible) {
+      if (txn.status === 'matched' && txn.matched_entity_id) {
+        try {
+          await JournalService.reverseJournal(
+            txn.matched_entity_id, companyId, req.user.id,
+            `Transaction deleted (bulk): ${txn.description}`
+          );
+          toDelete.push(txn);
+        } catch (reverseErr) {
+          blocked.push({ id: txn.id, reason: 'reversal_failed', journalRef: txn.matched_entity_id, detail: reverseErr.message });
+        }
+      } else {
+        toDelete.push(txn);
+      }
+    }
+
+    if (toDelete.length === 0) {
       return res.json({ success: true, deleted: 0, blocked });
     }
 
-    const eligibleIds = eligible.map(t => t.id);
+    const eligibleIds = toDelete.map(t => t.id);
 
     const { data: attachments } = await supabase
       .from('bank_transaction_attachments')
@@ -2345,7 +2371,8 @@ router.delete('/transactions/bulk', authenticate, hasPermission('bank.manage'), 
 
     await AuditLogger.logUserAction(
       req, 'DELETE', 'BANK_TRANSACTION', eligibleIds.join(','),
-      { count: eligibleIds.length }, null,
+      { count: eligibleIds.length, transactions: toDelete.map(t => ({ id: t.id, description: t.description, amount: t.amount, date: t.date, status: t.status, journalId: t.matched_entity_id || null })) },
+      null,
       `Bulk deleted ${eligibleIds.length} bank transaction(s)`
     );
 
@@ -2362,7 +2389,13 @@ router.delete('/transactions/bulk', authenticate, hasPermission('bank.manage'), 
  * Delete a bank transaction.
  * Rules:
  *   - Status 'reconciled'  → always blocked (must reverse reconciliation first)
- *   - Status 'matched'     → blocked unless ?force=1  (leaves journal entry orphaned — caller's responsibility)
+ *   - Status 'matched'     → blocked unless ?force=1. When forced, the linked
+ *                            journal is reversed FIRST (same as the Undo
+ *                            button) — a deleted transaction can never leave
+ *                            an orphaned posted journal behind. If reversal
+ *                            fails, the transaction is NOT deleted, so the
+ *                            GL and the bank transaction list can never
+ *                            disagree about what's live.
  *   - Attachments are deleted from disk and DB before the transaction row is removed.
  */
 router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), async (req, res) => {
@@ -2397,6 +2430,32 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
       });
     }
 
+    // Reverse the linked journal BEFORE deleting — a matched transaction being
+    // force-deleted used to just vanish, leaving its posted journal orphaned
+    // in the GL forever (found live on a real client: two deleted-then-
+    // recreated transactions each got re-allocated via a fresh import,
+    // double-booking the GL because the original journal was never reversed).
+    // If the reversal fails for any reason, stop here — do NOT delete the
+    // transaction — so the bank transaction list and the GL can never drift
+    // out of sync with each other.
+    if (txn.status === 'matched' && txn.matched_entity_id) {
+      try {
+        await JournalService.reverseJournal(
+          txn.matched_entity_id,
+          req.user.companyId,
+          req.user.id,
+          `Transaction deleted: ${txn.description}`
+        );
+      } catch (reverseErr) {
+        return res.status(409).json({
+          error: `Cannot delete: failed to reverse the linked journal (${reverseErr.message}). ` +
+                 `Unallocate the transaction manually first, then delete it.`,
+          code: 'REVERSAL_FAILED',
+          journalRef: txn.matched_entity_id,
+        });
+      }
+    }
+
     // Delete attachments from disk first, then DB
     const { data: attachments } = await supabase
       .from('bank_transaction_attachments')
@@ -2428,10 +2487,10 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
       'DELETE',
       'BANK_TRANSACTION',
       id,
-      { description: txn.description, amount: txn.amount, status: txn.status, date: txn.date },
+      { description: txn.description, amount: txn.amount, status: txn.status, date: txn.date, journalId: txn.matched_entity_id || null },
       null,
-      forceDelete && txn.status === 'matched'
-        ? 'Bank transaction force-deleted (was allocated to journal)'
+      txn.status === 'matched'
+        ? `Bank transaction force-deleted — linked journal ${txn.matched_entity_id} was reversed first`
         : 'Bank transaction deleted'
     );
 
