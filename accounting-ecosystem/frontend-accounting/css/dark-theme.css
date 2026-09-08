@@ -1793,6 +1793,31 @@ tr.error-row th {
     color: var(--text-secondary) !important;
 }
 
+/* ── Bank transfer-to-account modal (JS-generated, same pattern as delete) ──*/
+#transferAccountModal > div {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;
+}
+#transferAccountModal h3 {
+    color: var(--text) !important;
+}
+#transferAccountModal p,
+#transferAccountModal label {
+    color: var(--text-secondary) !important;
+}
+#transferAccountModal select {
+    background: #1e1b3a !important;
+    border: 1px solid var(--border-strong) !important;
+    color: var(--text) !important;
+}
+#transferAccountModal button:not(#confirmTransferBtn) {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    color: var(--text-secondary) !important;
+}
+
 /* ── Warning div inside delete modal (was background:#fff8e1 light yellow) ──*/
 .bank-delete-warning {
     background: rgba(245,158,11,0.10) !important;

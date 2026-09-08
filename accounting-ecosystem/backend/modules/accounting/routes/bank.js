@@ -1717,6 +1717,65 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
  * Reverse the posted journal and reset the transaction back to unmatched.
  * Works on both 'matched' and 'reconciled' statuses.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// _clearBankTransactionAllocation
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared by the unallocate endpoint and the transfer-to-another-account
+// endpoint below — both need the exact same "safely undo whatever this
+// transaction is currently matched/reconciled to" step before they can touch
+// it further. Reverses the linked journal (if any) and resets every
+// allocation/match field to a clean unmatched state.
+//
+// Throws (with .statusCode set) if the linked journal sits in a locked VAT
+// period — the caller must not proceed past that. A journal-reversal failure
+// for any OTHER reason is logged but does not throw, matching the existing
+// unallocate behaviour: the transaction is still reset rather than left in a
+// half-allocated state the UI can't represent.
+//
+// No-op (returns { alreadyUnmatched: true }) when the transaction is already
+// unmatched — nothing to reverse or clear.
+async function _clearBankTransactionAllocation(bankTxn, companyId, userId, reasonPrefix) {
+  if (bankTxn.status === 'unmatched') return { alreadyUnmatched: true };
+
+  if (bankTxn.matched_entity_id) {
+    const vatLock = await JournalService.isVatPeriodLocked(bankTxn.matched_entity_id);
+    if (vatLock.locked) {
+      const err = new Error(
+        `Cannot modify this transaction — it is included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`
+      );
+      err.statusCode = 403;
+      throw err;
+    }
+
+    try {
+      await JournalService.reverseJournal(
+        bankTxn.matched_entity_id, companyId, userId,
+        `${reasonPrefix}: ${bankTxn.description}`
+      );
+    } catch (journalErr) {
+      // If journal already reversed or not found, continue — still reset the transaction
+      console.warn('_clearBankTransactionAllocation: journal reverse warning:', journalErr.message);
+    }
+  }
+
+  await supabase
+    .from('bank_transactions')
+    .update({
+      status: 'unmatched',
+      matched_entity_type:    null,
+      matched_entity_id:      null,
+      matched_by_user_id:     null,
+      reconciled_at:          null,
+      allocated_account_id:   null,
+      allocation_type:        null,
+      allocated_account_name: null,
+      vat_setting_id:         null
+    })
+    .eq('id', bankTxn.id);
+
+  return { alreadyUnmatched: false };
+}
+
 router.delete('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
   try {
     const { data: bankTxn, error: txnErr } = await supabase
@@ -1734,46 +1793,11 @@ router.delete('/transactions/:id/allocate', authenticate, hasPermission('bank.al
       return res.status(409).json({ error: 'Transaction is not allocated' });
     }
 
-    // VAT period lock guard: block unallocate if linked journal is in a locked VAT period
-    if (bankTxn.matched_entity_id) {
-      const vatLock = await JournalService.isVatPeriodLocked(bankTxn.matched_entity_id);
-      if (vatLock.locked) {
-        return res.status(403).json({
-          error: `Cannot unallocate this transaction — it is included in locked VAT period ${vatLock.periodKey}. VAT periods that have been locked cannot be changed.`,
-        });
-      }
+    try {
+      await _clearBankTransactionAllocation(bankTxn, req.user.companyId, req.user.id, 'Unallocated');
+    } catch (err) {
+      return res.status(err.statusCode || 500).json({ error: err.message });
     }
-
-    // Reverse the linked journal if one exists
-    if (bankTxn.matched_entity_id) {
-      try {
-        await JournalService.reverseJournal(
-          bankTxn.matched_entity_id,
-          req.user.companyId,
-          req.user.id,
-          `Unallocated: ${bankTxn.description}`
-        );
-      } catch (journalErr) {
-        // If journal already reversed or not found, continue — still reset the transaction
-        console.warn('Unallocate: journal reverse warning:', journalErr.message);
-      }
-    }
-
-    // Reset transaction to unmatched — clear all allocation display fields
-    await supabase
-      .from('bank_transactions')
-      .update({
-        status: 'unmatched',
-        matched_entity_type:    null,
-        matched_entity_id:      null,
-        matched_by_user_id:     null,
-        reconciled_at:          null,
-        allocated_account_id:   null,
-        allocation_type:        null,
-        allocated_account_name: null,
-        vat_setting_id:         null
-      })
-      .eq('id', bankTxn.id);
 
     await AuditLogger.logUserAction(
       req, 'UNALLOCATE', 'BANK_TRANSACTION', bankTxn.id,
@@ -1825,6 +1849,106 @@ router.post('/transactions/:id/unreconcile', authenticate, hasPermission('bank.r
   } catch (error) {
     console.error('Error unreconciling bank transaction:', error);
     res.status(500).json({ error: error.message || 'Failed to unreconcile' });
+  }
+});
+
+/**
+ * PUT /api/bank/transactions/transfer
+ * Move one or more transactions to a DIFFERENT bank account — for when an
+ * import (staged or confirmed) landed on the wrong bank account (e.g. it
+ * should have gone to Petty Cash but ended up in the cheque account).
+ *
+ * Any existing allocation/reconciliation on the transaction was made against
+ * the WRONG account's context, so it is not carried over: the linked journal
+ * (if any) is reversed exactly as the unallocate endpoint does, and the
+ * transaction lands in the target account as a fresh, unmatched "New
+ * Transaction" — ready to be re-allocated from scratch against the correct
+ * account.
+ *
+ * Body: { transactionIds: number[], targetBankAccountId: number }
+ * Response: { message, transferred, skipped: [{id, reason}], errors: [{id, error}] }
+ */
+router.put('/transactions/transfer', authenticate, hasPermission('bank.manage'), async (req, res) => {
+  try {
+    const { transactionIds, targetBankAccountId } = req.body;
+
+    if (!Array.isArray(transactionIds) || transactionIds.length === 0) {
+      return res.status(400).json({ error: 'transactionIds must be a non-empty array' });
+    }
+    if (!targetBankAccountId) {
+      return res.status(400).json({ error: 'targetBankAccountId is required' });
+    }
+
+    const companyId = req.user.companyId;
+
+    const { data: targetAccount } = await supabase
+      .from('bank_accounts')
+      .select('id, name')
+      .eq('id', targetBankAccountId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (!targetAccount) {
+      return res.status(404).json({ error: 'Target bank account not found' });
+    }
+
+    const { data: txns, error: txnsErr } = await supabase
+      .from('bank_transactions')
+      .select('id, bank_account_id, status, matched_entity_id, description')
+      .in('id', transactionIds)
+      .eq('company_id', companyId);
+
+    if (txnsErr) throw new Error(txnsErr.message);
+
+    const found   = txns || [];
+    const skipped = [];
+    const errors  = [];
+    const moved   = [];
+
+    for (const txn of found) {
+      if (txn.bank_account_id === targetBankAccountId) {
+        skipped.push({ id: txn.id, reason: 'Already in the target account' });
+        continue;
+      }
+
+      try {
+        await _clearBankTransactionAllocation(
+          txn, companyId, req.user.id, `Transferred to ${targetAccount.name}`
+        );
+
+        const { error: updateErr } = await supabase
+          .from('bank_transactions')
+          .update({ bank_account_id: targetBankAccountId })
+          .eq('id', txn.id)
+          .eq('company_id', companyId);
+
+        if (updateErr) throw new Error(updateErr.message);
+
+        await AuditLogger.logUserAction(
+          req, 'TRANSFER', 'BANK_TRANSACTION', txn.id,
+          { bank_account_id: txn.bank_account_id, status: txn.status },
+          { bank_account_id: targetBankAccountId, status: 'unmatched' },
+          `Bank transaction moved to ${targetAccount.name} (account ${targetBankAccountId})`
+        );
+
+        moved.push(txn.id);
+      } catch (err) {
+        errors.push({ id: txn.id, error: err.message });
+      }
+    }
+
+    const notFoundIds = transactionIds.filter(id => !found.some(t => t.id === id));
+    notFoundIds.forEach(id => skipped.push({ id, reason: 'Not found' }));
+
+    let message = `${moved.length} transaction(s) moved to ${targetAccount.name} — ready to allocate.`;
+    if (skipped.length) message += ` ${skipped.length} skipped.`;
+    if (errors.length)  message += ` ${errors.length} failed.`;
+
+    res.json({ message, transferred: moved.length, skipped, errors });
+
+  } catch (error) {
+    console.error('Error transferring bank transactions:', error);
+    res.status(500).json({ error: error.message || 'Failed to transfer bank transactions' });
   }
 });
 
