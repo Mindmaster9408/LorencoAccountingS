@@ -279,8 +279,28 @@ const BankStagingService = {
       .eq('company_id', companyId)
       .eq('status', 'unmatched');
 
+    // Fetch company's bank_transactions already allocated with allocation_type='transfer'
+    // (i.e. someone manually allocated one side of a transfer — e.g. a Petty Cash
+    // withdrawal allocated straight to another bank's ledger account — before the
+    // other side's own statement was ever imported). These are invisible to the
+    // liveUnmatched query above (status is 'matched', not 'unmatched'), so a
+    // matching amount arriving later on the other account would previously import
+    // as a brand-new, unflagged transaction — if the user then allocated it too,
+    // the same real-world transfer would be posted to the GL a second time.
+    // Matched here so staging can warn "this already exists" instead of silently
+    // letting a second journal double the transfer. Not linked via
+    // bank_transfer_links (that table is staging-to-staging only) — surfaced
+    // directly on the staging row instead (see below).
+    const { data: liveAllocatedTransfers } = await supabase
+      .from('bank_transactions')
+      .select('id, bank_account_id, date, amount, description, matched_entity_id')
+      .eq('company_id', companyId)
+      .eq('status', 'matched')
+      .eq('allocation_type', 'transfer');
+
     const existingStaging  = otherStaging  || [];
     const existingLive     = liveUnmatched || [];
+    const existingAllocatedTransfers = liveAllocatedTransfers || [];
 
     const detectedLinks = [];
     const processedIds  = new Set();
@@ -300,11 +320,14 @@ const BankStagingService = {
       let bestLayer = null;
       let bestConf  = 0;
 
-      // Search other staging rows first, then live unmatched
+      // Search other staging rows first, then live unmatched, then already-allocated
+      // transfers (checked last — they're the rarer case and must never shadow a
+      // genuine staging/unmatched match, which can still be linked normally).
       const candidates = [
         ...existingStaging.map(r => ({ ...r, source: 'staging' })),
         ...existingLive.map(r => ({ ...r, source: 'live' })),
         ...batchRows.filter(r => r.id !== row.id).map(r => ({ ...r, source: 'staging_same_batch' })),
+        ...existingAllocatedTransfers.map(r => ({ ...r, source: 'live_allocated_transfer' })),
       ];
 
       for (const cand of candidates) {
@@ -357,6 +380,37 @@ const BankStagingService = {
       }
 
       if (!bestMatch) continue;
+
+      // ── Already-allocated transfer counterpart — warn, don't link ───────
+      // This candidate is a LIVE bank_transactions row someone already allocated
+      // with allocation_type='transfer' — its journal has already posted the
+      // full Dr/Cr for this transfer. Confirming this staging row the normal
+      // way would post a SECOND journal for the same real-world movement,
+      // double-counting it in the GL. Reuses the existing duplicate_status/
+      // duplicate_reason fields (same ones the ordinary amount+date duplicate
+      // check already uses) rather than inventing a new detected_type value —
+      // detected_type has a DB CHECK constraint (TRANSFER|PAYMENT|RECEIPT|
+      // PETTY_CASH, VARCHAR(20)) that a new value would violate, and this is
+      // conceptually a duplicate warning ("this movement is already recorded"),
+      // not a transfer-pair-to-confirm. Stops here — none of the
+      // staging-to-staging linking below applies to a live row.
+      if (bestMatch.source === 'live_allocated_transfer') {
+        await supabase
+          .from('bank_transaction_staging')
+          .update({
+            match_status:        'REVIEW_REQUIRED',
+            duplicate_status:    'POSSIBLE',
+            duplicate_confidence: bestConf,
+            duplicate_reason: `Matches an already-allocated transfer: bank transaction ${bestMatch.id} ` +
+                               `(${bestMatch.description || 'no description'}, R${Math.abs(parseFloat(bestMatch.amount) || 0).toFixed(2)}, ${bestMatch.date}) ` +
+                               `was already allocated as a transfer (journal ${bestMatch.matched_entity_id}). ` +
+                               `Do not allocate this transaction again — it would post the same transfer to the GL twice.`,
+          })
+          .eq('id', row.id)
+          .eq('company_id', companyId);
+        processedIds.add(row.id);
+        continue;
+      }
 
       // ── Record transfer link ────────────────────────────────────────────
       // Determine FROM (money leaves) and TO (money arrives)
