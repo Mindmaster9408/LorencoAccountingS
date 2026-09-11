@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Tasks</title>
+    <link rel="stylesheet" href="/commander/css/practice.css">
+    <style>
+        /* ── Review/QA badges ── */
+        .badge-qa-required    { background: rgba(245,158,11,0.12); color: #fbbf24; }
+        .badge-qa-pending     { background: rgba(96,165,250,0.15); color: #93c5fd; }
+        .badge-qa-approved    { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-qa-rejected    { background: rgba(244,63,94,0.15);  color: #fda4af; }
+        .badge-qa-locked      { background: rgba(167,139,250,0.2); color: var(--accent); }
+        .badge-review-pending { background: rgba(245,158,11,0.12); color: #fbbf24; }
+        .badge-review-inrev   { background: rgba(96,165,250,0.15); color: #93c5fd; }
+        .badge-review-approved{ background: rgba(16,185,129,0.15); color: #6ee7b7; }
+        .badge-review-rejected{ background: rgba(244,63,94,0.15);  color: #fda4af; }
+
+        /* ── Review section in task form ── */
+        .form-section-divider {
+            grid-column: 1 / -1;
+            border-top: 1px solid var(--border);
+            padding-top: 14px;
+            margin-top: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+        }
+        .review-flags-row {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .review-flags-row label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .review-flags-row input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
+
+        /* ── Review history timeline ── */
+        .review-timeline { display: flex; flex-direction: column; gap: 10px; }
+        .review-event {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 12px;
+        }
+        .review-event-type {
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 4px;
+        }
+        .review-event-type.ready_for_review  { color: #93c5fd; }
+        .review-event-type.review_started    { color: var(--accent); }
+        .review-event-type.review_approved   { color: #6ee7b7; }
+        .review-event-type.review_rejected   { color: #fda4af; }
+        .review-event-type.approval_approved { color: #6ee7b7; }
+        .review-event-type.approval_rejected { color: #fda4af; }
+        .review-event-type.qa_locked         { color: var(--accent); }
+        .review-event-type.qa_unlocked       { color: var(--text-muted); }
+        .review-event-meta { color: var(--text-muted); margin-top: 3px; }
+        .review-event-notes {
+            margin-top: 5px;
+            padding: 6px 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 5px;
+            color: var(--text);
+            font-style: italic;
+        }
+
+        /* ── QA status bar on task card ── */
+        .task-qa-bar {
+            margin-top: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .task-qa-bar.qa-required  { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); }
+        .task-qa-bar.qa-pending   { background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.2); }
+        .task-qa-bar.qa-approved  { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); }
+        .task-qa-bar.qa-rejected  { background: rgba(244,63,94,0.08);  border: 1px solid rgba(244,63,94,0.2); }
+        .task-qa-bar.qa-locked    { background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+<div class="toast" id="toast"></div>
+
+<div class="main">
+
+    <div class="section-header">
+        <div class="section-title">Tasks</div>
+        <div class="controls">
+            <select class="filter-select" id="fStatus" aria-label="Filter by status" onchange="loadTasks()">
+                <option value="">All Statuses</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="review">In Review</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            <select class="filter-select" id="fQaStatus" aria-label="Filter by QA status" onchange="loadTasks()">
+                <option value="">All QA</option>
+                <option value="required">QA Required</option>
+                <option value="pending_review">Pending Review</option>
+                <option value="rejected">Rejected</option>
+                <option value="approved">Approved</option>
+                <option value="locked">Locked</option>
+            </select>
+            <select class="filter-select" id="fClient" aria-label="Filter by client" onchange="loadTasks()">
+                <option value="">All Clients</option>
+            </select>
+            <select class="filter-select" id="fType" aria-label="Filter by type" onchange="loadTasks()">
+                <option value="">All Types</option>
+                <option value="vat_return">VAT Return</option>
+                <option value="tax_return">Tax Return</option>
+                <option value="annual_financial">Annual Financial</option>
+                <option value="management_accounts">Mgmt Accounts</option>
+                <option value="payroll">Payroll</option>
+                <option value="audit">Audit</option>
+                <option value="bookkeeping">Bookkeeping</option>
+                <option value="secretarial">Secretarial</option>
+                <option value="general">General</option>
+                <option value="other">Other</option>
+            </select>
+            <select class="filter-select" id="fAssigned" aria-label="Filter by assignee" onchange="loadTasks()">
+                <option value="">All Assignees</option>
+            </select>
+            <button type="button" class="btn btn-primary" onclick="openTaskModal()">+ Add Task</button>
+        </div>
+    </div>
+
+    <div id="tasksWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading tasks…</p></div>
+    </div>
+
+</div>
+
+<!-- ═══ TASK CREATE / EDIT MODAL ═══════════════════════════════════════════ -->
+<div class="modal-overlay" id="taskModal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-header">
+            <h3 id="taskModalTitle">Add Task</h3>
+            <button type="button" class="modal-close" onclick="closeModal('taskModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveTask(event)">
+                <div class="form-grid">
+                    <div class="form-field form-full">
+                        <label for="tTitle">Title *</label>
+                        <input id="tTitle" required placeholder="e.g. VAT201 Feb 2026">
+                    </div>
+                    <div class="form-field">
+                        <label for="tClient">Client</label>
+                        <select id="tClient" aria-label="Client"><option value="">None</option></select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tAssigned">Assigned To</label>
+                        <select id="tAssigned" aria-label="Assigned to"><option value="">Unassigned</option></select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tType">Type</label>
+                        <select id="tType" aria-label="Task type">
+                            <option value="general">General</option>
+                            <option value="vat_return">VAT Return</option>
+                            <option value="annual_financial">Annual Financial Statements</option>
+                            <option value="management_accounts">Management Accounts</option>
+                            <option value="payroll">Payroll</option>
+                            <option value="tax_return">Tax Return</option>
+                            <option value="audit">Audit</option>
+                            <option value="bookkeeping">Bookkeeping</option>
+                            <option value="secretarial">Secretarial</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tPriority">Priority</label>
+                        <select id="tPriority" aria-label="Priority">
+                            <option value="urgent">Urgent</option>
+                            <option value="high">High</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tStatus">Status</label>
+                        <select id="tStatus" aria-label="Status">
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="review">In Review</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tDueDate">Due Date</label>
+                        <input type="date" id="tDueDate">
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="tDesc">Description</label>
+                        <textarea id="tDesc" rows="2" placeholder="What needs to be done…"></textarea>
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="tNotes">Notes</label>
+                        <textarea id="tNotes" rows="2" placeholder="Internal notes…"></textarea>
+                    </div>
+
+                    <!-- ── Review & Approval Section ── -->
+                    <div class="form-section-divider">Review &amp; Approval</div>
+
+                    <div class="review-flags-row">
+                        <label>
+                            <input type="checkbox" id="tReviewRequired" onchange="updateReviewSectionVisibility()" />
+                            Requires Reviewer Sign-Off
+                        </label>
+                        <label>
+                            <input type="checkbox" id="tApprovalRequired" />
+                            Requires Final Approval
+                        </label>
+                    </div>
+
+                    <div class="form-field" id="tPreparerWrap">
+                        <label for="tPreparer">Preparer</label>
+                        <select id="tPreparer" aria-label="Preparer"><option value="">Unassigned</option></select>
+                    </div>
+                    <div class="form-field" id="tReviewerWrap">
+                        <label for="tReviewer">Reviewer</label>
+                        <select id="tReviewer" aria-label="Reviewer"><option value="">Unassigned</option></select>
+                    </div>
+                    <div class="form-field" id="tApproverWrap">
+                        <label for="tApprover">Approver</label>
+                        <select id="tApprover" aria-label="Approver"><option value="">Unassigned</option></select>
+                    </div>
+                    <div class="form-field form-full" id="tReviewNotesWrap" style="display:none;">
+                        <label for="tReviewNotes">Review Notes</label>
+                        <textarea id="tReviewNotes" rows="2" placeholder="Notes for the reviewer…"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm mr-auto hidden" id="tDeleteBtn" onclick="deleteCurrentTask()">Delete</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('taskModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="taskSaveBtn">Save Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ APPROVE REVIEW MODAL ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="approveReviewModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Approve Review</h3>
+            <button type="button" class="modal-close" onclick="closeModal('approveReviewModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="approveReviewNotes">Review Notes <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <textarea id="approveReviewNotes" rows="3" placeholder="Add review comments…"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('approveReviewModal')">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="submitReviewAction('approve-review')">Approve Review</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ REJECT REVIEW MODAL ═════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="rejectReviewModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Reject Review</h3>
+            <button type="button" class="modal-close" onclick="closeModal('rejectReviewModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="rejectReviewReason">Rejection Reason <span style="color:#ef4444;">*</span></label>
+                <textarea id="rejectReviewReason" rows="3" placeholder="Explain what needs to be fixed…" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('rejectReviewModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitReviewAction('reject-review')">Reject Review</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ FINAL APPROVE MODAL ═════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="approveFinalModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Final Approval</h3>
+            <button type="button" class="modal-close" onclick="closeModal('approveFinalModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="approveFinalNotes">Approval Notes <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <textarea id="approveFinalNotes" rows="3" placeholder="Add approval comments…"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('approveFinalModal')">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="submitReviewAction('approve-final')">Final Approve</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ FINAL REJECT MODAL ══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="rejectFinalModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Final Rejection</h3>
+            <button type="button" class="modal-close" onclick="closeModal('rejectFinalModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="rejectFinalReason">Rejection Reason <span style="color:#ef4444;">*</span></label>
+                <textarea id="rejectFinalReason" rows="3" placeholder="Explain why final approval was rejected…" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('rejectFinalModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitReviewAction('reject-final')">Final Reject</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ REVIEW HISTORY MODAL ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="reviewHistoryModal">
+    <div class="modal" style="max-width:560px;">
+        <div class="modal-header">
+            <h3 id="reviewHistoryTitle">Review History</h3>
+            <button type="button" class="modal-close" onclick="closeModal('reviewHistoryModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="reviewHistoryContent">
+                <div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/commander/js/polyfills.js"></script>
+<script src="/commander/js/auth.js"></script>
+<script src="/commander/js/api.js"></script>
+<script src="/commander/js/layout.js"></script>
+<script src="/commander/js/tasks.js"></script>
+</body>
+</html>

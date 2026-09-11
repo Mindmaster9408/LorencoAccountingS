@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Deadlines</title>
+    <link rel="stylesheet" href="/commander/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <div class="section-header">
+        <div class="section-title">Deadlines</div>
+        <div class="controls">
+            <select class="filter-select" id="fStatus" aria-label="Filter by status" onchange="loadDeadlines()">
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="submitted">Submitted</option>
+                <option value="completed">Completed</option>
+                <option value="missed">Missed</option>
+            </select>
+            <select class="filter-select" id="fClient" aria-label="Filter by client" onchange="loadDeadlines()">
+                <option value="">All Clients</option>
+            </select>
+            <select class="filter-select" id="fType" aria-label="Filter by type" onchange="applyTypeFilter()">
+                <option value="">All Types</option>
+                <option value="vat_return">VAT Return</option>
+                <option value="tax_return">Tax Return</option>
+                <option value="paye">PAYE</option>
+                <option value="uif">UIF</option>
+                <option value="sdl">SDL</option>
+                <option value="annual_financial">Annual Financial</option>
+                <option value="provisional_tax_p1">Prov Tax P1</option>
+                <option value="provisional_tax_p2">Prov Tax P2</option>
+                <option value="provisional_tax_top_up">Prov Tax Top-Up</option>
+                <option value="cipc_annual_return">CIPC Annual Return</option>
+                <option value="beneficial_ownership">Beneficial Ownership</option>
+                <option value="general">General</option>
+                <option value="other">Other</option>
+            </select>
+            <button type="button" class="btn btn-ghost" onclick="openSettingsModal()" title="Configure practice deadlines">⚙ Settings</button>
+            <button type="button" class="btn btn-ghost" onclick="openGenerateModal()" title="Auto-create deadlines from client compliance settings">⚡ Generate</button>
+            <button type="button" class="btn btn-primary" onclick="openModal()">+ Add Deadline</button>
+        </div>
+    </div>
+
+    <div id="deadlinesWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading deadlines…</p></div>
+    </div>
+
+</div>
+
+<!-- DEADLINE MODAL -->
+<div class="modal-overlay" id="deadlineModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <h3 id="dlModalTitle">Add Deadline</h3>
+            <button type="button" class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveDeadline(event)">
+                <div class="form-grid full">
+                    <div class="form-field">
+                        <label for="dlTitle">Title *</label>
+                        <input id="dlTitle" required placeholder="e.g. VAT201 Submission">
+                    </div>
+                    <div class="form-field">
+                        <label for="dlClient">Client</label>
+                        <select id="dlClient" aria-label="Client">
+                            <option value="">General (no client)</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlType">Type</label>
+                        <select id="dlType" aria-label="Deadline type" onchange="autoComputeDeadline()">
+                            <option value="general">General</option>
+                            <option value="vat_return">VAT Return</option>
+                            <option value="tax_return">Tax Return</option>
+                            <option value="paye">PAYE</option>
+                            <option value="uif">UIF</option>
+                            <option value="sdl">SDL</option>
+                            <option value="annual_financial">Annual Financial Statements</option>
+                            <option value="provisional_tax_p1">Provisional Tax P1</option>
+                            <option value="provisional_tax_p2">Provisional Tax P2</option>
+                            <option value="provisional_tax_top_up">Provisional Tax Top-Up</option>
+                            <option value="cipc_annual_return">CIPC Annual Return</option>
+                            <option value="beneficial_ownership">Beneficial Ownership</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlStatus">Status</label>
+                        <select id="dlStatus" aria-label="Status">
+                            <option value="pending">Pending</option>
+                            <option value="submitted">Submitted to SARS</option>
+                            <option value="completed">Completed</option>
+                            <option value="missed">Missed</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlPeriodEnd">Period End</label>
+                        <input type="date" id="dlPeriodEnd" onchange="autoComputeDeadline()" placeholder="Last day of filing period">
+                    </div>
+                    <div id="dlDeadlineHint" class="deadline-hint hidden"></div>
+                    <div class="form-field">
+                        <label for="dlDueDate">Due Date (Practice Deadline) *</label>
+                        <input type="date" id="dlDueDate" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="dlNotes">Notes</label>
+                        <textarea id="dlNotes" rows="2" placeholder="Optional notes…"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm mr-auto hidden" id="dlDeleteBtn" onclick="deleteCurrentDeadline()">Delete</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="dlSaveBtn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- DEADLINE SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3>Practice Deadline Settings</h3>
+            <button type="button" class="modal-close" onclick="closeSettingsModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-desc">Set how many working days before the statutory (SARS) deadline your practice targets for completion. The practice deadline is what shows in your deadlines list.</p>
+            <div class="deadline-settings-table-wrap" id="settingsTableWrap">
+                <div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeSettingsModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveSettingsBtn" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- GENERATE DEADLINES MODAL -->
+<div class="modal-overlay" id="generateModal">
+    <div class="modal modal-md">
+        <div class="modal-header">
+            <h3>Generate Deadlines</h3>
+            <button type="button" class="modal-close" onclick="closeGenerateModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-desc">Auto-creates deadlines for every active client based on their VAT sequence and PAYE/UIF/SDL registration. Existing deadlines for the same client, type, and period are skipped — safe to run more than once.</p>
+            <div class="form-grid full">
+                <div class="form-field">
+                    <label for="genMonth">Filing Period</label>
+                    <div class="period-picker">
+                        <select id="genMonth" aria-label="Month">
+                            <option value="1">January</option><option value="2">February</option>
+                            <option value="3">March</option><option value="4">April</option>
+                            <option value="5">May</option><option value="6">June</option>
+                            <option value="7">July</option><option value="8">August</option>
+                            <option value="9">September</option><option value="10">October</option>
+                            <option value="11">November</option><option value="12">December</option>
+                        </select>
+                        <select id="genYear" aria-label="Year"></select>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label>Include</label>
+                    <label class="checkbox-row"><input type="checkbox" id="genVat" checked> VAT Returns</label>
+                    <label class="checkbox-row"><input type="checkbox" id="genPaye" checked> PAYE / UIF / SDL</label>
+                </div>
+            </div>
+            <div id="generateResult" class="generate-result hidden"></div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeGenerateModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" id="genBtn" onclick="runGenerate()">Generate</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/commander/js/polyfills.js"></script>
+<script src="/commander/js/auth.js"></script>
+<script src="/commander/js/api.js"></script>
+<script src="/commander/js/layout.js"></script>
+<script src="/commander/js/deadline-utils.js"></script>
+<script>
+var esc = CommanderAPI.escHtml;
+var allDeadlines = [], allClients = [], filteredDeadlines = [];
+var deadlineSettings = {}; // obligation_type → offset_days
+var editingId = null;
+var PAGE_SIZE = 30;
+var currentPage = 1;
+
+var TYPE_LABEL = {
+    general: 'General', vat_return: 'VAT Return', tax_return: 'Tax Return',
+    paye: 'PAYE', uif: 'UIF', sdl: 'SDL',
+    annual_financial: 'Annual Financial', provisional_tax_p1: 'Prov Tax P1',
+    provisional_tax_p2: 'Prov Tax P2', provisional_tax_top_up: 'Prov Tax Top-Up',
+    cipc_annual_return: 'CIPC Annual Return', beneficial_ownership: 'Beneficial Ownership', other: 'Other'
+};
+var STATUS_BADGE  = { pending: 'badge-pending', submitted: 'badge-submitted', completed: 'badge-completed', missed: 'badge-missed' };
+var STATUS_LABEL  = { pending: 'Pending', submitted: 'Submitted', completed: 'Completed', missed: 'Missed' };
+
+async function init() {
+    var token = localStorage.getItem('token') || localStorage.getItem('commander_token');
+    if (!token) { window.location.href = '/'; return; }
+    try {
+        var res = await CommanderAPI.fetch('/api/auth/me');
+        if (!res.ok) { window.location.href = '/'; return; }
+    } catch(e) { window.location.href = '/'; return; }
+    LAYOUT.init('deadlines');
+    await Promise.all([loadClients(), loadSettings()]);
+    loadDeadlines();
+}
+
+async function loadClients() {
+    try {
+        var res = await CommanderAPI.fetch('/api/commander/clients?is_active=true');
+        if (!res.ok) return;
+        var d = await res.json();
+        allClients = d.clients || [];
+        var opts = allClients.map(function(c) {
+            return '<option value="' + c.id + '">' + esc(c.name) + '</option>';
+        }).join('');
+        document.getElementById('fClient').innerHTML  = '<option value="">All Clients</option>' + opts;
+        document.getElementById('dlClient').innerHTML = '<option value="">General (no client)</option>' + opts;
+    } catch(e) {}
+}
+
+async function loadSettings() {
+    try {
+        var res = await CommanderAPI.fetch('/api/commander/deadline-settings');
+        if (!res.ok) return;
+        var d = await res.json();
+        deadlineSettings = {};
+        (d.settings || []).forEach(function(s) {
+            deadlineSettings[s.obligation_type] = s;
+        });
+    } catch(e) {}
+}
+
+async function loadDeadlines() {
+    document.getElementById('deadlinesWrap').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading…</p></div>';
+    var status   = document.getElementById('fStatus').value;
+    var clientId = document.getElementById('fClient').value;
+    var params   = [];
+    if (status)   params.push('status='    + status);
+    if (clientId) params.push('client_id=' + clientId);
+    var url = '/api/commander/deadlines' + (params.length ? '?' + params.join('&') : '');
+    try {
+        var res = await CommanderAPI.fetch(url);
+        if (!res.ok) throw new Error('Load failed');
+        var d = await res.json();
+        allDeadlines = d.deadlines || [];
+        applyTypeFilter();
+    } catch(e) {
+        document.getElementById('deadlinesWrap').innerHTML = '<div class="error-banner">⚠️ Failed to load deadlines. Please refresh.</div>';
+    }
+}
+
+function applyTypeFilter() {
+    var type = document.getElementById('fType').value;
+    filteredDeadlines = type
+        ? allDeadlines.filter(function(dl) { return dl.type === type; })
+        : allDeadlines.slice();
+    currentPage = 1;
+    renderDeadlines();
+}
+
+function renderDeadlines() {
+    var today = new Date().toISOString().split('T')[0];
+    var totalPages = Math.max(1, Math.ceil(filteredDeadlines.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    var start = (currentPage - 1) * PAGE_SIZE;
+    var page  = filteredDeadlines.slice(start, start + PAGE_SIZE);
+    var wrap  = document.getElementById('deadlinesWrap');
+
+    if (!filteredDeadlines.length) {
+        wrap.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><h3>No deadlines</h3><p>Add a deadline to start tracking compliance.</p></div>';
+        return;
+    }
+
+    var rows = page.map(function(dl) {
+        var isOverdue  = dl.due_date < today && dl.status !== 'completed' && dl.status !== 'submitted';
+        var clientName = dl.commander_clients && dl.commander_clients.name ? dl.commander_clients.name : 'General';
+        var overdueTag = isOverdue ? ' <span class="badge badge-overdue">OVERDUE</span>' : '';
+        var submitBtn  = dl.status === 'pending'
+            ? '<button type="button" class="btn btn-ghost btn-sm" onclick="quickStatus(' + dl.id + ',\'submitted\')">→ Submit</button>' : '';
+        var doneBtn    = dl.status !== 'completed'
+            ? '<button type="button" class="btn btn-success btn-sm" onclick="quickStatus(' + dl.id + ',\'completed\')">✓ Done</button>' : '';
+
+        // Compute statutory deadline from period_end where available
+        var statutoryHtml = '';
+        var periodEnd = DeadlineUtils.parseDate(dl.period_end);
+        if (periodEnd) {
+            var statutory = DeadlineUtils.computeStatutoryDeadline(dl.type, periodEnd);
+            if (statutory) {
+                var statStr = DeadlineUtils.toISODate(statutory);
+                var diffLabel = (dl.due_date && dl.due_date !== statStr)
+                    ? '<span class="statutory-date">Statutory: ' + DeadlineUtils.fmtDate(statutory) + '</span>'
+                    : '<span class="statutory-date">= Statutory</span>';
+                statutoryHtml = diffLabel;
+            }
+        }
+
+        return '<tr' + (isOverdue ? ' class="overdue-row"' : '') + '>' +
+            '<td><strong>' + esc(dl.title) + '</strong>' + overdueTag + '</td>' +
+            '<td>' + esc(clientName) + '</td>' +
+            '<td>' + (TYPE_LABEL[dl.type] || dl.type) + '</td>' +
+            '<td><div class="deadline-due-cell"><strong>' + esc(dl.due_date || '—') + '</strong>' + statutoryHtml + '</div></td>' +
+            '<td><span class="badge ' + (STATUS_BADGE[dl.status] || 'badge-pending') + '">' + (STATUS_LABEL[dl.status] || dl.status) + '</span></td>' +
+            '<td class="col-muted">' + esc(dl.notes || '–') + '</td>' +
+            '<td><div class="td-actions">' + submitBtn + doneBtn +
+                '<button type="button" class="btn btn-ghost btn-sm" onclick="openModal(' + dl.id + ')">Edit</button>' +
+            '</div></td>' +
+        '</tr>';
+    }).join('');
+
+    var tableHtml =
+        '<div class="table-wrap"><table><thead><tr>' +
+            '<th>Title</th><th>Client</th><th>Type</th><th>Practice Deadline</th><th>Status</th><th>Notes</th><th>Actions</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>' +
+        renderPagination(totalPages) + '</div>';
+
+    wrap.innerHTML = tableHtml;
+}
+
+function renderPagination(totalPages) {
+    if (totalPages <= 1) return '';
+    var s = (currentPage - 1) * PAGE_SIZE + 1;
+    var e = Math.min(currentPage * PAGE_SIZE, filteredDeadlines.length);
+    var pages = '';
+    for (var i = 1; i <= totalPages; i++) {
+        pages += '<button type="button" class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+    }
+    return '<div class="pagination">' +
+        '<span>Showing ' + s + '–' + e + ' of ' + filteredDeadlines.length + ' deadlines</span>' +
+        '<div class="pagination-pages">' +
+            '<button type="button" class="page-btn" onclick="goPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>‹</button>' +
+            pages +
+            '<button type="button" class="page-btn" onclick="goPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>›</button>' +
+        '</div>' +
+    '</div>';
+}
+
+function goPage(p) {
+    var totalPages = Math.ceil(filteredDeadlines.length / PAGE_SIZE);
+    if (p < 1 || p > totalPages) return;
+    currentPage = p;
+    renderDeadlines();
+}
+
+async function quickStatus(id, status) {
+    try {
+        var res = await CommanderAPI.fetch('/api/commander/deadlines/' + id, {
+            method: 'PUT', body: JSON.stringify({ status: status })
+        });
+        if (!res.ok) throw new Error('Update failed');
+        CommanderAPI.showToast('Marked as ' + STATUS_LABEL[status] + '!');
+        loadDeadlines();
+    } catch(e) {
+        CommanderAPI.showToast('❌ ' + e.message, true);
+    }
+}
+
+// ── Add/Edit modal ────────────────────────────────────────────────────────────
+
+function openModal(id) {
+    editingId = id || null;
+    var dl = id ? allDeadlines.find(function(x) { return x.id === id; }) : null;
+    document.getElementById('dlModalTitle').textContent = id ? 'Edit Deadline' : 'Add Deadline';
+    document.getElementById('dlTitle').value      = dl ? dl.title     || '' : '';
+    document.getElementById('dlType').value       = dl ? dl.type      || 'general' : 'general';
+    document.getElementById('dlStatus').value     = dl ? dl.status    || 'pending' : 'pending';
+    document.getElementById('dlDueDate').value    = dl ? dl.due_date  || '' : '';
+    document.getElementById('dlPeriodEnd').value  = dl ? dl.period_end || '' : '';
+    document.getElementById('dlNotes').value      = dl ? dl.notes     || '' : '';
+    document.getElementById('dlClient').value     = dl ? dl.client_id || '' : '';
+    var hint = document.getElementById('dlDeadlineHint');
+    hint.classList.add('hidden');
+    hint.innerHTML = '';
+    var delBtn = document.getElementById('dlDeleteBtn');
+    if (id) { delBtn.classList.remove('hidden'); } else { delBtn.classList.add('hidden'); }
+    document.getElementById('deadlineModal').classList.add('show');
+    // If editing an existing deadline with a period_end, show the hint
+    if (dl && dl.period_end) autoComputeDeadline();
+}
+
+function closeModal() { document.getElementById('deadlineModal').classList.remove('show'); }
+
+// Auto-compute practice + statutory deadlines when type + period_end are set.
+// Pre-fills dlDueDate with the practice deadline (unless user already typed one).
+function autoComputeDeadline() {
+    var type      = document.getElementById('dlType').value;
+    var periodEnd = DeadlineUtils.parseDate(document.getElementById('dlPeriodEnd').value);
+    var hint      = document.getElementById('dlDeadlineHint');
+
+    if (!periodEnd || !DeadlineUtils.OBLIGATION_RULES[type]) {
+        hint.classList.add('hidden');
+        hint.innerHTML = '';
+        return;
+    }
+
+    var statutory = DeadlineUtils.computeStatutoryDeadline(type, periodEnd);
+    if (!statutory) { hint.classList.add('hidden'); return; }
+
+    var setting   = deadlineSettings[type] || {};
+    var offset    = setting.offset_days || 0;
+    var practice  = DeadlineUtils.computePracticeDeadline(statutory, offset);
+
+    var statStr  = DeadlineUtils.fmtDate(statutory);
+    var practStr = DeadlineUtils.fmtDate(practice);
+    var isoStr   = DeadlineUtils.toISODate(practice);
+
+    var offsetNote = offset > 0
+        ? ' (' + offset + ' working day' + (offset === 1 ? '' : 's') + ' before statutory)'
+        : ' (matches statutory)';
+
+    hint.innerHTML =
+        '<span class="hint-practice">Practice: <strong>' + practStr + '</strong>' + offsetNote + '</span>' +
+        '<span class="hint-statutory">Statutory (SARS): ' + statStr + '</span>';
+    hint.classList.remove('hidden');
+
+    // Pre-fill due date if it's empty (don't override what the user typed)
+    var dueDateEl = document.getElementById('dlDueDate');
+    if (!dueDateEl.value) { dueDateEl.value = isoStr; }
+}
+
+async function saveDeadline(e) {
+    e.preventDefault();
+    var btn = document.getElementById('dlSaveBtn');
+    btn.disabled = true;
+    var clientVal  = document.getElementById('dlClient').value;
+    var periodEnd  = document.getElementById('dlPeriodEnd').value || null;
+    var body = {
+        title:      document.getElementById('dlTitle').value.trim(),
+        client_id:  clientVal ? parseInt(clientVal) : null,
+        type:       document.getElementById('dlType').value,
+        status:     document.getElementById('dlStatus').value,
+        due_date:   document.getElementById('dlDueDate').value,
+        period_end: periodEnd,
+        notes:      document.getElementById('dlNotes').value.trim() || null
+    };
+    try {
+        var url = editingId ? '/api/commander/deadlines/' + editingId : '/api/commander/deadlines';
+        var res = await CommanderAPI.fetch(url, { method: editingId ? 'PUT' : 'POST', body: JSON.stringify(body) });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Save failed');
+        closeModal();
+        CommanderAPI.showToast('Deadline saved!');
+        loadDeadlines();
+    } catch(err) {
+        CommanderAPI.showToast('❌ ' + err.message, true);
+    } finally {
+        btn.disabled = false;
+    }
+    return false;
+}
+
+async function deleteCurrentDeadline() {
+    if (!editingId) return;
+    var dl = allDeadlines.find(function(x) { return x.id === editingId; });
+    if (!confirm('Delete deadline "' + (dl ? dl.title : editingId) + '"?')) return;
+    try {
+        var res = await CommanderAPI.fetch('/api/commander/deadlines/' + editingId, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        closeModal();
+        CommanderAPI.showToast('Deadline deleted.');
+        loadDeadlines();
+    } catch(e) {
+        CommanderAPI.showToast('❌ ' + e.message, true);
+    }
+}
+
+// ── Settings modal ────────────────────────────────────────────────────────────
+
+function openSettingsModal() {
+    document.getElementById('settingsModal').classList.add('show');
+    renderSettingsTable();
+}
+
+function closeSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('show');
+}
+
+function renderSettingsTable() {
+    var wrap = document.getElementById('settingsTableWrap');
+    var types = DeadlineUtils.CONFIGURABLE_TYPES;
+    // Example period: last completed month
+    var now = new Date();
+    var exPeriodEnd = new Date(now.getFullYear(), now.getMonth(), 0); // last day of previous month
+
+    var rows = types.map(function(t) {
+        var rule    = DeadlineUtils.OBLIGATION_RULES[t.type];
+        var setting = deadlineSettings[t.type] || {};
+        var offset  = setting.offset_days != null ? setting.offset_days : 0;
+        var statutory = rule ? DeadlineUtils.computeStatutoryDeadline(t.type, exPeriodEnd) : null;
+        var practice  = statutory ? DeadlineUtils.computePracticeDeadline(statutory, offset) : null;
+        var example = statutory
+            ? '<span class="settings-example-stat">' + DeadlineUtils.fmtDate(statutory) + '</span>' +
+              (practice && DeadlineUtils.toISODate(practice) !== DeadlineUtils.toISODate(statutory)
+                ? ' → <strong>' + DeadlineUtils.fmtDate(practice) + '</strong>'
+                : ' <span class="muted">(no offset)</span>')
+            : '—';
+
+        return '<tr>' +
+            '<td><strong>' + esc(t.label) + '</strong><div class="settings-rule-text">' + esc(rule ? rule.rule : '') + '</div></td>' +
+            '<td class="settings-example-cell">' + example + '</td>' +
+            '<td class="settings-offset-cell">' +
+                '<input type="number" class="offset-input" min="0" max="30" value="' + offset + '" ' +
+                    'data-type="' + t.type + '" onchange="previewOffset(this)" ' +
+                    'aria-label="Offset days for ' + esc(t.label) + '"> working days before' +
+            '</td>' +
+        '</tr>';
+    }).join('');
+
+    wrap.innerHTML =
+        '<table class="settings-table"><thead><tr>' +
+            '<th>Obligation</th>' +
+            '<th>Example (last month)<div class="col-sub">Statutory → Practice</div></th>' +
+            '<th>Practice Offset</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function previewOffset(input) {
+    // Live-update the example column for the changed row
+    var type   = input.getAttribute('data-type');
+    var offset = Math.max(0, Math.min(30, parseInt(input.value) || 0));
+    input.value = offset;
+    var now = new Date();
+    var exPeriodEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    var statutory = DeadlineUtils.computeStatutoryDeadline(type, exPeriodEnd);
+    var practice  = DeadlineUtils.computePracticeDeadline(statutory, offset);
+    var cell = input.closest('tr').querySelector('.settings-example-cell');
+    if (cell && statutory) {
+        cell.innerHTML = '<span class="settings-example-stat">' + DeadlineUtils.fmtDate(statutory) + '</span>' +
+            (practice && DeadlineUtils.toISODate(practice) !== DeadlineUtils.toISODate(statutory)
+                ? ' → <strong>' + DeadlineUtils.fmtDate(practice) + '</strong>'
+                : ' <span class="muted">(no offset)</span>');
+    }
+}
+
+async function saveSettings() {
+    var inputs = document.querySelectorAll('#settingsTableWrap .offset-input');
+    var settings = [];
+    inputs.forEach(function(inp) {
+        settings.push({
+            obligation_type: inp.getAttribute('data-type'),
+            offset_days:     Math.max(0, Math.min(30, parseInt(inp.value) || 0))
+        });
+    });
+    var btn = document.getElementById('saveSettingsBtn');
+    btn.disabled = true;
+    try {
+        var res = await CommanderAPI.fetch('/api/commander/deadline-settings', {
+            method: 'PUT', body: JSON.stringify({ settings: settings })
+        });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Save failed');
+        await loadSettings();
+        closeSettingsModal();
+        CommanderAPI.showToast('Deadline settings saved!');
+    } catch(e) {
+        CommanderAPI.showToast('❌ ' + e.message, true);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── Generate Deadlines modal ───────────────────────────────────────────────────
+
+function openGenerateModal() {
+    var now = new Date();
+    var yearSel = document.getElementById('genYear');
+    yearSel.innerHTML = '';
+    for (var y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) {
+        yearSel.innerHTML += '<option value="' + y + '"' + (y === now.getFullYear() ? ' selected' : '') + '>' + y + '</option>';
+    }
+    document.getElementById('genMonth').value = now.getMonth() + 1;
+    document.getElementById('genVat').checked  = true;
+    document.getElementById('genPaye').checked = true;
+    var result = document.getElementById('generateResult');
+    result.classList.add('hidden');
+    result.innerHTML = '';
+    document.getElementById('generateModal').classList.add('show');
+}
+
+function closeGenerateModal() {
+    document.getElementById('generateModal').classList.remove('show');
+}
+
+async function runGenerate() {
+    var month  = document.getElementById('genMonth').value;
+    var year   = document.getElementById('genYear').value;
+    var period = year + '-' + String(month).padStart(2, '0');
+    var types  = [];
+    if (document.getElementById('genVat').checked)  types.push('vat');
+    if (document.getElementById('genPaye').checked) types.push('paye');
+
+    if (!types.length) {
+        CommanderAPI.showToast('Select at least one obligation type.', true);
+        return;
+    }
+
+    var btn = document.getElementById('genBtn');
+    btn.disabled = true;
+    var originalText = btn.textContent;
+    btn.textContent = 'Generating…';
+
+    try {
+        var res = await CommanderAPI.fetch('/api/commander/deadlines/generate', {
+            method: 'POST', body: JSON.stringify({ period: period, types: types })
+        });
+        var d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Generate failed');
+
+        var result = document.getElementById('generateResult');
+        result.innerHTML = '<strong>' + d.created + '</strong> deadline' + (d.created === 1 ? '' : 's') + ' created for ' + period +
+            (d.skipped ? ' · ' + d.skipped + ' already existed (skipped)' : '');
+        result.classList.remove('hidden');
+
+        if (d.created > 0) {
+            CommanderAPI.showToast('Generated ' + d.created + ' deadline' + (d.created === 1 ? '' : 's') + '!');
+            await loadDeadlines();
+        } else {
+            CommanderAPI.showToast('No new deadlines to generate — all up to date.');
+        }
+    } catch (e) {
+        CommanderAPI.showToast('❌ ' + e.message, true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}
+
+init();
+</script>
+</body>
+</html>

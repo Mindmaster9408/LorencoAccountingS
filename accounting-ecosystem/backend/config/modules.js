@@ -68,6 +68,22 @@ const modules = {
     routePrefix: '/api/practice',
     requiredTables: ['practice_clients', 'practice_tasks', 'practice_time_entries', 'practice_deadlines'],
   },
+  commander: {
+    name: 'Commander',
+    key: 'commander',
+    // Hardcoded true (not env-gated like the others) — this is a full functional
+    // copy of Firmflow, being adapted for international companies (2026-09-12).
+    // It needs to work immediately for super-admin testing without a Zeabur env
+    // var round-trip. Staying "inactive" for every real client is enforced at the
+    // company level instead: 'commander' is deliberately not added to any
+    // company's modules_enabled, and requireModule()'s company-level check has no
+    // super-admin exemption gap here — only isSuperAdmin bypasses it (Rule F1).
+    active: true,
+    version: '0.1.0',
+    description: 'Firmflow-derived practice management, adapted for international companies (super-admin testing only).',
+    routePrefix: '/api/commander',
+    requiredTables: ['commander_clients', 'commander_tasks', 'commander_time_entries', 'commander_deadlines'],
+  },
 };
 
 /**

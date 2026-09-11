@@ -1,0 +1,444 @@
+/* Codebox 50 — Management Dashboard (Executive Command Centre)
+ * Read-only aggregator for partners. NOT an operational page. NOT AI.
+ * Prefix: md
+ */
+(function () {
+    'use strict';
+
+    var BASE = '/api/commander/management-dashboard';
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function _html(s) {
+        if (s == null) return '';
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function _fmt(s) { return s ? new Date(s).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }) : '—'; }
+
+    function _scoreColor(v) {
+        if (v >= 80) return '#68d391';
+        if (v >= 60) return '#f6ad55';
+        return '#fc8181';
+    }
+
+    function _kpiClass(value, warnAt, badAt) {
+        if (value >= badAt) return 'kpi-bad';
+        if (value >= warnAt) return 'kpi-warn';
+        return 'kpi-good';
+    }
+
+    // ── Boot ─────────────────────────────────────────────────────────────────
+
+    function mdRefreshAll() {
+        _loadScore();
+        _loadSummary();
+        _loadAlerts();
+        _loadPartnerQueue();
+        _loadFeed();
+    }
+
+    // ── Practice Score ───────────────────────────────────────────────────────
+
+    function _loadScore() {
+        window.CommanderAPI.fetch(BASE + '/practice-score')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderScore(d); })
+            .catch(function () {});
+    }
+
+    function _renderScore(d) {
+        var overall = d.overall_score != null ? d.overall_score : 0;
+        var color = _scoreColor(overall);
+        document.getElementById('scoreValue').textContent = overall;
+        document.getElementById('scoreValue').style.color = color;
+        document.getElementById('scoreRing').style.background =
+            'conic-gradient(' + color + ' ' + (overall * 3.6) + 'deg, #12122a 0deg)';
+
+        var weights = d.weights || {};
+        var scores = d.scores || {};
+        var order = ['quality', 'compliance', 'risk', 'capacity', 'tax'];
+        var labels = { quality: 'Quality', compliance: 'Compliance', risk: 'Risk', capacity: 'Capacity', tax: 'Tax' };
+
+        document.getElementById('subscoreGrid').innerHTML = order.map(function (key) {
+            var val = scores[key] != null ? scores[key] : 0;
+            var weight = weights[key] != null ? Math.round(weights[key] * 100) : 0;
+            var c = _scoreColor(val);
+            return '<div class="subscore-card">' +
+                '<div class="subscore-name">' + labels[key] + '</div>' +
+                '<div class="subscore-value" style="color:' + c + ';">' + val + '</div>' +
+                '<div class="subscore-weight">Weight: ' + weight + '%</div>' +
+                '<div class="subscore-bar-track"><div class="subscore-bar-fill" style="width:' + val + '%;background:' + c + ';"></div></div>' +
+            '</div>';
+        }).join('');
+    }
+
+    // ── Summary KPIs ──────────────────────────────────────────────────────────
+
+    function _loadSummary() {
+        window.CommanderAPI.fetch(BASE + '/summary')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderSummary(d); })
+            .catch(function () {});
+    }
+
+    function _kpi(cls, value, label, href) {
+        var onclick = href ? ' onclick="window.location.href=\'' + href + '\'"' : '';
+        return '<div class="kpi-card ' + cls + '"' + onclick + '>' +
+            '<div class="kpi-value">' + _html(value) + '</div>' +
+            '<div class="kpi-label">' + _html(label) + '</div>' +
+        '</div>';
+    }
+
+    function _renderSummary(d) {
+        var p = d.practice || {}, c = d.capacity || {}, t = d.tax || {}, q = d.qms || {}, rk = d.risk || {},
+            ch = d.client_health || {}, kb = d.knowledge || {}, sop = d.sop || {}, b = d.billing || {},
+            rem = d.reminders || {}, doc = d.document_requests || {}, comm = d.communications || {}, comp = d.compliance || {};
+
+        document.getElementById('kpiPractice').innerHTML =
+            _kpi('kpi-neutral', p.active_clients || 0, 'Active Clients', '/commander/clients.html') +
+            _kpi('kpi-neutral', p.active_staff || 0, 'Active Staff', '/commander/team.html') +
+            _kpi(_kpiClass(p.open_tasks || 0, 20, 50), p.open_tasks || 0, 'Open Tasks', '/commander/tasks.html') +
+            _kpi(_kpiClass(p.overdue_tasks || 0, 1, 5), p.overdue_tasks || 0, 'Overdue Tasks', '/commander/tasks.html') +
+            _kpi(_kpiClass(c.over_capacity_staff || 0, 1, 3), c.over_capacity_staff || 0, 'Over-Capacity Staff', '/commander/capacity.html') +
+            _kpi('kpi-neutral', (c.avg_utilization_pct != null ? c.avg_utilization_pct + '%' : '—'), 'Avg Utilization', '/commander/capacity.html');
+
+        document.getElementById('kpiTax').innerHTML =
+            _kpi('kpi-neutral', t.open_returns || 0, 'Open Returns', '/commander/tax-dashboard.html') +
+            _kpi('kpi-neutral', t.ready_review || 0, 'Ready for Review', '/commander/tax-pipeline.html') +
+            _kpi('kpi-good', t.ready_submit || 0, 'Ready to Submit', '/commander/tax-pipeline.html') +
+            _kpi('kpi-neutral', t.pipeline || 0, 'In Pipeline', '/commander/tax-pipeline.html') +
+            _kpi(_kpiClass(t.payments_outstanding || 0, 1, 5), t.payments_outstanding || 0, 'Payments Outstanding', '/commander/tax-payments.html') +
+            _kpi(_kpiClass(t.sars_recon_unmatched || 0, 1, 10), t.sars_recon_unmatched || 0, 'SARS Unmatched Lines', '/commander/sars-recon.html') +
+            _kpi(_kpiClass(t.open_disputes || 0, 1, 5), t.open_disputes || 0, 'Open Disputes', '/commander/tax-disputes.html') +
+            _kpi('kpi-neutral', t.completion_packs_active || 0, 'Completion Packs Active', '/commander/tax-completion.html');
+
+        document.getElementById('kpiQms').innerHTML =
+            _kpi('kpi-neutral', q.active_reviews || 0, 'Active Reviews', '/commander/quality-management.html') +
+            _kpi(_kpiClass(q.failed_reviews || 0, 1, 3), q.failed_reviews || 0, 'Failed Reviews', '/commander/quality-management.html') +
+            _kpi(_kpiClass(q.needs_correction || 0, 1, 3), q.needs_correction || 0, 'Needs Correction', '/commander/quality-management.html') +
+            _kpi(_kpiClass(q.open_findings || 0, 3, 10), q.open_findings || 0, 'Open Findings', '/commander/quality-management.html') +
+            _kpi(_kpiClass(q.critical_findings || 0, 1, 3), q.critical_findings || 0, 'Critical Findings', '/commander/quality-management.html') +
+            _kpi(_kpiClass(q.high_findings || 0, 1, 5), q.high_findings || 0, 'High Findings', '/commander/quality-management.html');
+
+        document.getElementById('kpiRisk').innerHTML =
+            _kpi('kpi-neutral', rk.open_risks || 0, 'Open Risks', '/commander/risk-register.html') +
+            _kpi(_kpiClass(rk.high_risks || 0, 1, 5), rk.high_risks || 0, 'High Risks', '/commander/risk-register.html') +
+            _kpi(_kpiClass(rk.critical_risks || 0, 1, 3), rk.critical_risks || 0, 'Critical Risks', '/commander/risk-register.html');
+
+        document.getElementById('kpiClientHealth').innerHTML =
+            _kpi('kpi-good', ch.healthy || 0, 'Healthy', '/commander/client-health.html') +
+            _kpi('kpi-warn', ch.watch || 0, 'Watch', '/commander/client-health.html') +
+            _kpi(_kpiClass(ch.critical || 0, 1, 3), ch.critical || 0, 'Critical', '/commander/client-health.html') +
+            _kpi('kpi-neutral', ch.unknown || 0, 'Unassessed', '/commander/client-health.html');
+
+        // Codebox 61 — RELATIONSHIP health (manager assessment + communication
+        // cadence), a separate concept from client_health above (operational risk).
+        var cr = d.client_relationship || {};
+        var kpiClientRelationshipEl = document.getElementById('kpiClientRelationship');
+        if (kpiClientRelationshipEl) {
+            kpiClientRelationshipEl.innerHTML =
+                _kpi('kpi-good', cr.healthy || 0, 'Relationship: Healthy', '/commander/client-success.html') +
+                _kpi('kpi-warn', cr.watch || 0, 'Relationship: Watch', '/commander/client-success.html') +
+                _kpi(_kpiClass(cr.at_risk || 0, 1, 3), cr.at_risk || 0, 'Relationship: At Risk', '/commander/client-success.html') +
+                _kpi(_kpiClass(cr.critical || 0, 1, 2), cr.critical || 0, 'Relationship: Critical', '/commander/client-success.html');
+        }
+
+        // Codebox 65 — Beneficial Ownership summary. Low-risk counts only,
+        // same optional-card treatment as the client relationship section above.
+        var bo = d.beneficial_ownership || {};
+        var boByStatus = bo.owners_by_status || {};
+        var kpiBoEl = document.getElementById('kpiBeneficialOwnership');
+        if (kpiBoEl) {
+            kpiBoEl.innerHTML =
+                _kpi('kpi-good', boByStatus.verified || 0, 'BO: Verified Owners', '/commander/beneficial-ownership.html') +
+                _kpi('kpi-neutral', boByStatus.incomplete || 0, 'BO: Incomplete Owners', '/commander/beneficial-ownership.html') +
+                _kpi('kpi-neutral', bo.reportable_owners || 0, 'BO: Reportable Owners', '/commander/beneficial-ownership.html') +
+                _kpi(_kpiClass(bo.clients_with_blocked_items || 0, 1, 3), bo.clients_with_blocked_items || 0, 'BO: Clients Blocked', '/commander/beneficial-ownership.html');
+        }
+
+        // Codebox 67 — Statutory Compliance summary. Reuses the same
+        // buildStatutoryCalendar() counts the Statutory Calendar page itself shows.
+        var sca = d.statutory_compliance || {};
+        var kpiScEl = document.getElementById('kpiStatutoryCompliance');
+        if (kpiScEl) {
+            kpiScEl.innerHTML =
+                _kpi(_kpiClass(sca.overdue || 0, 1, 5), sca.overdue || 0, 'Statutory: Overdue', '/commander/secretarial-calendar.html') +
+                _kpi(_kpiClass(sca.due_today || 0, 1, 3), sca.due_today || 0, 'Statutory: Due Today', '/commander/secretarial-calendar.html') +
+                _kpi('kpi-neutral', sca.upcoming || 0, 'Statutory: Upcoming', '/commander/secretarial-calendar.html') +
+                _kpi(_kpiClass(sca.blocked || 0, 1, 3), sca.blocked || 0, 'Statutory: Blocked', '/commander/secretarial-calendar.html');
+        }
+
+        // Codebox 66 — Evidence readiness summary.
+        var ev = d.evidence_readiness || {};
+        var evByR = ev.by_readiness || {};
+        var kpiEvEl = document.getElementById('kpiEvidenceReadiness');
+        if (kpiEvEl) {
+            kpiEvEl.innerHTML =
+                _kpi('kpi-good', evByR.ready || 0, 'Evidence: Ready', '/commander/secretarial-evidence.html') +
+                _kpi('kpi-neutral', evByR.partial || 0, 'Evidence: Partial', '/commander/secretarial-evidence.html') +
+                _kpi(_kpiClass(evByR.incomplete || 0, 1, 5), evByR.incomplete || 0, 'Evidence: Incomplete', '/commander/secretarial-evidence.html') +
+                _kpi(_kpiClass(ev.blocked || 0, 1, 3), ev.blocked || 0, 'Evidence: Blocked', '/commander/secretarial-evidence.html');
+        }
+
+        // Codebox 68 — Entity Lifecycle summary.
+        var el = d.entity_lifecycle || {};
+        var kpiElEl = document.getElementById('kpiEntityLifecycle');
+        if (kpiElEl) {
+            kpiElEl.innerHTML =
+                _kpi('kpi-neutral', el.entities_tracked || 0, 'Lifecycle: Entities Tracked', '/commander/entity-lifecycle.html') +
+                _kpi(_kpiClass(el.high_risk || 0, 1, 3), el.high_risk || 0, 'Lifecycle: High/Critical Risk', '/commander/entity-lifecycle.html') +
+                _kpi(_kpiClass(el.non_compliant || 0, 1, 3), el.non_compliant || 0, 'Lifecycle: Non-Compliant', '/commander/entity-lifecycle.html') +
+                _kpi(_kpiClass(el.transitions_pending_review || 0, 1, 5), el.transitions_pending_review || 0, 'Lifecycle: Transitions Pending Review', '/commander/entity-lifecycle.html');
+        }
+
+        // Codebox 69 — Secretarial Integrity summary.
+        var si = d.secretarial_integrity || {};
+        var kpiSiEl = document.getElementById('kpiSecretarialIntegrity');
+        if (kpiSiEl) {
+            kpiSiEl.innerHTML =
+                _kpi(si.latest_score == null ? 'kpi-neutral' : (si.latest_score >= 85 ? 'kpi-good' : (si.latest_score >= 60 ? 'kpi-neutral' : 'kpi-bad')), si.latest_score != null ? si.latest_score : '—', 'Integrity: Latest Score', '/commander/secretarial-integrity.html') +
+                _kpi(_kpiClass(si.critical_findings || 0, 1, 3), si.critical_findings || 0, 'Integrity: Critical Findings', '/commander/secretarial-integrity.html') +
+                _kpi(_kpiClass(si.open_findings || 0, 1, 10), si.open_findings || 0, 'Integrity: Open Findings', '/commander/secretarial-integrity.html') +
+                _kpi('kpi-neutral', si.latest_run_at ? new Date(si.latest_run_at).toLocaleDateString('en-ZA') : 'Never run', 'Integrity: Latest Audit', '/commander/secretarial-integrity.html');
+        }
+
+        // Codebox 70 — Client Onboarding summary.
+        var cb = d.client_onboarding || {};
+        var kpiCbEl = document.getElementById('kpiClientOnboarding');
+        if (kpiCbEl) {
+            kpiCbEl.innerHTML =
+                _kpi('kpi-neutral', cb.new_clients_this_month || 0, 'Onboarding: New This Month', '/commander/client-onboarding.html') +
+                _kpi('kpi-neutral', cb.active_onboardings || 0, 'Onboarding: Active', '/commander/client-onboarding.html') +
+                _kpi(_kpiClass(cb.delayed_onboardings || 0, 1, 3), cb.delayed_onboardings || 0, 'Onboarding: Delayed', '/commander/client-onboarding.html') +
+                _kpi('kpi-neutral', (cb.avg_completion_pct != null ? cb.avg_completion_pct + '%' : '—'), 'Onboarding: Avg Progress', '/commander/client-onboarding.html');
+        }
+
+        // Codebox 71 — Engagement Management summary.
+        var em = d.engagement_management || {};
+        var kpiEmEl = document.getElementById('kpiEngagementManagement');
+        if (kpiEmEl) {
+            kpiEmEl.innerHTML =
+                _kpi(_kpiClass(em.due_for_review || 0, 1, 5), em.due_for_review || 0, 'Engagements: Due for Review', '/commander/engagement-management.html') +
+                _kpi(_kpiClass(em.missing_engagement_letters || 0, 1, 5), em.missing_engagement_letters || 0, 'Engagements: Missing Letters', '/commander/engagement-management.html') +
+                _kpi(_kpiClass(em.high_risk_without_acceptance || 0, 1, 3), em.high_risk_without_acceptance || 0, 'Engagements: High Risk, No Acceptance', '/commander/engagement-management.html') +
+                _kpi(_kpiClass(em.clients_with_work_no_engagement || 0, 1, 3), em.clients_with_work_no_engagement || 0, 'Clients: Work, No Engagement', '/commander/engagement-management.html');
+        }
+
+        // Codebox 72 — Work Authorization summary.
+        var wa = d.work_authorization || {};
+        var kpiWaEl = document.getElementById('kpiWorkAuthorization');
+        if (kpiWaEl) {
+            kpiWaEl.innerHTML =
+                _kpi(_kpiClass(wa.out_of_scope_work || 0, 1, 5), wa.out_of_scope_work || 0, 'Authorization: Out of Scope', '/commander/work-authorization.html') +
+                _kpi(_kpiClass(wa.pending_overrides || 0, 1, 5), wa.pending_overrides || 0, 'Authorization: Pending Overrides', '/commander/work-authorization.html') +
+                _kpi(_kpiClass(wa.high_risk_overrides || 0, 1, 3), wa.high_risk_overrides || 0, 'Authorization: High Risk Overrides', '/commander/work-authorization.html');
+        }
+
+        // Codebox 73 — Profitability summary.
+        var pf = d.profitability || {};
+        var kpiPfEl = document.getElementById('kpiProfitability');
+        if (kpiPfEl) {
+            kpiPfEl.innerHTML =
+                _kpi(_kpiClass(pf.low_margin_clients || 0, 1, 5), pf.low_margin_clients || 0, 'Profitability: Low Margin', '/commander/profitability.html') +
+                _kpi(_kpiClass(pf.unprofitable_clients || 0, 1, 3), pf.unprofitable_clients || 0, 'Profitability: Unprofitable', '/commander/profitability.html') +
+                _kpi(_kpiClass(pf.high_writeoffs || 0, 1, 5), pf.high_writeoffs || 0, 'Profitability: High Write-Offs', '/commander/profitability.html') +
+                _kpi(_kpiClass(pf.low_realization || 0, 1, 5), pf.low_realization || 0, 'Profitability: Low Realization', '/commander/profitability.html');
+        }
+
+        // Codebox 74 — Pricing Review summary.
+        var pr = d.pricing_review || {};
+        var kpiPrEl = document.getElementById('kpiPricingReview');
+        if (kpiPrEl) {
+            kpiPrEl.innerHTML =
+                _kpi('kpi-neutral', pr.total || 0, 'Pricing: Total Reviews', '/commander/pricing-review.html') +
+                _kpi(_kpiClass(pr.partner_approvals_waiting || 0, 1, 3), pr.partner_approvals_waiting || 0, 'Pricing: Awaiting Partner', '/commander/pricing-review.html') +
+                _kpi(_kpiClass(pr.commercial_discussions_pending || 0, 1, 5), pr.commercial_discussions_pending || 0, 'Pricing: Discussions Pending', '/commander/pricing-review.html') +
+                _kpi(_kpiClass(pr.approved_not_implemented || 0, 1, 5), pr.approved_not_implemented || 0, 'Pricing: Approved, Not Implemented', '/commander/pricing-review.html');
+        }
+
+        // Codebox 75 — Partner Scorecards summary.
+        var psc = d.partner_scorecards || {};
+        var kpiPscEl = document.getElementById('kpiPartnerScorecards');
+        if (kpiPscEl) {
+            var lowest = psc.lowest_scoring_snapshot;
+            kpiPscEl.innerHTML =
+                _kpi('kpi-neutral', psc.commander_score != null ? psc.commander_score : '—', 'Practice Performance Score', '/commander/partner-scorecards.html') +
+                _kpi('kpi-neutral', psc.total_snapshots || 0, 'Scorecard Snapshots', '/commander/partner-scorecards.html') +
+                _kpi(lowest && lowest.overall_score < 60 ? 'kpi-bad' : 'kpi-neutral', lowest ? lowest.overall_score : '—', 'Lowest Score Needing Review', '/commander/partner-scorecards.html');
+        }
+
+        // Codebox 76 — Strategic Planning summary.
+        var sp = d.strategic_planning || {};
+        var kpiSpEl = document.getElementById('kpiStrategicPlanning');
+        if (kpiSpEl) {
+            kpiSpEl.innerHTML =
+                _kpi('kpi-neutral', sp.active_plans || 0, 'Active Strategic Plans', '/commander/strategic-planning.html') +
+                _kpi(_kpiClass(sp.at_risk_objectives || 0, 1, 5), sp.at_risk_objectives || 0, 'At-Risk Objectives', '/commander/strategic-planning.html') +
+                _kpi(_kpiClass(sp.blocked_initiatives || 0, 1, 3), sp.blocked_initiatives || 0, 'Blocked Initiatives', '/commander/strategic-planning.html') +
+                _kpi(_kpiClass(sp.reviews_due || 0, 1, 3), sp.reviews_due || 0, 'Strategic Reviews Due', '/commander/strategic-planning.html');
+        }
+
+        // Codebox 77 — Executive Reporting summary.
+        var er = d.executive_reporting || {};
+        var kpiErEl = document.getElementById('kpiExecutiveReporting');
+        if (kpiErEl) {
+            var latestReport = er.latest_report;
+            kpiErEl.innerHTML =
+                _kpi('kpi-neutral', latestReport ? latestReport.report_title : 'None yet', 'Latest Executive Report', '/commander/executive-reporting.html') +
+                _kpi(_kpiClass(er.reports_awaiting_approval || 0, 1, 3), er.reports_awaiting_approval || 0, 'Reports Awaiting Approval', '/commander/executive-reporting.html') +
+                _kpi(_kpiClass(er.outstanding_actions || 0, 1, 10), er.outstanding_actions || 0, 'Outstanding Executive Actions', '/commander/executive-reporting.html');
+        }
+
+        // Codebox 78 — Automation summary.
+        var auto = d.automation || {};
+        var kpiAutoEl = document.getElementById('kpiAutomation');
+        if (kpiAutoEl) {
+            kpiAutoEl.innerHTML =
+                _kpi('kpi-neutral', auto.active_rules || 0, 'Active Automations', '/commander/automation.html') +
+                _kpi(_kpiClass(auto.failed_runs || 0, 1, 3), auto.failed_runs || 0, 'Failed Runs (recent)', '/commander/automation.html') +
+                _kpi(_kpiClass(auto.runs_with_warnings || 0, 1, 5), auto.runs_with_warnings || 0, 'Runs With Warnings (recent)', '/commander/automation.html');
+        }
+
+        // Codebox 79 — Operational Health summary.
+        var oh = d.operational_health || {};
+        var kpiOhEl = document.getElementById('kpiOperationalHealth');
+        if (kpiOhEl) {
+            var latestHealth = oh.latest_run;
+            kpiOhEl.innerHTML =
+                _kpi(latestHealth ? ('kpi-' + (latestHealth.overall_status === 'healthy' ? 'good' : latestHealth.overall_status === 'warning' ? 'warn' : 'bad')) : 'kpi-neutral',
+                    latestHealth ? latestHealth.overall_score : 'Not run yet', 'System Readiness Score', '/commander/operational-health.html') +
+                _kpi('kpi-neutral', latestHealth ? _html(latestHealth.overall_status) : '—', 'Status', '/commander/operational-health.html') +
+                _kpi('kpi-neutral', latestHealth ? _fmt(latestHealth.completed_at) : '—', 'Last Checked', '/commander/operational-health.html');
+        }
+
+        // Codebox 80 — Pilot Readiness summary.
+        var pr = d.pilot_readiness || {};
+        var kpiPrEl = document.getElementById('kpiPilotReadiness');
+        if (kpiPrEl) {
+            var latestReadiness = pr.latest_run;
+            var decisionLabel = latestReadiness ? { no_decision: 'No Decision Yet', go: 'GO', no_go: 'NO-GO', conditional_go: 'CONDITIONAL GO' }[latestReadiness.decision] : '—';
+            kpiPrEl.innerHTML =
+                _kpi(latestReadiness ? ('kpi-' + (['launch_ready', 'pilot_ready'].indexOf(latestReadiness.readiness_status) !== -1 ? 'good' : latestReadiness.readiness_status === 'needs_attention' ? 'warn' : 'bad')) : 'kpi-neutral',
+                    latestReadiness ? latestReadiness.overall_score : 'Not run yet', 'Pilot Readiness Score', '/commander/pilot-readiness.html') +
+                _kpi(_kpiClass(pr.open_critical_issues || 0, 1, 1), pr.open_critical_issues || 0, 'Open Critical Issues', '/commander/pilot-readiness.html') +
+                _kpi('kpi-neutral', decisionLabel, 'Latest Decision', '/commander/pilot-readiness.html');
+        }
+
+        document.getElementById('kpiKnowledgeSop').innerHTML =
+            _kpi('kpi-neutral', kb.draft || 0, 'Knowledge: Draft', '/commander/knowledge-base.html') +
+            _kpi('kpi-neutral', kb.under_review || 0, 'Knowledge: Under Review', '/commander/knowledge-base.html') +
+            _kpi('kpi-good', kb.approved || 0, 'Knowledge: Approved', '/commander/knowledge-base.html') +
+            _kpi('kpi-neutral', sop.draft || 0, 'SOP: Draft', '/commander/practice-sop.html') +
+            _kpi('kpi-neutral', sop.under_review || 0, 'SOP: Under Review', '/commander/practice-sop.html') +
+            _kpi('kpi-good', sop.approved || 0, 'SOP: Approved', '/commander/practice-sop.html');
+
+        document.getElementById('kpiOps').innerHTML =
+            _kpi('kpi-neutral', b.draft_packs || 0, 'Billing: Draft Packs', '/commander/billing.html') +
+            _kpi('kpi-neutral', b.locked_packs || 0, 'Billing: Locked Packs', '/commander/billing.html') +
+            _kpi('kpi-neutral', (b.realisation_pct != null ? b.realisation_pct + '%' : '—'), 'Realisation Rate', '/commander/billing.html') +
+            _kpi(_kpiClass(rem.overdue || 0, 1, 5), rem.overdue || 0, 'Reminders Overdue', '/commander/reminders.html') +
+            _kpi('kpi-neutral', rem.upcoming || 0, 'Reminders Upcoming (7d)', '/commander/reminders.html') +
+            _kpi(_kpiClass(doc.overdue || 0, 1, 5), doc.overdue || 0, 'Documents Overdue', '/commander/document-requests.html') +
+            _kpi('kpi-neutral', doc.outstanding || 0, 'Documents Outstanding', '/commander/document-requests.html') +
+            _kpi(_kpiClass(comm.unread_followups || 0, 1, 5), comm.unread_followups || 0, 'Comms Awaiting Reply', '/commander/communications.html') +
+            _kpi('kpi-neutral', comp.open || 0, 'Compliance Open', '/commander/compliance.html') +
+            _kpi(_kpiClass(comp.blocked || 0, 1, 3), comp.blocked || 0, 'Compliance Blocked', '/commander/compliance-packs.html');
+    }
+
+    // ── Alerts ────────────────────────────────────────────────────────────────
+
+    var SEV_LABELS = {
+        critical: 'Critical', high: 'High', overdue: 'Overdue', blocked: 'Blocked',
+        needs_partner: 'Needs Partner', requires_approval: 'Requires Approval',
+    };
+
+    function _loadAlerts() {
+        window.CommanderAPI.fetch(BASE + '/alerts')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderAlerts(d.alerts || []); })
+            .catch(function () { document.getElementById('alertsList').innerHTML = '<div class="empty-note">Failed to load alerts</div>'; });
+    }
+
+    function _renderAlerts(items) {
+        document.getElementById('alertsCount').textContent = items.length;
+        if (!items.length) {
+            document.getElementById('alertsList').innerHTML = '<div class="empty-note">No active alerts.</div>';
+            return;
+        }
+        document.getElementById('alertsList').innerHTML = items.slice(0, 40).map(function (a) {
+            return '<div class="list-item">' +
+                '<span class="list-item-label"><span class="sev-pill sev-' + _html(a.severity) + '">' + _html(SEV_LABELS[a.severity] || a.severity) + '</span>' + _html(a.label) + '</span>' +
+                (a.due ? '<span class="list-item-meta">Due ' + _html(a.due) + '</span>' : '') +
+            '</div>';
+        }).join('');
+    }
+
+    // ── Partner Queue ─────────────────────────────────────────────────────────
+
+    function _loadPartnerQueue() {
+        window.CommanderAPI.fetch(BASE + '/partner-review')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderPartnerQueue(d); })
+            .catch(function () { document.getElementById('queueList').innerHTML = '<div class="empty-note">Failed to load partner queue</div>'; });
+    }
+
+    function _renderPartnerQueue(d) {
+        document.getElementById('queueCount').textContent = d.total || 0;
+        var groups = [
+            { items: d.knowledge_approvals || [], label: 'Knowledge approval', field: 'title' },
+            { items: d.sop_approvals       || [], label: 'SOP approval',       field: 'title' },
+            { items: d.tax_completion      || [], label: 'Tax completion review', field: 'id' },
+            { items: d.qms_reviews         || [], label: 'QMS review',         field: 'review_title' },
+            { items: d.risk_acceptance     || [], label: 'Risk acceptance',    field: 'title' },
+            { items: d.billing_approval    || [], label: 'Billing approval',   field: 'id' },
+        ];
+        var html = '';
+        groups.forEach(function (g) {
+            g.items.forEach(function (it) {
+                var label = it[g.field] != null ? it[g.field] : ('#' + it.id);
+                html += '<div class="list-item">' +
+                    '<span class="list-item-label"><span class="feed-source">' + _html(g.label) + '</span>' + _html(label) + '</span>' +
+                    '<span class="list-item-meta">' + (it.updated_at ? _fmt(it.updated_at) : '') + '</span>' +
+                '</div>';
+            });
+        });
+        document.getElementById('queueList').innerHTML = html || '<div class="empty-note">Nothing waiting for partner review.</div>';
+    }
+
+    // ── Executive Feed ────────────────────────────────────────────────────────
+
+    function _loadFeed() {
+        window.CommanderAPI.fetch(BASE + '/executive-feed?limit=40')
+            .then(function (r) { return r.json(); })
+            .then(function (d) { _renderFeed(d.feed || []); })
+            .catch(function () { document.getElementById('feedList').innerHTML = '<div class="empty-note">Failed to load feed</div>'; });
+    }
+
+    function _renderFeed(items) {
+        document.getElementById('feedCount').textContent = items.length;
+        if (!items.length) {
+            document.getElementById('feedList').innerHTML = '<div class="empty-note">No recent activity.</div>';
+            return;
+        }
+        document.getElementById('feedList').innerHTML = items.map(function (e) {
+            return '<div class="list-item">' +
+                '<span class="list-item-label"><span class="feed-source">' + _html(e.source) + '</span>' + _html(e.description) + '</span>' +
+                '<span class="list-item-meta">' + _fmt(e.at) + '</span>' +
+            '</div>';
+        }).join('');
+    }
+
+    // ── Exports ───────────────────────────────────────────────────────────────
+
+    window.mdRefreshAll = mdRefreshAll;
+
+    // ── Boot ─────────────────────────────────────────────────────────────────
+
+    LAYOUT.onReady(function () {
+        mdRefreshAll();
+    });
+
+}());

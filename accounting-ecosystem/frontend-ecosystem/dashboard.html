@@ -1966,6 +1966,21 @@
                 desc: 'Client files, tasks, deadlines and time tracking for your accounting practice.',
                 path: '/practice',
                 cssClass: 'practice',
+            },
+            {
+                // Commander — a full functional copy of Firmflow (2026-09-12), being adapted
+                // for international companies with different compliance needs. Not enabled
+                // on any company's modules_enabled — invisible/inactive to every real client.
+                // Reaches this list (and every backend route) purely through the super-admin
+                // bypass already built into requireModule()/companyHasModule() (CLAUDE.md
+                // Rule F1) — no separate "is this active" flag needed here.
+                key: 'commander',
+                name: 'Commander',
+                subtitle: 'Practice Management — International (Testing)',
+                icon: '&#127760;',
+                desc: 'Firmflow-derived practice management, being adapted for international companies. Super-admin testing only.',
+                path: '/commander',
+                cssClass: 'practice',
             }
         ];
 

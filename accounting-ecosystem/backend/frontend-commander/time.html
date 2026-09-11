@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Time &amp; Billing</title>
+    <link rel="stylesheet" href="/commander/css/practice.css">
+    <style>
+        /* ── WIP Dashboard ── */
+        .wip-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .wip-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .wip-card-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .wip-card-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .wip-card-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .wip-card.accent-unbilled  { border-left: 3px solid #fbbf24; }
+        .wip-card.accent-pending   { border-left: 3px solid #93c5fd; }
+        .wip-card.accent-approved  { border-left: 3px solid #6ee7b7; }
+        .wip-card.accent-recoverable { border-left: 3px solid var(--accent); }
+
+        /* ── Rate calculator row in form ── */
+        .rate-calc-row {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            padding: 10px 14px;
+            background: rgba(167,139,250,0.06);
+            border: 1px solid rgba(167,139,250,0.15);
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .rate-calc-row .calc-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .rate-calc-row .calc-label { color: var(--text-muted); font-size: 11px; }
+        .rate-calc-row .calc-value { color: var(--accent); font-weight: 700; font-size: 13px; }
+
+        /* ── Billing status badges ── */
+        .badge-billing-unbilled       { background: rgba(100,116,139,0.15); color: #94a3b8; }
+        .badge-billing-pending_review { background: rgba(96,165,250,0.15);  color: #93c5fd; }
+        .badge-billing-approved       { background: rgba(16,185,129,0.15);  color: #6ee7b7; }
+        .badge-billing-rejected       { background: rgba(244,63,94,0.15);   color: #fda4af; }
+        .badge-billing-billed         { background: rgba(167,139,250,0.2);  color: var(--accent); }
+        .badge-billing-written_off    { background: rgba(100,116,139,0.1);  color: #64748b; }
+
+        .badge-time-billable     { background: rgba(167,139,250,0.15); color: var(--accent); }
+        .badge-time-non_billable { background: rgba(100,116,139,0.12); color: #94a3b8; }
+        .badge-time-internal     { background: rgba(245,158,11,0.12);  color: #fbbf24; }
+        .badge-time-admin        { background: rgba(96,165,250,0.12);  color: #93c5fd; }
+
+        /* ── Review action buttons in table ── */
+        .time-entry-actions {
+            display: flex;
+            gap: 4px;
+            flex-wrap: nowrap;
+        }
+
+        /* ── Reject modal ── */
+        .reject-reason-required { color: #ef4444; }
+
+        /* ── Table scrollable ── */
+        .time-table-wrap { overflow-x: auto; }
+        .time-table-wrap table { min-width: 860px; }
+    </style>
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+<div class="toast" id="toast"></div>
+
+<div class="main">
+
+    <!-- WIP Dashboard -->
+    <div class="wip-grid hidden" id="wipGrid">
+        <div class="wip-card accent-unbilled">
+            <div class="wip-card-label">Unbilled Hours</div>
+            <div class="wip-card-value" id="wipUnbilledHours">–</div>
+            <div class="wip-card-sub">Billable, not yet submitted</div>
+        </div>
+        <div class="wip-card accent-pending">
+            <div class="wip-card-label">Pending Review</div>
+            <div class="wip-card-value" id="wipPendingHours">–</div>
+            <div class="wip-card-sub" id="wipPendingValue">Awaiting approval</div>
+        </div>
+        <div class="wip-card accent-approved">
+            <div class="wip-card-label">Approved Time</div>
+            <div class="wip-card-value" id="wipApprovedHours">–</div>
+            <div class="wip-card-sub" id="wipApprovedValue">Ready to bill</div>
+        </div>
+        <div class="wip-card accent-recoverable">
+            <div class="wip-card-label">Total Recoverable</div>
+            <div class="wip-card-value" id="wipRecoverable">–</div>
+            <div class="wip-card-sub">Unbilled + pending + approved</div>
+        </div>
+    </div>
+
+    <!-- Log Time Form -->
+    <div class="inline-form">
+        <div class="inline-form-title">⏱ Log Time</div>
+        <div class="form-grid">
+            <div class="form-field">
+                <label for="teDate">Date *</label>
+                <input type="date" id="teDate">
+            </div>
+            <div class="form-field">
+                <label for="teHours">Hours *</label>
+                <input type="number" id="teHours" step="0.25" min="0.25" max="24"
+                       placeholder="e.g. 1.5" oninput="updateRateCalc()">
+            </div>
+            <div class="form-field">
+                <label for="teTimeType">Time Type</label>
+                <select id="teTimeType" onchange="updateRateCalc(); updateRateVisibility()">
+                    <option value="billable">Billable</option>
+                    <option value="non_billable">Non-Billable</option>
+                    <option value="internal">Internal</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="teClient">Client</label>
+                <select id="teClient" onchange="loadWorkflowsForClient(); loadTasksForClient()">
+                    <option value="">No client</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="teWorkflow">Workflow Run</label>
+                <select id="teWorkflow"><option value="">None</option></select>
+            </div>
+            <div class="form-field">
+                <label for="teTask">Task</label>
+                <select id="teTask"><option value="">None</option></select>
+            </div>
+            <div class="form-field" id="teStdRateWrap">
+                <label for="teStdRate">Standard Rate (R/hr)</label>
+                <input type="number" id="teStdRate" step="0.01" min="0" placeholder="e.g. 1500"
+                       oninput="updateRateCalc()">
+            </div>
+            <div class="form-field" id="teOvrRateWrap">
+                <label for="teOvrRate">Override Rate (R/hr)</label>
+                <input type="number" id="teOvrRate" step="0.01" min="0" placeholder="Optional override"
+                       oninput="updateRateCalc()">
+            </div>
+            <div class="form-field form-full">
+                <label for="teDesc">Description *</label>
+                <input id="teDesc" placeholder="What was done…">
+            </div>
+            <div class="form-field form-full">
+                <label for="teBillingNotes">Billing Notes</label>
+                <input id="teBillingNotes" placeholder="Notes for billing/invoicing…">
+            </div>
+
+            <!-- Rate calculator display -->
+            <div class="rate-calc-row form-full hidden" id="rateCalcRow">
+                <div class="calc-item">
+                    <div class="calc-label">Effective Rate</div>
+                    <div class="calc-value" id="calcEffectiveRate">–</div>
+                </div>
+                <div class="calc-item">
+                    <div class="calc-label">Recoverable Value</div>
+                    <div class="calc-value" id="calcRecoverable">–</div>
+                </div>
+            </div>
+        </div>
+        <div class="log-time-footer">
+            <button type="button" class="btn btn-primary btn-sm" id="logBtn" onclick="logTime()">Log Time</button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="section-header">
+        <div class="section-title">Time Entries</div>
+        <div class="controls">
+            <select class="filter-select" id="fClient" aria-label="Filter by client" onchange="loadEntries(); loadWip()">
+                <option value="">All Clients</option>
+            </select>
+            <select class="filter-select" id="fTimeType" aria-label="Filter by time type" onchange="loadEntries()">
+                <option value="">All Types</option>
+                <option value="billable">Billable</option>
+                <option value="non_billable">Non-Billable</option>
+                <option value="internal">Internal</option>
+                <option value="admin">Admin</option>
+            </select>
+            <select class="filter-select" id="fBillingStatus" aria-label="Filter by billing status" onchange="loadEntries()">
+                <option value="">All Billing Status</option>
+                <option value="unbilled">Unbilled</option>
+                <option value="pending_review">Pending Review</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="billed">Billed</option>
+                <option value="written_off">Written Off</option>
+            </select>
+            <select class="filter-select" id="fYear" aria-label="Filter by year" onchange="loadEntries(); loadWip()"></select>
+            <select class="filter-select" id="fMonthSel" aria-label="Filter by month" onchange="loadEntries(); loadWip()">
+                <option value="01">January</option><option value="02">February</option>
+                <option value="03">March</option><option value="04">April</option>
+                <option value="05">May</option><option value="06">June</option>
+                <option value="07">July</option><option value="08">August</option>
+                <option value="09">September</option><option value="10">October</option>
+                <option value="11">November</option><option value="12">December</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="summaryBar" class="summary-bar hidden">
+        <div class="summary-item"><div class="summary-value" id="sumTotal">0.00</div><div class="summary-label">Total Hours</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumBillable">0.00</div><div class="summary-label">Billable</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumNonBillable">0.00</div><div class="summary-label">Non-Billable</div></div>
+        <div class="summary-item"><div class="summary-value" id="sumRecoverable">R0</div><div class="summary-label">Recoverable</div></div>
+    </div>
+
+    <div id="timeWrap">
+        <div class="loading"><div class="loading-spinner"></div><p>Loading entries…</p></div>
+    </div>
+
+</div>
+
+<!-- ═══ EDIT TIME ENTRY MODAL ══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3>Edit Time Entry</h3>
+            <button type="button" class="modal-close" onclick="closeModal('editModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <form onsubmit="return saveEdit(event)">
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="eDate">Date *</label>
+                        <input type="date" id="eDate" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="eHours">Hours *</label>
+                        <input type="number" id="eHours" step="0.25" min="0.25" required oninput="updateEditCalc()">
+                    </div>
+                    <div class="form-field">
+                        <label for="eTimeType">Time Type</label>
+                        <select id="eTimeType" onchange="updateEditCalc()">
+                            <option value="billable">Billable</option>
+                            <option value="non_billable">Non-Billable</option>
+                            <option value="internal">Internal</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eClient">Client</label>
+                        <select id="eClient"><option value="">None</option></select>
+                    </div>
+                    <div class="form-field">
+                        <label for="eStdRate">Standard Rate (R/hr)</label>
+                        <input type="number" id="eStdRate" step="0.01" min="0" placeholder="Optional" oninput="updateEditCalc()">
+                    </div>
+                    <div class="form-field">
+                        <label for="eOvrRate">Override Rate (R/hr)</label>
+                        <input type="number" id="eOvrRate" step="0.01" min="0" placeholder="Optional" oninput="updateEditCalc()">
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="eDesc">Description</label>
+                        <input id="eDesc" placeholder="What was done…">
+                    </div>
+                    <div class="form-field form-full">
+                        <label for="eBillingNotes">Billing Notes</label>
+                        <input id="eBillingNotes" placeholder="Notes for billing…">
+                    </div>
+                    <div class="rate-calc-row form-full hidden" id="editRateCalcRow">
+                        <div class="calc-item">
+                            <div class="calc-label">Effective Rate</div>
+                            <div class="calc-value" id="editCalcEffective">–</div>
+                        </div>
+                        <div class="calc-item">
+                            <div class="calc-label">Recoverable Value</div>
+                            <div class="calc-value" id="editCalcRecoverable">–</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-danger btn-sm mr-auto" onclick="deleteCurrentEntry()">Delete</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('editModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="editSaveBtn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ REJECT MODAL ════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="rejectModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h3>Reject Time Entry</h3>
+            <button type="button" class="modal-close" onclick="closeModal('rejectModal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-field" style="margin-bottom:16px;">
+                <label for="rejectReason">Rejection Reason <span class="reject-reason-required">*</span></label>
+                <textarea id="rejectReason" rows="3" placeholder="Explain what needs to be corrected…"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeModal('rejectModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitReject()">Reject Entry</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/commander/js/polyfills.js"></script>
+<script src="/commander/js/auth.js"></script>
+<script src="/commander/js/api.js"></script>
+<script src="/commander/js/layout.js"></script>
+<script src="/commander/js/time.js"></script>
+</body>
+</html>

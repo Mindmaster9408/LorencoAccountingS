@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lorenco Practice — Command Centre</title>
+    <link rel="stylesheet" href="/commander/css/practice.css">
+</head>
+<body>
+
+<div class="topbar" id="app-topbar"></div>
+<nav class="nav-tabs" id="app-nav"></nav>
+
+<div class="main">
+
+    <!-- ── Page header ── -->
+    <div class="section-header" style="margin-bottom:20px;">
+        <div>
+            <div class="section-title" style="font-size:1.25rem;">Practice Command Centre</div>
+            <div class="col-muted" style="font-size:0.8rem;margin-top:2px;">Live operational overview — all clients, all work streams</div>
+        </div>
+        <div class="controls">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        </div>
+    </div>
+
+    <!-- ── Quick action buttons ── -->
+    <div class="quick-actions">
+        <a href="/commander/clients.html"            class="btn btn-ghost btn-sm">👤 Clients</a>
+        <a href="/commander/tasks.html"              class="btn btn-ghost btn-sm">📋 Tasks</a>
+        <a href="/commander/deadlines.html"          class="btn btn-ghost btn-sm">📅 Deadlines</a>
+        <a href="/commander/engagement-periods.html" class="btn btn-ghost btn-sm">🔁 Period Queue</a>
+        <a href="/commander/capacity.html"           class="btn btn-ghost btn-sm">📊 Capacity</a>
+        <a href="/commander/client-health.html"      class="btn btn-ghost btn-sm">🏥 Client Health</a>
+        <a href="/commander/reminders.html"          class="btn btn-ghost btn-sm">🔔 Reminders</a>
+        <a href="/commander/communications.html"     class="btn btn-ghost btn-sm">💬 Communications</a>
+        <a href="/commander/document-requests.html"  class="btn btn-ghost btn-sm">📄 Documents</a>
+        <a href="/commander/billing.html"            class="btn btn-ghost btn-sm">💰 Billing</a>
+        <a href="/commander/time.html"               class="btn btn-ghost btn-sm">⏱ Time</a>
+        <a href="/commander/workflows.html"          class="btn btn-ghost btn-sm">⚡ Workflows</a>
+    </div>
+
+    <!-- ── KPI cards ── -->
+    <div class="kpi-grid">
+        <div class="kpi-card kpi-accent">
+            <div class="kpi-value" id="kpiClients">–</div>
+            <div class="kpi-label">Active Clients</div>
+        </div>
+        <div class="kpi-card kpi-accent">
+            <div class="kpi-value" id="kpiEngagements">–</div>
+            <div class="kpi-label">Active Engagements</div>
+        </div>
+        <div class="kpi-card kpi-danger">
+            <div class="kpi-value v-danger" id="kpiOverdue">–</div>
+            <div class="kpi-label">Overdue Deadlines</div>
+        </div>
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-value v-warning" id="kpiDueWeek">–</div>
+            <div class="kpi-label">Due This Week</div>
+        </div>
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-value" id="kpiReview">–</div>
+            <div class="kpi-label">In Review Queue</div>
+        </div>
+        <div class="kpi-card kpi-warning">
+            <div class="kpi-value" id="kpiApproval">–</div>
+            <div class="kpi-label">Pending Approval</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value" id="kpiWorkflows">–</div>
+            <div class="kpi-label">Active Workflows</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value" id="kpiBilling">–</div>
+            <div class="kpi-label">Billing Packs WIP</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-value" id="kpiPeriods">–</div>
+            <div class="kpi-label">Periods Pending</div>
+        </div>
+    </div>
+
+    <!-- ── Risk panels row 1: Overdue + Due This Week ── -->
+    <div class="dash-panels">
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                🔴 Overdue Deadlines
+                <span class="panel-count panel-count-muted" id="panelOverdueCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelOverdueBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                🟡 Due This Week
+                <span class="panel-count panel-count-muted" id="panelDueCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelDueBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Risk panels row 2: Review / Approval + Billing / Periods ── -->
+    <div class="dash-panels">
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                🔵 Review &amp; Approval Queue
+                <span class="panel-count panel-count-muted" id="panelReviewCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelReviewBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+        <div class="dash-panel">
+            <div class="dash-panel-header">
+                💰 Billing &amp; Periods WIP
+                <span class="panel-count panel-count-muted" id="panelBillingCount">–</span>
+            </div>
+            <div class="dash-panel-body" id="panelBillingBody">
+                <div class="loading"><div class="loading-spinner"></div></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Team Workload ── -->
+    <div style="margin-bottom:28px;">
+        <div class="section-header" style="margin-bottom:12px;">
+            <div class="section-title">Team Workload</div>
+        </div>
+        <div class="table-wrap">
+            <table class="workload-table">
+                <thead>
+                    <tr>
+                        <th>Team Member</th>
+                        <th>Active Tasks</th>
+                        <th>Review Queue</th>
+                        <th>Deadlines Owned</th>
+                        <th>Engagements</th>
+                    </tr>
+                </thead>
+                <tbody id="workloadBody">
+                    <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted);font-size:0.82rem;">
+                        <div class="loading-spinner" style="margin:0 auto 8px;"></div>Loading…
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Recent Activity ── -->
+    <div>
+        <div class="section-header" style="margin-bottom:12px;">
+            <div class="section-title">Recent Activity</div>
+            <div class="col-muted" style="font-size:0.78rem;">Last 50 events</div>
+        </div>
+        <div class="table-wrap">
+            <div class="activity-feed" id="activityBody">
+                <div class="loading"><div class="loading-spinner"></div><p>Loading activity…</p></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/commander/js/polyfills.js"></script>
+<script src="/commander/js/auth.js"></script>
+<script src="/commander/js/api.js"></script>
+<script>
+(function () {
+    // Codebox 55 — role-based landing routing. Only applies to the bare
+    // /practice entry URL (e.g. right after selecting the app from the
+    // ecosystem hub). The "Dashboard" nav tab links to /commander/index.html
+    // explicitly, which never matches this check, so this Command Centre
+    // page always stays reachable via nav — it just isn't the default entry
+    // point for staff/partners any more.
+    if (window.location.pathname !== '/practice') return;
+    if (!window.CommanderAPI || !window.CommanderAPI.fetch) return;
+    window.CommanderAPI.fetch('/api/commander/work-queue/preferences')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var role = d.team_member && d.team_member.role;
+            var isManager = role === 'owner' || role === 'partner' || role === 'admin' || role === 'manager';
+            window.location.replace(isManager ? '/commander/management-dashboard.html' : '/commander/work-queue.html');
+        })
+        .catch(function () { /* on any failure, stay on the Command Centre */ });
+}());
+</script>
+<script src="/commander/js/layout.js"></script>
+<script src="/commander/js/dashboard.js"></script>
+</body>
+</html>

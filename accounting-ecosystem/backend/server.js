@@ -67,7 +67,7 @@ const paytimeChatRoutes  = require('./modules/paytime-chat/routes');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
-let inventoryRoutes, practiceRoutes;
+let inventoryRoutes, practiceRoutes, commanderRoutes;
 
 if (isModuleEnabled('pos')) {
   posRoutes = require('./modules/pos');
@@ -81,6 +81,7 @@ if (isModuleEnabled('sean'))       seanRoutes = require('./sean/routes');
 if (isModuleEnabled('sean'))       interCompanyRoutes = require('./inter-company/routes');
 if (isModuleEnabled('inventory'))  inventoryRoutes = require('./modules/inventory');
 if (isModuleEnabled('practice'))   practiceRoutes = require('./modules/practice');
+if (isModuleEnabled('commander'))  commanderRoutes = require('./modules/commander');
 
 // Coaching module — always load routes (routing is separate from DB connection).
 // DB connection is lazy: coaching module only connects to Postgres when first route is called.
@@ -404,6 +405,25 @@ if (practiceRoutes) {
   console.log('  ⬜ Practice module (Lorenco Practice) — disabled');
 }
 
+// Commander — full functional copy of Firmflow, being adapted for international
+// companies (2026-09-12). active: true (hardcoded in config/modules.js, not env-
+// gated) so it works immediately for super-admin testing; NOT enabled on any
+// company's modules_enabled, so requireModule('commander')'s company-level check
+// blocks every non-super-admin — the existing super-admin bypass already built
+// into requireModule()/companyHasModule() (CLAUDE.md Rule F1) is what makes this
+// reachable at all right now.
+if (commanderRoutes) {
+  app.use('/api/commander',
+    authenticateToken,
+    requireModule('commander'),
+    auditMiddleware,
+    commanderRoutes
+  );
+  console.log('  ✅ Commander module (international Firmflow adaptation) — ACTIVE (super-admin only, no company opted in)');
+} else {
+  console.log('  ⬜ Commander module — disabled');
+}
+
 // ─── Static File Serving ─────────────────────────────────────────────────────
 
 const ecosystemFrontendPath = path.join(__dirname, '..', 'frontend-ecosystem');
@@ -414,6 +434,7 @@ const accountingFrontendPath = path.join(__dirname, '..', 'frontend-accounting')
 const coachingFrontendPath  = path.join(__dirname, '..', 'frontend-coaching');
 const inventoryFrontendPath = path.join(__dirname, 'frontend-inventory'); // inside backend/ — guaranteed copy by any Node.js Dockerfile
 const practiceFrontendPath  = path.join(__dirname, 'frontend-practice');  // inside backend/ — guaranteed copy by any Node.js Dockerfile
+const commanderFrontendPath = path.join(__dirname, 'frontend-commander'); // inside backend/ — guaranteed copy by any Node.js Dockerfile
 
 // ── Cache-Control helper ──────────────────────────────────────────────────────
 // HTML files: never cache — browser must always revalidate on navigation.
@@ -601,6 +622,40 @@ app.get('/practice/*', (req, res) => {
     if (err) {
       console.error('[practice] GET /practice/* sendFile error:', err.message, '| path:', indexPath);
       res.status(500).json({ error: 'Practice frontend unavailable', detail: err.message, resolvedPath: indexPath });
+    }
+  });
+});
+
+// Commander frontend — full functional copy of Firmflow's multi-page app,
+// being adapted for international companies. Same static-serving pattern.
+app.use('/commander', express.static(commanderFrontendPath, staticOptions));
+app.get('/commander', (req, res) => {
+  const indexPath = path.join(commanderFrontendPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[commander] GET /commander sendFile error:', err.message, '| path:', indexPath, '| commanderFrontendPath exists:', fs.existsSync(commanderFrontendPath));
+      res.status(500).json({ error: 'Commander frontend unavailable', detail: err.message, resolvedPath: indexPath });
+    }
+  });
+});
+app.get('/commander/*', (req, res) => {
+  const requestedFile = req.path.replace('/commander/', '');
+  const filePath = path.join(commanderFrontendPath, requestedFile);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    return sendHtml(res, filePath);
+  }
+  if (fs.existsSync(filePath + '.html')) {
+    return sendHtml(res, filePath + '.html');
+  }
+  const indexPath = path.join(commanderFrontendPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[commander] GET /commander/* sendFile error:', err.message, '| path:', indexPath);
+      res.status(500).json({ error: 'Commander frontend unavailable', detail: err.message, resolvedPath: indexPath });
     }
   });
 });
