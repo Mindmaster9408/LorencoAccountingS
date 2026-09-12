@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Document Upload</title>
+<style>
+    :root {
+        --bg: #0f0a1a;
+        --surface: rgba(255,255,255,0.06);
+        --border: rgba(255,255,255,0.1);
+        --text: #f5f0ff;
+        --text-muted: rgba(245,240,255,0.6);
+        --accent: #f59e0b;
+        --accent-dark: #d97706;
+        --success: #22c55e;
+        --warn: #eab308;
+        --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; min-height: 100vh;
+        background: var(--bg); color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        display: flex; justify-content: center;
+        padding: 24px 16px;
+    }
+    .wrap { width: 100%; max-width: 480px; }
+    h1 { font-size: 1.2rem; margin-bottom: 2px; }
+    .sub { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; }
+    .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 18px; margin-bottom: 16px;
+    }
+    ul.checklist { list-style: none; margin: 0; padding: 0; }
+    ul.checklist li {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem;
+    }
+    ul.checklist li:last-child { border-bottom: none; }
+    .icon { font-size: 1rem; }
+    .optional-tag { color: var(--text-muted); font-size: 0.75rem; }
+    .upload-area {
+        border: 2px dashed var(--border); border-radius: 10px; padding: 24px;
+        text-align: center; cursor: pointer; margin-bottom: 12px;
+    }
+    .upload-area:hover { border-color: var(--accent); }
+    input[type="file"] { display: none; }
+    .btn {
+        background: linear-gradient(135deg, var(--accent-dark), var(--accent));
+        color: #1a1204; border: none; padding: 12px 18px; border-radius: 8px;
+        font-weight: 700; cursor: pointer; font-size: 0.95rem; width: 100%;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .file-list { margin-top: 12px; font-size: 0.85rem; }
+    .file-list .file-row { display: flex; justify-content: space-between; padding: 4px 0; }
+    .msg { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+    .result-ok { color: var(--success); }
+    .result-warn { color: var(--warn); }
+    .result-fail { color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+    <div class="msg">Loading&hellip;</div>
+</div>
+
+<script>
+(function () {
+    // The token is read directly from the URL on every load and kept only
+    // in memory for this page's lifetime. Nothing here is ever written to
+    // localStorage/sessionStorage/indexedDB (CLAUDE.md Part D) — state is
+    // simply re-fetched from this same URL if the page is reloaded.
+    var pathParts = window.location.pathname.split('/').filter(Boolean);
+    var token = pathParts[pathParts.length - 1];
+    var app = document.getElementById('app');
+    var selectedFiles = [];
+
+    function esc(str) {
+        var d = document.createElement('div');
+        d.textContent = str || '';
+        return d.innerHTML;
+    }
+
+    function iconFor(status) {
+        if (status === 'accepted') return '✅';
+        if (status === 'submitted' || status === 'needs_review') return '⚠️';
+        return '❌';
+    }
+
+    function renderInvalid() {
+        app.innerHTML = '<div class="msg">This link is invalid or has expired.<br>Please contact your accountant for a new one.</div>';
+    }
+
+    function renderChecklist(data) {
+        var itemsHtml = data.items.map(function (i) {
+            return '<li><span class="icon">' + iconFor(i.status) + '</span> ' + esc(i.label) +
+                (i.is_required ? '' : ' <span class="optional-tag">(optional)</span>') + '</li>';
+        }).join('');
+
+        app.innerHTML =
+            '<h1>' + esc(data.client_name) + '</h1>' +
+            '<div class="sub">' + esc(data.period_label) + ' &mdash; document checklist</div>' +
+            '<div class="card"><ul class="checklist">' + (itemsHtml || '<li>No outstanding items.</li>') + '</ul></div>' +
+            '<div class="card">' +
+              '<div class="upload-area" id="uploadArea">' +
+                '<div>Tap to choose files or take a photo</div>' +
+                '<div class="optional-tag">PDF, JPG, PNG &mdash; up to 20MB each</div>' +
+              '</div>' +
+              '<input type="file" id="fileInput" multiple accept="application/pdf,image/jpeg,image/png,image/heic,image/webp">' +
+              '<div class="file-list" id="fileList"></div>' +
+              '<button class="btn" id="submitBtn" disabled>Upload</button>' +
+              '<div id="uploadResult"></div>' +
+            '</div>';
+
+        var uploadArea = document.getElementById('uploadArea');
+        var fileInput = document.getElementById('fileInput');
+        var submitBtn = document.getElementById('submitBtn');
+
+        uploadArea.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () {
+            selectedFiles = Array.prototype.slice.call(fileInput.files);
+            renderFileList();
+        });
+
+        function renderFileList() {
+            var listEl = document.getElementById('fileList');
+            listEl.innerHTML = selectedFiles.map(function (f) {
+                return '<div class="file-row"><span>' + esc(f.name) + '</span><span>' + Math.round(f.size / 1024) + ' KB</span></div>';
+            }).join('');
+            submitBtn.disabled = selectedFiles.length === 0;
+        }
+
+        submitBtn.addEventListener('click', async function () {
+            if (!selectedFiles.length) return;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Uploading…';
+
+            var formData = new FormData();
+            selectedFiles.forEach(function (f) { formData.append('files', f); });
+
+            try {
+                var uploadRes = await fetch('/api/collector/public/' + encodeURIComponent(token) + '/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                var result = await uploadRes.json().catch(function () { return {}; });
+
+                if (!uploadRes.ok) {
+                    document.getElementById('uploadResult').innerHTML =
+                        '<div class="result-fail" style="margin-top:10px;">' + esc(result.error || 'Upload failed. Please try again.') + '</div>';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Upload';
+                    return;
+                }
+
+                var resultHtml = (result.results || []).map(function (r) {
+                    if (!r.accepted) return '<div class="result-fail">' + esc(r.filename) + ': ' + esc(r.error) + '</div>';
+                    if (r.possible_duplicate) return '<div class="result-warn">' + esc(r.filename) + ': received (flagged as a possible duplicate for review)</div>';
+                    return '<div class="result-ok">' + esc(r.filename) + ': received</div>';
+                }).join('');
+                document.getElementById('uploadResult').innerHTML = '<div style="margin-top:10px;">' + resultHtml + '</div>';
+
+                selectedFiles = [];
+                fileInput.value = '';
+                renderFileList();
+                submitBtn.textContent = 'Upload';
+
+                // Refresh the checklist to reflect anything newly matched.
+                loadChecklist();
+            } catch (err) {
+                document.getElementById('uploadResult').innerHTML =
+                    '<div class="result-fail" style="margin-top:10px;">Upload failed. Please check your connection and try again.</div>';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload';
+            }
+        });
+    }
+
+    async function loadChecklist() {
+        try {
+            var res = await fetch('/api/collector/public/' + encodeURIComponent(token));
+            if (!res.ok) { renderInvalid(); return; }
+            var data = await res.json();
+            renderChecklist(data);
+        } catch (err) {
+            renderInvalid();
+        }
+    }
+
+    loadChecklist();
+})();
+</script>
+</body>
+</html>

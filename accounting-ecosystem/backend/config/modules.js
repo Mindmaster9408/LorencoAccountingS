@@ -84,6 +84,15 @@ const modules = {
     routePrefix: '/api/commander',
     requiredTables: ['commander_clients', 'commander_tasks', 'commander_time_entries', 'commander_deadlines'],
   },
+  collector: {
+    name: 'Smart Client Document Collector',
+    key: 'collector',
+    active: (process.env.MODULE_COLLECTOR_ENABLED || '').toLowerCase() === 'true',
+    version: '0.1.0',
+    description: 'Automated client document chasing — recurring checklists, secure upload links, staff exception review.',
+    routePrefix: '/api/collector',
+    requiredTables: ['collector_clients', 'collector_periods', 'collector_period_items', 'collector_documents', 'collector_upload_tokens'],
+  },
 };
 
 /**

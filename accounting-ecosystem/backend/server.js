@@ -67,7 +67,7 @@ const paytimeChatRoutes  = require('./modules/paytime-chat/routes');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
-let inventoryRoutes, practiceRoutes, commanderRoutes;
+let inventoryRoutes, practiceRoutes, commanderRoutes, collectorRoutes, collectorPublicRoutes;
 
 if (isModuleEnabled('pos')) {
   posRoutes = require('./modules/pos');
@@ -82,6 +82,10 @@ if (isModuleEnabled('sean'))       interCompanyRoutes = require('./inter-company
 if (isModuleEnabled('inventory'))  inventoryRoutes = require('./modules/inventory');
 if (isModuleEnabled('practice'))   practiceRoutes = require('./modules/practice');
 if (isModuleEnabled('commander'))  commanderRoutes = require('./modules/commander');
+if (isModuleEnabled('collector')) {
+  collectorRoutes = require('./modules/collector');
+  collectorPublicRoutes = require('./modules/collector/routes/public-portal');
+}
 
 // Coaching module — always load routes (routing is separate from DB connection).
 // DB connection is lazy: coaching module only connects to Postgres when first route is called.
@@ -421,7 +425,33 @@ if (commanderRoutes) {
   );
   console.log('  ✅ Commander module (international Firmflow adaptation) — ACTIVE (super-admin only, no company opted in)');
 } else {
-  console.log('  ⬜ Commander module — disabled');
+  console.log('  ⬜ Commander module (international Firmflow adaptation) — disabled');
+}
+
+// Collector: two SEPARATE mounts. The staff side gets the normal
+// authenticateToken/requireModule/auditMiddleware chain, exactly like every
+// other module. The public upload portal is mounted on its own path with
+// its OWN rate limiter and NO authenticateToken at all — it must be reachable
+// by a client with no account/login, and must never accidentally inherit the
+// staff auth chain. Keeping these as two distinct app.use() calls (rather
+// than one router with an internal auth branch) makes that separation
+// visible at the server.js level, not just inside the module.
+if (collectorRoutes) {
+  app.use('/api/collector',
+    authenticateToken,
+    requireModule('collector'),
+    auditMiddleware,
+    collectorRoutes
+  );
+  console.log('  ✅ Collector module (Smart Client Document Collector) — ACTIVE');
+} else {
+  console.log('  ⬜ Collector module (Smart Client Document Collector) — disabled');
+}
+if (collectorPublicRoutes) {
+  const { collectorPublicViewLimiter, collectorPublicUploadLimiter } = require('./modules/collector/services/rateLimits');
+  app.use('/api/collector/public/:token/upload', collectorPublicUploadLimiter);
+  app.use('/api/collector/public', collectorPublicViewLimiter, collectorPublicRoutes);
+  console.log('  ✅ Collector public upload portal — ACTIVE (no authentication, token-gated)');
 }
 
 // ─── Static File Serving ─────────────────────────────────────────────────────
@@ -435,6 +465,8 @@ const coachingFrontendPath  = path.join(__dirname, '..', 'frontend-coaching');
 const inventoryFrontendPath = path.join(__dirname, 'frontend-inventory'); // inside backend/ — guaranteed copy by any Node.js Dockerfile
 const practiceFrontendPath  = path.join(__dirname, 'frontend-practice');  // inside backend/ — guaranteed copy by any Node.js Dockerfile
 const commanderFrontendPath = path.join(__dirname, 'frontend-commander'); // inside backend/ — guaranteed copy by any Node.js Dockerfile
+const collectorFrontendPath       = path.join(__dirname, 'frontend-collector');        // staff-facing, authenticated
+const collectorPublicFrontendPath = path.join(__dirname, 'frontend-collector-public'); // client-facing, NO authentication
 
 // ── Cache-Control helper ──────────────────────────────────────────────────────
 // HTML files: never cache — browser must always revalidate on navigation.
@@ -656,6 +688,60 @@ app.get('/commander/*', (req, res) => {
     if (err) {
       console.error('[commander] GET /commander/* sendFile error:', err.message, '| path:', indexPath);
       res.status(500).json({ error: 'Commander frontend unavailable', detail: err.message, resolvedPath: indexPath });
+    }
+  });
+});
+
+// Collector — staff-facing frontend (authenticated, same pattern as Practice/
+// Commander above). The API underneath is auth-gated; this static layer just
+// serves the HTML/JS like every other frontend-* directory in this repo.
+app.use('/collector', express.static(collectorFrontendPath, staticOptions));
+app.get('/collector', (req, res) => {
+  const indexPath = path.join(collectorFrontendPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[collector] GET /collector sendFile error:', err.message, '| path:', indexPath);
+      res.status(500).json({ error: 'Collector frontend unavailable', detail: err.message, resolvedPath: indexPath });
+    }
+  });
+});
+app.get('/collector/*', (req, res) => {
+  const requestedFile = req.path.replace('/collector/', '');
+  const filePath = path.join(collectorFrontendPath, requestedFile);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    return sendHtml(res, filePath);
+  }
+  if (fs.existsSync(filePath + '.html')) {
+    return sendHtml(res, filePath + '.html');
+  }
+  const indexPath = path.join(collectorFrontendPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[collector] GET /collector/* sendFile error:', err.message, '| path:', indexPath);
+      res.status(500).json({ error: 'Collector frontend unavailable', detail: err.message, resolvedPath: indexPath });
+    }
+  });
+});
+
+// Collector — PUBLIC client-facing upload page. Deliberately NO
+// authenticateToken anywhere in this chain (auth in this codebase lives at
+// the API layer, not the static layer — same as every other frontend-*
+// mount above). The token itself lives only in the URL; per CLAUDE.md Part D
+// the page must never persist it or any checklist/document data to
+// localStorage/sessionStorage/indexedDB — see frontend-collector-public/index.html.
+app.use('/collect', express.static(collectorPublicFrontendPath, staticOptions));
+app.get('/collect/:token', (req, res) => {
+  const indexPath = path.join(collectorPublicFrontendPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('[collector-public] GET /collect/:token sendFile error:', err.message, '| path:', indexPath);
+      res.status(500).json({ error: 'Upload page unavailable', detail: err.message, resolvedPath: indexPath });
     }
   });
 });
