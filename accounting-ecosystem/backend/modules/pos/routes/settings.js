@@ -15,6 +15,7 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
 const { invalidateStockPolicyCache } = require('../services/stockPolicyCache');
+const { buildDisplayConfig } = require('../../../shared/services/jurisdiction');
 
 const router = express.Router();
 
@@ -67,19 +68,27 @@ router.get('/', requirePermission('SETTINGS.VIEW'), async (req, res) => {
     // not a manager-toggleable company_settings field — merged in read-only here so the
     // existing PUT /settings route can never accidentally write it. First time POS reads
     // modules_enabled at all; every other consumer of this flag lives outside POS.
+    //
+    // International rollout (2026-09-12): the same companies lookup now also
+    // carries jurisdiction/currency_code, merged read-only the same way, so
+    // the frontend can drive its currency symbol / tax label off one fetch
+    // instead of a second round-trip. Defaults (ZA/ZAR) via migration 167's
+    // column defaults mean this is a no-op for every existing company.
     let serialTrackingEnabled = false;
+    let displayConfig = buildDisplayConfig(null);
     try {
       const { data: co } = await supabase
         .from('companies')
-        .select('modules_enabled')
+        .select('modules_enabled, jurisdiction, currency_code')
         .eq('id', req.companyId)
         .maybeSingle();
       serialTrackingEnabled = !!(co && co.modules_enabled && co.modules_enabled.includes('serial_tracking'));
+      displayConfig = buildDisplayConfig(co);
     } catch (modErr) {
-      console.warn('[Settings] modules_enabled lookup failed, defaulting serial_tracking_enabled=false:', modErr.message);
+      console.warn('[Settings] modules_enabled/jurisdiction lookup failed, defaulting to ZA/ZAR:', modErr.message);
     }
 
-    res.json({ settings: { ...data, serial_tracking_enabled: serialTrackingEnabled } });
+    res.json({ settings: { ...data, serial_tracking_enabled: serialTrackingEnabled, ...displayConfig } });
   } catch (err) {
     console.error('[Settings] GET error:', err);
     res.status(500).json({ error: 'Server error' });

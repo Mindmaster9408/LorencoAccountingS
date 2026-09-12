@@ -1991,8 +1991,15 @@ function showToast(msg, isError = false) {
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 function openModal(id)  { document.getElementById(id).classList.add('show'); }
 
-function fmtQty(v, unit='') { return (parseFloat(v)||0).toLocaleString('en-ZA',{maximumFractionDigits:3}) + (unit ? ' '+unit : ''); }
-function fmtR(v) { return 'R ' + (parseFloat(v)||0).toFixed(2); }
+// International rollout (2026-09-12): sourced from GET /api/inventory/settings
+// at load time (see loadDisplayConfig() in the DOMContentLoaded handler
+// below). Default here matches today's South African behaviour exactly, so
+// if that fetch is ever slow/unavailable nothing regresses.
+window.CURRENCY_SYMBOL = 'R';
+window.APP_LOCALE = 'en-ZA';
+
+function fmtQty(v, unit='') { return (parseFloat(v)||0).toLocaleString(window.APP_LOCALE,{maximumFractionDigits:3}) + (unit ? ' '+unit : ''); }
+function fmtR(v) { return window.CURRENCY_SYMBOL + ' ' + (parseFloat(v)||0).toFixed(2); }
 function fmtDate(d) { return d ? d.split('T')[0] : '—'; }
 
 function itemTypeBadge(t) {
@@ -2016,6 +2023,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('companyBadge').textContent = user.companyName || user.company || 'Company';
     _userRole = user.role || 'cashier';
   } catch(e) {}
+
+  // International rollout (2026-09-12) — currency symbol/locale for this
+  // company. Runs before any rendering that calls fmtR()/fmtQty(); safe
+  // fallback to the SA defaults already set above if this fails.
+  try {
+    const cfg = await apiFetch('/settings');
+    if (cfg?.settings?.currency_symbol) window.CURRENCY_SYMBOL = cfg.settings.currency_symbol;
+    if (cfg?.settings?.locale) window.APP_LOCALE = cfg.settings.locale;
+  } catch (e) { /* keep SA defaults */ }
 
   // Load user permissions first (Codebox 11) so UI governs correctly
   await loadUserPerms();
@@ -2794,7 +2810,7 @@ async function submitQuickReceive(e) {
       const result = await apiFetch('/quick-receive', { method: 'POST', body: JSON.stringify(body) });
       closeModal('quickReceiveModal');
       const costNote = result.unit_cost_per_base != null
-        ? ` Cost per base unit: R${parseFloat(result.unit_cost_per_base).toFixed(4)}.`
+        ? ` Cost per base unit: ${window.CURRENCY_SYMBOL}${parseFloat(result.unit_cost_per_base).toFixed(4)}.`
         : '';
       showToast('Stock received.' + costNote);
       await loadItems();
@@ -2974,7 +2990,7 @@ async function updateQrConvPreview() {
 
   if (!purchaseUnit || !itemId || qty <= 0) {
     document.getElementById('qrBaseQtyPreview').value = qty > 0 ? qty.toFixed(4) : '';
-    document.getElementById('qrCostPerBasePreview').value = cost > 0 ? 'R '+cost.toFixed(4) : '';
+    document.getElementById('qrCostPerBasePreview').value = cost > 0 ? window.CURRENCY_SYMBOL+' '+cost.toFixed(4) : '';
     status.textContent = purchaseUnit ? 'Looking up conversion…' : '';
     return;
   }
@@ -2988,7 +3004,7 @@ async function updateQrConvPreview() {
 
     if (purchaseUnit === baseUnit) {
       document.getElementById('qrBaseQtyPreview').value = qty.toFixed(4);
-      document.getElementById('qrCostPerBasePreview').value = 'R '+cost.toFixed(4);
+      document.getElementById('qrCostPerBasePreview').value = window.CURRENCY_SYMBOL+' '+cost.toFixed(4);
       status.textContent = 'No conversion needed — same as base unit.';
       return;
     }
@@ -3010,7 +3026,7 @@ async function updateQrConvPreview() {
     const baseQty = qty * factor;
     const costPerBase = factor > 0 ? cost / factor : 0;
     document.getElementById('qrBaseQtyPreview').value = baseQty.toFixed(4) + ' ' + baseUnit;
-    document.getElementById('qrCostPerBasePreview').value = 'R '+costPerBase.toFixed(4)+'/'+baseUnit;
+    document.getElementById('qrCostPerBasePreview').value = window.CURRENCY_SYMBOL+' '+costPerBase.toFixed(4)+'/'+baseUnit;
     status.textContent = '✓ 1 '+purchaseUnit+' = '+factor.toFixed(6).replace(/\.?0+$/,'')+' '+baseUnit;
     status.style.color = 'var(--success,#28a745)';
   } catch(err) {
@@ -4208,7 +4224,7 @@ function renderSummaryBar(stats) {
       <div style="font-size:1.4rem;font-weight:800;color:${s.color||'var(--eco-cyan)'}">${s.value}</div>
       <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">${esc(s.label)}</div>
     </div>`).join('')}
-    <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString('en-ZA')}</div>
+    <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString(window.APP_LOCALE)}</div>
   </div>`;
 }
 
@@ -4368,7 +4384,7 @@ async function loadStockValuationReport() {
         <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-cyan)">${fmtR(rep.finished_goods_value||0)}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Finished Goods Value</div></div>
         <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-red)">${rep.low_stock_count||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Low Stock</div></div>
         <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-gold)">${rep.missing_cost_items||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Missing Cost</div></div>
-        <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString('en-ZA')}</div>
+        <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString(window.APP_LOCALE)}</div>
       </div>`;
 
     if (!items.length) {
@@ -4417,7 +4433,7 @@ async function loadValuationMovementsReport() {
       <div style="display:flex;gap:32px;flex-wrap:wrap;">
         <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-cyan)">${rep.row_count||0}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Movements</div></div>
         <div><div style="font-size:1.5rem;font-weight:800;color:var(--eco-gold)">${fmtR(rep.total_cost_moved||0)}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Total Cost Moved</div></div>
-        <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString('en-ZA')}</div>
+        <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);align-self:flex-end">Generated ${new Date().toLocaleString(window.APP_LOCALE)}</div>
       </div>`;
 
     if (!rows.length) {
@@ -5461,7 +5477,7 @@ async function loadCountSessions() {
     if (!data.success) throw new Error(data.error || 'Failed');
     const { sessions = [], summary = {} } = data;
     if (info) {
-      info.textContent = `${summary.total_sessions || 0} total · ${summary.applied_count || 0} applied · ${summary.pending_count || 0} pending · Total variance applied: R ${fmtR(summary.total_variance_value || 0)}`;
+      info.textContent = `${summary.total_sessions || 0} total · ${summary.applied_count || 0} applied · ${summary.pending_count || 0} pending · Total variance applied: ${fmtR(summary.total_variance_value || 0)}`;
     }
     if (!sessions.length) {
       wrap.innerHTML = '<div class="empty"><div class="empty-icon">📦</div><p>No count sessions found.</p></div>';
@@ -5482,7 +5498,7 @@ async function loadCountSessions() {
         <td>${statusBadge(s.status)}</td>
         <td style="font-size:0.82rem;">${prog} counted</td>
         <td>${fmtDate(s.started_at)}</td>
-        <td>${s.total_variance_value != null ? `<span class="${s.total_variance_value >= 0 ? 'variance-pos' : 'variance-neg'}">R ${fmtR(s.total_variance_value)}</span>` : '—'}</td>
+        <td>${s.total_variance_value != null ? `<span class="${s.total_variance_value >= 0 ? 'variance-pos' : 'variance-neg'}">${fmtR(s.total_variance_value)}</span>` : '—'}</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn btn-ghost btn-sm" onclick="openCountLinesModal(${s.id})">📋 View/Count</button>

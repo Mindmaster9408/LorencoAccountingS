@@ -206,13 +206,16 @@ router.post('/', requirePerm(PERM.PO_CREATE), async (req, res) => {
   }
 
   try {
-    // Verify supplier belongs to this company
-    const { data: supplier, error: supErr } = await supabase
-      .from('suppliers')
-      .select('id, name')
-      .eq('company_id', companyId)
-      .eq('id', supplier_id)
-      .single();
+    // Verify supplier belongs to this company. Fetched alongside the
+    // company's own configured currency (international rollout, 2026-09-12)
+    // so an omitted currency_code defaults to THIS company's currency, not
+    // a hardcoded 'ZAR' — every company predating that column still gets
+    // 'ZAR' via the migration 167 column default, so behaviour is unchanged
+    // unless a company has actually been switched to a different currency.
+    const [{ data: supplier, error: supErr }, { data: companyRow }] = await Promise.all([
+      supabase.from('suppliers').select('id, name').eq('company_id', companyId).eq('id', supplier_id).single(),
+      supabase.from('companies').select('currency_code').eq('id', companyId).maybeSingle(),
+    ]);
     if (supErr || !supplier) return res.status(400).json({ error: 'Supplier not found for this company' });
 
     // Generate PO number using sequence (see migration 154 — the nextval()
@@ -245,7 +248,7 @@ router.post('/', requirePerm(PERM.PO_CREATE), async (req, res) => {
         po_date:             new Date().toISOString().slice(0, 10),
         expected_date:       expected_date || null,
         notes:               notes || null,
-        currency_code:       currency_code || 'ZAR',
+        currency_code:       currency_code || companyRow?.currency_code || 'ZAR',
         subtotal,
         tax_amount:          taxAmount,
         total_inc_vat:       totalAmount,

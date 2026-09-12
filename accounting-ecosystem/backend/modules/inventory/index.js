@@ -21,6 +21,7 @@ const productionRoutes = require('./routes/production-batches');
 const warehouseTransferRoutes = require('./routes/warehouse-transfers');
 const warehouseLocationRoutes = require('./routes/warehouse-locations');
 const salesOrderRoutes        = require('./routes/sales-orders');
+const inventorySettingsRoutes = require('./routes/settings');
 const costingService = require('./services/costingService');
 const { adjustStockTx } = require('./services/stockMutationService');
 const reservationService = require('./services/reservationService');
@@ -61,6 +62,7 @@ router.use('/procurement', procurementRoutes);
 router.use('/production', productionRoutes);
 router.use('/transfers', warehouseTransferRoutes);
 router.use('/sales-orders', salesOrderRoutes);
+router.use('/settings', inventorySettingsRoutes);
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {

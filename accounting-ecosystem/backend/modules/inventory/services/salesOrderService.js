@@ -51,13 +51,24 @@ async function createSalesOrder(supabase, companyId, {
   customer_ref     = null,
   required_date    = null,
   delivery_address = null,
-  currency_code    = 'ZAR',
+  currency_code    = null,
   notes            = null,
   created_by       = null,
   lines            = []
 }) {
   if (!customer_name?.trim()) return { success: false, status: 400, error: 'customer_name is required' };
   if (!lines || lines.length === 0) return { success: false, status: 400, error: 'At least one order line is required' };
+
+  // International rollout (2026-09-12): an omitted currency_code now falls
+  // back to THIS company's own configured currency, not a hardcoded 'ZAR'.
+  // Every company predating migration 167 has currency_code='ZAR' via that
+  // column's default, so behaviour is unchanged unless a company has
+  // actually been switched to a different currency.
+  let effectiveCurrencyCode = currency_code;
+  if (!effectiveCurrencyCode) {
+    const { data: companyRow } = await supabase.from('companies').select('currency_code').eq('id', companyId).maybeSingle();
+    effectiveCurrencyCode = companyRow?.currency_code || 'ZAR';
+  }
 
   // Validate all items belong to this company
   const itemIds = [...new Set(lines.map(l => parseInt(l.item_id)).filter(Boolean))];
@@ -107,7 +118,7 @@ async function createSalesOrder(supabase, companyId, {
       customer_ref:     customer_ref   || null,
       required_date:    required_date  || null,
       delivery_address: delivery_address || null,
-      currency_code:    currency_code || 'ZAR',
+      currency_code:    effectiveCurrencyCode,
       notes:            notes          || null,
       so_status:        'draft',
       total_amount:     parseFloat(total.toFixed(4)),

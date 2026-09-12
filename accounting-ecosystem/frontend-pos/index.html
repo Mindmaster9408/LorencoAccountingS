@@ -3646,7 +3646,7 @@
                                     <tr>
                                         <th>Code</th>
                                         <th>Description</th>
-                                        <th>VAT</th>
+                                        <th id="productsTableTaxHeader">VAT</th>
                                         <th>Category</th>
                                         <th>Price</th>
                                         <th>Stock</th>
@@ -4206,11 +4206,11 @@
                             <h4 style="margin: 0 0 15px 0;">Till Settings</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Default Opening Float (R)</label>
+                                    <label id="floatAmountLabel" style="display: block; margin-bottom: 5px; font-weight: 500;">Default Opening Float (R)</label>
                                     <input type="number" id="defaultFloatAmount" step="0.01" min="0" value="500.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                                 </div>
                                 <div>
-                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">VAT Rate (%)</label>
+                                    <label id="settingsVatRateLabel" style="display: block; margin-bottom: 5px; font-weight: 500;">VAT Rate (%)</label>
                                     <input type="number" id="settingsVatRate" step="0.01" min="0" max="100" value="15" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                                 </div>
                             </div>
@@ -4802,12 +4802,12 @@
                     <div class="form-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="productRequiresVat" checked onchange="toggleVatRate()">
-                            Requires VAT
+                            <span id="requiresVatLabel">Requires VAT</span>
                         </label>
                     </div>
 
                     <div class="form-group">
-                        <label>VAT Rate (%)</label>
+                        <label id="productVatRateLabel">VAT Rate (%)</label>
                         <select id="productTaxRate">
                             <option value="0">0%</option>
                             <option value="15" selected>15%</option>
@@ -5551,6 +5551,13 @@
         // loaded read-only from the same /api/pos/settings call. Default false so every
         // client without the add-on sees zero UI change anywhere in the till.
         let serialTrackingEnabled = false;
+
+        // International rollout (2026-09-12) — currency symbol / tax-rate label for
+        // this company, loaded read-only from the same /api/pos/settings call.
+        // Defaults here match today's South African behaviour exactly, so if that
+        // fetch is ever slow/unavailable nothing regresses for any existing till.
+        let CURRENCY_SYMBOL = 'R';
+        let TAX_LABEL = 'VAT';
 
         // ========== OFFLINE-FIRST FUNCTIONALITY ==========
         let isOnline = navigator.onLine;
@@ -6675,6 +6682,25 @@
             }
         }
 
+        // International rollout (2026-09-12) — a handful of settings/product-form
+        // labels are static HTML (not JS-rendered per-render like the reports/
+        // receipts, which already interpolate TAX_LABEL directly) and so need a
+        // one-time text patch once CURRENCY_SYMBOL/TAX_LABEL are known. Safe to
+        // call multiple times; each element defaults to exactly today's SA text
+        // if this never runs (e.g. settings fetch failed).
+        function applyDisplayConfigToStaticLabels() {
+            const th = document.getElementById('productsTableTaxHeader');
+            if (th) th.textContent = TAX_LABEL;
+            const floatLabel = document.getElementById('floatAmountLabel');
+            if (floatLabel) floatLabel.textContent = `Default Opening Float (${CURRENCY_SYMBOL})`;
+            const settingsVatLabel = document.getElementById('settingsVatRateLabel');
+            if (settingsVatLabel) settingsVatLabel.textContent = `${TAX_LABEL} Rate (%)`;
+            const requiresVatLabel = document.getElementById('requiresVatLabel');
+            if (requiresVatLabel) requiresVatLabel.textContent = `Requires ${TAX_LABEL}`;
+            const productVatLabel = document.getElementById('productVatRateLabel');
+            if (productVatLabel) productVatLabel.textContent = `${TAX_LABEL} Rate (%)`;
+        }
+
         async function loadCompanySettings() {
             try {
                 const r = await fetch(`${API_URL}/pos/settings`, {
@@ -6689,6 +6715,9 @@
                     serialTrackingEnabled = !!(d.settings?.serial_tracking_enabled);
                     const serialLookupMenuItem = document.getElementById('serialLookupMenuItem');
                     if (serialLookupMenuItem) serialLookupMenuItem.style.display = serialTrackingEnabled ? 'block' : 'none';
+                    if (d.settings?.currency_symbol) CURRENCY_SYMBOL = d.settings.currency_symbol;
+                    if (d.settings?.tax_label) TAX_LABEL = d.settings.tax_label;
+                    applyDisplayConfigToStaticLabels();
                 }
             } catch (e) {
                 // Default remains false — strict mode if the endpoint is unavailable.
@@ -7131,7 +7160,7 @@
 
                 const result = await response.json();
                 if (response.ok) {
-                    showNotification(`Session closed. Variance: R ${result.variance.toFixed(2)}`, 'success');
+                    showNotification(`Session closed. Variance: ${CURRENCY_SYMBOL} ${result.variance.toFixed(2)}`, 'success');
                     currentSession = null;
                     document.getElementById('sessionStatus').textContent = 'No Session';
                     document.getElementById('checkoutBtn').disabled = true;
@@ -7401,7 +7430,7 @@
                 document.getElementById('cashUpSessionId').textContent = `Till ${currentSessionData.till_id}`;
                 document.getElementById('cashUpUser').textContent = currentUser?.fullName || currentUser?.username || 'Unknown';
                 document.getElementById('cashUpOpeningBalance').textContent =
-                    `R ${parseFloat(currentSessionData.opening_balance).toFixed(2)}`;
+                    `${CURRENCY_SYMBOL} ${parseFloat(currentSessionData.opening_balance).toFixed(2)}`;
                 document.getElementById('cashUpOpenedAt').textContent =
                     new Date(currentSessionData.opened_at).toLocaleString();
 
@@ -7415,27 +7444,27 @@
                     _reconExpectedCash = cr.expected_cash_in_drawer;
 
                     document.getElementById('cashUpTotalSales').textContent =
-                        `R ${totals.gross_sales.toFixed(2)}`;
+                        `${CURRENCY_SYMBOL} ${totals.gross_sales.toFixed(2)}`;
                     document.getElementById('cashUpSalesCount').textContent =
                         `${totals.sale_count} transaction${totals.sale_count !== 1 ? 's' : ''}` +
                         (totals.void_count > 0 ? ` (${totals.void_count} voided)` : '');
 
                     // Expected cash: opening + cash sales − cash refunds
                     document.getElementById('cashUpExpectedCash').textContent =
-                        `R ${cr.expected_cash_in_drawer.toFixed(2)}`;
+                        `${CURRENCY_SYMBOL} ${cr.expected_cash_in_drawer.toFixed(2)}`;
                     document.getElementById('expectedCashAmount').textContent =
-                        `R ${cr.expected_cash_in_drawer.toFixed(2)}`;
+                        `${CURRENCY_SYMBOL} ${cr.expected_cash_in_drawer.toFixed(2)}`;
 
                     // Payment breakdown from sale_payments (authoritative)
-                    document.getElementById('cashSales').textContent    = `R ${payments.cash.toFixed(2)}`;
-                    document.getElementById('cardSales').textContent    = `R ${payments.card.toFixed(2)}`;
-                    document.getElementById('eftSales').textContent     = `R ${payments.eft.toFixed(2)}`;
-                    document.getElementById('accountSales').textContent = `R ${payments.account.toFixed(2)}`;
+                    document.getElementById('cashSales').textContent    = `${CURRENCY_SYMBOL} ${payments.cash.toFixed(2)}`;
+                    document.getElementById('cardSales').textContent    = `${CURRENCY_SYMBOL} ${payments.card.toFixed(2)}`;
+                    document.getElementById('eftSales').textContent     = `${CURRENCY_SYMBOL} ${payments.eft.toFixed(2)}`;
+                    document.getElementById('accountSales').textContent = `${CURRENCY_SYMBOL} ${payments.account.toFixed(2)}`;
                     renderOtherPaymentCountRows(payments);
 
                     // Show cash refunds row only when refunds exist
                     if (refunds.cash > 0) {
-                        document.getElementById('cashRefunds').textContent = `−R ${refunds.cash.toFixed(2)}`;
+                        document.getElementById('cashRefunds').textContent = `−${CURRENCY_SYMBOL} ${refunds.cash.toFixed(2)}`;
                         document.getElementById('cashRefundsRow').style.display = 'flex';
                     } else {
                         document.getElementById('cashRefundsRow').style.display = 'none';
@@ -7444,7 +7473,7 @@
                     // Show cash paid-out row only when a paid-out was recorded this session
                     const paidOutTotal = recon.paid_out_total || 0;
                     if (paidOutTotal > 0) {
-                        document.getElementById('cashPaidOut').textContent = `−R ${paidOutTotal.toFixed(2)}`;
+                        document.getElementById('cashPaidOut').textContent = `−${CURRENCY_SYMBOL} ${paidOutTotal.toFixed(2)}`;
                         document.getElementById('cashPaidOutRow').style.display = 'flex';
                     } else {
                         document.getElementById('cashPaidOutRow').style.display = 'none';
@@ -7463,8 +7492,8 @@
 
                     document.getElementById('cashUpTotalSales').textContent = `R 0.00`;
                     document.getElementById('cashUpSalesCount').textContent = `Unavailable`;
-                    document.getElementById('cashUpExpectedCash').textContent = `R ${opening.toFixed(2)}`;
-                    document.getElementById('expectedCashAmount').textContent = `R ${opening.toFixed(2)}`;
+                    document.getElementById('cashUpExpectedCash').textContent = `${CURRENCY_SYMBOL} ${opening.toFixed(2)}`;
+                    document.getElementById('expectedCashAmount').textContent = `${CURRENCY_SYMBOL} ${opening.toFixed(2)}`;
                     document.getElementById('cashSales').textContent    = `R 0.00`;
                     document.getElementById('cardSales').textContent    = `R 0.00`;
                     document.getElementById('eftSales').textContent     = `R 0.00`;
@@ -7520,7 +7549,7 @@
                         const userName = session.users?.full_name || session.users?.username || 'Unknown cashier';
                         const amountLabel = session.still_open
                             ? 'still open — never closed'
-                            : `Uitstaande: R ${parseFloat(session.expected_balance || 0).toFixed(2)}`;
+                            : `Uitstaande: ${CURRENCY_SYMBOL} ${parseFloat(session.expected_balance || 0).toFixed(2)}`;
                         return `<option value="${i}">${tillName} — ${userName} (${amountLabel})</option>`;
                     }).join('');
                     list.innerHTML = `
@@ -7571,8 +7600,8 @@
         function cashupMethodRow(label, systemAmount, counted) {
             if (counted == null) return '';
             const variance = Math.round((counted - (systemAmount || 0)) * 100) / 100;
-            const varianceText = variance === 0 ? 'matches' : `${variance >= 0 ? '+' : ''}R ${variance.toFixed(2)}`;
-            return `<tr><td>${label}</td><td style="text-align:right;">R ${counted.toFixed(2)} (${varianceText})</td></tr>`;
+            const varianceText = variance === 0 ? 'matches' : `${variance >= 0 ? '+' : ''}${CURRENCY_SYMBOL} ${variance.toFixed(2)}`;
+            return `<tr><td>${label}</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${counted.toFixed(2)} (${varianceText})</td></tr>`;
         }
 
         // "Count Cash in Till" note/coin breakdown for the printed slip —
@@ -7594,7 +7623,7 @@
             ];
             const row = ([label, key, value]) => {
                 const qty = parseInt(denominations[key]) || 0;
-                return `<tr><td>${label}</td><td style="text-align:right;">${qty}</td><td style="text-align:right;">R ${(qty * value).toFixed(2)}</td></tr>`;
+                return `<tr><td>${label}</td><td style="text-align:right;">${qty}</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${(qty * value).toFixed(2)}</td></tr>`;
             };
             const col = (rows, title) => `
                 <table style="width:100%;border-collapse:collapse;font-size:11px;" cellpadding="3">
@@ -7628,21 +7657,21 @@
                     ${d.openedAt ? `<p style="margin:0;">Opened: ${new Date(d.openedAt).toLocaleString()}</p>` : ''}
                     <p style="margin:0 0 8px;">Closed: ${new Date().toLocaleString()}</p>
                     <table style="width:100%;border-collapse:collapse;font-size:11px;" cellpadding="3">
-                        <tr><td>Opening Balance</td><td style="text-align:right;">R ${(d.openingBalance || 0).toFixed(2)}</td></tr>
+                        <tr><td>Opening Balance</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${(d.openingBalance || 0).toFixed(2)}</td></tr>
                         <tr><td colspan="2" style="padding-top:6px;"><strong>Sales${d.saleCount != null ? ` (${d.saleCount} txn)` : ''}</strong></td></tr>
-                        <tr><td>Cash</td><td style="text-align:right;">R ${(d.cashSales || 0).toFixed(2)}</td></tr>
-                        <tr><td>Card</td><td style="text-align:right;">R ${(d.cardSales || 0).toFixed(2)}</td></tr>
-                        <tr><td>EFT</td><td style="text-align:right;">R ${(d.eftSales || 0).toFixed(2)}</td></tr>
-                        <tr><td>Account</td><td style="text-align:right;">R ${(d.accountSales || 0).toFixed(2)}</td></tr>
-                        ${d.cashRefunds > 0 ? `<tr><td>Cash Refunds</td><td style="text-align:right;">&minus;R ${d.cashRefunds.toFixed(2)}</td></tr>` : ''}
-                        ${d.paidOut > 0 ? `<tr><td>Cash Paid Out</td><td style="text-align:right;">&minus;R ${d.paidOut.toFixed(2)}</td></tr>` : ''}
-                        <tr style="border-top:1px solid #000;"><td><strong>Expected Cash</strong></td><td style="text-align:right;"><strong>R ${(d.expectedCash || 0).toFixed(2)}</strong></td></tr>
+                        <tr><td>Cash</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${(d.cashSales || 0).toFixed(2)}</td></tr>
+                        <tr><td>Card</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${(d.cardSales || 0).toFixed(2)}</td></tr>
+                        <tr><td>EFT</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${(d.eftSales || 0).toFixed(2)}</td></tr>
+                        <tr><td>Account</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${(d.accountSales || 0).toFixed(2)}</td></tr>
+                        ${d.cashRefunds > 0 ? `<tr><td>Cash Refunds</td><td style="text-align:right;">&minus;${CURRENCY_SYMBOL} ${d.cashRefunds.toFixed(2)}</td></tr>` : ''}
+                        ${d.paidOut > 0 ? `<tr><td>Cash Paid Out</td><td style="text-align:right;">&minus;${CURRENCY_SYMBOL} ${d.paidOut.toFixed(2)}</td></tr>` : ''}
+                        <tr style="border-top:1px solid #000;"><td><strong>Expected Cash</strong></td><td style="text-align:right;"><strong>${CURRENCY_SYMBOL} ${(d.expectedCash || 0).toFixed(2)}</strong></td></tr>
                         <tr><td colspan="2" style="padding-top:6px;"><strong>Counted</strong></td></tr>
-                        <tr><td>Cash</td><td style="text-align:right;">R ${(d.countedCash || 0).toFixed(2)}</td></tr>
+                        <tr><td>Cash</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${(d.countedCash || 0).toFixed(2)}</td></tr>
                         ${otherMethodRows}
-                        ${d.countedOther != null ? `<tr><td>Other</td><td style="text-align:right;">R ${d.countedOther.toFixed(2)}</td></tr>` : ''}
-                        ${(d.countedCard != null || d.countedEft != null || d.countedAccount != null || d.countedOther != null) ? `<tr><td>Total Counted</td><td style="text-align:right;">R ${countedTotal.toFixed(2)}</td></tr>` : ''}
-                        <tr style="border-top:1px solid #000;"><td><strong>Variance</strong></td><td style="text-align:right;"><strong>${d.variance >= 0 ? '+' : ''}R ${d.variance.toFixed(2)} (${varianceLabel})</strong></td></tr>
+                        ${d.countedOther != null ? `<tr><td>Other</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${d.countedOther.toFixed(2)}</td></tr>` : ''}
+                        ${(d.countedCard != null || d.countedEft != null || d.countedAccount != null || d.countedOther != null) ? `<tr><td>Total Counted</td><td style="text-align:right;">${CURRENCY_SYMBOL} ${countedTotal.toFixed(2)}</td></tr>` : ''}
+                        <tr style="border-top:1px solid #000;"><td><strong>Variance</strong></td><td style="text-align:right;"><strong>${d.variance >= 0 ? '+' : ''}${CURRENCY_SYMBOL} ${d.variance.toFixed(2)} (${varianceLabel})</strong></td></tr>
                     </table>
                     ${buildDenominationsPrintHtml(d.denominations)}
                     ${d.notes ? `<p style="margin:10px 0 0;font-size:11px;">Notes: ${d.notes}</p>` : ''}
@@ -7792,7 +7821,7 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Failed to record paid-out');
 
-                showNotification(`Recorded R ${amount.toFixed(2)} paid out`, 'success');
+                showNotification(`Recorded ${CURRENCY_SYMBOL} ${amount.toFixed(2)} paid out`, 'success');
                 closeCashPaidOutModal();
             } catch (err) {
                 showNotification(`Paid-out failed: ${err.message}`, 'error');
@@ -7819,8 +7848,8 @@
                     </div>
                     <div class="modal-body" style="padding: 20px;">
                         <p style="margin:0 0 6px;color:var(--text);">${d.tillName} — ${d.userName}</p>
-                        <p style="margin:0 0 6px;color:var(--text-secondary);">Expected: R ${(d.expectedCash || 0).toFixed(2)}</p>
-                        <p style="margin:0;font-weight:600;color:var(--text);">Variance: ${d.variance >= 0 ? '+' : ''}R ${d.variance.toFixed(2)} (${varianceLabel})</p>
+                        <p style="margin:0 0 6px;color:var(--text-secondary);">Expected: ${CURRENCY_SYMBOL} ${(d.expectedCash || 0).toFixed(2)}</p>
+                        <p style="margin:0;font-weight:600;color:var(--text);">Variance: ${d.variance >= 0 ? '+' : ''}${CURRENCY_SYMBOL} ${d.variance.toFixed(2)} (${varianceLabel})</p>
                     </div>
                     <div class="modal-footer" style="padding:15px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;">
                         <button class="btn btn-secondary" onclick="closeCashupCompleteModal()">Close</button>
@@ -7897,17 +7926,17 @@
                         ` : ''}
                         ${recon ? `
                             <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:15px;font-size:13px;color:var(--text-secondary);">
-                                <div style="display:flex;justify-content:space-between;"><span>Gross sales (${recon.totals.sale_count} txn${recon.totals.void_count > 0 ? `, ${recon.totals.void_count} voided` : ''})</span><span style="color:var(--text);">R ${parseFloat(recon.totals.gross_sales).toFixed(2)}</span></div>
-                                <div style="display:flex;justify-content:space-between;"><span>Cash sales</span><span style="color:var(--text);">R ${parseFloat(payments.cash || 0).toFixed(2)}</span></div>
-                                <div style="display:flex;justify-content:space-between;"><span>Card sales</span><span style="color:var(--text);">R ${parseFloat(payments.card || 0).toFixed(2)}</span></div>
-                                <div style="display:flex;justify-content:space-between;"><span>EFT sales</span><span style="color:var(--text);">R ${parseFloat(payments.eft || 0).toFixed(2)}</span></div>
-                                <div style="display:flex;justify-content:space-between;"><span>Account sales</span><span style="color:var(--text);">R ${parseFloat(payments.account || 0).toFixed(2)}</span></div>
-                                ${refunds.cash > 0 ? `<div style="display:flex;justify-content:space-between;"><span>Cash refunds</span><span style="color:var(--text);">&minus;R ${parseFloat(refunds.cash).toFixed(2)}</span></div>` : ''}
-                                <div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-weight:600;"><span>Expected cash in drawer</span><span style="color:var(--text);">R ${parseFloat(expectedCash).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>Gross sales (${recon.totals.sale_count} txn${recon.totals.void_count > 0 ? `, ${recon.totals.void_count} voided` : ''})</span><span style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(recon.totals.gross_sales).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>Cash sales</span><span style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(payments.cash || 0).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>Card sales</span><span style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(payments.card || 0).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>EFT sales</span><span style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(payments.eft || 0).toFixed(2)}</span></div>
+                                <div style="display:flex;justify-content:space-between;"><span>Account sales</span><span style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(payments.account || 0).toFixed(2)}</span></div>
+                                ${refunds.cash > 0 ? `<div style="display:flex;justify-content:space-between;"><span>Cash refunds</span><span style="color:var(--text);">&minus;${CURRENCY_SYMBOL} ${parseFloat(refunds.cash).toFixed(2)}</span></div>` : ''}
+                                <div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-weight:600;"><span>Expected cash in drawer</span><span style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(expectedCash).toFixed(2)}</span></div>
                             </div>
                         ` : `
                             <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:15px;font-size:13px;color:var(--text-secondary);">
-                                Expected balance: <strong style="color:var(--text);">R ${parseFloat(expectedBalance).toFixed(2)}</strong> (detailed breakdown unavailable)
+                                Expected balance: <strong style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(expectedBalance).toFixed(2)}</strong> (detailed breakdown unavailable)
                             </div>
                         `}
                         <div style="margin-bottom:12px;">
@@ -8011,7 +8040,7 @@
                 // Endpoint returns { session: data }, not { success: true }
                 if (result.session) {
                     const variance = parseFloat(result.session.variance || 0);
-                    showNotification(`Cashup completed. Variance: R ${variance.toFixed(2)}`, 'success');
+                    showNotification(`Cashup completed. Variance: ${CURRENCY_SYMBOL} ${variance.toFixed(2)}`, 'success');
                     closePendingCashupModal();
 
                     const ctx = _pendingCashupContext || {};
@@ -8102,11 +8131,11 @@
                 
                 // Update individual total
                 const totalId = 'total' + denom.id.replace('note', '').replace('coin', '');
-                document.getElementById(totalId).textContent = `R${total.toFixed(2)}`;
+                document.getElementById(totalId).textContent = `${CURRENCY_SYMBOL}${total.toFixed(2)}`;
             });
 
             // Update total counted
-            document.getElementById('totalCountedDisplay').textContent = `R${totalCounted.toFixed(2)}`;
+            document.getElementById('totalCountedDisplay').textContent = `${CURRENCY_SYMBOL}${totalCounted.toFixed(2)}`;
 
             // Calculate variance
             const expectedText = document.getElementById('expectedCashAmount').textContent;
@@ -8118,7 +8147,7 @@
             const varianceAmount = document.getElementById('varianceAmount');
             
             varianceDiv.style.display = 'block';
-            varianceAmount.textContent = `R${Math.abs(variance).toFixed(2)}`;
+            varianceAmount.textContent = `${CURRENCY_SYMBOL}${Math.abs(variance).toFixed(2)}`;
             
             if (variance > 0) {
                 varianceAmount.className = 'variance-positive';
@@ -8160,7 +8189,7 @@
             container.innerHTML = methods.map(m => `
                 <div style="display:grid;grid-template-columns:110px 1fr 160px 120px;gap:10px;align-items:center;">
                     <span style="font-weight:600;">${m.label}</span>
-                    <span style="color:#666;">System: R ${m.amount.toFixed(2)}</span>
+                    <span style="color:#666;">System: ${CURRENCY_SYMBOL} ${m.amount.toFixed(2)}</span>
                     <input type="number" id="counted_${m.key}" step="0.01" min="0" placeholder="Counted amount"
                         oninput="updateOtherPaymentVariance('${m.key}', ${m.amount})"
                         style="padding:8px;border:1px solid #ddd;border-radius:6px;">
@@ -8176,7 +8205,7 @@
             if (input.value === '') { varSpan.textContent = '—'; varSpan.style.color = '#999'; return; }
             const counted  = parseFloat(input.value) || 0;
             const variance = Math.round((counted - systemAmount) * 100) / 100;
-            varSpan.textContent = (variance >= 0 ? '+' : '') + `R ${variance.toFixed(2)}`;
+            varSpan.textContent = (variance >= 0 ? '+' : '') + `${CURRENCY_SYMBOL} ${variance.toFixed(2)}`;
             varSpan.style.color = variance === 0 ? '#2e7d32' : '#c62828';
         }
 
@@ -8225,9 +8254,9 @@
 
             const confirmed = confirm(
                 `Complete cash up and close till?\n\n` +
-                `Counted: R${totalCounted.toFixed(2)}\n` +
-                `Expected: R${expectedCash.toFixed(2)}\n` +
-                `Variance: R${variance.toFixed(2)}\n\n` +
+                `Counted: ${CURRENCY_SYMBOL}${totalCounted.toFixed(2)}\n` +
+                `Expected: ${CURRENCY_SYMBOL}${expectedCash.toFixed(2)}\n` +
+                `Variance: ${CURRENCY_SYMBOL}${variance.toFixed(2)}\n\n` +
                 `This will close the till session.`
             );
 
@@ -8456,10 +8485,10 @@
             // rather than a price that silently changes between the tile and the cart.
             const priceHtml = product.discount_price != null
                 ? `<div class="product-price">
-                       <span style="text-decoration:line-through;opacity:0.6;font-size:0.85em;">R ${parseFloat(product.unit_price).toFixed(2)}</span>
-                       <span style="color:#e65100;font-weight:700;">R ${parseFloat(product.discount_price).toFixed(2)}</span>
+                       <span style="text-decoration:line-through;opacity:0.6;font-size:0.85em;">${CURRENCY_SYMBOL} ${parseFloat(product.unit_price).toFixed(2)}</span>
+                       <span style="color:#e65100;font-weight:700;">${CURRENCY_SYMBOL} ${parseFloat(product.discount_price).toFixed(2)}</span>
                    </div>`
-                : `<div class="product-price">R ${parseFloat(product.unit_price).toFixed(2)}</div>`;
+                : `<div class="product-price">${CURRENCY_SYMBOL} ${parseFloat(product.unit_price).toFixed(2)}</div>`;
             return `<div class="product-tile" data-product-id="${product.id}">
                 <button class="shortcut-star${isStarred ? ' starred' : ''}"
                         data-shortcut-btn="${product.id}"
@@ -9323,7 +9352,7 @@
                             onmousedown="startQtyHold(${item.productId})" onmouseup="cancelQtyHold()" onmouseleave="cancelQtyHold()"
                             ontouchstart="startQtyHold(${item.productId})" ontouchend="cancelQtyHold()" ontouchcancel="cancelQtyHold()">+</button>
                     </div>
-                    <div class="item-total">R ${(item.price * item.quantity).toFixed(2)}</div>
+                    <div class="item-total">${CURRENCY_SYMBOL} ${(item.price * item.quantity).toFixed(2)}</div>
                     <button class="item-remove" onclick="removeItem(${item.productId})">✕</button>
                 </div>
             `;
@@ -9372,7 +9401,7 @@
                         const qtyEl = row.querySelector('.qty-display');
                         const totalEl = row.querySelector('.item-total');
                         if (qtyEl) qtyEl.textContent = item.quantity;
-                        if (totalEl) totalEl.textContent = `R ${(item.price * item.quantity).toFixed(2)}`;
+                        if (totalEl) totalEl.textContent = `${CURRENCY_SYMBOL} ${(item.price * item.quantity).toFixed(2)}`;
                     } else {
                         const itemDiv = document.createElement('div');
                         itemDiv.className = 'cart-item cart-item-compact';
@@ -9394,9 +9423,9 @@
             // Update totals
             const { subtotal, vat, total, discount } = calcCartTotals(cart, selectedCustomerDiscountPercent);
 
-            document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
-            document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
-            document.getElementById('total').textContent = `R ${total.toFixed(2)}`;
+            document.getElementById('subtotal').textContent = `${CURRENCY_SYMBOL} ${subtotal.toFixed(2)}`;
+            document.getElementById('vat').textContent = `${CURRENCY_SYMBOL} ${vat.toFixed(2)}`;
+            document.getElementById('total').textContent = `${CURRENCY_SYMBOL} ${total.toFixed(2)}`;
             document.getElementById('cartItemCount').textContent = `${cart.length} items`;
 
             const discountRow = document.getElementById('customerDiscountRow');
@@ -9407,7 +9436,7 @@
                     // whichever of those wins per line (calcCartTotals), not just
                     // one flat percentage.
                     document.getElementById('customerDiscountLabel').textContent = 'Discount:';
-                    document.getElementById('customerDiscountAmount').textContent = `−R ${discount.toFixed(2)}`;
+                    document.getElementById('customerDiscountAmount').textContent = `−${CURRENCY_SYMBOL} ${discount.toFixed(2)}`;
                     discountRow.style.display = 'flex';
                 } else {
                     discountRow.style.display = 'none';
@@ -9579,7 +9608,7 @@
             }
             const basePrice = lineBasePrice(item);
             const current = item.lineOverridePercent ? item.price : basePrice;
-            const input = prompt(`New price for "${item.name}" (currently R${current.toFixed(2)}):`, current.toFixed(2));
+            const input = prompt(`New price for "${item.name}" (currently ${CURRENCY_SYMBOL}${current.toFixed(2)}):`, current.toFixed(2));
             if (input === null) return;
             const newPrice = parseFloat(input);
             if (isNaN(newPrice) || newPrice < 0) {
@@ -9632,7 +9661,7 @@
             const basePrice = lineBasePrice(item);
             item.lineOverridePercent = pct;
             item.price = Math.max(0, Math.round(basePrice * (1 - pct / 100) * 100) / 100);
-            showNotification(`${item.name}: R ${item.price.toFixed(2)} (manager-approved)`, 'success');
+            showNotification(`${item.name}: ${CURRENCY_SYMBOL} ${item.price.toFixed(2)} (manager-approved)`, 'success');
             updateCart();
         }
 
@@ -9805,11 +9834,11 @@
                 display.style.background = 'var(--surface)';
                 display.style.color = 'var(--text-secondary)';
             } else if (change < 0) {
-                display.textContent = `⚠ SHORT: R ${Math.abs(change).toFixed(2)}`;
+                display.textContent = `⚠ SHORT: ${CURRENCY_SYMBOL} ${Math.abs(change).toFixed(2)}`;
                 display.style.background = '#c62828';
                 display.style.color = '#ffffff';
             } else {
-                display.textContent = `✓ CHANGE: R ${change.toFixed(2)}`;
+                display.textContent = `✓ CHANGE: ${CURRENCY_SYMBOL} ${change.toFixed(2)}`;
                 display.style.background = '#2e7d32';
                 display.style.color = '#ffffff';
             }
@@ -9836,7 +9865,7 @@
                          style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text);"
                          onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background='transparent'">
                         <div><strong>${c.name}</strong> ${c.phone ? '(' + c.phone + ')' : ''}</div>
-                        <div style="color:var(--text-secondary);">Bal: R ${parseFloat(c.current_balance || 0).toFixed(2)} / R ${parseFloat(c.credit_limit || 0).toFixed(2)}${c.discount_percentage > 0 ? ` · ${c.discount_percentage}% off` : ''}</div>
+                        <div style="color:var(--text-secondary);">Bal: ${CURRENCY_SYMBOL} ${parseFloat(c.current_balance || 0).toFixed(2)} / ${CURRENCY_SYMBOL} ${parseFloat(c.credit_limit || 0).toFixed(2)}${c.discount_percentage > 0 ? ` · ${c.discount_percentage}% off` : ''}</div>
                     </div>
                 `).join('');
             } catch (e) {
@@ -9855,7 +9884,7 @@
             document.getElementById('accountCustomerSearch').value = '';
             document.getElementById('selectedAccountCustomer').style.display = 'block';
             document.getElementById('selectedAccountName').textContent = name;
-            document.getElementById('selectedAccountBalance').textContent = `Balance: R ${parseFloat(balance).toFixed(2)} / Limit: R ${parseFloat(limit).toFixed(2)}`;
+            document.getElementById('selectedAccountBalance').textContent = `Balance: ${CURRENCY_SYMBOL} ${parseFloat(balance).toFixed(2)} / Limit: ${CURRENCY_SYMBOL} ${parseFloat(limit).toFixed(2)}`;
             // Collapsed header trigger (2026-08-02) — shows the selected
             // customer's name at a glance without needing to open the popover.
             document.getElementById('customerPopoverLabel').textContent = `👤 ${name}`;
@@ -10015,7 +10044,7 @@
                 const tendered = tenderedInput ? parseFloat(tenderedInput.value) : NaN;
                 if (!isNaN(tendered)) {
                     if (tendered < totalAmount) {
-                        showNotification(`Amount received (R ${tendered.toFixed(2)}) is less than the total (R ${totalAmount.toFixed(2)})`, 'error');
+                        showNotification(`Amount received (${CURRENCY_SYMBOL} ${tendered.toFixed(2)}) is less than the total (${CURRENCY_SYMBOL} ${totalAmount.toFixed(2)})`, 'error');
                         return;
                     }
                     cashTenderedForSlip = tendered;
@@ -10231,7 +10260,7 @@
                     <div class="modal-body" style="text-align: center; padding: 30px;">
                         <div style="font-size: 48px; margin-bottom: 10px;">&#9888;</div>
                         <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">#${sale.tempSaleNumber}</div>
-                        <div style="font-size: 32px; font-weight: bold; color: #ff9800; margin-bottom: 20px;">R ${sale.totalAmount.toFixed(2)}</div>
+                        <div style="font-size: 32px; font-weight: bold; color: #ff9800; margin-bottom: 20px;">${CURRENCY_SYMBOL} ${sale.totalAmount.toFixed(2)}</div>
                         <div style="color: #666; margin-bottom: 10px;">Payment: ${sale.paymentMethod}</div>
                         <div style="background: #fff3e0; padding: 10px; border-radius: 8px; color: #e65100; font-size: 13px; margin-bottom: 20px;">
                             This sale is saved locally and will sync automatically when internet is restored.
@@ -10272,12 +10301,12 @@
             // there, so the total stays the one prominent figure exactly as
             // before.
             const primaryAmountHtml = showChange
-                ? `<div style="font-size: 36px; font-weight: 800; color: #10b981; margin-bottom: 4px;">Change: R ${changeGiven.toFixed(2)}</div>`
-                : `<div style="font-size: 32px; font-weight: bold; color: #10b981; margin-bottom: 15px;">R ${sale.totalAmount.toFixed(2)}</div>`;
+                ? `<div style="font-size: 36px; font-weight: 800; color: #10b981; margin-bottom: 4px;">Change: ${CURRENCY_SYMBOL} ${changeGiven.toFixed(2)}</div>`
+                : `<div style="font-size: 32px; font-weight: bold; color: #10b981; margin-bottom: 15px;">${CURRENCY_SYMBOL} ${sale.totalAmount.toFixed(2)}</div>`;
             const changeDueHtml = showChange ? `
                         <div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:10px;padding:10px;margin-bottom:15px;font-size:13px;color:#555;">
-                            <div>Sale Total: R ${sale.totalAmount.toFixed(2)}</div>
-                            <div>Tendered: R ${cashTendered.toFixed(2)}</div>
+                            <div>Sale Total: ${CURRENCY_SYMBOL} ${sale.totalAmount.toFixed(2)}</div>
+                            <div>Tendered: ${CURRENCY_SYMBOL} ${cashTendered.toFixed(2)}</div>
                         </div>` : '';
             modal.innerHTML = `
                 <div class="modal" style="max-width: 450px;">
@@ -10346,7 +10375,7 @@
                 if (!response.ok) throw new Error('Preview failed');
                 const result = await response.json();
                 const r = result.receipt;
-                const fmt = (v) => 'R ' + parseFloat(v || 0).toFixed(2);
+                const fmt = (v) => CURRENCY_SYMBOL + ' ' + parseFloat(v || 0).toFixed(2);
                 const s = (t) => String(t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
                 const LINE  = `<div style="border-top:2px dashed #000;margin:6px 0;"></div>`;
                 const DLINE = `<div style="border-top:3px solid #000;margin:6px 0;"></div>`;
@@ -10372,7 +10401,7 @@
                 // same "Company Settings" fields (registration_number/vat_number/
                 // address) already captured under Settings → Company Details.
                 const addressLine = r.company?.address ? `<div style="text-align:center;font-size:11px;font-weight:700;">${s(r.company.address)}</div>` : '';
-                const vatLine = r.company?.vat_number ? `<div style="text-align:center;font-size:11px;font-weight:700;">VAT Reg: ${s(r.company.vat_number)}</div>` : '';
+                const vatLine = r.company?.vat_number ? `<div style="text-align:center;font-size:11px;font-weight:700;">${TAX_LABEL} Reg: ${s(r.company.vat_number)}</div>` : '';
                 const regLine = r.company?.registration_number ? `<div style="text-align:center;font-size:11px;font-weight:700;">Reg No: ${s(r.company.registration_number)}</div>` : '';
 
                 const html = `
@@ -10396,7 +10425,7 @@
                     ${LINE}
                     ${ROW('Subtotal:', fmt(r.sale.subtotal))}
                     ${parseFloat(r.sale.discount_amount || 0) > 0 ? ROW('Discount:', '-' + fmt(r.sale.discount_amount)) : ''}
-                    ${ROW('VAT incl.:', fmt(r.sale.vat_amount))}
+                    ${ROW(`${TAX_LABEL} incl.:`, fmt(r.sale.vat_amount))}
                     ${DLINE}
                     <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(r.sale.total_amount)}</span></div>
                     ${DLINE}
@@ -10861,7 +10890,7 @@
             const r = result.receipt;
 
             const width = (localStorage.getItem('pos_paper_width') || '80') === '58' ? 32 : 42;
-            const fmt = (v) => 'R ' + parseFloat(v || 0).toFixed(2);
+            const fmt = (v) => CURRENCY_SYMBOL + ' ' + parseFloat(v || 0).toFixed(2);
             const saleDate = new Date(r.sale.created_at || Date.now());
             const dateStr = saleDate.toLocaleDateString('en-ZA') + ' ' + saleDate.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
 
@@ -10871,7 +10900,7 @@
 
             if (r.company?.address) parts.push(r.company.address + '\n');
             if (r.company?.registration_number) parts.push('Reg No: ' + r.company.registration_number + '\n');
-            if (r.company?.vat_number) parts.push('VAT Reg: ' + r.company.vat_number + '\n');
+            if (r.company?.vat_number) parts.push(TAX_LABEL + ' Reg: ' + r.company.vat_number + '\n');
             if (r.header) parts.push(r.header + '\n');
             parts.push(ESC_POS.BOLD_OFF, ESC_POS.ALIGN_LEFT, '-'.repeat(width) + '\n');
 
@@ -10896,7 +10925,7 @@
             if (parseFloat(r.sale.discount_amount || 0) > 0) {
                 parts.push(escPosRow('Discount:', '-' + fmt(r.sale.discount_amount), width));
             }
-            parts.push(escPosRow('VAT incl.:', fmt(r.sale.vat_amount), width));
+            parts.push(escPosRow(`${TAX_LABEL} incl.:`, fmt(r.sale.vat_amount), width));
             parts.push(ESC_POS.BOLD_ON, ESC_POS.DOUBLE_ON, escPosRow('TOTAL', fmt(r.sale.total_amount), Math.floor(width * 0.7)), ESC_POS.DOUBLE_OFF, ESC_POS.BOLD_OFF);
             parts.push('-'.repeat(width) + '\n');
 
@@ -11022,7 +11051,7 @@
         }
 
         function generateOfflineReceiptHtml(sale) {
-            const fmt = (amt) => 'R ' + parseFloat(amt || 0).toFixed(2);
+            const fmt = (amt) => CURRENCY_SYMBOL + ' ' + parseFloat(amt || 0).toFixed(2);
             const now = new Date();
             const dateStr = now.toLocaleDateString('en-ZA') + ' ' + now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
 
@@ -11058,7 +11087,7 @@
                 ${LINE}
                 ${ROW('Subtotal:', fmt(sale.subtotal))}
                 ${sale.discountPercent ? ROW('Discount:', sale.discountPercent + '%') : ''}
-                ${ROW('VAT incl.:', fmt(sale.vatAmount))}
+                ${ROW(`${TAX_LABEL} incl.:`, fmt(sale.vatAmount))}
                 ${DLINE}
                 <div style="display:flex;justify-content:space-between;font-weight:900;font-size:18px;"><span>TOTAL</span><span>${fmt(sale.totalAmount)}</span></div>
                 ${DLINE}
@@ -11633,7 +11662,7 @@
                         <p style="font-size: 12px; color: #666;">
                             ${data.category ? `Category: ${data.category}<br>` : ''}
                             ${data.unit_of_measure ? `Unit: ${data.unit_of_measure}<br>` : ''}
-                            ${data.vat_rate !== undefined ? `VAT: ${data.vat_rate}%` : ''}
+                            ${data.vat_rate !== undefined ? `${TAX_LABEL}: ${data.vat_rate}%` : ''}
                         </p>
                     `;
 
@@ -11777,7 +11806,7 @@
             const isNegative = n < 0;
             const [intPart, decPart] = Math.abs(n).toFixed(2).split('.');
             const withSpaces = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-            return 'R ' + (isNegative ? '-' : '') + withSpaces + '.' + decPart;
+            return CURRENCY_SYMBOL + ' ' + (isNegative ? '-' : '') + withSpaces + '.' + decPart;
         }
 
         function renderReport(reportType, data) {
@@ -11998,7 +12027,7 @@
                             <th>Cashier</th>
                             <th>Date</th>
                             <th>Subtotal</th>
-                            <th>VAT</th>
+                            <th>${TAX_LABEL}</th>
                             <th>Total</th>
                             <th>Profit</th>
                             <th>Margin %</th>
@@ -12070,7 +12099,7 @@
                     _saleDetailCache.set(saleId, sale);
                 }
 
-                const fmt = (v) => 'R ' + parseFloat(v || 0).toFixed(2);
+                const fmt = (v) => CURRENCY_SYMBOL + ' ' + parseFloat(v || 0).toFixed(2);
                 const itemsHtml = (sale.sale_items || []).map(item => `
                     <tr>
                         <td>${item.quantity} x ${item.products?.product_name || item.product_name || 'Item'}</td>
@@ -12316,7 +12345,7 @@
                     </div>
                     <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Avg Daily Sales</div>
-                        <div style="font-size: 24px; font-weight: bold;">R ${summary.avgDailySales}</div>
+                        <div style="font-size: 24px; font-weight: bold;">${CURRENCY_SYMBOL} ${summary.avgDailySales}</div>
                     </div>
                 </div>
                 <table class="products-table">
@@ -12375,7 +12404,7 @@
                             <th>Items</th>
                             <th>Qty</th>
                             <th>Subtotal</th>
-                            <th>VAT</th>
+                            <th>${TAX_LABEL}</th>
                             <th>Total</th>
                             <th>Payment</th>
                         </tr>
@@ -12406,7 +12435,7 @@
         function renderVatDetailReport(data, container) {
             const { items, summary } = data;
             let html = `
-                <h2 style="margin-bottom: 20px;">VAT Report - Detail</h2>
+                <h2 style="margin-bottom: 20px;">${TAX_LABEL} Report - Detail</h2>
                 <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Subtotal</div>
@@ -12439,7 +12468,7 @@
                             <th>Qty</th>
                             <th>Unit Price</th>
                             <th>Subtotal</th>
-                            <th>VAT</th>
+                            <th>${TAX_LABEL}</th>
                             <th>Total</th>
                         </tr>
                     </thead>
@@ -12469,14 +12498,14 @@
         function renderVatSummaryReport(data, container) {
             const { summary, totals } = data;
             let html = `
-                <h2 style="margin-bottom: 20px;">VAT Report - Summary</h2>
+                <h2 style="margin-bottom: 20px;">${TAX_LABEL} Report - Summary</h2>
                 <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 20px;">
                     <div style="background: #e8f5e9; padding: 15px; border-radius: 8px;">
                         <div style="font-size: 12px; color: #666;">Taxable Amount</div>
                         <div style="font-size: 24px; font-weight: bold;">${formatCurrency(totals.totalTaxable)}</div>
                     </div>
                     <div style="background: #fff3e0; padding: 15px; border-radius: 8px;">
-                        <div style="font-size: 12px; color: #666;">VAT Collected</div>
+                        <div style="font-size: 12px; color: #666;">${TAX_LABEL} Collected</div>
                         <div style="font-size: 24px; font-weight: bold;">${formatCurrency(totals.totalVat)}</div>
                     </div>
                     <div style="background: #fce4ec; padding: 15px; border-radius: 8px;">
@@ -12497,7 +12526,7 @@
                         <tr>
                             <th>Date</th>
                             <th>Taxable Amount</th>
-                            <th>VAT Collected</th>
+                            <th>${TAX_LABEL} Collected</th>
                             <th>Exempt Amount</th>
                             <th>Total Sales</th>
                             <th>Transactions</th>
@@ -12598,7 +12627,7 @@
                                     <th style="padding: 8px; text-align: right;">Qty</th>
                                     <th style="padding: 8px; text-align: right;">Unit Price</th>
                                     <th style="padding: 8px; text-align: right;">Subtotal</th>
-                                    <th style="padding: 8px; text-align: right;">VAT</th>
+                                    <th style="padding: 8px; text-align: right;">${TAX_LABEL}</th>
                                     <th style="padding: 8px; text-align: right;">Total</th>
                                 </tr>
                             </thead>
@@ -12833,7 +12862,7 @@
                             <td>${i + 1}</td>
                             <td>${r.saleNumber}</td>
                             <td>${r.time}</td>
-                            <td style="text-align:right;">R ${r.amount.toFixed(2)}</td>
+                            <td style="text-align:right;">${CURRENCY_SYMBOL} ${r.amount.toFixed(2)}</td>
                         </tr>`).join('');
                     return `
                         <h3 style="margin:16px 0 6px;">${title} (${rows.length} sale${rows.length !== 1 ? 's' : ''})</h3>
@@ -12850,7 +12879,7 @@
                             <tfoot>
                                 <tr style="border-top:2px solid #000;font-weight:bold;">
                                     <td colspan="3">Total ${title}</td>
-                                    <td style="text-align:right;">R ${total.toFixed(2)}</td>
+                                    <td style="text-align:right;">${CURRENCY_SYMBOL} ${total.toFixed(2)}</td>
                                 </tr>
                             </tfoot>
                         </table>`;
@@ -13503,7 +13532,7 @@
                     <td>${customer.email || '-'}</td>
                     <td>${customer.customer_group || 'general'}</td>
                     <td><span style="color:${tierColor};font-weight:600;">${loyaltyPoints}</span> <span style="font-size:10px;color:#999;">${tier}</span></td>
-                    <td style="color:${balance > 0 ? '#dc3545' : '#2e7d32'};font-weight:600;">R ${balance.toFixed(2)}</td>
+                    <td style="color:${balance > 0 ? '#dc3545' : '#2e7d32'};font-weight:600;">${CURRENCY_SYMBOL} ${balance.toFixed(2)}</td>
                     <td>
                         <button class="btn btn-sm btn-primary" onclick="showCustomerDetail(${customer.id})" style="margin-right:4px;">View</button>
                         <button class="btn btn-sm btn-secondary" onclick="editCustomer(${customer.id})">Edit</button>
@@ -13803,7 +13832,7 @@
                     isCustomAmount: true,
                 });
                 updateCart();
-                showNotification(`Custom amount added: R ${amount.toFixed(2)}`, 'success');
+                showNotification(`Custom amount added: ${CURRENCY_SYMBOL} ${amount.toFixed(2)}`, 'success');
             } catch (e) {
                 showNotification('Error adding custom amount: ' + e.message, 'error');
             }
@@ -13846,7 +13875,7 @@
             });
             const remaining = total - allocated;
 
-            document.getElementById('splitRemainingAmount').textContent = `R ${remaining.toFixed(2)}`;
+            document.getElementById('splitRemainingAmount').textContent = `${CURRENCY_SYMBOL} ${remaining.toFixed(2)}`;
             document.getElementById('splitRemainingAmount').style.color = Math.abs(remaining) <= 0.01 ? '#4caf50' : '#dc3545';
         }
 
@@ -13902,8 +13931,8 @@
                         <td${qtyStyle}>${item.stock_quantity}</td>
                         <td>${item.min_stock_level}</td>
                         <td><span class="stock-badge ${statusClass}">${statusText}</span></td>
-                        <td>R ${parseFloat(item.unit_price).toFixed(2)}</td>
-                        <td>R ${stockValue.toFixed(2)}</td>
+                        <td>${CURRENCY_SYMBOL} ${parseFloat(item.unit_price).toFixed(2)}</td>
+                        <td>${CURRENCY_SYMBOL} ${stockValue.toFixed(2)}</td>
                         <td>
                             <button class="btn btn-sm btn-primary" onclick="showQuickAdjust(${item.id}, '${item.product_name}', ${item.stock_quantity})">Adjust</button>
                         </td>
@@ -14371,7 +14400,7 @@
                                     </div>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div style="font-weight: bold; color: #667eea;">R ${parseFloat(sale.total_amount).toFixed(2)}</div>
+                                    <div style="font-weight: bold; color: #667eea;">${CURRENCY_SYMBOL} ${parseFloat(sale.total_amount).toFixed(2)}</div>
                                     <div style="font-size: 12px;">${sale.payment_method}</div>
                                 </div>
                             </div>
@@ -14420,18 +14449,18 @@
                                 <tr>
                                     <td>${item.product_name}</td>
                                     <td>${item.quantity}</td>
-                                    <td>R ${parseFloat(item.unit_price).toFixed(2)}</td>
-                                    <td>${parseFloat(item.discount_amount || 0) > 0 ? `<span style="color:#e74c3c;">-R ${parseFloat(item.discount_amount).toFixed(2)}</span>` : '—'}</td>
-                                    <td>R ${parseFloat(item.total_price).toFixed(2)}</td>
+                                    <td>${CURRENCY_SYMBOL} ${parseFloat(item.unit_price).toFixed(2)}</td>
+                                    <td>${parseFloat(item.discount_amount || 0) > 0 ? `<span style="color:#e74c3c;">-${CURRENCY_SYMBOL} ${parseFloat(item.discount_amount).toFixed(2)}</span>` : '—'}</td>
+                                    <td>${CURRENCY_SYMBOL} ${parseFloat(item.total_price).toFixed(2)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                     <div style="margin-top: 15px; text-align: right;">
-                        <div>Subtotal: R ${parseFloat(result.sale.subtotal).toFixed(2)}</div>
-                        ${parseFloat(result.sale.discount_amount || 0) > 0 ? `<div style="color:#e74c3c;">Discount: -R ${parseFloat(result.sale.discount_amount).toFixed(2)}</div>` : ''}
-                        <div>VAT: R ${parseFloat(result.sale.vat_amount).toFixed(2)}</div>
-                        <div style="font-size: 18px; font-weight: bold; color: #667eea;">Total: R ${parseFloat(result.sale.total_amount).toFixed(2)}</div>
+                        <div>Subtotal: ${CURRENCY_SYMBOL} ${parseFloat(result.sale.subtotal).toFixed(2)}</div>
+                        ${parseFloat(result.sale.discount_amount || 0) > 0 ? `<div style="color:#e74c3c;">Discount: -${CURRENCY_SYMBOL} ${parseFloat(result.sale.discount_amount).toFixed(2)}</div>` : ''}
+                        <div>${TAX_LABEL}: ${CURRENCY_SYMBOL} ${parseFloat(result.sale.vat_amount).toFixed(2)}</div>
+                        <div style="font-size: 18px; font-weight: bold; color: #667eea;">Total: ${CURRENCY_SYMBOL} ${parseFloat(result.sale.total_amount).toFixed(2)}</div>
                     </div>
                     ${result.sale.voided_at ? `
                         <div style="margin-top:15px;background:#ffebee;padding:10px;border-radius:8px;color:#c62828;">
@@ -14516,7 +14545,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showNotification(`Return processed: ${result.returnNumber} - Refund: R ${result.totalRefund.toFixed(2)}`, 'success');
+                    showNotification(`Return processed: ${result.returnNumber} - Refund: ${CURRENCY_SYMBOL} ${result.totalRefund.toFixed(2)}`, 'success');
                     closeSaleDetail();
                     loadProducts();
                 } else {
@@ -14602,7 +14631,7 @@
                      style="padding:10px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);"
                      onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
                      onmousedown="event.preventDefault(); selectDiscountProductById(${p.id});">
-                    ${p.product_code} - ${p.product_name} (R ${parseFloat(p.unit_price).toFixed(2)})
+                    ${p.product_code} - ${p.product_name} (${CURRENCY_SYMBOL} ${parseFloat(p.unit_price).toFixed(2)})
                 </div>`).join('');
             resultsEl.style.display = 'block';
         }
@@ -14615,7 +14644,7 @@
         function selectDiscountProduct(product) {
             document.getElementById('discountProductId').value = product.id;
             document.getElementById('discountProductSearch').value = `${product.product_code} - ${product.product_name}`;
-            document.getElementById('originalPriceDisplay').textContent = `R ${parseFloat(product.unit_price).toFixed(2)}`;
+            document.getElementById('originalPriceDisplay').textContent = `${CURRENCY_SYMBOL} ${parseFloat(product.unit_price).toFixed(2)}`;
             document.getElementById('discountProductResults').style.display = 'none';
             document.getElementById('discountProductResults').innerHTML = '';
             document.getElementById('discountPrice').focus();
@@ -14691,7 +14720,7 @@
                 const result = await response.json();
 
                 if (response.ok && result.discount) {
-                    showNotification(`Daily discount applied: ${product ? product.product_name : 'Product'} now R ${newPrice.toFixed(2)}`, 'success');
+                    showNotification(`Daily discount applied: ${product ? product.product_name : 'Product'} now ${CURRENCY_SYMBOL} ${newPrice.toFixed(2)}`, 'success');
                     closeDailyDiscount();
                     loadProducts();
                 } else {
@@ -14813,7 +14842,12 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showNotification('New day started! Previous session marked for cashup. Float: R ' + result.float_amount, 'success');
+                    // result.float_amount never existed on this endpoint's response —
+                    // daily-reset only closes this till's open session(s) for cashup,
+                    // it never opens a new one with a float. Showed "Float: R undefined"
+                    // every time. Found alongside the company-wide-closure bug fix
+                    // (2026-09-04) — same investigation, this till's own session count.
+                    showNotification(result.message || 'This till\'s open session(s) closed — open a new session to keep working.', 'success');
                     currentSession = null;
                     document.getElementById('sessionStatus').textContent = 'No Session';
                     checkSession();
@@ -14860,7 +14894,7 @@
                                    onchange="setQty(${item.productId}, this.value)" onclick="this.select()">
                             <button class="qty-btn" onclick="updateQty(${item.productId}, 1)">+</button>
                         </div>
-                        <div class="item-total">R ${(item.price * item.quantity).toFixed(2)}</div>
+                        <div class="item-total">${CURRENCY_SYMBOL} ${(item.price * item.quantity).toFixed(2)}</div>
                     </div>
                 `;
                 container.appendChild(itemDiv);
@@ -14889,9 +14923,9 @@
         function updateTotals() {
             const { subtotal, vat, total } = calcCartTotals(cart, selectedCustomerDiscountPercent);
 
-            document.getElementById('subtotal').textContent = `R ${subtotal.toFixed(2)}`;
-            document.getElementById('vat').textContent = `R ${vat.toFixed(2)}`;
-            document.getElementById('total').textContent = `R ${total.toFixed(2)}`;
+            document.getElementById('subtotal').textContent = `${CURRENCY_SYMBOL} ${subtotal.toFixed(2)}`;
+            document.getElementById('vat').textContent = `${CURRENCY_SYMBOL} ${vat.toFixed(2)}`;
+            document.getElementById('total').textContent = `${CURRENCY_SYMBOL} ${total.toFixed(2)}`;
             document.getElementById('cartItemCount').textContent = `${cart.length} items`;
 
             // Update split payment remaining if active
@@ -15399,12 +15433,12 @@
             // "—" placeholder is gone; /reports/gross-profit already joins
             // current product cost_price, built in Workstream 71) ──────────
             const gp = grossProfit?.summary || {};
-            document.getElementById('kpiTodaySales').textContent = `R ${(gp.totalSales || 0).toFixed(2)}`;
+            document.getElementById('kpiTodaySales').textContent = `${CURRENCY_SYMBOL} ${(gp.totalSales || 0).toFixed(2)}`;
             document.getElementById('kpiTodayTransactions').textContent = `${gp.transactionCount || 0} transaction${gp.transactionCount === 1 ? '' : 's'}`;
-            document.getElementById('kpiGrossProfit').textContent = `R ${(gp.totalProfit || 0).toFixed(2)}`;
+            document.getElementById('kpiGrossProfit').textContent = `${CURRENCY_SYMBOL} ${(gp.totalProfit || 0).toFixed(2)}`;
             document.getElementById('kpiProfitMargin').textContent = `${gp.profitMargin || 0}% margin`;
             const avgTx = gp.transactionCount > 0 ? (gp.totalSales / gp.transactionCount) : 0;
-            document.getElementById('kpiAvgTransaction').textContent = `R ${avgTx.toFixed(2)}`;
+            document.getElementById('kpiAvgTransaction').textContent = `${CURRENCY_SYMBOL} ${avgTx.toFixed(2)}`;
             document.getElementById('kpiAvgBasket').textContent = gp.transactionCount ? `${gp.transactionCount} sale(s) today` : 'no sales yet';
 
             // ── Active employees — distinct cashiers who actually completed
@@ -15548,7 +15582,7 @@
 
                 const profitCard = document.getElementById('kpiDiscountProfitCard');
                 const profitVal  = document.getElementById('kpiDiscountProfit');
-                profitVal.textContent = `R ${discSummary.totalProfit.toFixed(2)}`;
+                profitVal.textContent = `${CURRENCY_SYMBOL} ${discSummary.totalProfit.toFixed(2)}`;
                 // Re-use the same green/red kpi-card classes as every other
                 // KPI on this dashboard rather than inventing a new color rule.
                 profitCard.classList.remove('green', 'red');
@@ -15564,13 +15598,13 @@
                     <tr>
                         <td>${d.product_name}${d.product_code ? ` <span style="color:#999;">(${d.product_code})</span>` : ''}</td>
                         <td>${d.discount_type === 'percent' ? d.discount_value + '% off' : 'R' + d.discount_value.toFixed(2) + ' off'}</td>
-                        <td><span style="text-decoration:line-through;color:#999;">R${d.original_price.toFixed(2)}</span> R${d.discounted_price.toFixed(2)}</td>
+                        <td><span style="text-decoration:line-through;color:#999;">${CURRENCY_SYMBOL}${d.original_price.toFixed(2)}</span> ${CURRENCY_SYMBOL}${d.discounted_price.toFixed(2)}</td>
                         <td>${d.valid_until || 'Today only'}</td>
                         <td><span class="status-badge ${d.is_active ? 'active' : 'pending'}">${d.is_active ? 'Active' : 'Expired'}</span></td>
                         <td style="text-align:right;">${d.units_sold}</td>
-                        <td style="text-align:right;">R${d.revenue.toFixed(2)}</td>
-                        <td style="text-align:right;">R${d.cost.toFixed(2)}</td>
-                        <td style="text-align:right;color:${d.profit >= 0 ? '#2e7d32' : '#c62828'};font-weight:600;">R${d.profit.toFixed(2)}</td>
+                        <td style="text-align:right;">${CURRENCY_SYMBOL}${d.revenue.toFixed(2)}</td>
+                        <td style="text-align:right;">${CURRENCY_SYMBOL}${d.cost.toFixed(2)}</td>
+                        <td style="text-align:right;color:${d.profit >= 0 ? '#2e7d32' : '#c62828'};font-weight:600;">${CURRENCY_SYMBOL}${d.profit.toFixed(2)}</td>
                     </tr>
                 `).join('');
             } else {
@@ -15753,7 +15787,7 @@
                                 <td>${po.po_number}</td>
                                 <td>${po.supplier_name || po.supplier_id}</td>
                                 <td>${po.location_name || po.delivery_location_id}</td>
-                                <td>R ${parseFloat(po.total_amount || 0).toFixed(2)}</td>
+                                <td>${CURRENCY_SYMBOL} ${parseFloat(po.total_amount || 0).toFixed(2)}</td>
                                 <td><span class="status-badge ${po.status === 'received' ? 'active' : 'pending'}">${po.status}</span></td>
                                 <td>${po.expected_delivery_date ? new Date(po.expected_delivery_date).toLocaleDateString() : '-'}</td>
                             </tr>
@@ -16401,8 +16435,8 @@
                             <td style="padding:8px;border-bottom:1px solid var(--border);">${inv.date || ''}</td>
                             <td style="padding:8px;border-bottom:1px solid var(--border);">${inv.invoiceNumber || ''}</td>
                             <td style="padding:8px;border-bottom:1px solid var(--border);">${inv.direction === 'sold' ? 'You sold' : 'You bought'}</td>
-                            <td style="padding:8px;border-bottom:1px solid var(--border);text-align:right;">R ${(inv.total || 0).toFixed(2)}</td>
-                            <td style="padding:8px;border-bottom:1px solid var(--border);text-align:right;">R ${(inv.remaining || 0).toFixed(2)}</td>
+                            <td style="padding:8px;border-bottom:1px solid var(--border);text-align:right;">${CURRENCY_SYMBOL} ${(inv.total || 0).toFixed(2)}</td>
+                            <td style="padding:8px;border-bottom:1px solid var(--border);text-align:right;">${CURRENCY_SYMBOL} ${(inv.remaining || 0).toFixed(2)}</td>
                             <td style="padding:8px;border-bottom:1px solid var(--border);"><span class="status-badge ${recon.className}">${recon.label}</span></td>
                         </tr>`;
                 }).join('');
@@ -16417,19 +16451,19 @@
                             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
                                 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;">
                                     <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">You Sold</div>
-                                    <div style="font-size:18px;font-weight:600;color:var(--text);">R ${s.totalSold.toFixed(2)}</div>
+                                    <div style="font-size:18px;font-weight:600;color:var(--text);">${CURRENCY_SYMBOL} ${s.totalSold.toFixed(2)}</div>
                                 </div>
                                 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;">
                                     <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">You Bought</div>
-                                    <div style="font-size:18px;font-weight:600;color:var(--text);">R ${s.totalBought.toFixed(2)}</div>
+                                    <div style="font-size:18px;font-weight:600;color:var(--text);">${CURRENCY_SYMBOL} ${s.totalBought.toFixed(2)}</div>
                                 </div>
                                 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;">
                                     <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Net Balance</div>
-                                    <div style="font-size:18px;font-weight:600;color:var(--text);">R ${s.netBalance.toFixed(2)}</div>
+                                    <div style="font-size:18px;font-weight:600;color:var(--text);">${CURRENCY_SYMBOL} ${s.netBalance.toFixed(2)}</div>
                                 </div>
                                 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;">
                                     <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Outstanding</div>
-                                    <div style="font-size:18px;font-weight:600;color:var(--accent);">R ${s.totalOutstanding.toFixed(2)}</div>
+                                    <div style="font-size:18px;font-weight:600;color:var(--accent);">${CURRENCY_SYMBOL} ${s.totalOutstanding.toFixed(2)}</div>
                                 </div>
                             </div>
                             ${rows === '' ? `<p style="color:var(--text-muted);text-align:center;padding:20px 0;">No invoices between you and ${data.otherCompany.name} yet.</p>` : `
@@ -16612,7 +16646,7 @@
                         <td style="padding:5px;">${p.product_code || p.barcode || '-'}</td>
                         <td style="padding:5px;">${p.supplier_sku || '-'}</td>
                         <td style="padding:5px;text-align:right;">${parseFloat(p.stock_quantity || 0)}</td>
-                        <td style="padding:5px;text-align:right;">${p.last_purchase_price != null ? 'R ' + parseFloat(p.last_purchase_price).toFixed(2) : '-'}</td>
+                        <td style="padding:5px;text-align:right;">${p.last_purchase_price != null ? CURRENCY_SYMBOL + ' ' + parseFloat(p.last_purchase_price).toFixed(2) : '-'}</td>
                         <td style="padding:5px;">
                             <input type="number" min="0" step="0.01" class="sr-price" value="${p.last_purchase_price != null ? parseFloat(p.last_purchase_price).toFixed(2) : ''}" placeholder="0.00" style="width:100%;padding:4px;text-align:right;border:1px solid #ddd;border-radius:4px;" oninput="updateSupplierReceiveRow(${p.id})">
                         </td>
@@ -16651,7 +16685,7 @@
             }
 
             const lineTotal = (!isNaN(newPrice) ? newPrice : 0) * qty;
-            lineTotalCell.textContent = 'R ' + lineTotal.toFixed(2);
+            lineTotalCell.textContent = CURRENCY_SYMBOL + ' ' + lineTotal.toFixed(2);
 
             updateSupplierReceiveSummary();
         }
@@ -16668,7 +16702,7 @@
                 }
             });
             document.getElementById('supplierReceiveSummary').textContent =
-                itemCount > 0 ? `${itemCount} product(s) · ${totalQty} unit(s) · R ${totalValue.toFixed(2)}` : '';
+                itemCount > 0 ? `${itemCount} product(s) · ${totalQty} unit(s) · ${CURRENCY_SYMBOL} ${totalValue.toFixed(2)}` : '';
         }
 
         async function submitSupplierReceive() {
@@ -18161,7 +18195,7 @@
                     <span style="color:#666;">${isSupplier ? 'Customer' : 'Supplier'}: ${po.other_company_name}</span>
                     ${po.expected_date ? `<div style="color:#666;margin-top:4px;">Expected: ${new Date(po.expected_date).toLocaleDateString()}</div>` : ''}
                     <div style="margin-top:4px;">Ordered ${po.total_ordered_qty} · Received ${po.total_received_qty} · Outstanding ${po.total_outstanding_qty}</div>
-                    ${invoice ? `<div style="color:#2e7d32;margin-top:6px;">🧾 Invoice ${invoice.invoiceNumber} — R${(invoice.total || 0).toFixed(2)} (${invoice.paymentStatus})</div>` : ''}
+                    ${invoice ? `<div style="color:#2e7d32;margin-top:6px;">🧾 Invoice ${invoice.invoiceNumber} — ${CURRENCY_SYMBOL}${(invoice.total || 0).toFixed(2)} (${invoice.paymentStatus})</div>` : ''}
                 </div>
                 <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;">
                     <thead><tr style="background:#667eea;color:white;">
@@ -18622,7 +18656,7 @@
                             <tr>
                                 <td><strong>${p.program_name}</strong></td>
                                 <td>${p.points_per_currency}</td>
-                                <td>R ${parseFloat(p.points_value || 0).toFixed(2)}</td>
+                                <td>${CURRENCY_SYMBOL} ${parseFloat(p.points_value || 0).toFixed(2)}</td>
                                 <td>${p.minimum_redemption} pts</td>
                                 <td>${p.points_expiry_months ? p.points_expiry_months + ' months' : 'Never'}</td>
                                 <td><span class="status-badge ${p.is_active ? 'active' : 'closed'}">${p.is_active ? 'Active' : 'Inactive'}</span></td>
@@ -18813,7 +18847,7 @@
                     return;
                 }
                 tbody.innerHTML = items.map(it => {
-                    const discountLabel = it.discount_type === 'percent' ? `${parseFloat(it.discount_value)}%` : `R ${parseFloat(it.discount_value).toFixed(2)} off`;
+                    const discountLabel = it.discount_type === 'percent' ? `${parseFloat(it.discount_value)}%` : `${CURRENCY_SYMBOL} ${parseFloat(it.discount_value).toFixed(2)} off`;
                     return `
                     <tr>
                         <td>${escHtml(it.products?.product_name || 'Unknown product')}</td>
@@ -18873,7 +18907,7 @@
                      style="padding:10px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text);"
                      onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''"
                      onmousedown="event.preventDefault(); selectCampaignItemProductById(${p.id});">
-                    ${p.product_code} - ${p.product_name} (R ${parseFloat(p.unit_price).toFixed(2)})
+                    ${p.product_code} - ${p.product_name} (${CURRENCY_SYMBOL} ${parseFloat(p.unit_price).toFixed(2)})
                 </div>`).join('');
             resultsEl.style.display = 'block';
         }
@@ -18957,17 +18991,17 @@
                     <tr>
                         <td>${escHtml(it.product_name)}</td>
                         <td style="text-align:right;">${it.units_sold}</td>
-                        <td style="text-align:right;">R ${it.revenue.toFixed(2)}</td>
-                        <td style="text-align:right;">R ${it.cost.toFixed(2)}</td>
-                        <td style="text-align:right;color:${it.profit >= 0 ? '#2e7d32' : '#c62828'};">R ${it.profit.toFixed(2)}</td>
+                        <td style="text-align:right;">${CURRENCY_SYMBOL} ${it.revenue.toFixed(2)}</td>
+                        <td style="text-align:right;">${CURRENCY_SYMBOL} ${it.cost.toFixed(2)}</td>
+                        <td style="text-align:right;color:${it.profit >= 0 ? '#2e7d32' : '#c62828'};">${CURRENCY_SYMBOL} ${it.profit.toFixed(2)}</td>
                     </tr>`).join('');
 
                 panel.innerHTML = `
                     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;">
                         <div><div style="font-size:11px;color:var(--text-muted);">Units Sold</div><div style="font-size:18px;font-weight:700;color:var(--text);">${s.totalUnitsSold}</div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);">Revenue</div><div style="font-size:18px;font-weight:700;color:var(--text);">R ${s.totalRevenue.toFixed(2)}</div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);">Cost</div><div style="font-size:18px;font-weight:700;color:var(--text);">R ${s.totalCost.toFixed(2)}</div></div>
-                        <div><div style="font-size:11px;color:var(--text-muted);">Profit</div><div style="font-size:18px;font-weight:700;color:${s.isProfitable ? '#2e7d32' : '#c62828'};">R ${s.totalProfit.toFixed(2)}</div></div>
+                        <div><div style="font-size:11px;color:var(--text-muted);">Revenue</div><div style="font-size:18px;font-weight:700;color:var(--text);">${CURRENCY_SYMBOL} ${s.totalRevenue.toFixed(2)}</div></div>
+                        <div><div style="font-size:11px;color:var(--text-muted);">Cost</div><div style="font-size:18px;font-weight:700;color:var(--text);">${CURRENCY_SYMBOL} ${s.totalCost.toFixed(2)}</div></div>
+                        <div><div style="font-size:11px;color:var(--text-muted);">Profit</div><div style="font-size:18px;font-weight:700;color:${s.isProfitable ? '#2e7d32' : '#c62828'};">${CURRENCY_SYMBOL} ${s.totalProfit.toFixed(2)}</div></div>
                     </div>
                     ${result.items.length === 0 ? '<div style="color:var(--text-muted);">No products in this campaign yet</div>' : `
                     <table class="products-table" style="font-size:12px;">
@@ -20917,7 +20951,7 @@
                 `;
                 document.body.appendChild(modal);
             }
-            document.getElementById('placeOrderTotal').textContent = `R ${total.toFixed(2)}`;
+            document.getElementById('placeOrderTotal').textContent = `${CURRENCY_SYMBOL} ${total.toFixed(2)}`;
             document.getElementById('placeOrderCustomerName').value = '';
             document.getElementById('placeOrderDeposit').value = 0;
             document.getElementById('placeOrderDeposit').max = total.toFixed(2);
@@ -21014,13 +21048,13 @@
                             <div style="padding: 15px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; background: var(--surface);">
                                 <div style="display:flex;justify-content:space-between;">
                                     <div style="font-weight:600;color:var(--text);">${o.sale_number}</div>
-                                    <div style="color:var(--text);">R ${parseFloat(o.total_amount).toFixed(2)}</div>
+                                    <div style="color:var(--text);">${CURRENCY_SYMBOL} ${parseFloat(o.total_amount).toFixed(2)}</div>
                                 </div>
                                 <div style="font-size:14px;color:var(--text);margin-top:4px;">
                                     ${customerName ? `👤 ${customerName}` : '<span style="color:var(--text-muted);font-style:italic;">No customer name on file</span>'}
                                 </div>
                                 <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">
-                                    ${owed > 0.01 ? `Balance owing: R ${owed.toFixed(2)}` : 'Paid in full'}
+                                    ${owed > 0.01 ? `Balance owing: ${CURRENCY_SYMBOL} ${owed.toFixed(2)}` : 'Paid in full'}
                                 </div>
                                 <div style="display:flex;gap:8px;margin-top:10px;">
                                     <button class="btn btn-primary" style="flex:1;" onclick="fulfillOrderPrompt(${o.id}, ${owed})">Fulfil (Collect)</button>
@@ -21045,7 +21079,7 @@
         async function fulfillOrderPrompt(saleId, amountOwed) {
             let paymentMethod;
             if (amountOwed > 0.01) {
-                paymentMethod = prompt(`Collect R ${amountOwed.toFixed(2)} — payment method (cash / card / account):`, 'cash');
+                paymentMethod = prompt(`Collect ${CURRENCY_SYMBOL} ${amountOwed.toFixed(2)} — payment method (cash / card / account):`, 'cash');
                 if (!paymentMethod) return;
             }
 
@@ -21375,7 +21409,7 @@
                     <h2 style="margin-bottom:20px;">Payment Methods Report</h2>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:15px;margin-bottom:20px;">
                         <div style="background:#f0f4ff;padding:15px;border-radius:8px;text-align:center;">
-                            <div style="font-size:24px;font-weight:bold;color:#667eea;">R ${totalAmount.toFixed(2)}</div>
+                            <div style="font-size:24px;font-weight:bold;color:#667eea;">${CURRENCY_SYMBOL} ${totalAmount.toFixed(2)}</div>
                             <div style="font-size:12px;color:#666;">Total Collected</div>
                         </div>
                         <div style="background:#e8f5e9;padding:15px;border-radius:8px;text-align:center;">
@@ -21398,7 +21432,7 @@
                                 return `<tr>
                                     <td><strong>${m.payment_method}</strong></td>
                                     <td style="text-align:right;">${m.count}</td>
-                                    <td style="text-align:right;">R ${parseFloat(m.total_amount).toFixed(2)}</td>
+                                    <td style="text-align:right;">${CURRENCY_SYMBOL} ${parseFloat(m.total_amount).toFixed(2)}</td>
                                     <td style="text-align:right;">
                                         <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
                                             <div style="width:80px;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
@@ -21508,9 +21542,9 @@
             el.innerHTML = `
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
                     <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#667eea;">${s.totalCustomers || 0}</div><div style="font-size:11px;color:#666;">Customers</div></div>
-                    <div style="background:#e8f5e9;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#2e7d32;">R ${(s.totalGross || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Gross Sales</div></div>
-                    <div style="background:#fff3e0;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#e65100;">R ${(s.totalReturns || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Returns</div></div>
-                    <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#667eea;">R ${(s.totalNet || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Net Sales</div></div>
+                    <div style="background:#e8f5e9;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#2e7d32;">${CURRENCY_SYMBOL} ${(s.totalGross || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Gross Sales</div></div>
+                    <div style="background:#fff3e0;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#e65100;">${CURRENCY_SYMBOL} ${(s.totalReturns || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Returns</div></div>
+                    <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#667eea;">${CURRENCY_SYMBOL} ${(s.totalNet || 0).toFixed(2)}</div><div style="font-size:11px;color:#666;">Net Sales</div></div>
                 </div>
                 <table class="products-table">
                     <thead><tr>
@@ -21524,13 +21558,13 @@
                                 <td>${r.customer_name}</td>
                                 <td>${r.customer_code || '-'}</td>
                                 <td style="text-align:right;">${r.sales_count}</td>
-                                <td style="text-align:right;">R ${r.gross_sales.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${r.returns_total.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${r.net_sales.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${r.average_sale.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${r.gross_sales.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${r.returns_total.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${r.net_sales.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${r.average_sale.toFixed(2)}</td>
                                 <td>${r.last_purchase_date ? new Date(r.last_purchase_date).toLocaleDateString() : '-'}</td>
-                                <td style="text-align:right;">R ${r.account_sales_total.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${r.cash_card_sales_total.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${r.account_sales_total.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${r.cash_card_sales_total.toFixed(2)}</td>
                                 <td><button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;" onclick="drillDownSalesByCustomer(${r.customer_id === null ? "'walkin'" : r.customer_id})">View</button></td>
                             </tr>`).join('')}
                     </tbody>
@@ -21552,12 +21586,12 @@
                     <h3 style="margin:0 0 8px;">${c.customer_name}${c.customer_code ? ' (' + c.customer_code + ')' : ''}</h3>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;font-size:13px;">
                         <div>Sales: <strong>${c.sales_count}</strong></div>
-                        <div>Gross: <strong>R ${c.gross_sales.toFixed(2)}</strong></div>
-                        <div>Returns: <strong>R ${c.returns_total.toFixed(2)}</strong></div>
-                        <div>Net: <strong>R ${c.net_sales.toFixed(2)}</strong></div>
-                        <div>Avg Sale: <strong>R ${c.average_sale.toFixed(2)}</strong></div>
-                        <div>Account: <strong>R ${c.account_sales_total.toFixed(2)}</strong></div>
-                        <div>Cash/Card: <strong>R ${c.cash_card_sales_total.toFixed(2)}</strong></div>
+                        <div>Gross: <strong>${CURRENCY_SYMBOL} ${c.gross_sales.toFixed(2)}</strong></div>
+                        <div>Returns: <strong>${CURRENCY_SYMBOL} ${c.returns_total.toFixed(2)}</strong></div>
+                        <div>Net: <strong>${CURRENCY_SYMBOL} ${c.net_sales.toFixed(2)}</strong></div>
+                        <div>Avg Sale: <strong>${CURRENCY_SYMBOL} ${c.average_sale.toFixed(2)}</strong></div>
+                        <div>Account: <strong>${CURRENCY_SYMBOL} ${c.account_sales_total.toFixed(2)}</strong></div>
+                        <div>Cash/Card: <strong>${CURRENCY_SYMBOL} ${c.cash_card_sales_total.toFixed(2)}</strong></div>
                     </div>
                 </div>
                 ${txs.length === 0 ? '<div style="text-align:center;padding:40px;color:#999;">No transactions in this period</div>' : `
@@ -21573,10 +21607,10 @@
                                 <td>${t.sale_number}</td>
                                 <td>${t.cashier}</td>
                                 <td>${t.till || '-'}</td>
-                                <td>${(t.payment_breakdown || []).map(p => `${p.method}: R${p.amount.toFixed(2)}`).join(', ')}</td>
-                                <td style="text-align:right;">R ${t.gross.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${t.refund.toFixed(2)}</td>
-                                <td style="text-align:right;">R ${t.net.toFixed(2)}</td>
+                                <td>${(t.payment_breakdown || []).map(p => `${p.method}: ${CURRENCY_SYMBOL}${p.amount.toFixed(2)}`).join(', ')}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${t.gross.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${t.refund.toFixed(2)}</td>
+                                <td style="text-align:right;">${CURRENCY_SYMBOL} ${t.net.toFixed(2)}</td>
                                 <td>${t.status === 'voided' ? '<span style="color:#dc3545;">Voided</span>' : 'Completed'}</td>
                             </tr>`).join('')}
                     </tbody>
@@ -21815,15 +21849,15 @@
                     </div>
                     ${data.opening_balance_unavailable ? `
                         <div style="background:#fff3e0;border-left:4px solid #ff9800;padding:10px 14px;margin-bottom:14px;font-size:13px;">
-                            ⚠️ Opening balance unavailable — no account transaction history found for this customer before the statement period. Current recorded balance: R ${data.live_current_balance.toFixed(2)}.
+                            ⚠️ Opening balance unavailable — no account transaction history found for this customer before the statement period. Current recorded balance: ${CURRENCY_SYMBOL} ${data.live_current_balance.toFixed(2)}.
                         </div>` : ''}
                     ${data.balance_mismatch ? `
                         <div style="background:#ffebee;border-left:4px solid #dc3545;padding:10px 14px;margin-bottom:14px;font-size:13px;">
-                            ⚠️ The transaction history below totals R ${data.closing_balance.toFixed(2)} as of the most recent recorded activity, which does not match this customer's live account balance of R ${data.live_current_balance.toFixed(2)}. This may indicate account activity that was not recorded through the standard POS flow — treat the closing balance below as indicative, not final, until reconciled.
+                            ⚠️ The transaction history below totals ${CURRENCY_SYMBOL} ${data.closing_balance.toFixed(2)} as of the most recent recorded activity, which does not match this customer's live account balance of ${CURRENCY_SYMBOL} ${data.live_current_balance.toFixed(2)}. This may indicate account activity that was not recorded through the standard POS flow — treat the closing balance below as indicative, not final, until reconciled.
                         </div>` : ''}
                     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:16px;">
-                        <div style="background:#f5f7fa;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:11px;color:#666;">Opening Balance</div><div style="font-size:20px;font-weight:bold;">R ${data.opening_balance.toFixed(2)}</div></div>
-                        <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:11px;color:#666;">Closing Balance</div><div style="font-size:20px;font-weight:bold;color:#667eea;">R ${data.closing_balance.toFixed(2)}</div></div>
+                        <div style="background:#f5f7fa;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:11px;color:#666;">Opening Balance</div><div style="font-size:20px;font-weight:bold;">${CURRENCY_SYMBOL} ${data.opening_balance.toFixed(2)}</div></div>
+                        <div style="background:#f0f4ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:11px;color:#666;">Closing Balance</div><div style="font-size:20px;font-weight:bold;color:#667eea;">${CURRENCY_SYMBOL} ${data.closing_balance.toFixed(2)}</div></div>
                     </div>
                     <table class="products-table">
                         <thead><tr><th>Date</th><th>Reference</th><th>Description</th><th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th><th style="text-align:right;">Balance</th></tr></thead>
@@ -21833,9 +21867,9 @@
                                     <td>${new Date(t.created_at).toLocaleDateString()}</td>
                                     <td>${t.reference || '-'}</td>
                                     <td>${t.notes || t.type}</td>
-                                    <td style="text-align:right;">${t.debit ? 'R ' + t.debit.toFixed(2) : '-'}</td>
-                                    <td style="text-align:right;">${t.credit ? 'R ' + t.credit.toFixed(2) : '-'}</td>
-                                    <td style="text-align:right;">${t.running_balance != null ? 'R ' + t.running_balance.toFixed(2) : '(no effect)'}</td>
+                                    <td style="text-align:right;">${t.debit ? CURRENCY_SYMBOL + ' ' + t.debit.toFixed(2) : '-'}</td>
+                                    <td style="text-align:right;">${t.credit ? CURRENCY_SYMBOL + ' ' + t.credit.toFixed(2) : '-'}</td>
+                                    <td style="text-align:right;">${t.running_balance != null ? CURRENCY_SYMBOL + ' ' + t.running_balance.toFixed(2) : '(no effect)'}</td>
                                 </tr>`).join('')}
                         </tbody>
                     </table>
@@ -21950,11 +21984,11 @@
                                     <div style="font-size:11px;color:#666;">Tier</div>
                                 </div>
                                 <div style="background:#fff3e0;padding:12px;border-radius:8px;text-align:center;">
-                                    <div style="font-size:20px;font-weight:bold;color:#e65100;">R ${parseFloat(c.current_balance || 0).toFixed(2)}</div>
+                                    <div style="font-size:20px;font-weight:bold;color:#e65100;">${CURRENCY_SYMBOL} ${parseFloat(c.current_balance || 0).toFixed(2)}</div>
                                     <div style="font-size:11px;color:#666;">Account Balance</div>
                                 </div>
                                 <div style="background:#f3e5f5;padding:12px;border-radius:8px;text-align:center;">
-                                    <div style="font-size:20px;font-weight:bold;color:#6a1b9a;">R ${parseFloat(c.credit_limit || 0).toFixed(2)}</div>
+                                    <div style="font-size:20px;font-weight:bold;color:#6a1b9a;">${CURRENCY_SYMBOL} ${parseFloat(c.credit_limit || 0).toFixed(2)}</div>
                                     <div style="font-size:11px;color:#666;">Credit Limit</div>
                                 </div>
                             </div>
@@ -22039,7 +22073,7 @@
                 const productSelect = document.getElementById('newProductDiscountProductId');
                 if (productSelect) {
                     productSelect.innerHTML = '<option value="">Select a product...</option>' +
-                        products.map(p => `<option value="${p.id}">${p.product_name} (R ${parseFloat(p.unit_price).toFixed(2)})</option>`).join('');
+                        products.map(p => `<option value="${p.id}">${p.product_name} (${CURRENCY_SYMBOL} ${parseFloat(p.unit_price).toFixed(2)})</option>`).join('');
                 }
 
             } catch (e) {
@@ -22077,7 +22111,7 @@
                         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);">
                             <div style="color:var(--text);">
                                 <strong>${d.products?.product_name || `Product #${d.product_id}`}</strong>
-                                <span style="color:var(--text-secondary);font-size:12px;"> — R ${original.toFixed(2)} → R ${Math.max(0, discounted).toFixed(2)}
+                                <span style="color:var(--text-secondary);font-size:12px;"> — ${CURRENCY_SYMBOL} ${original.toFixed(2)} → ${CURRENCY_SYMBOL} ${Math.max(0, discounted).toFixed(2)}
                                 (${d.discount_type === 'percent' ? d.discount_value + '%' : 'R' + d.discount_value} off)</span>
                             </div>
                             <button class="btn btn-sm btn-danger" onclick="removeCustomerProductDiscount(${customerId}, ${d.id})">Remove</button>
@@ -22176,7 +22210,7 @@
                 const txns = data.transactions || [];
 
                 container.innerHTML = `
-                    <div style="margin-bottom:10px;font-weight:600;">Balance: R ${parseFloat(data.current_balance || 0).toFixed(2)} | Limit: R ${parseFloat(data.credit_limit || 0).toFixed(2)}</div>
+                    <div style="margin-bottom:10px;font-weight:600;">Balance: ${CURRENCY_SYMBOL} ${parseFloat(data.current_balance || 0).toFixed(2)} | Limit: ${CURRENCY_SYMBOL} ${parseFloat(data.credit_limit || 0).toFixed(2)}</div>
                     ${txns.length === 0 ? '<div style="color:#999;padding:10px;">No account transactions yet</div>' : `
                     <table class="products-table" style="font-size:12px;">
                         <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th></tr></thead>
@@ -22184,8 +22218,8 @@
                             ${txns.map(t => `<tr>
                                 <td>${new Date(t.created_at).toLocaleString('en-ZA')}</td>
                                 <td>${t.transaction_type}</td>
-                                <td style="font-weight:600;color:${t.transaction_type === 'payment' ? '#10b981' : '#dc3545'};">R ${parseFloat(t.amount || 0).toFixed(2)}</td>
-                                <td>R ${parseFloat(t.balance_after || 0).toFixed(2)}</td>
+                                <td style="font-weight:600;color:${t.transaction_type === 'payment' ? '#10b981' : '#dc3545'};">${CURRENCY_SYMBOL} ${parseFloat(t.amount || 0).toFixed(2)}</td>
+                                <td>${CURRENCY_SYMBOL} ${parseFloat(t.balance_after || 0).toFixed(2)}</td>
                                 <td style="color:#666;">${t.reference || '-'}</td>
                             </tr>`).join('')}
                         </tbody>
@@ -22210,7 +22244,7 @@
                         ${sales.map(s => `<tr>
                             <td>${new Date(s.sale_date || s.created_at).toLocaleString('en-ZA')}</td>
                             <td>${s.sale_number || '#' + s.id}</td>
-                            <td style="font-weight:600;">R ${parseFloat(s.total_amount || 0).toFixed(2)}</td>
+                            <td style="font-weight:600;">${CURRENCY_SYMBOL} ${parseFloat(s.total_amount || 0).toFixed(2)}</td>
                             <td>${s.payment_method || '-'}</td>
                         </tr>`).join('')}
                     </tbody>
@@ -22252,7 +22286,7 @@
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    showNotification(`${data.points_redeemed} points redeemed! Discount: R ${data.discount_amount}`, 'success');
+                    showNotification(`${data.points_redeemed} points redeemed! Discount: ${CURRENCY_SYMBOL} ${data.discount_amount}`, 'success');
                     loadCustomerLoyaltyHistory(customerId);
                 } else {
                     showNotification(data.error || 'Failed to redeem points', 'error');
@@ -22274,7 +22308,7 @@
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    showNotification(`Payment of R ${parseFloat(amount).toFixed(2)} recorded! New balance: R ${data.new_balance}`, 'success');
+                    showNotification(`Payment of ${CURRENCY_SYMBOL} ${parseFloat(amount).toFixed(2)} recorded! New balance: ${CURRENCY_SYMBOL} ${data.new_balance}`, 'success');
                     loadCustomerAccountHistory(customerId);
                 } else {
                     showNotification(data.error || 'Failed to record payment', 'error');

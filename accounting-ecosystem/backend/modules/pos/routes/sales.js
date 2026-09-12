@@ -43,6 +43,24 @@ function generateSaleNumber() {
 }
 
 /**
+ * Company's own configured tax rate (company_settings.vat_rate), used only
+ * as the fallback when an individual product record has no vat_rate of its
+ * own. International rollout (2026-09-12): replaces a hardcoded South
+ * African 15% literal that every product should already override via its
+ * own vat_rate — this only matters for the rare product missing one, and
+ * for those it should fall back to THIS company's configured rate, not a
+ * different country's. Read-only, safe to run in parallel with anything.
+ */
+async function getCompanyDefaultVatRate(companyId) {
+  const { data } = await supabase
+    .from('company_settings')
+    .select('vat_rate')
+    .eq('company_id', companyId)
+    .maybeSingle();
+  return parseFloat(data?.vat_rate) || 15;
+}
+
+/**
  * Fetch the two discount sources resolveEffectivePrices()/computeEffectivePrices()
  * needs — split out (checkout-speed audit, 2026-08-30) so these two
  * independent, read-only queries (they need only companyId/productIds/
@@ -763,6 +781,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       { data: custRow },
       allowNegativeStock,
       { dailyDiscountByProduct, customerProductDiscountByProduct },
+      companyDefaultVatRate,
     ] = await Promise.all([
       supabase
         .from('products')
@@ -783,6 +802,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       // authoritative; cache refreshes on every TTL expiry or miss.
       getStockPolicy(req.companyId, supabase),
       fetchDiscountData({ companyId: req.companyId, productIds, customerId: customer_id }),
+      getCompanyDefaultVatRate(req.companyId),
     ]);
 
     if (prodErr) return res.status(500).json({ error: prodErr.message });
@@ -1026,7 +1046,7 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
         product_name:    item.product.product_name,
         quantity:        item.quantity,
         unit_price:      item.original_price,
-        vat_rate:        item.product.vat_rate || 15,
+        vat_rate:        item.product.vat_rate || companyDefaultVatRate,
         line_total:      item.line_total,
         discount_amount: item.line_discount,
         // Serial Number Tracking — key omitted entirely (not sent as null) when
@@ -1298,11 +1318,14 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
 
     // Not filtered by is_active — see the identical comment in POST / above;
     // same "inactive read as a stock error" incident applies to placed orders too.
-    const { data: productRows, error: prodErr } = await supabase
-      .from('products')
-      .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity, is_active')
-      .in('id', productIds)
-      .eq('company_id', req.companyId);
+    const [{ data: productRows, error: prodErr }, companyDefaultVatRate] = await Promise.all([
+      supabase
+        .from('products')
+        .select('id, product_name, unit_price, vat_rate, requires_vat, stock_quantity, is_active')
+        .in('id', productIds)
+        .eq('company_id', req.companyId),
+      getCompanyDefaultVatRate(req.companyId),
+    ]);
 
     if (prodErr) return res.status(500).json({ error: prodErr.message });
 
@@ -1411,7 +1434,7 @@ router.post('/orders', requirePermission('SALES.CREATE'), async (req, res) => {
         product_name:    item.product.product_name,
         quantity:        item.quantity,
         unit_price:      item.original_price,
-        vat_rate:        item.product.vat_rate || 15,
+        vat_rate:        item.product.vat_rate || companyDefaultVatRate,
         line_total:      item.line_total,
         discount_amount: item.line_discount,
         ...(item.serial_numbers && item.serial_numbers.length > 0 ? { serial_numbers: item.serial_numbers } : {}),
