@@ -4186,6 +4186,37 @@
                             </div>
                         </div>
 
+                        <!-- International rollout (2026-09-13) — super-admin only, testing/rollout
+                             control while this is being rolled out company-by-company. Backend
+                             (shared/routes/companies.js PUT /:id) enforces isSuperAdmin regardless
+                             of whether this block is hidden, but hiding it too avoids a non-admin
+                             seeing a control that would just 403 for them. -->
+                        <div id="internationalSettingsBlock" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: none;">
+                            <h4 style="margin: 0 0 15px 0;">International (super-admin testing)</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Jurisdiction</label>
+                                    <select id="settingsJurisdiction" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                        <option value="ZA">South Africa</option>
+                                        <option value="UK">United Kingdom</option>
+                                        <option value="AU_NZ">Australia / NZ</option>
+                                        <option value="US">United States</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Currency</label>
+                                    <select id="settingsCurrencyCode" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                        <option value="ZAR">ZAR (R)</option>
+                                        <option value="GBP">GBP (£)</option>
+                                        <option value="AUD">AUD ($)</option>
+                                        <option value="NZD">NZD ($)</option>
+                                        <option value="USD">USD ($)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px; font-size: 12px; color: #666;">Changes here affect currency symbol and tax-term labels ("VAT"/"GST"/"Sales Tax") across Charlie and Stockton for this company. Save, then reload the page for the new labels to take effect.</div>
+                        </div>
+
                         <!-- Numbering Settings -->
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
                             <h4 style="margin: 0 0 15px 0;">Numbering Settings</h4>
@@ -19967,6 +19998,13 @@
                     document.getElementById('settingsPhone').value = company.contact_phone || '';
                     document.getElementById('settingsEmail').value = company.contact_email || '';
                     document.getElementById('settingsAddress').value = company.address || '';
+
+                    // International rollout (2026-09-13) — super-admin only.
+                    if (localStorage.getItem('isSuperAdmin') === 'true') {
+                        document.getElementById('internationalSettingsBlock').style.display = 'block';
+                        document.getElementById('settingsJurisdiction').value = company.jurisdiction || 'ZA';
+                        document.getElementById('settingsCurrencyCode').value = company.currency_code || 'ZAR';
+                    }
                 }
 
                 // Load company settings
@@ -20012,7 +20050,15 @@
                               registration_number: document.getElementById('settingsRegNumber').value.trim() || null,
                               contact_phone: document.getElementById('settingsPhone').value.trim() || null,
                               contact_email: document.getElementById('settingsEmail').value.trim() || null,
-                              address: document.getElementById('settingsAddress').value.trim() || null
+                              address: document.getElementById('settingsAddress').value.trim() || null,
+                              // International rollout (2026-09-13) — only sent when the block is
+                              // actually visible (super-admin); the backend independently enforces
+                              // isSuperAdmin regardless, this just avoids sending fields a non-admin
+                              // couldn't have edited anyway.
+                              ...(localStorage.getItem('isSuperAdmin') === 'true' ? {
+                                  jurisdiction: document.getElementById('settingsJurisdiction').value,
+                                  currency_code: document.getElementById('settingsCurrencyCode').value,
+                              } : {}),
                           })
                       })
                     : null;

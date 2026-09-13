@@ -309,6 +309,27 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
         updates.account_holder_type = req.body.account_holder_type;
       }
     }
+    // Super admins may also switch a company's jurisdiction/currency
+    // (international rollout, 2026-09-12/13 — Charlie/Stockton read this off
+    // GET /api/pos/settings and GET /api/inventory/settings respectively).
+    // Gated to super-admin only, same as account_holder_type above — this is
+    // a testing/rollout control right now, not a self-service company setting.
+    if (req.user.isSuperAdmin && req.body.jurisdiction !== undefined) {
+      const validJurisdictions = ['ZA', 'UK', 'AU_NZ', 'US'];
+      if (validJurisdictions.includes(req.body.jurisdiction)) {
+        updates.jurisdiction = req.body.jurisdiction;
+      } else {
+        return res.status(400).json({ error: `jurisdiction must be one of: ${validJurisdictions.join(', ')}` });
+      }
+    }
+    if (req.user.isSuperAdmin && req.body.currency_code !== undefined) {
+      const validCurrencies = ['ZAR', 'GBP', 'AUD', 'NZD', 'USD'];
+      if (validCurrencies.includes(req.body.currency_code)) {
+        updates.currency_code = req.body.currency_code;
+      } else {
+        return res.status(400).json({ error: `currency_code must be one of: ${validCurrencies.join(', ')}` });
+      }
+    }
     updates.updated_at = new Date().toISOString();
 
     // Guard: Lorenco Storehouse (inventory) may only be enabled for The Infinite Legacy
