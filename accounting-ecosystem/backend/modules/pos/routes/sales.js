@@ -216,15 +216,24 @@ async function releaseSerialsForReturn({ companyId, productId, saleItemId, quant
  * the manager); anyone else needs a matching unused, unexpired
  * pos_manager_authorizations row created by POST /manager-auth/verify.
  *
- * @returns {Promise<{ok:true}|{ok:false, error:string}>}
+ * Charlie Proof scoping (2026-09-13): a management-tier requester still
+ * self-authorizes with no second person involved — hard-blocking that
+ * outright would leave a legitimately single-manager shift unable to apply
+ * any discount at all, which is a bigger operational risk than the audit
+ * gap it would close. Instead, `selfAuthorized: true` is returned so the
+ * caller can log it as its own distinct, reviewable event — real "Proof"
+ * value (a self-approved discount is now visible and reportable) without
+ * breaking a till that only has one manager on shift.
+ *
+ * @returns {Promise<{ok:true, selfAuthorized:boolean}|{ok:false, error:string}>}
  */
 async function authorizeManualDiscount({ companyId, tillSessionId, requesterRole, discountPercent }) {
-  if (!discountPercent) return { ok: true }; // nothing requested — nothing to authorize
-  if (MANAGEMENT_ROLES.includes(requesterRole)) return { ok: true }; // manager giving it directly
+  if (!discountPercent) return { ok: true, selfAuthorized: false }; // nothing requested — nothing to authorize
+  if (MANAGEMENT_ROLES.includes(requesterRole)) return { ok: true, selfAuthorized: true }; // manager giving it directly
 
   const result = await consumeManagerAuthorization({ companyId, tillSessionId, actionType: 'discount', discountPercent });
   if (!result.ok) return { ok: false, error: 'This discount requires manager PIN authorization' };
-  return { ok: true };
+  return { ok: true, selfAuthorized: false };
 }
 
 /**
@@ -914,6 +923,15 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
         if (!authResult.ok) {
           return res.status(403).json({ error: `"${prod.product_name}" price change requires manager PIN authorization` });
         }
+      } else {
+        // Charlie Proof scoping (2026-09-13): same self-authorization flag as
+        // the whole-cart discount above — allowed (a lone manager can still
+        // work), but logged as its own distinct, reviewable event.
+        posAuditFromReq(req, POS_EVENTS.MANAGER_OVERRIDE, {
+          tillSessionId: till_session_id,
+          source,
+          metadata: { action_type: 'line_discount', discount_percent: pct, product_id: item.product_id, self_authorized: true, authorized_by: req.user.userId },
+        });
       }
 
       const base = effectivePriceByProduct.get(item.product_id) ?? (parseFloat(prod.unit_price) || 0);
@@ -979,6 +997,13 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
       });
       if (!authResult.ok) {
         return res.status(403).json({ error: authResult.error });
+      }
+      if (authResult.selfAuthorized) {
+        posAuditFromReq(req, POS_EVENTS.MANAGER_OVERRIDE, {
+          tillSessionId: till_session_id,
+          source,
+          metadata: { action_type: 'discount', discount_percent: manualDiscountPercent, self_authorized: true, authorized_by: req.user.userId },
+        });
       }
       const preManualTotal = total_amount;
       total_amount = Math.max(0, Math.round(preManualTotal * (1 - manualDiscountPercent / 100) * 100) / 100);
@@ -1147,6 +1172,34 @@ router.post('/', requirePermission('SALES.CREATE'), async (req, res) => {
           payment_method: payment_method || 'cash',
         },
       });
+
+      // Charlie Proof scoping (2026-09-13): sale-driven stock decrements were
+      // the one gap in an otherwise-complete stock-movement ledger — manual
+      // adjustments, stock takes, transfers, and supplier receives/returns
+      // all write a before/after inventory_adjustments row, but a normal
+      // sale's decrement happened only inside the opaque create_sale_atomic
+      // RPC (source not in this repo, never modified) with no equivalent
+      // record. Rather than touching that RPC, this writes the same
+      // before/after row afterward from data already known to this
+      // handler — productMap was queried BEFORE the RPC ran, so
+      // product.stock_quantity here is genuinely the pre-sale figure, not a
+      // guess. Fire-and-forget, same as every other post-RPC audit call in
+      // this block — must never add latency to the checkout-speed path.
+      for (const line of enrichedItems) {
+        const before = line.product?.stock_quantity;
+        if (before == null) continue;
+        const after = before - line.quantity;
+        supabase.from('inventory_adjustments').insert({
+          company_id:      req.companyId,
+          product_id:      line.product_id,
+          adjusted_by:     req.user.userId,
+          quantity_before: before,
+          quantity_change: -line.quantity,
+          quantity_after:  after,
+          reason:          'sale',
+          notes:           `Sale ${saleNumber}`,
+        }).then(() => {}).catch(err => console.error('[Sales] inventory_adjustments ledger write failed:', err.message));
+      }
 
       // Log NEGATIVE_STOCK_CREATED for each item whose stock went below zero.
       // negativeStockItems were identified in the pre-check; will_reach is the
@@ -1606,6 +1659,14 @@ router.post('/:id/void', async (req, res) => {
             : 'Voiding a sale requires manager PIN authorization',
         });
       }
+    } else {
+      // Charlie Proof scoping (2026-09-13): self-authorized void — allowed
+      // (role already grants it), flagged as its own reviewable event rather
+      // than passing through with no distinct record at all.
+      posAuditFromReq(req, POS_EVENTS.MANAGER_OVERRIDE, {
+        saleId: req.params.id, tillSessionId: till_session_id,
+        metadata: { action_type: 'void', self_authorized: true, authorized_by: req.user.userId },
+      });
     }
 
     // CAS-guarded status update — a concurrent second void request finds
@@ -1804,6 +1865,13 @@ router.post('/:id/return', async (req, res) => {
             : 'Returns require manager PIN authorization',
         });
       }
+    } else {
+      // Charlie Proof scoping (2026-09-13): same self-authorization flag as
+      // void above.
+      posAuditFromReq(req, POS_EVENTS.MANAGER_OVERRIDE, {
+        saleId: sale.id, tillSessionId: till_session_id,
+        metadata: { action_type: 'return', self_authorized: true, authorized_by: req.user.userId },
+      });
     }
 
     // Record in pos_returns
@@ -1845,6 +1913,32 @@ router.post('/:id/return', async (req, res) => {
         // Non-fatal: pos_returns record is already committed. Log for investigation.
         console.warn('[Sales] restore_stock_for_return non-fatal error:',
           stockErr.message, '| product_id:', ri.product_id);
+      } else {
+        // Charlie Proof scoping (2026-09-13): same ledger-completeness fix as
+        // the sale-side decrement above — restore_stock_for_return is a
+        // no-read atomic RPC (+qty at the DB level, deliberately no race
+        // window), so there's no pre-fetched "before" figure the way the
+        // sale-creation path has. Read stock once, after the RPC, and derive
+        // before/after algebraically from the known delta — fire-and-forget,
+        // this is an audit record, not something the return itself depends on.
+        supabase
+          .from('products').select('stock_quantity').eq('id', ri.product_id).eq('company_id', req.companyId).single()
+          .then(({ data: prod }) => {
+            if (!prod) return;
+            const after = prod.stock_quantity;
+            const before = after - ri.quantity;
+            return supabase.from('inventory_adjustments').insert({
+              company_id:      req.companyId,
+              product_id:      ri.product_id,
+              adjusted_by:     req.user.userId,
+              quantity_before: before,
+              quantity_change: ri.quantity,
+              quantity_after:  after,
+              reason:          'sale_return',
+              notes:           `Return of sale #${sale.id}${sale.sale_number ? ' (' + sale.sale_number + ')' : ''}`,
+            });
+          })
+          .catch(err => console.error('[Sales] inventory_adjustments return ledger write failed:', err.message));
       }
 
       // Serial Number Tracking (2026-07-31) — release the returned unit's

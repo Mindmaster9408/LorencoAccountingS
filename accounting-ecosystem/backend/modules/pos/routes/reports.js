@@ -1547,9 +1547,11 @@ router.get('/forensic-audit', reportsFinancialGate, async (req, res) => {
  * refunds over the period that exceed a fixed threshold. Thresholds are a
  * starting point, not a tuned fraud model.
  */
-router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
-  try {
-    const { start, end } = dateRangeFromQuery(req.query);
+// Extracted 2026-09-13 (Charlie Proof scoping, proof-pack export) so the new
+// GET /proof-pack endpoint below can reuse this exact alert computation
+// instead of duplicating it — both now share one source of truth for what
+// counts as "suspicious."
+async function computeSuspiciousActivityAlerts(companyId, start, end) {
     const THRESHOLDS = {
       SALE_VOIDED: 3,
       NEGATIVE_STOCK_SALE_ALLOWED: 5,
@@ -1559,22 +1561,37 @@ router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
     };
     // No users embed — pos_audit_events has no FK to users (see
     // attachUserNames() note at the top of this file); resolved below.
+    // metadata is now selected too (Charlie Proof scoping, 2026-09-13) to
+    // separate self-authorized manager overrides (nobody else involved —
+    // the exact "no dual control" gap this session's work is closing) from
+    // ordinary PIN-granted-to-someone-else overrides, which the existing
+    // MANAGER_OVERRIDE threshold below still covers undifferentiated.
     const { data, error } = await supabase
       .from('pos_audit_events')
-      .select('user_id, user_email, action_type')
-      .eq('company_id', req.companyId)
+      .select('user_id, user_email, action_type, metadata')
+      .eq('company_id', companyId)
       .in('action_type', Object.keys(THRESHOLDS))
       .gte('created_at', start)
       .lte('created_at', end);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) throw new Error(error.message);
 
     const counts = {}; // `${user_id}:${action_type}` -> { count, username }
+    const SELF_AUTH_THRESHOLD = 5;
+    const selfAuthCounts = {}; // `${user_id}` -> { count, username }
     (await attachUserNames(data || [])).forEach(e => {
       const key = `${e.user_id}:${e.action_type}`;
       if (!counts[key]) {
         counts[key] = { count: 0, username: e.users?.full_name || e.users?.username || e.user_email, action_type: e.action_type };
       }
       counts[key].count++;
+
+      if (e.action_type === 'MANAGER_OVERRIDE' && e.metadata?.self_authorized === true) {
+        const selfKey = String(e.user_id);
+        if (!selfAuthCounts[selfKey]) {
+          selfAuthCounts[selfKey] = { count: 0, username: e.users?.full_name || e.users?.username || e.user_email };
+        }
+        selfAuthCounts[selfKey].count++;
+      }
     });
 
     const LABELS = {
@@ -1594,12 +1611,134 @@ router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
         username: c.username,
         count: c.count,
       }))
+      .concat(
+        Object.values(selfAuthCounts)
+          .filter(c => c.count > SELF_AUTH_THRESHOLD)
+          .map(c => ({
+            alert_type: 'Frequent self-authorized overrides',
+            severity: c.count > SELF_AUTH_THRESHOLD * 2 ? 'high' : 'medium',
+            description: `${c.username} approved their own discount/override ${c.count} times in the selected period with no second person involved (threshold: ${SELF_AUTH_THRESHOLD}).`,
+            username: c.username,
+            count: c.count,
+          }))
+      )
       .sort((a, b) => b.count - a.count);
 
-    res.json({ alerts });
+    return { alerts };
+}
+
+router.get('/suspicious-activity', reportsViewGate, async (req, res) => {
+  try {
+    const { start, end } = dateRangeFromQuery(req.query);
+    const result = await computeSuspiciousActivityAlerts(req.companyId, start, end);
+    res.json(result);
   } catch (err) {
     console.error('[reports] suspicious-activity:', err.message);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/reports/proof-pack
+ * Charlie Proof scoping (2026-09-13) — the accountant proof pack: one
+ * combined package for a date range instead of pulling ~27 separate report
+ * endpoints and stitching them together by hand every month. Deliberately
+ * built as fresh, purpose-written queries against the underlying tables
+ * rather than calling the existing report route handlers (which are plain
+ * Express handlers in this file, not exported service functions the way
+ * Inventory's reportingService.js is) — zero risk of regressing any
+ * existing report, and computeSuspiciousActivityAlerts() above is reused
+ * rather than duplicated for the one piece that already existed as
+ * reusable logic.
+ */
+router.get('/proof-pack', reportsFinancialGate, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const now = new Date();
+    const start = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end   = endOfDay(to || now.toISOString());
+
+    const [
+      salesResult,
+      returnsResult,
+      discountsResult,
+      stockLedgerResult,
+      suspiciousActivity,
+      tillSessions,
+    ] = await Promise.all([
+      fetchAllRows(() => supabase
+        .from('sales')
+        .select('total_amount, vat_amount, discount_amount, status, payment_method, void_reason')
+        .eq('company_id', req.companyId).gte('created_at', start).lte('created_at', end)),
+      supabase.from('pos_returns').select('refund_amount, refund_method, reason, created_at')
+        .eq('company_id', req.companyId).gte('created_at', start).lte('created_at', end),
+      supabase.from('pos_audit_events').select('action_type, metadata')
+        .eq('company_id', req.companyId).eq('action_type', 'MANAGER_OVERRIDE')
+        .gte('created_at', start).lte('created_at', end),
+      supabase.from('inventory_adjustments').select('reason, quantity_change')
+        .eq('company_id', req.companyId).gte('created_at', start).lte('created_at', end),
+      computeSuspiciousActivityAlerts(req.companyId, start, end),
+      buildTillSessionRows(req.companyId, start, end),
+    ]);
+
+    const sales = salesResult || [];
+    const completed = sales.filter(s => s.status === 'completed');
+    const voided = sales.filter(s => s.status === 'voided');
+    const returns = returnsResult.data || [];
+    const discountEvents = discountsResult.data || [];
+    const stockLedger = stockLedgerResult.data || [];
+
+    const stockLedgerByReason = {};
+    for (const row of stockLedger) {
+      const key = row.reason || 'unknown';
+      stockLedgerByReason[key] = (stockLedgerByReason[key] || 0) + 1;
+    }
+
+    const exceptions = tillSessions.filter(s =>
+      s.status !== 'open' && (s.is_consistent === false || (s.cash_variance != null && s.cash_variance !== 0))
+    );
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      period: { from: start, to: end },
+      sales_summary: {
+        total_sales: completed.length,
+        total_revenue: completed.reduce((sum, s) => sum + parseFloat(s.total_amount || 0), 0),
+        total_vat: completed.reduce((sum, s) => sum + parseFloat(s.vat_amount || 0), 0),
+        total_discounts: completed.reduce((sum, s) => sum + parseFloat(s.discount_amount || 0), 0),
+      },
+      voids: {
+        count: voided.length,
+        total_amount: voided.reduce((sum, s) => sum + parseFloat(s.total_amount || 0), 0),
+      },
+      returns: {
+        count: returns.length,
+        total_refunded: returns.reduce((sum, r) => sum + parseFloat(r.refund_amount || 0), 0),
+        by_method: returns.reduce((acc, r) => {
+          const m = r.refund_method || 'cash';
+          acc[m] = (acc[m] || 0) + parseFloat(r.refund_amount || 0);
+          return acc;
+        }, {}),
+      },
+      manager_overrides: {
+        count: discountEvents.length,
+        self_authorized_count: discountEvents.filter(e => e.metadata?.self_authorized === true).length,
+      },
+      stock_movement_ledger: {
+        by_reason: stockLedgerByReason,
+        total_entries: stockLedger.length,
+      },
+      cash_up: {
+        sessions: tillSessions.length,
+        exceptions: exceptions.length,
+        total_variance: exceptions.reduce((sum, s) => sum + (s.cash_variance || 0), 0),
+        exception_detail: exceptions,
+      },
+      suspicious_activity: suspiciousActivity.alerts,
+    });
+  } catch (err) {
+    console.error('[reports] proof-pack:', err.message);
+    res.status(500).json({ error: 'Server error building proof pack' });
   }
 });
 
