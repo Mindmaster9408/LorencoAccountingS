@@ -311,6 +311,7 @@ async function submitCount(supabase, companyId, sessionId, userId) {
     .from('stock_count_sessions')
     .update({
       status:       'submitted',
+      submitted_by: userId,
       submitted_at: new Date().toISOString(),
       updated_at:   new Date().toISOString(),
     })
@@ -359,7 +360,7 @@ async function approveCountSession(supabase, companyId, sessionId, userId, actio
 
   const { data: session } = await supabase
     .from('stock_count_sessions')
-    .select('id, status')
+    .select('id, status, submitted_by, started_by')
     .eq('id', sessionId)
     .eq('company_id', companyId)
     .single();
@@ -369,6 +370,19 @@ async function approveCountSession(supabase, companyId, sessionId, userId, actio
     return {
       success: false,
       error: `Only submitted sessions can be approved/rejected (current: ${session.status})`,
+    };
+  }
+
+  // Maker-checker (Stockton Proof scoping, 2026-09-12): the person who
+  // submitted this count for approval may not also be the one who approves
+  // it — closes the gap this file's own header comment used to document as
+  // "role separation is PREP ONLY." Rejection/recount don't carry the same
+  // risk (they don't move stock), but requiring a second person for those
+  // too keeps the rule simple and consistent rather than action-dependent.
+  if (session.submitted_by && session.submitted_by === userId) {
+    return {
+      success: false,
+      error: 'A different person must approve this count session — the person who submitted it cannot also approve it.',
     };
   }
 

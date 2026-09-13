@@ -22,6 +22,12 @@ const warehouseTransferRoutes = require('./routes/warehouse-transfers');
 const warehouseLocationRoutes = require('./routes/warehouse-locations');
 const salesOrderRoutes        = require('./routes/sales-orders');
 const inventorySettingsRoutes = require('./routes/settings');
+const ratesRoutes             = require('./routes/rates');
+const stockLotsRoutes         = require('./routes/stock-lots');
+const periodSnapshotsRoutes   = require('./routes/period-snapshots');
+const routingsRoutes          = require('./routes/routings');
+const oversightRoutes         = require('./routes/oversight');
+const proofPackRoutes         = require('./routes/proof-pack');
 const costingService = require('./services/costingService');
 const { adjustStockTx } = require('./services/stockMutationService');
 const reservationService = require('./services/reservationService');
@@ -63,6 +69,12 @@ router.use('/production', productionRoutes);
 router.use('/transfers', warehouseTransferRoutes);
 router.use('/sales-orders', salesOrderRoutes);
 router.use('/settings', inventorySettingsRoutes);
+router.use('/rates', ratesRoutes);
+router.use('/stock-lots', stockLotsRoutes);
+router.use('/period-snapshots', periodSnapshotsRoutes);
+router.use('/routings', routingsRoutes);
+router.use('/oversight', oversightRoutes);
+router.use('/proof-pack', proofPackRoutes);
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {

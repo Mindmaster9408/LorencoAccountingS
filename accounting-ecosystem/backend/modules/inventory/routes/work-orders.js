@@ -254,7 +254,7 @@ async function transitionStatus(req, res, toStatus, extraUpdates = {}) {
 router.post('/:id/release', requirePerm(PERM.WO_MANAGE), async (req, res) => {
   const { data: wo } = await supabase
     .from('work_orders')
-    .select('id, status, wo_number')
+    .select('id, status, wo_number, bom_id')
     .eq('id', req.params.id)
     .eq('company_id', req.companyId)
     .single();
@@ -325,6 +325,36 @@ router.post('/:id/release', requirePerm(PERM.WO_MANAGE), async (req, res) => {
     .eq('company_id', req.companyId)
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
+
+  // Production routings/phases (Stockton Proof scoping, 2026-09-12): if this
+  // WO's BOM has a defined routing, snapshot it into work_order_operations
+  // now — a later edit to the BOM's routing must never rewrite an
+  // already-released work order's operation history (same snapshot
+  // principle used throughout this ecosystem). A BOM with no routing steps
+  // defined yields zero operations — the work order proceeds exactly as it
+  // always has, purely additive.
+  if (wo.bom_id) {
+    const { data: steps } = await supabase
+      .from('bom_routing_steps')
+      .select('step_number, operation_name, work_center, expected_minutes')
+      .eq('company_id', req.companyId)
+      .eq('bom_id', wo.bom_id)
+      .order('step_number');
+
+    if (steps && steps.length > 0) {
+      await supabase.from('work_order_operations').insert(
+        steps.map(s => ({
+          company_id:       req.companyId,
+          work_order_id:    wo.id,
+          step_number:      s.step_number,
+          operation_name:   s.operation_name,
+          work_center:      s.work_center,
+          expected_minutes: s.expected_minutes,
+          status:           'pending',
+        }))
+      );
+    }
+  }
 
   await auditFromReq(req, 'UPDATE', 'work_order', wo.id, {
     module: 'inventory',
@@ -483,6 +513,35 @@ router.post('/:id/complete', requirePerm(PERM.WO_COMPLETE), async (req, res) => 
   }
 
   const batchId = batchResult.batch?.id || null;
+
+  // Quality control gate (Stockton Proof scoping, 2026-09-13): finished
+  // production is held at qc_status='pending' via a linked stock lot until
+  // someone inspects it (POST /production/batches/:id/qc-inspect below).
+  // Deliberately does NOT block the current_stock/ATP figure just updated
+  // above — see migration 170's header comment for why. Non-fatal on
+  // failure, same as the batch/wastage/variance records above: the WO
+  // completion itself must never fail because of this secondary record.
+  if (batchId && batchResult.batch?.batch_number) {
+    const { data: lot, error: lotErr } = await supabase
+      .from('inventory_stock_lots')
+      .insert({
+        company_id:         req.companyId,
+        item_id:            wo.item_id,
+        lot_number:         batchResult.batch.batch_number,
+        quantity_received:  qtyProduced,
+        quantity_remaining: qtyProduced,
+        unit_cost:          woUnitCost || null,
+        qc_status:          'pending',
+        received_by:        req.user.userId,
+      })
+      .select('id')
+      .single();
+    if (lotErr) {
+      console.error('[WO complete] Failed to create QC-pending lot:', lotErr.message);
+    } else {
+      await supabase.from('production_batches').update({ linked_lot_id: lot.id }).eq('id', batchId);
+    }
+  }
 
   // Wastage record (if any) — immutable
   if (wastageQtyNum > 0 && batchId) {

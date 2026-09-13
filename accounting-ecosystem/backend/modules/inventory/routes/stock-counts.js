@@ -17,9 +17,12 @@
  *   GET    /stock-counts/:id/history          — stock movements linked to this session
  *   DELETE /stock-counts/:id                  — cancel session (draft/in_progress only)
  *
- * Auth: JWT required (companyId embedded). No additional role check enforced
- *       here — role-based separation for count vs approve is PREP ONLY in
- *       Codebox 03 (documented in 06_permission_prep.md).
+ * Auth: JWT required (companyId embedded). PERM.COUNT_CONDUCT vs
+ *       PERM.COUNT_APPROVE separates who may count vs who may approve at
+ *       the role level; approveCountSession() (stockCountService.js) also
+ *       enforces maker-checker at the row level — the user who submitted a
+ *       session cannot be the same user who approves it, even if their role
+ *       holds both permissions (Stockton Proof scoping, 2026-09-12).
  * ============================================================================
  */
 
@@ -27,6 +30,7 @@ const express  = require('express');
 const { supabase } = require('../../../config/database');
 const stockCountService = require('../services/stockCountService');
 const { requirePerm, PERM } = require('../permissions');
+const { auditFromReq } = require('../../../middleware/audit');
 
 const router = express.Router();
 
@@ -116,6 +120,8 @@ router.post('/', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
 
     if (!result.success) return res.status(400).json({ error: result.error });
 
+    await auditFromReq(req, 'CREATE', 'stock_count_session', result.session.id, { module: 'inventory' });
+
     res.status(201).json({
       session:    result.session,
       line_count: (result.lines || []).length,
@@ -180,6 +186,11 @@ router.post('/:id/submit', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => 
 
     if (!result.success) return res.status(400).json({ error: result.error });
 
+    await auditFromReq(req, 'UPDATE', 'stock_count_session', sessionId, {
+      module: 'inventory',
+      metadata: { action: 'submitted', variant_lines: result.variant_lines, total_variance_value: result.total_variance_value },
+    });
+
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -203,6 +214,11 @@ router.post('/:id/approve', requirePerm(PERM.COUNT_APPROVE), async (req, res) =>
 
     if (!result.success) return res.status(400).json({ error: result.error });
 
+    await auditFromReq(req, 'UPDATE', 'stock_count_session', sessionId, {
+      module: 'inventory',
+      metadata: { action, notes: notes || null },
+    });
+
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -223,6 +239,11 @@ router.post('/:id/apply', requirePerm(PERM.COUNT_APPROVE), async (req, res) => {
     );
 
     if (!result.success) return res.status(400).json({ error: result.error });
+
+    await auditFromReq(req, 'UPDATE', 'stock_count_session', sessionId, {
+      module: 'inventory',
+      metadata: { action: 'applied' },
+    });
 
     res.json(result);
   } catch (e) {
@@ -301,6 +322,8 @@ router.delete('/:id', requirePerm(PERM.COUNT_CONDUCT), async (req, res) => {
       .eq('company_id', req.companyId);
 
     if (cancelErr) return res.status(500).json({ error: cancelErr.message });
+
+    await auditFromReq(req, 'CANCEL', 'stock_count_session', sessionId, { module: 'inventory' });
 
     res.json({ success: true, session_id: sessionId, status: 'cancelled' });
   } catch (e) {

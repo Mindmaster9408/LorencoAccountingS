@@ -221,11 +221,22 @@ router.put('/:id', requirePerm(PERM.CONFIGURE), async (req, res) => {
 router.post('/:id/activate', requirePerm(PERM.CONFIGURE), async (req, res) => {
   const { data: bom } = await supabase
     .from('bom_headers')
-    .select('id, item_id, status')
+    .select('id, item_id, status, created_by')
     .eq('id', req.params.id)
     .eq('company_id', req.companyId)
     .single();
   if (!bom) return res.status(404).json({ error: 'BOM not found' });
+
+  // Maker-checker (Stockton Proof scoping, 2026-09-12): whoever created this
+  // BOM recipe may not also be the one who activates it — activating puts it
+  // live for production/costing, so it gets the same second-person check
+  // stock-count approval already has. Bypassable only by having a different
+  // CONFIGURE-permission holder activate it — no override endpoint exists.
+  if (bom.created_by && bom.created_by === req.user.userId) {
+    return res.status(403).json({
+      error: 'A different person must activate this BOM — the person who created it cannot also activate it.',
+    });
+  }
 
   // Deactivate all other active BOMs for the same item
   await supabase
@@ -238,13 +249,21 @@ router.post('/:id/activate', requirePerm(PERM.CONFIGURE), async (req, res) => {
 
   const { data, error } = await supabase
     .from('bom_headers')
-    .update({ status: 'active', updated_at: new Date().toISOString() })
+    .update({
+      status: 'active',
+      activated_by: req.user.userId,
+      activated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', bom.id)
     .eq('company_id', req.companyId)
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
 
-  await auditFromReq(req, 'UPDATE', 'bom_header', bom.id, { module: 'inventory', metadata: { action: 'activate' } });
+  await auditFromReq(req, 'UPDATE', 'bom_header', bom.id, {
+    module: 'inventory',
+    metadata: { action: 'activate', created_by: bom.created_by, activated_by: req.user.userId },
+  });
   res.json({ bom: data });
 });
 

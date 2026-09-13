@@ -17,6 +17,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const reservationService = require('../services/reservationService');
 const { requirePerm, PERM } = require('../permissions'); // H01-002 fix
+const { auditFromReq } = require('../../../middleware/audit');
 
 const router = express.Router();
 
@@ -121,6 +122,10 @@ router.post('/manual-hold', requirePerm(PERM.ADJUST), async (req, res) => {
       requested: result.requested
     });
   }
+  await auditFromReq(req, 'CREATE', 'stock_reservation', result.reservation_id || null, {
+    module: 'inventory',
+    metadata: { item_id: parseInt(item_id), quantity: parseFloat(quantity), reason: reason || null },
+  });
   res.status(201).json(result);
 });
 
@@ -135,6 +140,10 @@ router.post('/:id/release', requirePerm(PERM.VIEW), async (req, res) => {
     req.user.userId
   );
   if (!result.success) return res.status(400).json({ error: result.error });
+  await auditFromReq(req, 'UPDATE', 'stock_reservation', parseInt(req.params.id), {
+    module: 'inventory',
+    metadata: { action: 'released', quantity: quantity ? parseFloat(quantity) : 'all' },
+  });
   res.json(result);
 });
 

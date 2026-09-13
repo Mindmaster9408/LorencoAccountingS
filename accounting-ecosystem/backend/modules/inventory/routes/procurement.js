@@ -18,6 +18,7 @@ const {
   generateReorderRecommendations,
   generateShortageRecommendations,
 } = require('../services/procurementService');
+const { auditFromReq } = require('../../../middleware/audit');
 const { requirePerm, PERM } = require('../permissions'); // H01-001 fix
 
 // ---------------------------------------------------------------------------
@@ -144,6 +145,11 @@ router.post('/supplier-history/:id/set-preferred', requirePerm(PERM.PO_APPROVE),
       .single();
 
     if (updErr) throw updErr;
+
+    await auditFromReq(req, 'UPDATE', 'supplier_item_history', histId, {
+      module: 'inventory',
+      metadata: { action: 'set_preferred_supplier', item_id: target.item_id, supplier_id: target.supplier_id },
+    });
 
     return res.json({ supplier_history: updated });
   } catch (err) {
