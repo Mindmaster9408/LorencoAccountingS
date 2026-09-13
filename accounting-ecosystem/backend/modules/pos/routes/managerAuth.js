@@ -59,11 +59,19 @@ const _PIN_TIMING_DUMMY = bcrypt.hashSync('__cc_manager_auth_timing_dummy__', 10
 
 /**
  * POST /api/pos/manager-auth/verify
- * Body: { pin, action_type: 'discount'|'return'|'void'|'payout', till_session_id, discount_percent? }
+ * Body: { pin, action_type: 'discount'|'return'|'void'|'payout', till_session_id, discount_percent?, reason? }
+ *
+ * Charlie Proof scoping (2026-09-12): void/return/cancel-order already
+ * require a reason at the point the action itself is executed (sales.js).
+ * Discount/line_discount authorization had no such requirement anywhere —
+ * a manager could approve an arbitrary discretionary discount with only a
+ * PIN, no justification captured. `reason` is now required for those two
+ * action_types specifically, matching the mandatory-reason bar the other
+ * sensitive actions already meet.
  */
 router.post('/verify', async (req, res) => {
   try {
-    const { pin, action_type, till_session_id, discount_percent } = req.body;
+    const { pin, action_type, till_session_id, discount_percent, reason } = req.body;
 
     if (!pin || !/^\d{4,6}$/.test(String(pin))) {
       return res.status(400).json({ error: 'A valid PIN is required' });
@@ -76,6 +84,13 @@ router.post('/verify', async (req, res) => {
       discountPercentValue = parseFloat(discount_percent);
       if (isNaN(discountPercentValue) || discountPercentValue <= 0 || discountPercentValue > 100) {
         return res.status(400).json({ error: 'discount_percent must be a number greater than 0 and up to 100' });
+      }
+    }
+    let reasonValue = null;
+    if (action_type === 'discount' || action_type === 'line_discount') {
+      reasonValue = typeof reason === 'string' ? reason.trim() : '';
+      if (!reasonValue) {
+        return res.status(400).json({ error: 'A reason is required to authorize a discount' });
       }
     }
 
@@ -113,7 +128,7 @@ router.post('/verify', async (req, res) => {
     if (!matchedRow) {
       posAuditFromReq(req, POS_EVENTS.MANAGER_OVERRIDE, {
         tillSessionId: till_session_id || null,
-        metadata: { action_type, discount_percent: discountPercentValue, result: 'denied' },
+        metadata: { action_type, discount_percent: discountPercentValue, reason: reasonValue, result: 'denied' },
       });
       return res.status(401).json({ authorized: false, error: 'Invalid manager PIN' });
     }
@@ -126,6 +141,7 @@ router.post('/verify', async (req, res) => {
         till_session_id:  till_session_id || null,
         action_type,
         discount_percent: discountPercentValue,
+        reason:           reasonValue,
         authorized_by:    matchedRow.user_id,
         expires_at:       expiresAt,
       })
@@ -137,7 +153,7 @@ router.post('/verify', async (req, res) => {
     posAuditFromReq(req, POS_EVENTS.MANAGER_OVERRIDE, {
       tillSessionId: till_session_id || null,
       metadata: {
-        action_type, discount_percent: discountPercentValue, result: 'granted',
+        action_type, discount_percent: discountPercentValue, reason: reasonValue, result: 'granted',
         authorization_id: authRow.id, authorized_by: matchedRow.user_id,
       },
     });

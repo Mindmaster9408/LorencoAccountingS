@@ -3325,6 +3325,13 @@
                         <label>Manager PIN</label>
                         <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="managerPinInput" placeholder="Enter manager PIN" style="font-size:20px;letter-spacing:4px;text-align:center;" onkeydown="if(event.key==='Enter') submitManagerPinAuth()">
                     </div>
+                    <!-- Charlie Proof scoping (2026-09-12) — discount/line_discount
+                         authorizations now require a reason; shown only for those
+                         two action types (see requestManagerPinAuth()). -->
+                    <div class="form-group" id="managerPinReasonGroup" style="display:none;">
+                        <label>Reason for discount</label>
+                        <input type="text" id="managerPinReasonInput" placeholder="e.g. damaged packaging, loyal customer, price match" maxlength="200">
+                    </div>
                     <div id="managerPinAuthError" style="display:none;color:#c62828;font-size:13px;margin-top:5px;"></div>
                 </div>
                 <div class="modal-footer">
@@ -14757,6 +14764,11 @@
                     ? 'A manager must enter their PIN to approve this cash paid-out.'
                     : 'A manager must enter their PIN to approve this return.';
             document.getElementById('managerPinInput').value = '';
+            // Reason is only required for discretionary discounts — void/return
+            // already collect their own mandatory reason at the point of action.
+            const needsReason = actionType === 'discount' || actionType === 'line_discount';
+            document.getElementById('managerPinReasonGroup').style.display = needsReason ? 'block' : 'none';
+            document.getElementById('managerPinReasonInput').value = '';
             document.getElementById('managerPinAuthError').style.display = 'none';
             document.getElementById('managerPinAuthModal').style.display = 'flex';
             setTimeout(() => document.getElementById('managerPinInput').focus(), 50);
@@ -14765,6 +14777,7 @@
         function closeManagerPinAuth() {
             document.getElementById('managerPinAuthModal').style.display = 'none';
             document.getElementById('managerPinInput').value = '';
+            document.getElementById('managerPinReasonInput').value = '';
             _pendingManagerAuth = null;
         }
 
@@ -14774,6 +14787,13 @@
             const errorEl = document.getElementById('managerPinAuthError');
             if (!pin) {
                 errorEl.textContent = 'Enter a PIN';
+                errorEl.style.display = 'block';
+                return;
+            }
+            const needsReason = _pendingManagerAuth.actionType === 'discount' || _pendingManagerAuth.actionType === 'line_discount';
+            const reason = document.getElementById('managerPinReasonInput').value.trim();
+            if (needsReason && !reason) {
+                errorEl.textContent = 'Enter a reason for this discount';
                 errorEl.style.display = 'block';
                 return;
             }
@@ -14787,6 +14807,7 @@
                         action_type: _pendingManagerAuth.actionType,
                         till_session_id: _pendingManagerAuth.tillSessionId,
                         discount_percent: _pendingManagerAuth.discountPercent,
+                        reason: needsReason ? reason : undefined,
                     })
                 });
                 const result = await response.json();

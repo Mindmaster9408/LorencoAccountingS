@@ -17,12 +17,12 @@ const { supabase } = require('../../../config/database');
  * actually approved" check, since the PIN modal feeds the same
  * pos_manager_authorizations table for every action type.
  *
- * @returns {Promise<{ok:true}|{ok:false}>}
+ * @returns {Promise<{ok:true, reason:string|null}|{ok:false}>}
  */
 async function consumeManagerAuthorization({ companyId, tillSessionId, actionType, discountPercent }) {
   let query = supabase
     .from('pos_manager_authorizations')
-    .select('id')
+    .select('id, reason')
     .eq('company_id', companyId)
     .eq('till_session_id', tillSessionId)
     .eq('action_type', actionType)
@@ -40,7 +40,7 @@ async function consumeManagerAuthorization({ companyId, tillSessionId, actionTyp
 
   // Single-use — a second sale/return can't silently reuse the same approval.
   await supabase.from('pos_manager_authorizations').update({ used_at: new Date().toISOString() }).eq('id', authRow.id);
-  return { ok: true };
+  return { ok: true, reason: authRow.reason || null };
 }
 
 module.exports = { consumeManagerAuthorization };

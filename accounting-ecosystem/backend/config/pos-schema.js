@@ -160,6 +160,13 @@ async function ensurePosSchema(pool) {
         ON pos_manager_authorizations(company_id, till_session_id, action_type)
     `);
 
+    // Charlie Proof scoping (2026-09-12) — discount/line_discount authorizations
+    // now require a reason (routes/managerAuth.js); this column stores it.
+    // Nullable at the DB level (void/return/payout/custom_item authorizations
+    // don't populate it) — the NOT NULL-equivalent enforcement lives in the
+    // route validation, not a DB constraint, since only some action_types need it.
+    await client.query(`ALTER TABLE pos_manager_authorizations ADD COLUMN IF NOT EXISTS reason TEXT`);
+
     // ── categories: color column ─────────────────────────────────────────────
     // routes/categories.js's INSERT/UPDATE have always referenced this column
     // (default '#667eea') but schema.sql's original categories table never

@@ -380,10 +380,125 @@ router.get('/dashboard', reportsViewGate, async (req, res) => {
 });
 
 /**
- * GET /api/reports/till-summary
- * Per-session till breakdown.
+ * Shared session-row builder for /till-summary and /cashup-exceptions
+ * (extracted 2026-09-12, Charlie Proof scoping) — both need the exact same
+ * snapshot-vs-fallback merge logic; duplicating it would risk the two
+ * reports silently drifting apart on what counts as "inconsistent."
  * Uses pos_recon_snapshots where available (authoritative — sourced from sale_payments).
  * Falls back to till_sessions fields for open/not-yet-cashed-up sessions.
+ */
+async function buildTillSessionRows(companyId, start, end) {
+  const [sessResult, snapResult] = await Promise.all([
+    supabase
+      .from('till_sessions')
+      .select('*, tills(till_name, till_number), users:user_id(username, full_name)')
+      .eq('company_id', companyId)
+      .gte('opened_at', start)
+      .lte('opened_at', end)
+      .order('opened_at', { ascending: false }),
+    supabase
+      .from('pos_recon_snapshots')
+      .select('*')
+      .eq('company_id', companyId)
+      .gte('session_opened_at', start)
+      .lte('session_opened_at', end)
+      .order('id', { ascending: false }), // newest snapshot first — deduped below
+  ]);
+
+  if (sessResult.error) throw new Error(sessResult.error.message);
+
+  const allSessions = sessResult.data || [];
+  const sessionIds  = new Set(allSessions.map(s => s.id));
+
+  // Latest snapshot per session (ordered desc by id → first hit wins)
+  const snapshotBySession = {};
+  (snapResult.data || []).forEach(snap => {
+    if (sessionIds.has(snap.till_session_id) && !snapshotBySession[snap.till_session_id]) {
+      snapshotBySession[snap.till_session_id] = snap;
+    }
+  });
+
+  const sessions = allSessions.map(sess => {
+    const snap = snapshotBySession[sess.id] || null;
+    const base = {
+      session_id:  sess.id,
+      cashier:     sess.users?.full_name || sess.users?.username || null,
+      till_name:   sess.tills?.till_name   || null,
+      till_number: sess.tills?.till_number || null,
+      status:      sess.status,
+      opened_at:   sess.opened_at,
+      closed_at:   sess.closed_at,
+    };
+    if (snap) {
+      return {
+        ...base,
+        has_snapshot:            true,
+        is_consistent:           snap.is_consistent,
+        consistency_issue_count: snap.consistency_issues?.length || 0,
+        // Charlie Proof scoping (2026-09-12) — the raw issue descriptions,
+        // not just a count, so a dedicated exceptions view (see
+        // GET /cashup-exceptions below) can show WHAT went wrong per
+        // session, not just THAT something did.
+        consistency_issues:      snap.consistency_issues || [],
+        opening_balance:         snap.opening_balance,
+        sale_count:              snap.sale_count,
+        gross_sales:             snap.gross_sales,
+        discount_total:          snap.discount_total,
+        vat_total:               snap.vat_total,
+        void_count:              snap.void_count,
+        void_total:              snap.void_total,
+        // Payment breakdown from sale_payments (authoritative — not sales.payment_method)
+        payment_cash:            snap.payment_cash,
+        payment_card:            snap.payment_card,
+        payment_eft:             snap.payment_eft,
+        payment_account:         snap.payment_account,
+        payment_other:           snap.payment_other,
+        refund_count:            snap.refund_count,
+        refund_total:            snap.refund_total,
+        net_sales:               snap.net_sales,
+        expected_cash_in_drawer: snap.expected_cash_in_drawer,
+        counted_cash:            snap.counted_cash,
+        total_counted:           snap.total_counted,
+        cash_variance:           snap.cash_variance,
+        triggered_by:            snap.triggered_by,
+      };
+    }
+    // Fallback — session closed/open without snapshot yet
+    return {
+      ...base,
+      has_snapshot:            false,
+      is_consistent:           null,
+      consistency_issue_count: null,
+      consistency_issues:      [],
+      opening_balance:         parseFloat(sess.opening_balance || 0),
+      sale_count:              null,
+      gross_sales:             null,
+      discount_total:          null,
+      vat_total:               null,
+      void_count:              null,
+      void_total:              null,
+      payment_cash:            null, // no split-payment data without snapshot
+      payment_card:            null,
+      payment_eft:             null,
+      payment_account:         null,
+      payment_other:           null,
+      refund_count:            null,
+      refund_total:            null,
+      net_sales:               null,
+      expected_cash_in_drawer: parseFloat(sess.expected_balance || 0),
+      counted_cash:            null,
+      total_counted:           sess.closing_balance != null ? parseFloat(sess.closing_balance) : null,
+      cash_variance:           sess.variance        != null ? parseFloat(sess.variance)        : null,
+      triggered_by:            null,
+    };
+  });
+
+  return sessions;
+}
+
+/**
+ * GET /api/reports/till-summary
+ * Per-session till breakdown.
  */
 router.get('/till-summary', reportsViewGate, async (req, res) => {
   try {
@@ -392,105 +507,7 @@ router.get('/till-summary', reportsViewGate, async (req, res) => {
     const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const end   = endOfDay(endDate || to || now.toISOString());
 
-    // Parallel: sessions + snapshots (both date-bounded by session open time)
-    const [sessResult, snapResult] = await Promise.all([
-      supabase
-        .from('till_sessions')
-        .select('*, tills(till_name, till_number), users:user_id(username, full_name)')
-        .eq('company_id', req.companyId)
-        .gte('opened_at', start)
-        .lte('opened_at', end)
-        .order('opened_at', { ascending: false }),
-      supabase
-        .from('pos_recon_snapshots')
-        .select('*')
-        .eq('company_id', req.companyId)
-        .gte('session_opened_at', start)
-        .lte('session_opened_at', end)
-        .order('id', { ascending: false }), // newest snapshot first — deduped below
-    ]);
-
-    if (sessResult.error) return res.status(500).json({ error: sessResult.error.message });
-
-    const allSessions = sessResult.data || [];
-    const sessionIds  = new Set(allSessions.map(s => s.id));
-
-    // Latest snapshot per session (ordered desc by id → first hit wins)
-    const snapshotBySession = {};
-    (snapResult.data || []).forEach(snap => {
-      if (sessionIds.has(snap.till_session_id) && !snapshotBySession[snap.till_session_id]) {
-        snapshotBySession[snap.till_session_id] = snap;
-      }
-    });
-
-    const sessions = allSessions.map(sess => {
-      const snap = snapshotBySession[sess.id] || null;
-      const base = {
-        session_id:  sess.id,
-        cashier:     sess.users?.full_name || sess.users?.username || null,
-        till_name:   sess.tills?.till_name   || null,
-        till_number: sess.tills?.till_number || null,
-        status:      sess.status,
-        opened_at:   sess.opened_at,
-        closed_at:   sess.closed_at,
-      };
-      if (snap) {
-        return {
-          ...base,
-          has_snapshot:            true,
-          is_consistent:           snap.is_consistent,
-          consistency_issue_count: snap.consistency_issues?.length || 0,
-          opening_balance:         snap.opening_balance,
-          sale_count:              snap.sale_count,
-          gross_sales:             snap.gross_sales,
-          discount_total:          snap.discount_total,
-          vat_total:               snap.vat_total,
-          void_count:              snap.void_count,
-          void_total:              snap.void_total,
-          // Payment breakdown from sale_payments (authoritative — not sales.payment_method)
-          payment_cash:            snap.payment_cash,
-          payment_card:            snap.payment_card,
-          payment_eft:             snap.payment_eft,
-          payment_account:         snap.payment_account,
-          payment_other:           snap.payment_other,
-          refund_count:            snap.refund_count,
-          refund_total:            snap.refund_total,
-          net_sales:               snap.net_sales,
-          expected_cash_in_drawer: snap.expected_cash_in_drawer,
-          counted_cash:            snap.counted_cash,
-          total_counted:           snap.total_counted,
-          cash_variance:           snap.cash_variance,
-          triggered_by:            snap.triggered_by,
-        };
-      }
-      // Fallback — session closed/open without snapshot yet
-      return {
-        ...base,
-        has_snapshot:            false,
-        is_consistent:           null,
-        consistency_issue_count: null,
-        opening_balance:         parseFloat(sess.opening_balance || 0),
-        sale_count:              null,
-        gross_sales:             null,
-        discount_total:          null,
-        vat_total:               null,
-        void_count:              null,
-        void_total:              null,
-        payment_cash:            null, // no split-payment data without snapshot
-        payment_card:            null,
-        payment_eft:             null,
-        payment_account:         null,
-        payment_other:           null,
-        refund_count:            null,
-        refund_total:            null,
-        net_sales:               null,
-        expected_cash_in_drawer: parseFloat(sess.expected_balance || 0),
-        counted_cash:            null,
-        total_counted:           sess.closing_balance != null ? parseFloat(sess.closing_balance) : null,
-        cash_variance:           sess.variance        != null ? parseFloat(sess.variance)        : null,
-        triggered_by:            null,
-      };
-    });
+    const sessions = await buildTillSessionRows(req.companyId, start, end);
 
     // Totals — authoritative (snapshot rows only; don't mix with fallback estimates)
     const snapped = sessions.filter(s => s.has_snapshot);
@@ -514,6 +531,44 @@ router.get('/till-summary', reportsViewGate, async (req, res) => {
     res.json({ sessions, summary });
   } catch (err) {
     console.error('[reports] till-summary:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/reports/cashup-exceptions
+ * Charlie Proof scoping (2026-09-12) — a dedicated "what needs attention"
+ * view: every session that either has a non-zero cash variance or was
+ * flagged inconsistent by its snapshot, with the actual issue descriptions
+ * (not just a count). Previously a caller had to fetch every session from
+ * /till-summary and filter client-side — the underlying data already
+ * existed, this just exposes it as its own endpoint. Open (not-yet-cashed-
+ * up) sessions are excluded — there's nothing to except yet until a
+ * snapshot or a manual close exists.
+ */
+router.get('/cashup-exceptions', reportsViewGate, async (req, res) => {
+  try {
+    const { from, to, startDate, endDate } = req.query;
+    const now = new Date();
+    const start = startDate || from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end   = endOfDay(endDate || to || now.toISOString());
+
+    const sessions = await buildTillSessionRows(req.companyId, start, end);
+
+    const exceptions = sessions.filter(s =>
+      s.status !== 'open' &&
+      (s.is_consistent === false || (s.cash_variance != null && s.cash_variance !== 0))
+    );
+
+    res.json({
+      exceptions,
+      summary: {
+        exception_count: exceptions.length,
+        total_variance:  exceptions.reduce((sum, s) => sum + (s.cash_variance || 0), 0),
+      },
+    });
+  } catch (err) {
+    console.error('[reports] cashup-exceptions:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

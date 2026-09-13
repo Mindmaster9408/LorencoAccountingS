@@ -179,6 +179,14 @@ router.post('/', requirePermission('PRODUCTS.EDIT'), async (req, res) => {
     if (discount_type === 'percent' && discount_value > 100) {
       return res.status(400).json({ error: 'Percentage discount cannot exceed 100' });
     }
+    // Charlie Proof scoping (2026-09-12): this was previously optional
+    // (`reason || null`) — every store-wide discount now needs a stated
+    // reason, matching the mandatory-reason bar voids/returns/manager-PIN
+    // discount authorizations already meet.
+    const reasonValue = typeof reason === 'string' ? reason.trim() : '';
+    if (!reasonValue) {
+      return res.status(400).json({ error: 'A reason is required to create a discount' });
+    }
 
     // Verify product belongs to this company
     const { data: prod } = await supabase
@@ -199,7 +207,7 @@ router.post('/', requirePermission('PRODUCTS.EDIT'), async (req, res) => {
         discount_value,
         valid_from:     valid_from  || null,
         valid_until:    valid_until || null,
-        reason:         reason || null,
+        reason:         reasonValue,
         created_by:     req.user.userId,
         is_active:      true,
       })
