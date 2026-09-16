@@ -925,6 +925,12 @@ const STANDARD_SA_BASE = [
   // ── EQUITY (3000–3299) ────────────────────────────────────────────────────
   ['3000', "Owner's Equity / Share Capital",       'equity', 'equity', 'share_capital',     'Capital contributed by owners or shareholders',                                       3000, false],
   ['3100', 'Retained Earnings',                    'equity', 'equity', 'retained_earnings', 'Accumulated net profits retained in the business',                                    3100, false],
+  // Member's/director's loan account — standard SA close corporation practice groups this
+  // with members' funds (capital + loan account) rather than under Liabilities, even
+  // though it is technically an amount owed back to the member/director. Placed between
+  // Retained Earnings and Drawings so all three "who the business owes/owns to its
+  // owners" lines sit together.
+  ['3150', "Loan from Members / Directors",        'equity', 'equity', 'member_loan',       'Loans advanced to the business by members, shareholders, or directors — repayable per the loan agreement', 3150, false],
   ['3200', 'Drawings',                             'equity', 'equity', 'drawings',          'Amounts withdrawn by owners from the business',                                       3200, false],
 
   // ── INCOME — Operating (4000–4499) ───────────────────────────────────────
@@ -1007,8 +1013,23 @@ const TEMPLATE_NAME = 'Standard SA Base';
 
 /**
  * seedCOABaseTemplate(client)
- * Idempotently creates the Standard SA Base template and its accounts.
- * Safe to run on every startup — only inserts if the template doesn't exist.
+ * Idempotently creates the Standard SA Base template, then backfills any
+ * template-account rows that don't exist yet.
+ *
+ * 2026-09-16 FIX: this used to `return` immediately once the template row
+ * existed, skipping the account-insert loop entirely — so adding a new
+ * entry to STANDARD_SA_BASE (e.g. "Loan from Members / Directors") had NO
+ * effect on an already-seeded template even after a redeploy/restart,
+ * because the whole function short-circuited before reaching the loop.
+ * The insert loop now always runs, keyed off ON CONFLICT (template_id, code)
+ * DO NOTHING — existing rows are untouched, only genuinely new codes get
+ * inserted. Safe to run on every startup either way.
+ *
+ * Note: this only affects the TEMPLATE definition (coa_template_accounts).
+ * Companies already provisioned from this template have their own
+ * `accounts` rows copied at provisioning time and do NOT retroactively
+ * gain new template accounts — only newly-provisioned companies (or an
+ * explicit overlay/backfill applied to an existing company) do.
  */
 async function seedCOABaseTemplate(client) {
   // Check if template already exists
@@ -1016,24 +1037,27 @@ async function seedCOABaseTemplate(client) {
     `SELECT id FROM coa_templates WHERE name = $1`,
     [TEMPLATE_NAME]
   );
-  if (existing.rows.length > 0) return existing.rows[0].id;
 
-  // Create template record
-  const tmplResult = await client.query(
-    `INSERT INTO coa_templates (name, description, industry, is_default, version)
-     VALUES ($1, $2, $3, true, '1.0')
-     RETURNING id`,
-    [
-      TEMPLATE_NAME,
-      'Standard South African Chart of Accounts suitable for most SME businesses. ' +
-      'Structured for proper SA P&L reporting: Gross Profit → Operating Profit → Net Profit. ' +
-      'Compliant with SARS reporting requirements.',
-      'general',
-    ]
-  );
-  const templateId = tmplResult.rows[0].id;
+  let templateId;
+  if (existing.rows.length > 0) {
+    templateId = existing.rows[0].id;
+  } else {
+    const tmplResult = await client.query(
+      `INSERT INTO coa_templates (name, description, industry, is_default, version)
+       VALUES ($1, $2, $3, true, '1.0')
+       RETURNING id`,
+      [
+        TEMPLATE_NAME,
+        'Standard South African Chart of Accounts suitable for most SME businesses. ' +
+        'Structured for proper SA P&L reporting: Gross Profit → Operating Profit → Net Profit. ' +
+        'Compliant with SARS reporting requirements.',
+        'general',
+      ]
+    );
+    templateId = tmplResult.rows[0].id;
+  }
 
-  // Insert all template accounts
+  // Insert (or backfill) all template accounts
   for (const [code, name, type, sub_type, reporting_group, description, sort_order, is_system_account] of STANDARD_SA_BASE) {
     await client.query(
       `INSERT INTO coa_template_accounts
@@ -1044,7 +1068,7 @@ async function seedCOABaseTemplate(client) {
     );
   }
 
-  console.log(`  📋 COA: Seeded "${TEMPLATE_NAME}" template (${STANDARD_SA_BASE.length} accounts)`);
+  console.log(`  📋 COA: Seeded/backfilled "${TEMPLATE_NAME}" template (${STANDARD_SA_BASE.length} accounts)`);
   return templateId;
 }
 
@@ -1286,7 +1310,10 @@ const FARMING_TEMPLATE_NAME = 'Farming SA Overlay';
 
 /**
  * seedFarmingTemplate(client)
- * Idempotently creates the Farming SA Overlay template.
+ * Idempotently creates the Farming SA Overlay template, then backfills any
+ * template-account rows that don't exist yet (see seedCOABaseTemplate's
+ * 2026-09-16 comment for why the insert loop must run even when the
+ * template row already existed).
  * This is an overlay — it extends Standard SA Base, not a standalone template.
  */
 async function seedFarmingTemplate(client) {
@@ -1295,38 +1322,42 @@ async function seedFarmingTemplate(client) {
     `SELECT id FROM coa_templates WHERE name = $1`,
     [FARMING_TEMPLATE_NAME]
   );
-  if (existing.rows.length > 0) return existing.rows[0].id;
 
-  // Get parent template (Standard SA Base)
-  const parent = await client.query(
-    `SELECT id FROM coa_templates WHERE name = $1`,
-    [TEMPLATE_NAME]
-  );
-  const parentId = parent.rows.length > 0 ? parent.rows[0].id : null;
+  let templateId;
+  if (existing.rows.length > 0) {
+    templateId = existing.rows[0].id;
+  } else {
+    // Get parent template (Standard SA Base)
+    const parent = await client.query(
+      `SELECT id FROM coa_templates WHERE name = $1`,
+      [TEMPLATE_NAME]
+    );
+    const parentId = parent.rows.length > 0 ? parent.rows[0].id : null;
 
-  // Create farming overlay template
-  const tmplResult = await client.query(
-    `INSERT INTO coa_templates (name, description, industry, is_default, version, parent_template_id, sean_metadata)
-     VALUES ($1, $2, $3, false, '1.0', $4, $5)
-     RETURNING id`,
-    [
-      FARMING_TEMPLATE_NAME,
-      'Farming-specific accounts for South African agricultural businesses. ' +
-      'Apply as an overlay on top of Standard SA Base. Covers biological assets (livestock, crops, orchards), ' +
-      'farming income streams, direct farming costs, and farming-specific depreciation.',
-      'farming',
-      parentId,
-      JSON.stringify({
-        overlay: true,
-        requires_base_template: TEMPLATE_NAME,
-        industry_segments_suggested: ['Enterprise', 'Cattle', 'Grain', 'Fruit', 'Game'],
-        sean_notes: 'Use coa_segments to create enterprise dimension for this company after provisioning.',
-      }),
-    ]
-  );
-  const templateId = tmplResult.rows[0].id;
+    // Create farming overlay template
+    const tmplResult = await client.query(
+      `INSERT INTO coa_templates (name, description, industry, is_default, version, parent_template_id, sean_metadata)
+       VALUES ($1, $2, $3, false, '1.0', $4, $5)
+       RETURNING id`,
+      [
+        FARMING_TEMPLATE_NAME,
+        'Farming-specific accounts for South African agricultural businesses. ' +
+        'Apply as an overlay on top of Standard SA Base. Covers biological assets (livestock, crops, orchards), ' +
+        'farming income streams, direct farming costs, and farming-specific depreciation.',
+        'farming',
+        parentId,
+        JSON.stringify({
+          overlay: true,
+          requires_base_template: TEMPLATE_NAME,
+          industry_segments_suggested: ['Enterprise', 'Cattle', 'Grain', 'Fruit', 'Game'],
+          sean_notes: 'Use coa_segments to create enterprise dimension for this company after provisioning.',
+        }),
+      ]
+    );
+    templateId = tmplResult.rows[0].id;
+  }
 
-  // Insert farming accounts
+  // Insert (or backfill) farming accounts
   for (const [code, name, type, sub_type, reporting_group, description, sort_order, is_system_account] of FARMING_SA_OVERLAY) {
     await client.query(
       `INSERT INTO coa_template_accounts
@@ -1337,7 +1368,7 @@ async function seedFarmingTemplate(client) {
     );
   }
 
-  console.log(`  🌾 COA: Seeded "${FARMING_TEMPLATE_NAME}" overlay template (${FARMING_SA_OVERLAY.length} accounts)`);
+  console.log(`  🌾 COA: Seeded/backfilled "${FARMING_TEMPLATE_NAME}" overlay template (${FARMING_SA_OVERLAY.length} accounts)`);
   return templateId;
 }
 
@@ -1410,39 +1441,43 @@ async function seedRetailTemplate(client) {
     `SELECT id FROM coa_templates WHERE name = $1`,
     [RETAIL_TEMPLATE_NAME]
   );
-  if (existing.rows.length > 0) return existing.rows[0].id;
 
-  // Get parent template (Standard SA Base)
-  const parent = await client.query(
-    `SELECT id FROM coa_templates WHERE name = $1`,
-    [TEMPLATE_NAME]
-  );
-  const parentId = parent.rows.length > 0 ? parent.rows[0].id : null;
+  let templateId;
+  if (existing.rows.length > 0) {
+    templateId = existing.rows[0].id;
+  } else {
+    // Get parent template (Standard SA Base)
+    const parent = await client.query(
+      `SELECT id FROM coa_templates WHERE name = $1`,
+      [TEMPLATE_NAME]
+    );
+    const parentId = parent.rows.length > 0 ? parent.rows[0].id : null;
 
-  // Create retail overlay template
-  const tmplResult = await client.query(
-    `INSERT INTO coa_templates (name, description, industry, is_default, version, parent_template_id, sean_metadata)
-     VALUES ($1, $2, $3, false, '1.0', $4, $5)
-     RETURNING id`,
-    [
-      RETAIL_TEMPLATE_NAME,
-      'Retail-specific accounts for South African retail and e-commerce businesses. ' +
-      'Apply as an overlay on top of Standard SA Base. Covers trading stock detail, gift card and ' +
-      'layby liabilities, in-store and online sales income, retail cost of sales, card/e-commerce ' +
-      'merchant fees, and shopfitting/POS depreciation.',
-      'retail',
-      parentId,
-      JSON.stringify({
-        overlay: true,
-        requires_base_template: TEMPLATE_NAME,
-        industry_segments_suggested: ['In-Store', 'Online', 'Wholesale'],
-        sean_notes: 'Use coa_segments to create a sales-channel dimension (In-Store/Online/Wholesale) for this company after provisioning.',
-      }),
-    ]
-  );
-  const templateId = tmplResult.rows[0].id;
+    // Create retail overlay template
+    const tmplResult = await client.query(
+      `INSERT INTO coa_templates (name, description, industry, is_default, version, parent_template_id, sean_metadata)
+       VALUES ($1, $2, $3, false, '1.0', $4, $5)
+       RETURNING id`,
+      [
+        RETAIL_TEMPLATE_NAME,
+        'Retail-specific accounts for South African retail and e-commerce businesses. ' +
+        'Apply as an overlay on top of Standard SA Base. Covers trading stock detail, gift card and ' +
+        'layby liabilities, in-store and online sales income, retail cost of sales, card/e-commerce ' +
+        'merchant fees, and shopfitting/POS depreciation.',
+        'retail',
+        parentId,
+        JSON.stringify({
+          overlay: true,
+          requires_base_template: TEMPLATE_NAME,
+          industry_segments_suggested: ['In-Store', 'Online', 'Wholesale'],
+          sean_notes: 'Use coa_segments to create a sales-channel dimension (In-Store/Online/Wholesale) for this company after provisioning.',
+        }),
+      ]
+    );
+    templateId = tmplResult.rows[0].id;
+  }
 
-  // Insert retail accounts
+  // Insert (or backfill) retail accounts
   for (const [code, name, type, sub_type, reporting_group, description, sort_order, is_system_account] of RETAIL_SA_OVERLAY) {
     await client.query(
       `INSERT INTO coa_template_accounts
@@ -1453,7 +1488,7 @@ async function seedRetailTemplate(client) {
     );
   }
 
-  console.log(`  🛍️  COA: Seeded "${RETAIL_TEMPLATE_NAME}" overlay template (${RETAIL_SA_OVERLAY.length} accounts)`);
+  console.log(`  🛍️  COA: Seeded/backfilled "${RETAIL_TEMPLATE_NAME}" overlay template (${RETAIL_SA_OVERLAY.length} accounts)`);
   return templateId;
 }
 
