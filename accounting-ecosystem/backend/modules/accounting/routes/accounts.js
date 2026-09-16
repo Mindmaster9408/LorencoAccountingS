@@ -518,10 +518,31 @@ router.post('/provision-from-template/:templateId', authenticate, hasPermission(
 
     const { data: tmpl } = await supabase
       .from('coa_templates')
-      .select('id, name')
+      .select('id, name, parent_template_id')
       .eq('id', templateId)
       .maybeSingle();
     if (!tmpl) return res.status(404).json({ error: 'COA template not found' });
+
+    // An overlay template (e.g. Farming SA Overlay, Retail SA Overlay) only
+    // contains industry-specific additions — it was never meant to stand in
+    // for a full chart of accounts. The frontend's initial "no COA yet"
+    // picker already filters these out (only base templates are offered
+    // there), but this endpoint itself had no equivalent guard — reachable
+    // directly (e.g. via a manual/API call) and would silently provision a
+    // company with ONLY the ~20 overlay accounts and none of the ~95 base
+    // accounts (bank, debtors, creditors, VAT, equity, etc). Found live:
+    // Pennygrow ended up with only the 21 Retail SA Overlay accounts and no
+    // base at all — fixed for that company as a one-off backfill, this is
+    // the guard so no other company can end up in the same state.
+    if (tmpl.parent_template_id) {
+      return res.status(400).json({
+        error: `"${tmpl.name}" is an industry overlay, not a full chart of accounts — it only adds ` +
+               `industry-specific accounts on top of a base template. Provision a base template ` +
+               `(e.g. Standard SA Base) first, then apply this as an overlay from Industry Templates.`,
+        code: 'IS_OVERLAY_TEMPLATE',
+        baseTemplateId: tmpl.parent_template_id,
+      });
+    }
 
     const count = await provisionFromTemplateSupabase(companyId, templateId);
 
@@ -604,15 +625,46 @@ async function provisionFromTemplateSupabase(companyId, templateId = null) {
   // Resolve template
   let tmplId = templateId;
   if (!tmplId) {
-    const { data: dflt } = await supabase
-      .from('coa_templates')
-      .select('id')
-      .eq('is_default', true)
-      .order('id')
-      .limit(1)
-      .maybeSingle();
-    if (!dflt) throw new Error('No default COA template found. Run ensureAccountingSchema first.');
-    tmplId = dflt.id;
+    // 2026-09-13 UK rollout: this always picked whichever template has
+    // is_default=true (the SA base) regardless of the company's own
+    // jurisdiction — a UK company auto-provisioning its chart of accounts
+    // (no explicit templateId, the common case) got the South African one
+    // by default. Check jurisdiction first and prefer the UK base
+    // ("Standard UK Base", seeded by accounting-schema.js's
+    // seedCOAUKBaseTemplate) for a UK company; every other jurisdiction —
+    // including every existing company, which has no jurisdiction column
+    // value predating migration 167 and so reads as 'ZA' — falls through
+    // to the exact same is_default lookup as before.
+    let jurisdiction = 'ZA';
+    try {
+      const { data: co } = await supabase.from('companies').select('jurisdiction').eq('id', companyId).maybeSingle();
+      jurisdiction = co?.jurisdiction || 'ZA';
+    } catch (jErr) {
+      console.warn('[accounts] Could not read jurisdiction for company', companyId, '— defaulting to ZA template:', jErr.message);
+    }
+
+    if (jurisdiction === 'UK') {
+      const { data: ukTmpl } = await supabase
+        .from('coa_templates')
+        .select('id')
+        .eq('name', 'Standard UK Base')
+        .maybeSingle();
+      if (ukTmpl) tmplId = ukTmpl.id;
+      // else: UK template not seeded yet for some reason — fall through to
+      // the default lookup below rather than hard-failing provisioning.
+    }
+
+    if (!tmplId) {
+      const { data: dflt } = await supabase
+        .from('coa_templates')
+        .select('id')
+        .eq('is_default', true)
+        .order('id')
+        .limit(1)
+        .maybeSingle();
+      if (!dflt) throw new Error('No default COA template found. Run ensureAccountingSchema first.');
+      tmplId = dflt.id;
+    }
   }
 
   // Fetch template accounts
