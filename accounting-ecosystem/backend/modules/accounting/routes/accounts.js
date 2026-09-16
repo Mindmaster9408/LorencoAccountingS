@@ -248,8 +248,8 @@ router.put('/:id', authenticate, hasPermission('account.edit'), async (req, res)
 
     await AuditLogger.logUserAction(
       req, 'UPDATE', 'ACCOUNT', account.id,
-      { name: existing.name, description: existing.description, isActive: existing.is_active },
-      { name: account.name, description: account.description, isActive: account.is_active },
+      { name: existing.name, description: existing.description, isActive: existing.is_active, subType: existing.sub_type },
+      { name: account.name, description: account.description, isActive: account.is_active, subType: account.sub_type },
       'Account updated'
     );
 

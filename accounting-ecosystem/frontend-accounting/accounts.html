@@ -173,6 +173,15 @@
                 <option value="expense">Expense</option>
             </select>
         </div>
+        <div class="form-group" id="accSubTypeGroup" style="display:none">
+            <label>Category</label>
+            <select id="accSubType">
+                <option value="operating_expense">Operating Expense</option>
+                <option value="cost_of_sales">Cost of Sales</option>
+                <option value="finance_cost">Finance Cost</option>
+                <option value="depreciation_amort">Depreciation &amp; Amortisation</option>
+            </select>
+        </div>
         <div class="form-group">
             <label>Description</label>
             <textarea id="accDesc" rows="2" placeholder="Optional description"></textarea>
@@ -388,6 +397,19 @@
         }
     }
 
+    // Show the Category (sub_type) picker only for expense accounts — it's the
+    // field that actually drives Cost of Sales vs Operating Expense vs Finance
+    // Cost vs Depreciation on the Income Statement (reports.js effectiveSubType).
+    function toggleSubTypeGroup(type, subTypeValue) {
+        const group = document.getElementById('accSubTypeGroup');
+        if (type === 'expense') {
+            group.style.display = '';
+            document.getElementById('accSubType').value = subTypeValue || 'operating_expense';
+        } else {
+            group.style.display = 'none';
+        }
+    }
+
     // ── Create Modal ──────────────────────────────────────────────────────────
     function showCreateModal() {
         editingId = null;
@@ -398,6 +420,7 @@
         document.getElementById('accName').value             = '';
         document.getElementById('accType').value             = 'expense';
         document.getElementById('accType').disabled          = false;
+        toggleSubTypeGroup('expense', 'operating_expense');
         document.getElementById('accDesc').value             = '';
         document.getElementById('isActiveGroup').style.display       = 'none';
         document.getElementById('modalError').style.display           = 'none';
@@ -411,7 +434,8 @@
 
     // Re-generate suggestion when type changes (only if user hasn't typed a custom code)
     document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('accType').addEventListener('change', () => {
+        document.getElementById('accType').addEventListener('change', (e) => {
+            toggleSubTypeGroup(e.target.value, 'operating_expense');
             if (editingId) return;        // editing — code is locked
             generateCode();              // always refresh suggestion on type change
         });
@@ -430,6 +454,7 @@
         document.getElementById('accName').value            = acc.name;
         document.getElementById('accType').value            = acc.type;
         document.getElementById('accType').disabled         = true;
+        toggleSubTypeGroup(acc.type, acc.sub_type);
         document.getElementById('accDesc').value            = acc.description || '';
         document.getElementById('accActive').value          = acc.is_active ? 'true' : 'false';
         document.getElementById('isActiveGroup').style.display = 'block';
@@ -462,13 +487,18 @@
             let res, data;
 
             if (editingId) {
-                // Edit: only name, description, isActive can change
+                // Edit: name, description, isActive, and (for expense accounts) the
+                // Cost of Sales / Operating Expense / Finance Cost / Depreciation
+                // category can change. Code and top-level Type remain locked.
                 const isActive = document.getElementById('accActive').value === 'true';
+                const editType = document.getElementById('accType').value;
+                const payload  = { name, description: desc || null, isActive };
+                if (editType === 'expense') payload.subType = document.getElementById('accSubType').value;
                 if (!name) { errEl.textContent = 'Account name is required.'; errEl.style.display = 'block'; return; }
                 res  = await fetch(`/api/accounting/accounts/${editingId}`, {
                     method: 'PUT',
                     headers: authH(),
-                    body: JSON.stringify({ name, description: desc || null, isActive })
+                    body: JSON.stringify(payload)
                 });
                 data = await res.json();
             } else {
@@ -476,10 +506,12 @@
                 const code = document.getElementById('accCode').value.trim();
                 const type = document.getElementById('accType').value;
                 if (!code || !name) { errEl.textContent = 'Code and name are required.'; errEl.style.display = 'block'; return; }
+                const payload = { code, name, type, description: desc || null };
+                if (type === 'expense') payload.subType = document.getElementById('accSubType').value;
                 res  = await fetch('/api/accounting/accounts', {
                     method: 'POST',
                     headers: authH(),
-                    body: JSON.stringify({ code, name, type, description: desc || null })
+                    body: JSON.stringify(payload)
                 });
                 data = await res.json();
             }
