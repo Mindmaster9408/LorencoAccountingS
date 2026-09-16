@@ -508,6 +508,9 @@ async function ensureAccountingSchema(pool) {
 
     // ── 22d. Seed Standard SA Base COA Template (idempotent) ─────────────────
     await seedCOABaseTemplate(client);
+    // 2026-09-13 UK rollout — see seedCOAUKBaseTemplate's own comment for
+    // why this isn't just a second copy-pasted ~100-line account array.
+    await seedCOAUKBaseTemplate(client);
 
     // ── 22e. Template hierarchy + Sean AI metadata on coa_templates ───────────
     await client.query(`ALTER TABLE coa_templates ADD COLUMN IF NOT EXISTS parent_template_id INTEGER REFERENCES coa_templates(id) ON DELETE SET NULL`);
@@ -534,6 +537,9 @@ async function ensureAccountingSchema(pool) {
 
     // ── 22i. Seed Farming SA Overlay Template (idempotent) ────────────────────
     await seedFarmingTemplate(client);
+
+    // ── 22j. Seed Retail SA Overlay Template (idempotent) ─────────────────────
+    await seedRetailTemplate(client);
 
     // ── 23. Suppliers / Accounts Payable ──────────────────────────────────────
     await client.query(`
@@ -857,7 +863,7 @@ async function ensureAccountingSchema(pool) {
   }
 }
 
-module.exports = { ensureAccountingSchema, seedDefaultAccounts, provisionFromTemplate, applyTemplateOverlay, getDefaultTemplate };
+module.exports = { ensureAccountingSchema, seedDefaultAccounts, provisionFromTemplate, applyTemplateOverlay, getDefaultTemplate, getUKTemplate };
 
 // ============================================================================
 // COA Template — Standard SA Base (76 accounts)
@@ -1040,6 +1046,100 @@ async function seedCOABaseTemplate(client) {
 
   console.log(`  📋 COA: Seeded "${TEMPLATE_NAME}" template (${STANDARD_SA_BASE.length} accounts)`);
   return templateId;
+}
+
+// ── UK Standard Base template (2026-09-13 UK rollout) ─────────────────────
+// Derived FROM STANDARD_SA_BASE programmatically rather than typed out as a
+// second ~100-line array — every account except the handful below is
+// generic accounting structure (Bank, Trade Debtors, Rent Expense, etc.),
+// not SA-specific, so copying and patching the small SARS/UIF/SDL-coupled
+// set is both faster and keeps the two templates from drifting apart on
+// everything else. Overrides/skips below are the ONLY accounts changed:
+//   - 1400/2300/2500 (VAT Input/Output, Income Tax Payable): same accounts,
+//     "SARS" reworded to "HMRC" — the concepts (input/output VAT, income
+//     tax payable) are identical, just a different tax authority.
+//   - 2400/6020 (PAYE/UIF Payable, Employer UIF Contributions): UK has no
+//     UIF — renamed to PAYE/NI Payable and Employer NI Contributions
+//     (National Insurance is UK's closest equivalent).
+//   - 2410/6030 (SDL Payable, Employer SDL Contributions): Skills
+//     Development Levy has no clean UK equivalent (the closest UK levy,
+//     Apprenticeship Levy, only applies to employers above a payroll
+//     threshold — not a universal SME account) — omitted rather than
+//     force a mapping that would be wrong for most UK companies.
+const UK_COA_OVERRIDES = {
+  '1400': { description: 'VAT paid on business purchases — claimable from HMRC' },
+  '2300': { description: 'VAT collected from customers — payable to HMRC' },
+  '2400': { name: 'PAYE / NI Payable', description: 'Employee PAYE and National Insurance deductions withheld — payable to HMRC' },
+  '2500': { description: 'Corporation tax payable to HMRC' },
+  '6020': { name: 'Employer NI Contributions', description: 'Employer share of National Insurance contributions' },
+};
+const UK_COA_SKIP_CODES = new Set(['2410', '6030']);
+
+const UK_TEMPLATE_NAME = 'Standard UK Base';
+
+/**
+ * seedCOAUKBaseTemplate(client)
+ * Idempotently creates the Standard UK Base template and its accounts —
+ * see UK_COA_OVERRIDES/UK_COA_SKIP_CODES above for exactly what differs
+ * from STANDARD_SA_BASE. Safe to run on every startup, same pattern as
+ * seedCOABaseTemplate. NOT marked is_default — provisioning must pick this
+ * template explicitly by id for a UK-jurisdiction company (see
+ * provisionFromTemplate's templateId parameter); a company predating this
+ * still gets the SA default exactly as before.
+ */
+async function seedCOAUKBaseTemplate(client) {
+  const existing = await client.query(
+    `SELECT id FROM coa_templates WHERE name = $1`,
+    [UK_TEMPLATE_NAME]
+  );
+  if (existing.rows.length > 0) return existing.rows[0].id;
+
+  const tmplResult = await client.query(
+    `INSERT INTO coa_templates (name, description, industry, is_default, version)
+     VALUES ($1, $2, $3, false, '1.0')
+     RETURNING id`,
+    [
+      UK_TEMPLATE_NAME,
+      'Standard UK Chart of Accounts suitable for most SME businesses. ' +
+      'Same structure as the SA base template — Gross Profit → Operating Profit → Net Profit — ' +
+      'with PAYE/VAT accounts adapted for HMRC instead of SARS.',
+      'general',
+    ]
+  );
+  const templateId = tmplResult.rows[0].id;
+
+  for (const [code, name, type, sub_type, reporting_group, description, sort_order, is_system_account] of STANDARD_SA_BASE) {
+    if (UK_COA_SKIP_CODES.has(code)) continue;
+    const override = UK_COA_OVERRIDES[code] || {};
+    await client.query(
+      `INSERT INTO coa_template_accounts
+         (template_id, code, name, type, sub_type, reporting_group, description, sort_order, is_system_account)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (template_id, code) DO NOTHING`,
+      [templateId, code, override.name || name, type, sub_type, reporting_group, override.description || description, sort_order, is_system_account]
+    );
+  }
+
+  const seededCount = STANDARD_SA_BASE.length - UK_COA_SKIP_CODES.size;
+  console.log(`  📋 COA: Seeded "${UK_TEMPLATE_NAME}" template (${seededCount} accounts)`);
+  return templateId;
+}
+
+/**
+ * getUKTemplate(client)
+ * Returns { id, name } of the UK base template (not is_default — that flag
+ * stays on the SA template so a company created with no explicit
+ * jurisdiction/template choice still behaves exactly as before). Whatever
+ * provisions a new company's COA should call this instead of
+ * getDefaultTemplate() when company.jurisdiction === 'UK', and pass the
+ * returned id into provisionFromTemplate(companyId, client, templateId).
+ */
+async function getUKTemplate(client) {
+  const result = await client.query(
+    `SELECT id, name FROM coa_templates WHERE name = $1 LIMIT 1`,
+    [UK_TEMPLATE_NAME]
+  );
+  return result.rows[0] || null;
 }
 
 /**
@@ -1238,6 +1338,122 @@ async function seedFarmingTemplate(client) {
   }
 
   console.log(`  🌾 COA: Seeded "${FARMING_TEMPLATE_NAME}" overlay template (${FARMING_SA_OVERLAY.length} accounts)`);
+  return templateId;
+}
+
+// ============================================================================
+// COA Template — Retail SA Overlay (industry-specific accounts)
+// ============================================================================
+// This is an OVERLAY template — it adds retail-specific accounts to a company
+// that has already provisioned the Standard SA Base template.
+// It uses applyTemplateOverlay() not provisionFromTemplate().
+//
+// Codes were chosen inside Standard SA Base's own declared ranges (see the
+// range-header comments above, e.g. "INCOME — Operating (4000–4499)") and
+// checked against every code already used by that base template AND by the
+// Farming SA Overlay (4050–4090, 5050–5090, 6080–6089, 7550–7570) so a
+// company could apply both overlays without a single clash:
+//   1310–1330  Retail inventory detail (within Current Assets 1000–1599)
+//   2220–2230  Gift card / layby liabilities (within Current Liabilities 2000–2599)
+//   4010–4035  Retail sales income incl. two contra-income lines (within Operating Income 4000–4499)
+//   5010–5040  Retail cost of sales (within Cost of Sales 5000–5999)
+//   6710–6720  Card/e-commerce merchant fees (within Banking 6700–6799)
+//   6920–6925  In-store & loyalty marketing (within Marketing 6900–6949)
+//   7580–7590  Shopfitting/POS depreciation (within Depreciation 7500–7999)
+// Deliberately does NOT duplicate what the base template already covers well
+// (premises rent, electricity, security, general cleaning/maintenance,
+// generic bank charges) — same lean-overlay principle the Farming overlay
+// follows: only add what a retailer needs beyond the generic base.
+// ============================================================================
+
+const RETAIL_SA_OVERLAY = [
+  // ── RETAIL INVENTORY DETAIL (1310–1330, within Current Assets) ────────────
+  ['1310', 'Merchandise Inventory — Trading Stock', 'asset', 'current_asset', 'inventory', 'Trading stock purchased for resale, valued at cost or net realisable value if lower', 1310, false],
+  ['1320', 'Inventory in Transit',                  'asset', 'current_asset', 'inventory', 'Stock purchased and in transit from suppliers but not yet received into store',      1320, false],
+  ['1330', 'Layby / Reserved Stock Receivable',     'asset', 'current_asset', 'debtors',   'Amounts still owing from customers on layby or reserved-stock sales',               1330, false],
+  // ── GIFT CARD / LAYBY LIABILITIES (2220–2230, within Current Liabilities) ─
+  ['2220', 'Gift Cards and Vouchers Outstanding',   'liability', 'current_liability', 'accruals', 'Unredeemed balance of gift cards and vouchers issued to customers',                 2220, false],
+  ['2230', 'Layby Deposits Held',                   'liability', 'current_liability', 'accruals', 'Customer deposits held against layby purchases not yet finalised or delivered',    2230, false],
+  // ── RETAIL SALES INCOME (4010–4035, within Operating Income) ──────────────
+  ['4010', 'Retail Sales — In-Store',               'income', 'operating_income', 'operating_income', 'Sales of merchandise made in-store, over the counter',                              4010, false],
+  ['4015', 'Retail Sales — Online / E-commerce',    'income', 'operating_income', 'operating_income', 'Sales of merchandise made through an online store or marketplace',                 4015, false],
+  ['4020', 'Layby Sales',                           'income', 'operating_income', 'operating_income', 'Revenue recognised on completed layby sales once stock is collected or delivered', 4020, false],
+  ['4025', 'Gift Card and Voucher Redemptions',     'income', 'operating_income', 'operating_income', 'Revenue recognised when a previously issued gift card or voucher is redeemed',    4025, false],
+  ['4030', 'Sales Returns and Allowances',          'income', 'operating_income', 'operating_income', 'Contra income — reduces gross sales for returned goods and post-sale price allowances', 4030, false],
+  ['4035', 'Discounts Given to Customers',          'income', 'operating_income', 'operating_income', 'Contra income — trade and promotional discounts deducted from gross sales',       4035, false],
+  // ── RETAIL COST OF SALES (5010–5040) ──────────────────────────────────────
+  ['5010', 'Purchases — Trade Stock',               'expense', 'cost_of_sales', 'cost_of_sales', 'Cost of merchandise purchased from suppliers for resale',                            5010, false],
+  ['5020', 'Freight In and Import Duties',          'expense', 'cost_of_sales', 'cost_of_sales', 'Freight, customs duties and clearing costs to bring stock to a saleable location',   5020, false],
+  ['5030', 'Stock Shrinkage and Wastage',           'expense', 'cost_of_sales', 'cost_of_sales', 'Losses from theft, breakage, spoilage and stocktake write-offs',                     5030, false],
+  ['5040', 'Packaging and Point-of-Sale Consumables','expense', 'cost_of_sales', 'cost_of_sales', 'Carrier bags, gift wrap, till rolls and other consumables used to sell stock',      5040, false],
+  // ── MERCHANT / E-COMMERCE FEES (6710–6720, within Banking) ────────────────
+  ['6710', 'Card and POS Merchant Fees',            'expense', 'operating_expense', 'banking', 'Card machine rental and per-transaction merchant fees charged by the payment processor', 6710, false],
+  ['6720', 'E-commerce Platform and Payment Gateway Fees', 'expense', 'operating_expense', 'banking', 'Subscription and transaction fees for the online store platform and payment gateway', 6720, false],
+  // ── IN-STORE & LOYALTY MARKETING (6920–6925, within Marketing) ────────────
+  ['6920', 'In-Store Promotions and POS Marketing', 'expense', 'operating_expense', 'marketing', 'Window displays, in-store signage, sampling, and other point-of-sale promotional costs', 6920, false],
+  ['6925', 'Customer Loyalty Programme Costs',      'expense', 'operating_expense', 'marketing', 'Cost of loyalty points, rewards, and customer retention programmes',                 6925, false],
+  // ── DEPRECIATION — Retail-Specific (7580–7590) ────────────────────────────
+  ['7580', 'Depreciation — Shop Fittings and Display Equipment', 'expense', 'depreciation_amort', 'depreciation', 'Annual depreciation on shelving, display units, and shopfitting', 7580, false],
+  ['7590', 'Depreciation — POS and Till Equipment', 'expense', 'depreciation_amort', 'depreciation', 'Annual depreciation on point-of-sale terminals, card machines, and till hardware',   7590, false],
+];
+
+const RETAIL_TEMPLATE_NAME = 'Retail SA Overlay';
+
+/**
+ * seedRetailTemplate(client)
+ * Idempotently creates the Retail SA Overlay template.
+ * This is an overlay — it extends Standard SA Base, not a standalone template.
+ */
+async function seedRetailTemplate(client) {
+  // Check if already seeded
+  const existing = await client.query(
+    `SELECT id FROM coa_templates WHERE name = $1`,
+    [RETAIL_TEMPLATE_NAME]
+  );
+  if (existing.rows.length > 0) return existing.rows[0].id;
+
+  // Get parent template (Standard SA Base)
+  const parent = await client.query(
+    `SELECT id FROM coa_templates WHERE name = $1`,
+    [TEMPLATE_NAME]
+  );
+  const parentId = parent.rows.length > 0 ? parent.rows[0].id : null;
+
+  // Create retail overlay template
+  const tmplResult = await client.query(
+    `INSERT INTO coa_templates (name, description, industry, is_default, version, parent_template_id, sean_metadata)
+     VALUES ($1, $2, $3, false, '1.0', $4, $5)
+     RETURNING id`,
+    [
+      RETAIL_TEMPLATE_NAME,
+      'Retail-specific accounts for South African retail and e-commerce businesses. ' +
+      'Apply as an overlay on top of Standard SA Base. Covers trading stock detail, gift card and ' +
+      'layby liabilities, in-store and online sales income, retail cost of sales, card/e-commerce ' +
+      'merchant fees, and shopfitting/POS depreciation.',
+      'retail',
+      parentId,
+      JSON.stringify({
+        overlay: true,
+        requires_base_template: TEMPLATE_NAME,
+        industry_segments_suggested: ['In-Store', 'Online', 'Wholesale'],
+        sean_notes: 'Use coa_segments to create a sales-channel dimension (In-Store/Online/Wholesale) for this company after provisioning.',
+      }),
+    ]
+  );
+  const templateId = tmplResult.rows[0].id;
+
+  // Insert retail accounts
+  for (const [code, name, type, sub_type, reporting_group, description, sort_order, is_system_account] of RETAIL_SA_OVERLAY) {
+    await client.query(
+      `INSERT INTO coa_template_accounts
+         (template_id, code, name, type, sub_type, reporting_group, description, sort_order, is_system_account)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (template_id, code) DO NOTHING`,
+      [templateId, code, name, type, sub_type, reporting_group, description, sort_order, is_system_account]
+    );
+  }
+
+  console.log(`  🛍️  COA: Seeded "${RETAIL_TEMPLATE_NAME}" overlay template (${RETAIL_SA_OVERLAY.length} accounts)`);
   return templateId;
 }
 
