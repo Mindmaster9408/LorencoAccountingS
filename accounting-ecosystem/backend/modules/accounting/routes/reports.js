@@ -4,6 +4,13 @@ const db = require('../config/database'); // direct pg Pool — avoids .in() URL
 const { authenticate, hasPermission } = require('../middleware/auth');
 const { getBadge } = require('../services/reportTruthBadge');
 const {
+  classifyAccountBalance,
+  buildProfitLossTotals,
+  aggregateLinesByMonth,
+  buildMonthlySeries,
+  monthRangeLabels,
+} = require('../services/profitLossService');
+const {
   generateTrialBalancePdf,
   generateBalanceSheetPdf,
   generateProfitLossPdf,
@@ -60,8 +67,13 @@ async function fetchAccountBalances(companyId, { fromDate, toDate, asOfDate, typ
   }
 
   // Lines via JOIN + journal count — run in parallel, no .in() batching
+  // j.date is selected too (2026-09-17, P&L trend chart) so a caller that
+  // needs month-by-month buckets (aggregateLinesByMonth in
+  // services/profitLossService.js) can group the exact same rows every
+  // other caller here already gets — existing callers simply ignore the
+  // extra column, no behaviour change for them.
   const linesSql = `
-    SELECT jl.account_id, jl.debit, jl.credit
+    SELECT jl.account_id, jl.debit, jl.credit, j.date
     FROM journal_lines jl
     INNER JOIN journals j ON j.id = jl.journal_id
     WHERE j.company_id = $1
@@ -690,45 +702,22 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
     });
     const agg = aggregateLines(lines);
 
-    const sections = {
-      operating_income: [], other_income: [], cost_of_sales: [],
-      operating_expense: [], depreciation_amort: [], finance_cost: []
-    };
-
-    for (const a of accounts) {
-      const d = parseFloat(agg[a.id]?.debit  || 0);
-      const c = parseFloat(agg[a.id]?.credit || 0);
-      const effectiveSubType = a.sub_type ||
-        (a.type === 'income' ? 'operating_income' : 'operating_expense');
-      const entry = { id: a.id, code: a.code, name: a.name, type: a.type,
-                      sub_type: effectiveSubType, reporting_group: a.reporting_group,
-                      parent_id: a.parent_id, total_debit: d, total_credit: c,
-                      balance: a.type === 'income' ? (c - d) : (d - c) };
-      if (sections[effectiveSubType]) sections[effectiveSubType].push(entry);
-      else if (a.type === 'income')   sections.operating_income.push(entry);
-      else                            sections.operating_expense.push(entry);
-    }
-
-    const sum = arr => arr.reduce((s, a) => s + a.balance, 0);
-    const totalOperatingIncome   = sum(sections.operating_income);
-    const totalOtherIncome       = sum(sections.other_income);
-    const totalCostOfSales       = sum(sections.cost_of_sales);
-    const totalOperatingExpenses = sum(sections.operating_expense);
-    const totalDepreciation      = sum(sections.depreciation_amort);
-    const totalFinanceCosts      = sum(sections.finance_cost);
-    const grossProfit     = totalOperatingIncome - totalCostOfSales;
-    const operatingProfit = grossProfit + totalOtherIncome - totalOperatingExpenses - totalDepreciation;
-    const netProfit       = operatingProfit - totalFinanceCosts;
+    // 2026-09-17: classification/sign-convention/section-summing extracted
+    // into services/profitLossService.js (classifyAccountBalance +
+    // buildProfitLossTotals) so the new /profit-loss/trend endpoint below
+    // shares this exact logic instead of a second, potentially-drifting
+    // copy — same output shape as before this refactor, verified against a
+    // captured baseline response before shipping.
+    const classified = accounts.map(a => classifyAccountBalance(a, agg[a.id]));
+    const { sections, totals } = buildProfitLossTotals(classified);
 
     res.json({
       fromDate, toDate, segmentValueId: segmentValueId || null,
       operatingIncome: sections.operating_income, costOfSales: sections.cost_of_sales,
       otherIncome: sections.other_income, operatingExpenses: sections.operating_expense,
       depreciation: sections.depreciation_amort, financeCosts: sections.finance_cost,
-      totals: { operatingIncome: totalOperatingIncome, otherIncome: totalOtherIncome,
-                costOfSales: totalCostOfSales, grossProfit, operatingExpenses: totalOperatingExpenses,
-                depreciation: totalDepreciation, operatingProfit, financeCosts: totalFinanceCosts, netProfit },
-      isProfitable: netProfit >= 0,
+      totals,
+      isProfitable: totals.netProfit >= 0,
       income:  [...sections.operating_income, ...sections.other_income],
       expense: [...sections.cost_of_sales, ...sections.operating_expense,
                 ...sections.depreciation_amort, ...sections.finance_cost],
@@ -738,6 +727,42 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
   } catch (error) {
     console.error('Error generating profit & loss:', error);
     res.status(500).json({ error: 'Failed to generate profit & loss report' });
+  }
+});
+
+/**
+ * GET /api/reports/profit-loss/trend
+ * Monthly Revenue / Gross Profit / Net Profit series for the P&L chart
+ * (frontend-accounting/reports.html) — Chart.js-ready {labels, datasets}
+ * shape, same convention as historical-comparatives.js's /dashboard/trends
+ * (a completely separate, imported-batch data source — this endpoint is
+ * the live-GL equivalent, built on the exact same fetchAccountBalances/
+ * classifyAccountBalance/buildProfitLossTotals path as /profit-loss above,
+ * just grouped by month instead of summed across the whole range).
+ */
+router.get('/profit-loss/trend', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate, segmentValueId, journalSourceMode: rawMode } = req.query;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+
+    const companyId = req.user.companyId;
+    const { accounts, lines } = await fetchAccountBalances(companyId, {
+      fromDate, toDate, types: ['income', 'expense'],
+      segmentValueId: segmentValueId || null, journalSourceMode
+    });
+
+    const linesByMonth = aggregateLinesByMonth(lines);
+    const monthLabels = monthRangeLabels(fromDate, toDate);
+    const series = buildMonthlySeries(accounts, linesByMonth, monthLabels);
+
+    res.json({
+      ...series,
+      metadata: { fromDate, toDate, segmentValueId: segmentValueId || null },
+    });
+  } catch (error) {
+    console.error('Error generating profit & loss trend:', error);
+    res.status(500).json({ error: 'Failed to generate profit & loss trend' });
   }
 });
 
