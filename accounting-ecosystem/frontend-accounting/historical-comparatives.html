@@ -768,15 +768,15 @@
     </div>
   </div>
 
-  <div id="glPostingModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:#fff; border-radius:10px; padding:28px; width:680px; max-width:92vw; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
-      <h2 style="font-size:17px; font-weight:600; margin:0 0 4px 0; color:#1a1a2e;">Post to General Ledger</h2>
-      <p style="font-size:13px; color:#555; margin:0 0 16px 0; line-height:1.5;">
+  <div id="glPostingModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#1a1a2e; border:1px solid var(--border, rgba(255,255,255,0.12)); border-radius:10px; padding:28px; width:680px; max-width:92vw; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); color:var(--text, #fff);">
+      <h2 style="font-size:17px; font-weight:600; margin:0 0 4px 0; color:var(--text, #fff);">Post to General Ledger</h2>
+      <p style="font-size:13px; color:var(--text-secondary, rgba(255,255,255,0.7)); margin:0 0 16px 0; line-height:1.5;">
         Creates one real, dated journal entry per month, so this data appears in Profit &amp; Loss
         for those months. This cannot be undone from this screen — review carefully before confirming.
       </p>
       <div id="glPostingMsg" class="msg"></div>
-      <div id="glPostingBody" style="font-size:13px; color:#333;"></div>
+      <div id="glPostingBody" style="font-size:13px; color:var(--text, #fff);"></div>
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
         <button class="btn btn-secondary" onclick="closeGlPostingModal()">Cancel</button>
         <button class="btn btn-primary" id="btnConfirmGlPosting" onclick="confirmGlPosting()" style="display:none;">Confirm &amp; Post</button>
@@ -1703,7 +1703,7 @@
     async function openGlPostingModal() {
       document.getElementById('glPostingMsg').className = 'msg';
       document.getElementById('btnConfirmGlPosting').style.display = 'none';
-      document.getElementById('glPostingBody').innerHTML = '<p style="color:#6b7280;">Loading preview…</p>';
+      document.getElementById('glPostingBody').innerHTML = '<p style="color:var(--text-muted, rgba(255,255,255,0.5));">Loading preview…</p>';
       document.getElementById('glPostingModal').style.display = 'flex';
 
       try {
@@ -1732,27 +1732,27 @@
       `).join('');
 
       const excludedHtml = excluded.length ? `
-        <p style="color:#b45309; font-weight:600; margin-top:16px;">⚠️ Excluded — no mapped account (${excluded.length} line(s)):</p>
-        <ul style="margin:4px 0 0 18px; color:#b45309;">
+        <p style="color:var(--accent, #f59e0b); font-weight:600; margin-top:16px;">⚠️ Excluded — no mapped account (${excluded.length} line(s)):</p>
+        <ul style="margin:4px 0 0 18px; color:var(--accent, #f59e0b);">
           ${excluded.map(l => `<li>${escHtml(l.account_name || l.account_code || 'Unknown')} — ${MONTH_NAMES[l.period_month]} ${l.financial_year} (${escHtml(l.reason)})</li>`).join('')}
         </ul>` : '';
 
       const conflictsHtml = conflicts.length ? `
-        <p style="color:#dc2626; font-weight:600; margin-top:16px;">⚠️ Excluded — real General Ledger activity already exists for the same account/month (${conflicts.length} line(s)):</p>
-        <ul style="margin:4px 0 0 18px; color:#dc2626;">
+        <p style="color:#f87171; font-weight:600; margin-top:16px;">⚠️ Excluded — real General Ledger activity already exists for the same account/month (${conflicts.length} line(s)):</p>
+        <ul style="margin:4px 0 0 18px; color:#f87171;">
           ${conflicts.map(l => `<li>${escHtml(l.account_name || l.account_code || 'Unknown')} — ${MONTH_NAMES[l.period_month]} ${l.financial_year}</li>`).join('')}
         </ul>
-        <p style="color:#dc2626; font-size:12px; margin-top:4px;">These months already have real activity for this account — posting on top would double-count, so they were left out. Review with your accountant if these figures still need to be captured.</p>` : '';
+        <p style="color:#f87171; font-size:12px; margin-top:4px;">These months already have real activity for this account — posting on top would double-count, so they were left out. Review with your accountant if these figures still need to be captured.</p>` : '';
 
       if (!months.length) {
-        body.innerHTML = `<p style="color:#dc2626;">Nothing to post — every line was either zero, unmapped, or in conflict with existing General Ledger activity.</p>${excludedHtml}${conflictsHtml}`;
+        body.innerHTML = `<p style="color:#f87171;">Nothing to post — every line was either zero, unmapped, or in conflict with existing General Ledger activity.</p>${excludedHtml}${conflictsHtml}`;
         return;
       }
 
       body.innerHTML = `
-        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <table style="width:100%; border-collapse:collapse; font-size:13px; color:var(--text, #fff);">
           <thead>
-            <tr style="border-bottom:2px solid #e5e7eb; text-align:left;">
+            <tr style="border-bottom:2px solid var(--border-strong, rgba(255,255,255,0.2)); text-align:left;">
               <th style="padding:6px 4px;">Month</th>
               <th style="padding:6px 4px; text-align:right;">Lines</th>
               <th style="padding:6px 4px; text-align:right;">Net (balancing entry)</th>
@@ -1760,7 +1760,7 @@
           </thead>
           <tbody>${monthRows}</tbody>
         </table>
-        <p style="margin-top:10px; color:#555;">Balancing entries post to <strong>${escHtml(preview.balancingAccount.code)} — ${escHtml(preview.balancingAccount.name)}</strong> (a dedicated reserve account, kept separate from Retained Earnings).</p>
+        <p style="margin-top:10px; color:var(--text-secondary, rgba(255,255,255,0.7));">Balancing entries post to <strong>${escHtml(preview.balancingAccount.code)} — ${escHtml(preview.balancingAccount.name)}</strong> (a dedicated reserve account, kept separate from Retained Earnings).</p>
         ${excludedHtml}
         ${conflictsHtml}
       `;
