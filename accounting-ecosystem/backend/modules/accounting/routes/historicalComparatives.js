@@ -21,6 +21,7 @@ const multer  = require('multer');
 const XLSX    = require('xlsx');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const HistoricalComparativesService = require('../services/historicalComparativesService');
+const HistoricalComparativeGlPostingService = require('../services/historicalComparativeGlPostingService');
 const { supabase } = require('../../../config/database');
 
 const router = express.Router();
@@ -581,6 +582,74 @@ router.post('/batch/:batchId/finalize', authenticate, hasPermission('historical.
   }
 });
 
+// ── POST TO GENERAL LEDGER ──────────────────────────────────────────────────
+// Deliberate, reviewed one-way bridge from a FINALIZED batch into real, dated,
+// posted journal entries — see historicalComparativeGlPostingService.js's
+// header comment for why this lives in a separate module. Gated on the same
+// permissions manual journal create+post already require (routes/journals.js),
+// since this does both atomically on the caller's behalf.
+
+/**
+ * GET /api/accounting/historical-comparatives/batch/:batchId/gl-posting/preview
+ * Read-only — shows exactly what would be posted (per month, excluded
+ * unmapped-account lines, and any account+month conflicts with existing GL
+ * activity) without writing anything.
+ */
+router.get('/batch/:batchId/gl-posting/preview',
+  authenticate, hasPermission('journal.create'), hasPermission('journal.post'),
+  async (req, res) => {
+    try {
+      const { batchId } = req.params;
+      const preview = await HistoricalComparativeGlPostingService.previewPosting({
+        companyId: req.user.companyId,
+        batchId,
+      });
+      res.json(preview);
+    } catch (error) {
+      if (error.message && (
+        error.message.includes('finalized') ||
+        error.message.includes('already posted') ||
+        error.message.includes('not found')
+      )) {
+        return res.status(422).json({ error: error.message });
+      }
+      console.error('[HistoricalComparatives] previewPosting error:', error);
+      res.status(500).json({ error: 'Failed to build General Ledger posting preview.' });
+    }
+  });
+
+/**
+ * POST /api/accounting/historical-comparatives/batch/:batchId/gl-posting/execute
+ * Creates + posts one real journal per postable month, tags each with this
+ * batch's id, and marks the batch as posted. Re-derives everything itself —
+ * never trusts a prior preview call. Stops and reports partial progress if
+ * any month fails (e.g. a locked accounting period).
+ */
+router.post('/batch/:batchId/gl-posting/execute',
+  authenticate, hasPermission('journal.create'), hasPermission('journal.post'),
+  async (req, res) => {
+    try {
+      const { batchId } = req.params;
+      const result = await HistoricalComparativeGlPostingService.executePosting({
+        companyId: req.user.companyId,
+        batchId,
+        userId: req.user.id,
+      });
+      res.json(result);
+    } catch (error) {
+      if (error.message && (
+        error.message.includes('finalized') ||
+        error.message.includes('already posted') ||
+        error.message.includes('not found') ||
+        error.message.includes('Nothing postable')
+      )) {
+        return res.status(422).json({ error: error.message });
+      }
+      console.error('[HistoricalComparatives] executePosting error:', error);
+      res.status(500).json({ error: error.message || 'Failed to post batch to the General Ledger.' });
+    }
+  });
+
 // ── REPORTS ───────────────────────────────────────────────────────────────────
 
 // Roles permitted to request draft/unfinalized data in report endpoints.
@@ -750,7 +819,7 @@ router.get('/reports/account-trend', authenticate, hasPermission('historical.vie
  *   batchId      (optional) — narrow to a specific batch
  *   accountId    (optional) — required when metric=account_trend
  *   accountType  (optional) — extra account_type filter
- *   includeDraft (optional) — 'true' only honoured for admin/accountant roles
+ *   includeDraft (optional) — 'true' only honoured for DRAFT_REPORT_ROLES
  *
  * SECURITY: company_id is always sourced from req.user.companyId — never from query params.
  * DATA CONTRACT: This endpoint is strictly read-only. It never writes to any live ledger table.
@@ -766,8 +835,13 @@ router.get('/dashboard/trends', authenticate, hasPermission('historical.view'), 
       return res.status(400).json({ error: 'fromYear and toYear are required.' });
     }
 
-    // Draft access: only honoured for admin/accountant who explicitly request it
-    const canAccessDraft = ['admin', 'accountant'].includes(req.user.role);
+    // Draft access: only honoured for DRAFT_REPORT_ROLES who explicitly request it.
+    // Was a separate, narrower ['admin','accountant'] list that silently excluded
+    // super_admin/business_owner/practice_manager, unlike the other three report
+    // endpoints in this file — meant these two widgets (Revenue/Expense trend)
+    // showed empty for those roles on any batch still in draft status, even though
+    // the same user could see the same data via monthly-pl/tb-comparative/multi-year.
+    const canAccessDraft = DRAFT_REPORT_ROLES.includes(req.user.role);
     const finalizedOnly  = !(canAccessDraft && (includeDraft === 'true' || includeDraft === '1'));
 
     const data = await HistoricalComparativesService.getDashboardTrends({

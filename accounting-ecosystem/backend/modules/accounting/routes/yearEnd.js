@@ -44,6 +44,7 @@ const db = require('../config/database'); // direct pg Pool — for atomic write
 const { authenticate, hasPermission } = require('../middleware/auth');
 const JournalService = require('../services/journalService');
 const AuditLogger = require('../services/auditLogger');
+const AccountLookups = require('../services/accountLookups');
 
 const router = express.Router();
 
@@ -141,16 +142,7 @@ router.post('/close', authenticate, requireAccountant, async (req, res) => {
     }
 
     // ── 3. Retained earnings account — required ──────────────────────────────
-    const { data: reAccount, error: reErr } = await supabase
-      .from('accounts')
-      .select('id, code, name')
-      .eq('company_id', companyId)
-      .eq('type', 'equity')
-      .eq('sub_type', 'retained_earnings')
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (reErr) throw new Error(reErr.message);
+    const reAccount = await AccountLookups.getRetainedEarningsAccount(companyId);
     if (!reAccount) {
       return res.status(422).json({
         error: 'No retained earnings account found. ' +

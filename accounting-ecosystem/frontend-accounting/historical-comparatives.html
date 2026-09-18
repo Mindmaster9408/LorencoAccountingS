@@ -768,6 +768,22 @@
     </div>
   </div>
 
+  <div id="glPostingModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:10px; padding:28px; width:680px; max-width:92vw; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+      <h2 style="font-size:17px; font-weight:600; margin:0 0 4px 0; color:#1a1a2e;">Post to General Ledger</h2>
+      <p style="font-size:13px; color:#555; margin:0 0 16px 0; line-height:1.5;">
+        Creates one real, dated journal entry per month, so this data appears in Profit &amp; Loss
+        for those months. This cannot be undone from this screen — review carefully before confirming.
+      </p>
+      <div id="glPostingMsg" class="msg"></div>
+      <div id="glPostingBody" style="font-size:13px; color:#333;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeGlPostingModal()">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmGlPosting" onclick="confirmGlPosting()" style="display:none;">Confirm &amp; Post</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ── Bootstrap ────────────────────────────────────────────────────────
     const _token = localStorage.getItem('token');
@@ -998,6 +1014,16 @@
             <div>
               <strong>This batch is finalized and locked.</strong>
               Finalized data cannot be edited. To make corrections, create a new batch.
+            </div>
+          </div>
+          <div class="finalized-banner" style="background:#eff6ff; border-color:#bfdbfe;">
+            <span class="icon">📒</span>
+            <div style="flex:1; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              ${batch.posted_to_gl_at
+                ? `<span><strong>Posted to General Ledger</strong> on ${new Date(batch.posted_to_gl_at).toLocaleString('en-ZA')}.</span>`
+                : `<span><strong>Not yet in the real books.</strong> This data only shows here and in Historical Charts — it won't appear in Profit &amp; Loss until posted.</span>
+                   <button type="button" class="btn btn-primary btn-sm" onclick="openGlPostingModal()">Post to General Ledger</button>`
+              }
             </div>
           </div>
         ` : ''}
@@ -1669,6 +1695,100 @@
       }
     }
 
+    // ── Post to General Ledger ────────────────────────────────────────────
+    // Deliberate one-way bridge: reads this finalized batch's lines and
+    // creates real, dated, posted journal entries so the figures appear in
+    // Profit & Loss for those months. Preview first, confirm second — never
+    // a single-click action given the permanent GL/audit-trail impact.
+    async function openGlPostingModal() {
+      document.getElementById('glPostingMsg').className = 'msg';
+      document.getElementById('btnConfirmGlPosting').style.display = 'none';
+      document.getElementById('glPostingBody').innerHTML = '<p style="color:#6b7280;">Loading preview…</p>';
+      document.getElementById('glPostingModal').style.display = 'flex';
+
+      try {
+        const preview = await api('GET', `/batch/${currentBatch.id}/gl-posting/preview`);
+        renderGlPostingPreview(preview);
+      } catch (e) {
+        document.getElementById('glPostingBody').innerHTML = '';
+        showMsg('glPostingMsg', 'error', e.message);
+      }
+    }
+
+    function closeGlPostingModal() {
+      document.getElementById('glPostingModal').style.display = 'none';
+    }
+
+    function renderGlPostingPreview(preview) {
+      const body = document.getElementById('glPostingBody');
+      const { months, excluded, conflicts } = preview;
+
+      const monthRows = months.map(m => `
+        <tr>
+          <td>${MONTH_NAMES[m.periodMonth]} ${m.financialYear}</td>
+          <td style="text-align:right;">${m.lines.length}</td>
+          <td style="text-align:right; font-family:monospace;">${m.netAmount >= 0 ? 'R ' + m.netAmount.toFixed(2) : '(R ' + Math.abs(m.netAmount).toFixed(2) + ')'}</td>
+        </tr>
+      `).join('');
+
+      const excludedHtml = excluded.length ? `
+        <p style="color:#b45309; font-weight:600; margin-top:16px;">⚠️ Excluded — no mapped account (${excluded.length} line(s)):</p>
+        <ul style="margin:4px 0 0 18px; color:#b45309;">
+          ${excluded.map(l => `<li>${escHtml(l.account_name || l.account_code || 'Unknown')} — ${MONTH_NAMES[l.period_month]} ${l.financial_year} (${escHtml(l.reason)})</li>`).join('')}
+        </ul>` : '';
+
+      const conflictsHtml = conflicts.length ? `
+        <p style="color:#dc2626; font-weight:600; margin-top:16px;">⚠️ Excluded — real General Ledger activity already exists for the same account/month (${conflicts.length} line(s)):</p>
+        <ul style="margin:4px 0 0 18px; color:#dc2626;">
+          ${conflicts.map(l => `<li>${escHtml(l.account_name || l.account_code || 'Unknown')} — ${MONTH_NAMES[l.period_month]} ${l.financial_year}</li>`).join('')}
+        </ul>
+        <p style="color:#dc2626; font-size:12px; margin-top:4px;">These months already have real activity for this account — posting on top would double-count, so they were left out. Review with your accountant if these figures still need to be captured.</p>` : '';
+
+      if (!months.length) {
+        body.innerHTML = `<p style="color:#dc2626;">Nothing to post — every line was either zero, unmapped, or in conflict with existing General Ledger activity.</p>${excludedHtml}${conflictsHtml}`;
+        return;
+      }
+
+      body.innerHTML = `
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="border-bottom:2px solid #e5e7eb; text-align:left;">
+              <th style="padding:6px 4px;">Month</th>
+              <th style="padding:6px 4px; text-align:right;">Lines</th>
+              <th style="padding:6px 4px; text-align:right;">Net (balancing entry)</th>
+            </tr>
+          </thead>
+          <tbody>${monthRows}</tbody>
+        </table>
+        <p style="margin-top:10px; color:#555;">Balancing entries post to <strong>${escHtml(preview.balancingAccount.code)} — ${escHtml(preview.balancingAccount.name)}</strong> (a dedicated reserve account, kept separate from Retained Earnings).</p>
+        ${excludedHtml}
+        ${conflictsHtml}
+      `;
+      document.getElementById('btnConfirmGlPosting').style.display = '';
+    }
+
+    async function confirmGlPosting() {
+      const btn = document.getElementById('btnConfirmGlPosting');
+      btn.disabled = true;
+      showMsg('glPostingMsg', 'info', 'Posting…');
+      try {
+        const result = await api('POST', `/batch/${currentBatch.id}/gl-posting/execute`, {});
+        showMsg('glPostingMsg', 'info', `Posted ${result.journalsCreated.length} journal(s) to the General Ledger.`);
+        await new Promise(r => setTimeout(r, 1200));
+        closeGlPostingModal();
+        // No single-batch GET endpoint — re-fetch the list and select the
+        // refreshed row so the banner picks up the new posted_to_gl_at value
+        // (currentBatch itself is stale, from before this call).
+        const { batches } = await api('GET', '/batches');
+        const refreshed = (batches || []).find(b => b.id === currentBatch.id) || currentBatch;
+        await selectBatch(refreshed);
+      } catch (e) {
+        showMsg('glPostingMsg', 'error', e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     // ── Reports tab init ─────────────────────────────────────────────────
     function initReportsTab() {
       // Hide draft mode options if user role doesn't permit draft access
@@ -2033,7 +2153,7 @@
     function formatCurrency(val) {
       if (!val && val !== 0) return '0.00';
       const n = parseFloat(val);
-      return n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString(window.APP_LOCALE || 'en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function parseCurrency(str) {
