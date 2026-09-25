@@ -43,6 +43,7 @@ const db = require('../config/database'); // direct pg Pool — for the cross-ta
 const HistoricalComparativesService = require('./historicalComparativesService');
 const AccountLookups = require('./accountLookups');
 const JournalService = require('./journalService');
+const { toDateOnlyString } = require('./profitLossService');
 
 const SOURCE_TYPE = 'historical_comparative_import';
 
@@ -171,7 +172,7 @@ async function resolvePosting({ companyId, batchId }) {
     for (const line of postable) {
       const hasOverlap = existingLines.some(el => {
         if (el.account_id !== line.account_id) return false;
-        const d = String(el.date).slice(0, 10);
+        const d = toDateOnlyString(el.date);
         return d >= line.period_start && d <= line.period_end;
       });
       if (hasOverlap) conflictSet.add(conflictKey(line.account_id, line.period_start));
@@ -187,9 +188,24 @@ async function resolvePosting({ companyId, batchId }) {
     }
   }
 
+  // ── Idempotency guard for partial-failure retries ─────────────────────────
+  // batch.posted_to_gl_at is only set after EVERY month succeeds (see
+  // executePosting), so it alone can't catch a retry after a PARTIAL
+  // failure (e.g. month 5 of 8 hits a locked accounting period) — without
+  // this, re-running would re-create journals for the months that already
+  // succeeded, silently duplicating them. Any month with an existing POSTED
+  // journal tagged to this batch is treated as already done and skipped.
+  const { rows: alreadyPostedRows } = await db.query(
+    `SELECT date FROM journals
+     WHERE company_id = $1 AND historical_comparative_batch_id = $2 AND status = 'posted'`,
+    [companyId, batchId]
+  );
+  const alreadyPostedDates = new Set(alreadyPostedRows.map(r => toDateOnlyString(r.date)));
+
   // ── Group clean lines into one journal per (financial_year, period_month) ──
   const byMonth = new Map();
   for (const line of cleanLines) {
+    if (alreadyPostedDates.has(toDateOnlyString(line.period_end))) continue;
     const key = `${line.financial_year}-${line.period_month}`;
     if (!byMonth.has(key)) {
       byMonth.set(key, {

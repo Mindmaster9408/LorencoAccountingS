@@ -76,6 +76,29 @@ function buildProfitLossTotals(classifiedEntries) {
 }
 
 /**
+ * fetchAccountBalances (routes/reports.js) fetches its `date` column via the
+ * direct pg Pool, not the Supabase client — and node-postgres's default type
+ * parser for a DATE column returns a real JS Date object (constructed at
+ * LOCAL midnight of that calendar date), not a string. `String(dateObject)`
+ * produces a human-readable form like "Wed Jan 15 2025 00:00:00 GMT+0200
+ * (...)" — slicing that does NOT recover 'YYYY-MM-DD'. Using this object's
+ * LOCAL getters (not `.toISOString()`, which would convert to UTC and can
+ * shift the calendar day depending on the server's timezone offset) exactly
+ * reverses how pg constructed it, so this round-trips correctly regardless
+ * of server timezone. A plain string (e.g. from the Supabase JS client
+ * elsewhere in this codebase) is returned as-is.
+ */
+function toDateOnlyString(value) {
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(value).slice(0, 10);
+}
+
+/**
  * Groups journal_lines rows (each must include account_id, debit, credit,
  * and a `date` column — fetchAccountBalances in routes/reports.js selects
  * this) into { 'YYYY-MM': { [account_id]: { debit, credit } } }.
@@ -83,7 +106,7 @@ function buildProfitLossTotals(classifiedEntries) {
 function aggregateLinesByMonth(lines) {
   const byMonth = {};
   for (const l of lines) {
-    const month = String(l.date).slice(0, 7); // 'YYYY-MM-DD...' -> 'YYYY-MM'
+    const month = toDateOnlyString(l.date).slice(0, 7); // 'YYYY-MM-DD' -> 'YYYY-MM'
     if (!byMonth[month]) byMonth[month] = {};
     const acctMap = byMonth[month];
     const id = l.account_id;
@@ -211,4 +234,5 @@ module.exports = {
   buildMonthlySeries,
   monthRangeLabels,
   rollupMonthlySeries,
+  toDateOnlyString,
 };
