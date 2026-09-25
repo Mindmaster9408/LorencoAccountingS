@@ -146,10 +146,69 @@ function monthRangeLabels(fromDate, toDate) {
   return months;
 }
 
+/** 'YYYY-MM' -> 'YYYY-Qn' (calendar quarter, not fiscal — this codebase's
+ * P&L reports already work off plain calendar fromDate/toDate, so quarterly
+ * grouping follows the same convention rather than introducing a
+ * jurisdiction-specific fiscal-year quarter that nothing else here uses). */
+function quarterKeyFromMonth(yyyyMm) {
+  const [y, m] = yyyyMm.split('-').map(Number);
+  return `${y}-Q${Math.ceil(m / 3)}`;
+}
+
+/** 'YYYY-MM' -> 'YYYY' */
+function yearKeyFromMonth(yyyyMm) {
+  return yyyyMm.split('-')[0];
+}
+
+/** 'YYYY-Qn' -> 'Q1 2026'; a plain 'YYYY' key is already display-ready. */
+function formatPeriodLabel(key, granularity) {
+  if (granularity !== 'quarterly') return key;
+  const [year, q] = key.split('-');
+  return `${q} ${year}`;
+}
+
+/**
+ * Rolls a monthly {labels, datasets} series (as buildMonthlySeries returns)
+ * up into quarterly or yearly buckets by SUMMING each dataset's values —
+ * correct for flow measures like Revenue/Gross Profit/Net Profit (each
+ * month's figure is itself already a period total, so a quarter/year is
+ * just the sum of its months, never an average or a snapshot).
+ *
+ * `monthKeys` must be the same raw 'YYYY-MM' array (in the same order) that
+ * was passed into buildMonthlySeries to produce `monthlySeries` — that
+ * function's own `labels` are already human-formatted ('Jan 2026') and
+ * can't be re-parsed back into a sortable/groupable key.
+ */
+function rollupMonthlySeries(monthlySeries, monthKeys, granularity) {
+  if (granularity !== 'quarterly' && granularity !== 'yearly') return monthlySeries;
+
+  const keyFn = granularity === 'quarterly' ? quarterKeyFromMonth : yearKeyFromMonth;
+  const bucketOrder = [];
+  const bucketIndexByKey = {};
+  monthKeys.forEach(mk => {
+    const key = keyFn(mk);
+    if (!(key in bucketIndexByKey)) {
+      bucketIndexByKey[key] = bucketOrder.length;
+      bucketOrder.push(key);
+    }
+  });
+
+  const datasets = monthlySeries.datasets.map(ds => {
+    const data = new Array(bucketOrder.length).fill(0);
+    ds.data.forEach((value, i) => {
+      data[bucketIndexByKey[keyFn(monthKeys[i])]] += value;
+    });
+    return { label: ds.label, data: data.map(v => Math.round(v * 100) / 100) };
+  });
+
+  return { labels: bucketOrder.map(k => formatPeriodLabel(k, granularity)), datasets };
+}
+
 module.exports = {
   classifyAccountBalance,
   buildProfitLossTotals,
   aggregateLinesByMonth,
   buildMonthlySeries,
   monthRangeLabels,
+  rollupMonthlySeries,
 };

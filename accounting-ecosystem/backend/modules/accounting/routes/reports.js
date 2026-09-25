@@ -9,6 +9,7 @@ const {
   aggregateLinesByMonth,
   buildMonthlySeries,
   monthRangeLabels,
+  rollupMonthlySeries,
 } = require('../services/profitLossService');
 const {
   generateTrialBalancePdf,
@@ -732,19 +733,25 @@ router.get('/profit-loss', authenticate, hasPermission('report.view'), async (re
 
 /**
  * GET /api/reports/profit-loss/trend
- * Monthly Revenue / Gross Profit / Net Profit series for the P&L chart
+ * Revenue / Gross Profit / Net Profit series for the P&L chart
  * (frontend-accounting/reports.html) — Chart.js-ready {labels, datasets}
  * shape, same convention as historical-comparatives.js's /dashboard/trends
  * (a completely separate, imported-batch data source — this endpoint is
  * the live-GL equivalent, built on the exact same fetchAccountBalances/
- * classifyAccountBalance/buildProfitLossTotals path as /profit-loss above,
- * just grouped by month instead of summed across the whole range).
+ * classifyAccountBalance/buildProfitLossTotals path as /profit-loss above).
+ *
+ * Always classifies on a monthly basis internally (that's the grain the
+ * underlying journal_lines naturally support), then rolls the result up to
+ * quarterly/yearly buckets when requested via `granularity` — supports
+ * pulling a multi-year (1-7+ year) trend at whatever grain reads best,
+ * e.g. yearly buckets for a 5-year view instead of 60 crowded months.
  */
 router.get('/profit-loss/trend', authenticate, hasPermission('report.view'), async (req, res) => {
   try {
-    const { fromDate, toDate, segmentValueId, journalSourceMode: rawMode } = req.query;
+    const { fromDate, toDate, segmentValueId, journalSourceMode: rawMode, granularity: rawGranularity } = req.query;
     if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
     const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+    const granularity = ['monthly', 'quarterly', 'yearly'].includes(rawGranularity) ? rawGranularity : 'monthly';
 
     const companyId = req.user.companyId;
     const { accounts, lines } = await fetchAccountBalances(companyId, {
@@ -754,11 +761,12 @@ router.get('/profit-loss/trend', authenticate, hasPermission('report.view'), asy
 
     const linesByMonth = aggregateLinesByMonth(lines);
     const monthLabels = monthRangeLabels(fromDate, toDate);
-    const series = buildMonthlySeries(accounts, linesByMonth, monthLabels);
+    const monthlySeries = buildMonthlySeries(accounts, linesByMonth, monthLabels);
+    const series = rollupMonthlySeries(monthlySeries, monthLabels, granularity);
 
     res.json({
       ...series,
-      metadata: { fromDate, toDate, segmentValueId: segmentValueId || null },
+      metadata: { fromDate, toDate, segmentValueId: segmentValueId || null, granularity },
     });
   } catch (error) {
     console.error('Error generating profit & loss trend:', error);

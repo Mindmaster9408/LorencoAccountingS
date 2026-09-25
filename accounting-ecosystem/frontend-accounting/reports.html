@@ -497,17 +497,44 @@
         <div class="report-card chart-card">
             <div class="report-header">
                 <h2>Profit Trend</h2>
-                <p>Revenue, Gross Profit &amp; Net Profit by month</p>
+                <p>Revenue, Gross Profit &amp; Net Profit over time</p>
             </div>
             <div class="report-content">
+                <div style="display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:14px;">
+                    <div class="control-group" style="flex-direction:row; align-items:center; gap:8px;">
+                        <label style="margin:0;">Group by</label>
+                        <select id="plChartGranularity" onchange="loadProfitTrendChart()" style="min-width:auto; padding:6px 10px;">
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" id="plViewChartBtn" class="btn-secondary" onclick="setTrendView('chart')" style="padding:6px 14px; font-size:12px;">📈 Chart</button>
+                        <button type="button" id="plViewTableBtn" class="btn-secondary" onclick="setTrendView('table')" style="padding:6px 14px; font-size:12px;">🔢 Numbers</button>
+                    </div>
+                </div>
                 <div class="chart-loading" id="plChartLoading">
                     <div class="chart-spinner"></div> Loading&hellip;
                 </div>
                 <div class="chart-empty" id="plChartEmpty">
-                    Not enough monthly data in this range to draw a trend — try a wider date range.
+                    Not enough data in this range to show a trend — try a wider date range.
                 </div>
                 <div class="chart-canvas-wrap" id="plChartWrap" style="display:none;">
                     <canvas id="plTrendChart"></canvas>
+                </div>
+                <div id="plChartTableWrap" style="display:none; overflow-x:auto;">
+                    <table class="report-table" style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th class="amount">Revenue</th>
+                                <th class="amount">Gross Profit</th>
+                                <th class="amount">Net Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="plChartTableBody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -692,37 +719,89 @@
         function setChartLoading(on) {
             document.getElementById('plChartLoading').style.display = on ? 'flex' : 'none';
             document.getElementById('plChartWrap').style.display    = on ? 'none' : 'block';
+            if (on) document.getElementById('plChartTableWrap').style.display = 'none';
         }
         function setChartEmpty(on) {
             document.getElementById('plChartEmpty').style.display = on ? 'block' : 'none';
             document.getElementById('plChartWrap').style.display  = on ? 'none' : 'block';
             document.getElementById('plChartLoading').style.display = 'none';
+            if (on) document.getElementById('plChartTableWrap').style.display = 'none';
         }
 
+        // Trend data/params are cached so switching Group-by or the Chart/Numbers
+        // toggle re-renders instantly instead of re-fetching from the server.
+        let lastTrendParams = null;
+        let lastTrendData   = null;
+        let trendView       = 'chart'; // 'chart' | 'table'
+
         async function loadProfitTrendChart(fromDate, toDate, segmentValueId) {
+            if (fromDate !== undefined) lastTrendParams = { fromDate, toDate, segmentValueId };
+            if (!lastTrendParams) return;
+
+            const granularity = document.getElementById('plChartGranularity').value;
             setChartLoading(true);
             try {
-                let url = `/api/accounting/reports/profit-loss/trend?fromDate=${fromDate}&toDate=${toDate}`;
-                if (segmentValueId) url += `&segmentValueId=${encodeURIComponent(segmentValueId)}`;
+                let url = `/api/accounting/reports/profit-loss/trend?fromDate=${lastTrendParams.fromDate}&toDate=${lastTrendParams.toDate}&granularity=${granularity}`;
+                if (lastTrendParams.segmentValueId) url += `&segmentValueId=${encodeURIComponent(lastTrendParams.segmentValueId)}`;
                 const res = await fetch(url, { headers: authH() });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
                 const hasData = (data.labels || []).length >= 2 &&
                     (data.datasets || []).some(ds => ds.data.some(v => v !== 0));
+                lastTrendData = hasData ? data : null;
                 if (!hasData) { setChartEmpty(true); return; }
 
                 setChartLoading(false);
-                destroyChart('pl');
-                const ctx = document.getElementById('plTrendChart').getContext('2d');
-                chartInstances.pl = new Chart(ctx, {
-                    type: 'line',
-                    data: { labels: data.labels, datasets: colorize(data.datasets) },
-                    options: lineOptions('Amount (ZAR)'),
-                });
+                renderTrendView();
             } catch (err) {
+                lastTrendData = null;
                 setChartEmpty(true);
             }
+        }
+
+        function renderTrendView() {
+            if (!lastTrendData) return;
+            // className is fully replaced (not classList.toggle alongside btn-secondary) —
+            // .btn-secondary's CSS rule is declared after .btn-primary's, so having both
+            // classes on one element at once would always render as secondary regardless
+            // of which was toggled on.
+            document.getElementById('plViewChartBtn').className = trendView === 'chart' ? 'btn-primary' : 'btn-secondary';
+            document.getElementById('plViewTableBtn').className = trendView === 'table' ? 'btn-primary' : 'btn-secondary';
+
+            if (trendView === 'table') {
+                document.getElementById('plChartWrap').style.display = 'none';
+                document.getElementById('plChartTableWrap').style.display = 'block';
+                renderTrendTable(lastTrendData);
+                return;
+            }
+
+            document.getElementById('plChartTableWrap').style.display = 'none';
+            document.getElementById('plChartWrap').style.display = 'block';
+            destroyChart('pl');
+            const ctx = document.getElementById('plTrendChart').getContext('2d');
+            chartInstances.pl = new Chart(ctx, {
+                type: 'line',
+                data: { labels: lastTrendData.labels, datasets: colorize(lastTrendData.datasets) },
+                options: lineOptions('Amount (ZAR)'),
+            });
+        }
+
+        function renderTrendTable(data) {
+            const [revenue, grossProfit, netProfit] = data.datasets;
+            document.getElementById('plChartTableBody').innerHTML = data.labels.map((label, i) => `
+                <tr>
+                    <td>${label}</td>
+                    <td class="amount">${fmtTot(revenue.data[i])}</td>
+                    <td class="amount">${fmtTot(grossProfit.data[i])}</td>
+                    <td class="amount ${netProfit.data[i] >= 0 ? 'positive' : 'negative'}">${fmtTot(netProfit.data[i])}</td>
+                </tr>
+            `).join('');
+        }
+
+        function setTrendView(view) {
+            trendView = view;
+            renderTrendView();
         }
 
         async function generateReport() {
