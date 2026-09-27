@@ -339,17 +339,31 @@ class HistoricalComparativesService {
    * Returns an array of account groups, each with 12 monthly amounts.
    */
   static async getBatchLines({ companyId, batchId }) {
-    const { data, error } = await supabase
-      .from('historical_comparative_lines')
-      .select('*')
-      .eq('batch_id', batchId)
-      .eq('company_id', companyId)
-      .order('account_code', { ascending: true })
-      .order('financial_year', { ascending: true })
-      .order('period_month', { ascending: true });
+    // Paginated: PostgREST caps every response at 1000 rows, and a multi-year
+    // monthly batch easily exceeds that (e.g. 84 accounts × 6 years × 12 months
+    // ≈ 6000 lines). Without paging, callers — the capture grid, validation and
+    // GL posting (historicalComparativeGlPostingService) — silently saw only the
+    // first 1000 lines (the lowest account codes, i.e. income only).
+    // `id` is a final tie-breaker so page boundaries are stable.
+    const PAGE_SIZE = 1000;
+    const lines = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('historical_comparative_lines')
+        .select('*')
+        .eq('batch_id', batchId)
+        .eq('company_id', companyId)
+        .order('account_code', { ascending: true })
+        .order('financial_year', { ascending: true })
+        .order('period_month', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (error) throw error;
-    return data || [];
+      if (error) throw error;
+      lines.push(...(data || []));
+      if (!data || data.length < PAGE_SIZE) break;
+    }
+    return lines;
   }
 
   /**
