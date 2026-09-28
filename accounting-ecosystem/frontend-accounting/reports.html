@@ -446,6 +446,37 @@
             margin-right: 10px;
         }
         @keyframes chart-spin { to { transform: rotate(360deg); } }
+
+        /* ─── P&L line-item matrix (Numbers view) ─────────────────────── */
+        .pl-matrix-scroll {
+            overflow: auto;
+            max-height: 70vh;
+        }
+        .pl-matrix { border-collapse: separate; border-spacing: 0; }
+        .pl-matrix th, .pl-matrix td {
+            padding: 7px 10px;
+            font-size: 12.5px;
+            white-space: nowrap;
+        }
+        .pl-matrix thead th { position: sticky; top: 0; z-index: 2; text-align: right; }
+        .pl-matrix thead th:first-child { text-align: left; }
+        /* Account column stays visible while scrolling across periods — solid
+           background so scrolled numbers don't show through it. */
+        .pl-matrix th:first-child,
+        .pl-matrix td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            min-width: 240px;
+            max-width: 320px;
+            white-space: normal;
+            background-color: #17152b !important;
+        }
+        .pl-matrix thead th:first-child { z-index: 3; }
+        .pl-matrix .pl-total-col { font-weight: 700; border-left: 2px solid rgba(245,158,11,0.5) !important; }
+        .pl-matrix .pl-group-start { border-left: 2px solid rgba(255,255,255,0.18) !important; }
+        .pl-matrix .pl-account td:first-child { padding-left: 24px; }
+        .pl-matrix .pl-net td { font-size: 13.5px; font-weight: 700; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
 
@@ -497,19 +528,30 @@
         <div class="report-card chart-card">
             <div class="report-header">
                 <h2>Profit Trend</h2>
-                <p>Revenue, Gross Profit &amp; Net Profit over time</p>
+                <p>Revenue, Gross Profit &amp; Net Profit over time — Numbers shows every line item per period</p>
             </div>
             <div class="report-content">
                 <div style="display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:14px;">
-                    <div class="control-group" style="flex-direction:row; align-items:center; gap:8px;">
-                        <label style="margin:0;">Group by</label>
-                        <select id="plChartGranularity" onchange="loadProfitTrendChart()" style="min-width:auto; padding:6px 10px;">
-                            <option value="monthly">Monthly</option>
-                            <option value="quarterly">Quarterly</option>
-                            <option value="yearly">Yearly</option>
-                        </select>
+                    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                        <div class="control-group" style="flex-direction:row; align-items:center; gap:8px;">
+                            <label style="margin:0;">Group by</label>
+                            <select id="plChartGranularity" onchange="loadProfitTrendChart()" style="min-width:auto; padding:6px 10px;">
+                                <option value="monthly">Monthly</option>
+                                <option value="quarterly">Quarterly</option>
+                                <option value="yearly">Calendar year</option>
+                                <option value="financial_year">Financial year</option>
+                            </select>
+                        </div>
+                        <div class="control-group" id="plMatrixOrderGroup" style="flex-direction:row; align-items:center; gap:8px; display:none;">
+                            <label style="margin:0;">Columns</label>
+                            <select id="plMatrixOrder" onchange="renderMatrix()" style="min-width:auto; padding:6px 10px;">
+                                <option value="chronological">In date order</option>
+                                <option value="same-month">Same month together</option>
+                            </select>
+                        </div>
                     </div>
                     <div style="display:flex; gap:6px;">
+                        <button type="button" id="plMatrixCsvBtn" class="btn-secondary" onclick="exportMatrixCsv()" style="padding:6px 14px; font-size:12px; display:none;">⬇ Export Numbers CSV</button>
                         <button type="button" id="plViewChartBtn" class="btn-secondary" onclick="setTrendView('chart')" style="padding:6px 14px; font-size:12px;">📈 Chart</button>
                         <button type="button" id="plViewTableBtn" class="btn-secondary" onclick="setTrendView('table')" style="padding:6px 14px; font-size:12px;">🔢 Numbers</button>
                     </div>
@@ -523,19 +565,7 @@
                 <div class="chart-canvas-wrap" id="plChartWrap" style="display:none;">
                     <canvas id="plTrendChart"></canvas>
                 </div>
-                <div id="plChartTableWrap" style="display:none; overflow-x:auto;">
-                    <table class="report-table" style="width:100%;">
-                        <thead>
-                            <tr>
-                                <th>Period</th>
-                                <th class="amount">Revenue</th>
-                                <th class="amount">Gross Profit</th>
-                                <th class="amount">Net Profit</th>
-                            </tr>
-                        </thead>
-                        <tbody id="plChartTableBody"></tbody>
-                    </table>
-                </div>
+                <div id="plChartTableWrap" class="pl-matrix-scroll" style="display:none;"></div>
             </div>
         </div>
 
@@ -734,6 +764,17 @@
         let lastTrendData   = null;
         let trendView       = 'chart'; // 'chart' | 'table'
 
+        // Line-item matrix (Numbers view) — fetched only when that view is shown,
+        // cached per params + granularity like the chart data above.
+        let lastMatrixKey  = null;
+        let lastMatrixData = null;
+
+        function trendQuery(granularity) {
+            let qs = `fromDate=${lastTrendParams.fromDate}&toDate=${lastTrendParams.toDate}&granularity=${granularity}`;
+            if (lastTrendParams.segmentValueId) qs += `&segmentValueId=${encodeURIComponent(lastTrendParams.segmentValueId)}`;
+            return qs;
+        }
+
         async function loadProfitTrendChart(fromDate, toDate, segmentValueId) {
             if (fromDate !== undefined) lastTrendParams = { fromDate, toDate, segmentValueId };
             if (!lastTrendParams) return;
@@ -741,16 +782,16 @@
             const granularity = document.getElementById('plChartGranularity').value;
             setChartLoading(true);
             try {
-                let url = `/api/accounting/reports/profit-loss/trend?fromDate=${lastTrendParams.fromDate}&toDate=${lastTrendParams.toDate}&granularity=${granularity}`;
-                if (lastTrendParams.segmentValueId) url += `&segmentValueId=${encodeURIComponent(lastTrendParams.segmentValueId)}`;
-                const res = await fetch(url, { headers: authH() });
+                const res = await fetch(`/api/accounting/reports/profit-loss/trend?${trendQuery(granularity)}`, { headers: authH() });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
 
                 const hasData = (data.labels || []).length >= 2 &&
                     (data.datasets || []).some(ds => ds.data.some(v => v !== 0));
                 lastTrendData = hasData ? data : null;
-                if (!hasData) { setChartEmpty(true); return; }
+                // The Numbers view is a table, so a single period (e.g. one
+                // financial year) is still worth showing there.
+                if (!hasData && trendView !== 'table') { setChartEmpty(true); return; }
 
                 setChartLoading(false);
                 renderTrendView();
@@ -761,22 +802,27 @@
         }
 
         function renderTrendView() {
-            if (!lastTrendData) return;
             // className is fully replaced (not classList.toggle alongside btn-secondary) —
             // .btn-secondary's CSS rule is declared after .btn-primary's, so having both
             // classes on one element at once would always render as secondary regardless
             // of which was toggled on.
             document.getElementById('plViewChartBtn').className = trendView === 'chart' ? 'btn-primary' : 'btn-secondary';
             document.getElementById('plViewTableBtn').className = trendView === 'table' ? 'btn-primary' : 'btn-secondary';
+            const isMonthly = document.getElementById('plChartGranularity').value === 'monthly';
+            document.getElementById('plMatrixOrderGroup').style.display = trendView === 'table' && isMonthly ? 'flex' : 'none';
+            document.getElementById('plMatrixCsvBtn').style.display = trendView === 'table' ? '' : 'none';
 
             if (trendView === 'table') {
+                document.getElementById('plChartEmpty').style.display = 'none';
                 document.getElementById('plChartWrap').style.display = 'none';
                 document.getElementById('plChartTableWrap').style.display = 'block';
-                renderTrendTable(lastTrendData);
+                loadMatrix();
                 return;
             }
 
             document.getElementById('plChartTableWrap').style.display = 'none';
+            if (!lastTrendData) { setChartEmpty(true); return; }
+            document.getElementById('plChartEmpty').style.display = 'none';
             document.getElementById('plChartWrap').style.display = 'block';
             destroyChart('pl');
             const ctx = document.getElementById('plTrendChart').getContext('2d');
@@ -787,16 +833,122 @@
             });
         }
 
-        function renderTrendTable(data) {
-            const [revenue, grossProfit, netProfit] = data.datasets;
-            document.getElementById('plChartTableBody').innerHTML = data.labels.map((label, i) => `
-                <tr>
-                    <td>${label}</td>
-                    <td class="amount">${fmtTot(revenue.data[i])}</td>
-                    <td class="amount">${fmtTot(grossProfit.data[i])}</td>
-                    <td class="amount ${netProfit.data[i] >= 0 ? 'positive' : 'negative'}">${fmtTot(netProfit.data[i])}</td>
-                </tr>
-            `).join('');
+        async function loadMatrix() {
+            if (!lastTrendParams) return;
+            const granularity = document.getElementById('plChartGranularity').value;
+            const qs = trendQuery(granularity);
+            const wrap = document.getElementById('plChartTableWrap');
+            if (qs === lastMatrixKey && lastMatrixData) { renderMatrix(); return; }
+
+            wrap.innerHTML = '<div class="chart-loading"><div class="chart-spinner"></div> Loading&hellip;</div>';
+            try {
+                const res = await fetch(`/api/accounting/reports/profit-loss/matrix?${qs}`, { headers: authH() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                lastMatrixKey = qs;
+                lastMatrixData = data;
+                renderMatrix();
+            } catch (err) {
+                lastMatrixKey = null;
+                lastMatrixData = null;
+                wrap.innerHTML = `<div class="chart-empty" style="display:block;">Could not load the line-item view: ${esc(err.message)}</div>`;
+            }
+        }
+
+        // Column indexes in display order. "Same month together" (monthly only)
+        // groups e.g. every March side by side, starting from the company's
+        // financial-year start month, oldest year first within each month.
+        function matrixColumnOrder(data) {
+            const idx = data.columns.map((_, i) => i);
+            const order = document.getElementById('plMatrixOrder').value;
+            if (data.metadata.granularity !== 'monthly' || order !== 'same-month') return { idx, groupStarts: new Set() };
+            const fyStart = data.metadata.fyStartMonth || 3;
+            const pos = key => { const m = parseInt(key.slice(5, 7), 10); return (m - fyStart + 12) % 12; };
+            idx.sort((a, b) => pos(data.columns[a].key) - pos(data.columns[b].key) || data.columns[a].key.localeCompare(data.columns[b].key));
+            const groupStarts = new Set(idx.filter((ci, n) => n === 0 || pos(data.columns[ci].key) !== pos(data.columns[idx[n - 1]].key)));
+            return { idx, groupStarts };
+        }
+
+        // Rows in statement order: [{ kind, label, values }] — shared by the
+        // on-screen table and the CSV export so both always match.
+        function matrixRows(data) {
+            const rows = [];
+            const t = data.totals;
+            const section = key => data.sections.find(s => s.key === key);
+            const addSection = key => {
+                const s = section(key);
+                if (!s || !s.accounts.length) return false;
+                rows.push({ kind: 'header', label: s.label });
+                s.accounts.forEach(a => rows.push({ kind: 'account', label: `${a.code} — ${a.name}`, values: a.values }));
+                rows.push({ kind: 'total', label: s.totalLabel, values: s.total });
+                return true;
+            };
+            const hasRevenue = addSection('operating_income');
+            const hasCos = addSection('cost_of_sales');
+            if (hasRevenue || hasCos) rows.push({ kind: 'profit', label: 'GROSS PROFIT', values: t.grossProfit });
+            addSection('other_income');
+            addSection('operating_expense');
+            addSection('depreciation_amort');
+            addSection('finance_cost');
+            rows.push({ kind: 'net', label: 'NET PROFIT', values: t.netProfit });
+            return rows;
+        }
+
+        function renderMatrix() {
+            const data = lastMatrixData;
+            const wrap = document.getElementById('plChartTableWrap');
+            if (!data) return;
+            if (!data.columns.length || !data.sections.some(s => s.accounts.length)) {
+                wrap.innerHTML = '<div class="chart-empty" style="display:block;">No income or expense activity in this date range.</div>';
+                return;
+            }
+            const { idx, groupStarts } = matrixColumnOrder(data);
+            const cellCls = ci => groupStarts.has(ci) ? ' pl-group-start' : '';
+            const rowTotal = values => values.reduce((s, v) => s + v, 0);
+            const signCls = v => v >= 0 ? 'positive' : 'negative';
+
+            let html = '<table class="report-table pl-matrix"><thead><tr><th>Account</th>';
+            idx.forEach(ci => { html += `<th class="${cellCls(ci).trim()}">${esc(data.columns[ci].label)}</th>`; });
+            html += '<th class="pl-total-col">Total</th></tr></thead><tbody>';
+
+            for (const r of matrixRows(data)) {
+                if (r.kind === 'header') {
+                    html += `<tr class="section-header"><td colspan="${idx.length + 2}">${esc(r.label.toUpperCase())}</td></tr>`;
+                    continue;
+                }
+                const trCls = { account: 'pl-account', total: 'section-total', profit: 'profit-subtotal', net: 'profit-subtotal pl-net' }[r.kind];
+                // fmtTot (not fmtAmt) so negative line items — e.g. a credit on an
+                // expense account — keep their sign in brackets; zero account cells show '-'.
+                const fmt = v => (r.kind === 'account' && !v) ? '-' : fmtTot(v);
+                const colour = v => (r.kind === 'profit' || r.kind === 'net') ? ` ${signCls(v)}` : '';
+                html += `<tr class="${trCls}"><td>${esc(r.label)}</td>`;
+                idx.forEach(ci => { html += `<td class="amount${cellCls(ci)}${colour(r.values[ci])}">${fmt(r.values[ci])}</td>`; });
+                const tot = rowTotal(r.values);
+                html += `<td class="amount pl-total-col${colour(tot)}">${fmt(tot)}</td></tr>`;
+            }
+            html += '</tbody></table>';
+            wrap.innerHTML = html;
+        }
+
+        function exportMatrixCsv() {
+            const data = lastMatrixData;
+            if (!data) return;
+            const { idx } = matrixColumnOrder(data);
+            const q = s => `"${String(s).replace(/"/g, '""')}"`;
+            const lines = [['Account', ...idx.map(ci => data.columns[ci].label), 'Total'].map(q).join(',')];
+            for (const r of matrixRows(data)) {
+                if (r.kind === 'header') { lines.push(q(r.label.toUpperCase())); continue; }
+                const vals = idx.map(ci => r.values[ci].toFixed(2));
+                lines.push([q(r.label), ...vals, r.values.reduce((s, v) => s + v, 0).toFixed(2)].join(','));
+            }
+            const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `profit-loss-by-period_${data.metadata.fromDate}_to_${data.metadata.toDate}_${data.metadata.granularity}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(a.href);
         }
 
         function setTrendView(view) {

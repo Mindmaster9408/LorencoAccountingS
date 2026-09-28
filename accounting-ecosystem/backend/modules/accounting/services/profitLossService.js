@@ -183,8 +183,51 @@ function yearKeyFromMonth(yyyyMm) {
   return yyyyMm.split('-')[0];
 }
 
-/** 'YYYY-Qn' -> 'Q1 2026'; a plain 'YYYY' key is already display-ready. */
+const MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december'];
+
+/**
+ * companies.financial_year_end is stored inconsistently across the
+ * ecosystem — company.html saves a zero-padded month number ('02'), older
+ * rows hold a month name ('February'), and some are null. Returns the
+ * month number (1-12) the financial year STARTS in (the month after the
+ * year-end month). Unknown/null falls back to a February year-end (March
+ * start), the same default company.html itself shows.
+ */
+function fyStartMonthFromYearEnd(value) {
+  let endMonth = null;
+  const s = String(value == null ? '' : value).trim().toLowerCase();
+  if (/^\d{1,2}$/.test(s)) endMonth = parseInt(s, 10);
+  else if (s.length >= 3) {
+    const idx = MONTH_NAMES.findIndex(n => n.startsWith(s.slice(0, 3)));
+    if (idx >= 0) endMonth = idx + 1;
+  }
+  if (!endMonth || endMonth < 1 || endMonth > 12) endMonth = 2;
+  return (endMonth % 12) + 1;
+}
+
+/**
+ * 'YYYY-MM' -> 'FYyyyy', labelled by the calendar year the financial year
+ * ENDS in (SA convention, and how Sage names it: with a Feb year-end,
+ * Mar 2025 – Feb 2026 is FY2026). A January start means FY = calendar year.
+ */
+function financialYearKeyFromMonth(yyyyMm, fyStartMonth) {
+  const [y, m] = yyyyMm.split('-').map(Number);
+  const endYear = (fyStartMonth === 1 || m < fyStartMonth) ? y : y + 1;
+  return `FY${endYear}`;
+}
+
+/** Bucket-key function for a granularity; monthly keys are the month itself. */
+function periodKeyFn(granularity, fyStartMonth) {
+  if (granularity === 'quarterly') return quarterKeyFromMonth;
+  if (granularity === 'yearly') return yearKeyFromMonth;
+  if (granularity === 'financial_year') return mk => financialYearKeyFromMonth(mk, fyStartMonth);
+  return mk => mk;
+}
+
+/** 'YYYY-Qn' -> 'Q1 2026'; 'YYYY-MM' -> 'Jan 2026'; 'YYYY' / 'FYyyyy' are already display-ready. */
 function formatPeriodLabel(key, granularity) {
+  if (granularity === 'monthly') return formatMonthLabel(key);
   if (granularity !== 'quarterly') return key;
   const [year, q] = key.split('-');
   return `${q} ${year}`;
@@ -202,10 +245,10 @@ function formatPeriodLabel(key, granularity) {
  * function's own `labels` are already human-formatted ('Jan 2026') and
  * can't be re-parsed back into a sortable/groupable key.
  */
-function rollupMonthlySeries(monthlySeries, monthKeys, granularity) {
-  if (granularity !== 'quarterly' && granularity !== 'yearly') return monthlySeries;
+function rollupMonthlySeries(monthlySeries, monthKeys, granularity, fyStartMonth = 3) {
+  if (!['quarterly', 'yearly', 'financial_year'].includes(granularity)) return monthlySeries;
 
-  const keyFn = granularity === 'quarterly' ? quarterKeyFromMonth : yearKeyFromMonth;
+  const keyFn = periodKeyFn(granularity, fyStartMonth);
   const bucketOrder = [];
   const bucketIndexByKey = {};
   monthKeys.forEach(mk => {
@@ -227,6 +270,92 @@ function rollupMonthlySeries(monthlySeries, monthKeys, granularity) {
   return { labels: bucketOrder.map(k => formatPeriodLabel(k, granularity)), datasets };
 }
 
+// P&L sections in statement order, with the labels the matrix shows.
+const MATRIX_SECTIONS = [
+  { key: 'operating_income',   label: 'Revenue',                 totalLabel: 'Total Revenue' },
+  { key: 'cost_of_sales',      label: 'Cost of Sales',           totalLabel: 'Total Cost of Sales' },
+  { key: 'other_income',       label: 'Other Income',            totalLabel: 'Total Other Income' },
+  { key: 'operating_expense',  label: 'Operating Expenses',      totalLabel: 'Total Operating Expenses' },
+  { key: 'depreciation_amort', label: 'Depreciation & Amortisation', totalLabel: 'Total Depreciation' },
+  { key: 'finance_cost',       label: 'Finance Costs',           totalLabel: 'Total Finance Costs' },
+];
+
+/**
+ * Line-item P&L matrix: every income/expense account as a row, one column
+ * per period bucket (month / quarter / calendar year / financial year),
+ * grouped into the same sections and subtotals as GET /profit-loss.
+ *
+ * Each column is classified with the exact same classifyAccountBalance +
+ * buildProfitLossTotals path as the single-period report and the trend
+ * chart, so a column here always equals running /profit-loss for that
+ * period. Accounts with no activity in any column are omitted.
+ *
+ * `monthKeys` must be the raw 'YYYY-MM' range (monthRangeLabels) and
+ * `linesByMonth` the aggregateLinesByMonth output for the same lines.
+ */
+function buildProfitLossMatrix(accounts, linesByMonth, monthKeys, granularity, fyStartMonth = 3) {
+  const keyFn = periodKeyFn(granularity, fyStartMonth);
+
+  // Bucket the month keys, and merge each bucket's per-account debit/credit.
+  const columns = [];
+  const aggByColumn = [];
+  const colIndex = {};
+  for (const mk of monthKeys) {
+    const key = keyFn(mk);
+    if (!(key in colIndex)) {
+      colIndex[key] = columns.length;
+      columns.push({ key, label: formatPeriodLabel(key, granularity), months: [] });
+      aggByColumn.push({});
+    }
+    const ci = colIndex[key];
+    columns[ci].months.push(mk);
+    const monthAgg = linesByMonth[mk] || {};
+    for (const [accountId, dc] of Object.entries(monthAgg)) {
+      const target = aggByColumn[ci][accountId] || (aggByColumn[ci][accountId] = { debit: 0, credit: 0 });
+      target.debit += dc.debit;
+      target.credit += dc.credit;
+    }
+  }
+
+  const r2 = n => Math.round(n * 100) / 100;
+  const perColumn = aggByColumn.map(agg =>
+    buildProfitLossTotals(accounts.map(a => classifyAccountBalance(a, agg[a.id]))));
+
+  const sections = MATRIX_SECTIONS.map(sec => {
+    const rowsById = {};
+    perColumn.forEach((col, ci) => {
+      for (const entry of col.sections[sec.key]) {
+        const row = rowsById[entry.id] || (rowsById[entry.id] = {
+          id: entry.id, code: entry.code, name: entry.name, values: new Array(columns.length).fill(0),
+        });
+        row.values[ci] = r2(entry.balance);
+      }
+    });
+    const rows = Object.values(rowsById)
+      .filter(r => r.values.some(v => v !== 0))
+      .sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), undefined, { numeric: true }));
+    const total = columns.map((_, ci) => r2(rows.reduce((s, r) => s + r.values[ci], 0)));
+    return { key: sec.key, label: sec.label, totalLabel: sec.totalLabel, accounts: rows, total };
+  });
+
+  const pick = field => perColumn.map(c => r2(c.totals[field]));
+  return {
+    columns: columns.map(c => ({ key: c.key, label: c.label, months: c.months })),
+    sections,
+    totals: {
+      operatingIncome: pick('operatingIncome'),
+      costOfSales: pick('costOfSales'),
+      grossProfit: pick('grossProfit'),
+      otherIncome: pick('otherIncome'),
+      operatingExpenses: pick('operatingExpenses'),
+      depreciation: pick('depreciation'),
+      operatingProfit: pick('operatingProfit'),
+      financeCosts: pick('financeCosts'),
+      netProfit: pick('netProfit'),
+    },
+  };
+}
+
 module.exports = {
   classifyAccountBalance,
   buildProfitLossTotals,
@@ -234,5 +363,8 @@ module.exports = {
   buildMonthlySeries,
   monthRangeLabels,
   rollupMonthlySeries,
+  buildProfitLossMatrix,
+  fyStartMonthFromYearEnd,
+  financialYearKeyFromMonth,
   toDateOnlyString,
 };

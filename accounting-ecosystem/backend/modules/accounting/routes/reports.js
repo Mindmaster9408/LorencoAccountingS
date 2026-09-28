@@ -10,6 +10,8 @@ const {
   buildMonthlySeries,
   monthRangeLabels,
   rollupMonthlySeries,
+  buildProfitLossMatrix,
+  fyStartMonthFromYearEnd,
 } = require('../services/profitLossService');
 const {
   generateTrialBalancePdf,
@@ -28,6 +30,19 @@ async function fetchCompanyForPdf(companyId) {
     .maybeSingle();
   return data || {};
 }
+
+// Month (1-12) the company's financial year starts in, for 'financial_year'
+// grouping on the P&L trend chart and matrix.
+async function fetchFyStartMonth(companyId) {
+  const { data } = await supabase
+    .from('companies')
+    .select('financial_year_end')
+    .eq('id', companyId)
+    .maybeSingle();
+  return fyStartMonthFromYearEnd(data && data.financial_year_end);
+}
+
+const P_AND_L_GRANULARITIES = ['monthly', 'quarterly', 'yearly', 'financial_year'];
 
 const router = express.Router();
 
@@ -751,26 +766,68 @@ router.get('/profit-loss/trend', authenticate, hasPermission('report.view'), asy
     const { fromDate, toDate, segmentValueId, journalSourceMode: rawMode, granularity: rawGranularity } = req.query;
     if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
     const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
-    const granularity = ['monthly', 'quarterly', 'yearly'].includes(rawGranularity) ? rawGranularity : 'monthly';
+    const granularity = P_AND_L_GRANULARITIES.includes(rawGranularity) ? rawGranularity : 'monthly';
 
     const companyId = req.user.companyId;
-    const { accounts, lines } = await fetchAccountBalances(companyId, {
-      fromDate, toDate, types: ['income', 'expense'],
-      segmentValueId: segmentValueId || null, journalSourceMode
-    });
+    const [{ accounts, lines }, fyStartMonth] = await Promise.all([
+      fetchAccountBalances(companyId, {
+        fromDate, toDate, types: ['income', 'expense'],
+        segmentValueId: segmentValueId || null, journalSourceMode
+      }),
+      fetchFyStartMonth(companyId),
+    ]);
 
     const linesByMonth = aggregateLinesByMonth(lines);
     const monthLabels = monthRangeLabels(fromDate, toDate);
     const monthlySeries = buildMonthlySeries(accounts, linesByMonth, monthLabels);
-    const series = rollupMonthlySeries(monthlySeries, monthLabels, granularity);
+    const series = rollupMonthlySeries(monthlySeries, monthLabels, granularity, fyStartMonth);
 
     res.json({
       ...series,
-      metadata: { fromDate, toDate, segmentValueId: segmentValueId || null, granularity },
+      metadata: { fromDate, toDate, segmentValueId: segmentValueId || null, granularity, fyStartMonth },
     });
   } catch (error) {
     console.error('Error generating profit & loss trend:', error);
     res.status(500).json({ error: 'Failed to generate profit & loss trend' });
+  }
+});
+
+/**
+ * GET /api/reports/profit-loss/matrix
+ * Line-item P&L with one column per period: every income/expense account
+ * as a row, grouped into the same sections + subtotals (Gross Profit,
+ * Net Profit, …) as GET /profit-loss. Same data source, filters and
+ * classification as /profit-loss and /profit-loss/trend — see
+ * buildProfitLossMatrix in services/profitLossService.js.
+ * Query: fromDate, toDate, granularity (monthly|quarterly|yearly|financial_year),
+ *        segmentValueId, journalSourceMode
+ */
+router.get('/profit-loss/matrix', authenticate, hasPermission('report.view'), async (req, res) => {
+  try {
+    const { fromDate, toDate, segmentValueId, journalSourceMode: rawMode, granularity: rawGranularity } = req.query;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'fromDate and toDate are required' });
+    const journalSourceMode = ['all', 'manual', 'system'].includes(rawMode) ? rawMode : 'all';
+    const granularity = P_AND_L_GRANULARITIES.includes(rawGranularity) ? rawGranularity : 'monthly';
+
+    const companyId = req.user.companyId;
+    const [{ accounts, lines }, fyStartMonth] = await Promise.all([
+      fetchAccountBalances(companyId, {
+        fromDate, toDate, types: ['income', 'expense'],
+        segmentValueId: segmentValueId || null, journalSourceMode
+      }),
+      fetchFyStartMonth(companyId),
+    ]);
+
+    const matrix = buildProfitLossMatrix(
+      accounts, aggregateLinesByMonth(lines), monthRangeLabels(fromDate, toDate), granularity, fyStartMonth);
+
+    res.json({
+      ...matrix,
+      metadata: { fromDate, toDate, segmentValueId: segmentValueId || null, granularity, fyStartMonth },
+    });
+  } catch (error) {
+    console.error('Error generating profit & loss matrix:', error);
+    res.status(500).json({ error: 'Failed to generate profit & loss matrix' });
   }
 });
 
