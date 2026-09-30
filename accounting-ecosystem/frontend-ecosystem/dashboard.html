@@ -772,6 +772,8 @@
         .app-launch-btn.payroll { background: rgba(16,185,129,0.2); color: #6ee7b7; border-color: rgba(16,185,129,0.3); }
         .app-launch-btn.accounting { background: rgba(245,158,11,0.2); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
         .app-launch-btn.sean { background: rgba(139,92,246,0.2); color: #a78bfa; border-color: rgba(139,92,246,0.3); }
+        .app-launch-btn.inventory { background: rgba(249,115,22,0.2); color: #fdba74; border-color: rgba(249,115,22,0.3); }
+        .app-launch-btn.practice { background: rgba(167,139,250,0.2); color: #c4b5fd; border-color: rgba(167,139,250,0.3); }
         .btn-add-app {
             display: inline-flex;
             align-items: center;
@@ -1051,10 +1053,12 @@
                 </div>
                 <div class="clients-filter-bar" id="clientsFilterBar">
                     <span class="filter-chip active" data-filter="all" onclick="setClientFilter('all', this)">All</span>
-                    <span class="filter-chip" data-filter="pos" onclick="setClientFilter('pos', this)">🛒 POS</span>
-                    <span class="filter-chip" data-filter="payroll" onclick="setClientFilter('payroll', this)">💰 Payroll</span>
-                    <span class="filter-chip" data-filter="accounting" onclick="setClientFilter('accounting', this)">📊 Accounting</span>
-                    <span class="filter-chip" data-filter="sean" onclick="setClientFilter('sean', this)">🤖 SEAN</span>
+                    <span class="filter-chip" data-filter="pos" onclick="setClientFilter('pos', this)">🛒 Checkout Charlie</span>
+                    <span class="filter-chip" data-filter="payroll" onclick="setClientFilter('payroll', this)">💰 Paytime</span>
+                    <span class="filter-chip" data-filter="accounting" onclick="setClientFilter('accounting', this)">📊 Ledger Leo</span>
+                    <span class="filter-chip" data-filter="inventory" onclick="setClientFilter('inventory', this)">📦 Stockton</span>
+                    <span class="filter-chip" data-filter="practice" onclick="setClientFilter('practice', this)">🏛️ Firmflow</span>
+                    <span class="filter-chip" data-filter="sean" onclick="setClientFilter('sean', this)">🤖 SEAN AI</span>
                     <span class="filter-chip" data-filter="individual" onclick="setClientFilter('individual', this)">👤 Individual</span>
                     <span class="filter-chip" data-filter="business" onclick="setClientFilter('business', this)">🏢 Business</span>
                 </div>
@@ -1315,7 +1319,15 @@
                         <span class="app-check-icon">📦</span>
                         <span class="app-check-label">Stockton</span>
                     </label>
+                    <label class="app-check" id="editAppsPracticeWrap" onclick="toggleAppCheck(this)" title="Only available for clients set up as an Accounting Practice">
+                        <input type="checkbox" name="editApps" value="practice">
+                        <span class="app-check-icon">🏛️</span>
+                        <span class="app-check-label">Firmflow</span>
+                    </label>
                 </div>
+                <p id="editAppsPracticeHint" style="display:none; color: var(--text-muted); margin-top: 10px; font-size: 0.78rem;">
+                    🏛️ Firmflow can only be activated for clients whose company type is <strong>Accounting Practice</strong>. Change the client's type first, then come back here.
+                </p>
                 <div class="form-actions" style="margin-top: 24px;">
                     <button type="button" class="btn-form cancel" onclick="closeEditApps()">Cancel</button>
                     <button type="button" class="btn-form save" onclick="saveEditApps()">Update</button>
@@ -2607,8 +2619,8 @@
         // Extra fields carried from PDF import into the add-client form (null when adding manually)
         let _importedClientData = null;
 
-        const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖', inventory: '📦' };
-        const APP_LABELS = { pos: 'Checkout Charlie', payroll: 'Lorenco Paytime', accounting: 'Ledger Leo', sean: 'SEAN AI', inventory: 'Stockton' };
+        const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖', inventory: '📦', practice: '🏛️' };
+        const APP_LABELS = { pos: 'Checkout Charlie', payroll: 'Lorenco Paytime', accounting: 'Ledger Leo', sean: 'SEAN AI', inventory: 'Stockton', practice: 'Firmflow' };
 
         // Returns true when the company is The Infinite Legacy — mirrors admin.html guard.
         function isTILCompany(co) {
@@ -3077,7 +3089,7 @@
             // Apply filter
             if (activeFilter === 'individual' || activeFilter === 'business') {
                 filtered = filtered.filter(c => c.client_type === activeFilter);
-            } else if (['pos', 'payroll', 'accounting', 'sean'].includes(activeFilter)) {
+            } else if (['pos', 'payroll', 'accounting', 'sean', 'inventory', 'practice'].includes(activeFilter)) {
                 filtered = filtered.filter(c => c.apps && c.apps.includes(activeFilter));
             }
 
@@ -3193,6 +3205,20 @@
                 if (cb.value === 'inventory') {
                     label.style.display = isTIL ? '' : 'none';
                     if (!isTIL) { cb.checked = false; label.classList.remove('checked'); }
+                    return;
+                }
+                if (cb.value === 'practice') {
+                    // Firmflow may only be activated for accounting-practice clients — the backend
+                    // enforces this too (PUT /api/eco-clients/:id). An already-linked Firmflow stays
+                    // checked and toggleable so saving this modal never silently drops it.
+                    const isLinked = !!(client.apps && client.apps.includes('practice'));
+                    const canActivate = isLinked || client.client_account_holder_type === 'accounting_practice';
+                    cb.checked = isLinked;
+                    cb.disabled = !canActivate;
+                    label.classList.toggle('checked', isLinked);
+                    label.style.opacity = canActivate ? '' : '0.45';
+                    label.style.cursor = canActivate ? '' : 'not-allowed';
+                    document.getElementById('editAppsPracticeHint').style.display = canActivate ? 'none' : '';
                     return;
                 }
                 const isLinked = client.apps && client.apps.includes(cb.value);

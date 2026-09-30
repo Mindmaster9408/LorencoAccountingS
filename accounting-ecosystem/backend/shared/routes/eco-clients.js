@@ -806,7 +806,7 @@ router.post('/', async (req, res) => {
       const allowed = await isInfiniteLegacyCompany(resolvedCompanyId);
       if (!allowed) {
         return res.status(403).json({
-          error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.'
+          error: 'Stockton can only be assigned under The Infinite Legacy.'
         });
       }
     }
@@ -923,7 +923,7 @@ router.put('/:id', async (req, res) => {
         const allowed = await isInfiniteLegacyCompany(old.company_id);
         if (!allowed) {
           return res.status(403).json({
-            error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.'
+            error: 'Stockton can only be assigned under The Infinite Legacy.'
           });
         }
       }
@@ -938,7 +938,7 @@ router.put('/:id', async (req, res) => {
           .single();
         if (!firmCo || firmCo.account_holder_type !== 'accounting_practice') {
           return res.status(403).json({
-            error: 'Practice Management can only be activated for accounting practices. ' +
+            error: 'Firmflow can only be activated for accounting practices. ' +
                    'Set this company\'s type to "Accounting Practice" first.'
           });
         }
