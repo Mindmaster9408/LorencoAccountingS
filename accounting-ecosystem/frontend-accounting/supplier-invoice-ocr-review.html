@@ -16,7 +16,13 @@
       display: grid;
       grid-template-columns: 1fr 520px;
       gap: 0;
-      height: calc(100vh - 56px);   /* full height minus topbar */
+      /* Nav is two stacked rows — top-bar (60px) + main-nav (56px) = 116px
+         total (see dark-theme.css .modal padding-top:116px for the same
+         measurement). This assumed only one row (56px), so the layout sat
+         60px taller than the viewport and its bottom ~60px — the tail end
+         of the review form — was clipped by overflow:hidden below with no
+         way to scroll to it. */
+      height: calc(100vh - 116px);
       overflow: hidden;
     }
     @media (max-width: 900px) {

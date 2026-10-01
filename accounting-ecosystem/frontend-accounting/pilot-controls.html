@@ -627,7 +627,8 @@ function ah() { return { 'Content-Type': 'application/json', 'Authorization': 'B
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async function () {
-  if (typeof createNavigation === 'function') createNavigation();
+  // navigation.js self-initializes on DOMContentLoaded — calling createNavigation()
+  // again here has no re-entry guard and duplicates the top nav bar.
   await loadTemplates();
   await loadDashboard();
   renderStatusBar();

@@ -404,7 +404,9 @@
             window.location.href = '/';
         }
 
-        createNavigation('historical-comparatives-charts.html');
+        // navigation.js self-initializes on DOMContentLoaded — do not call
+        // createNavigation() again here, it has no re-entry guard and will
+        // insert a second nav bar (was the cause of the duplicated top nav).
 
         const API_URL = '/api/accounting/historical-comparatives';
 
@@ -416,8 +418,12 @@
         // Registered Chart.js instances — stored to allow destroy/re-render on filter change
         const chartInstances = {};
 
-        // ── Show draft toggle only for admin/accountant ──────────────────
-        if (['admin', 'accountant'].includes(user.role)) {
+        // ── Show draft toggle for roles the backend actually honours it for ──
+        // Must mirror DRAFT_REPORT_ROLES in historicalComparatives.js — was
+        // ['admin','accountant'] only, which hid this toggle from super_admin
+        // (and business_owner/practice_manager), so a batch still in draft
+        // status showed empty Revenue/Expense charts with no way to opt in.
+        if (['business_owner', 'accountant', 'practice_manager', 'admin', 'super_admin'].includes(user.role)) {
             document.getElementById('draftToggleWrap').classList.add('visible');
         }
 

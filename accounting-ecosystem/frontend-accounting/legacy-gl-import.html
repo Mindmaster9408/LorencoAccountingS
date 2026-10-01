@@ -151,7 +151,15 @@
     .status-INFO    { color: var(--blue); }
 
     /* ── Action bar ───────────────────────────────────────────────────── */
-    .action-bar { display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    /* Sticky to the viewport bottom so Execute Import / Cancel Batch are
+       always reachable regardless of how tall the Preview/Mapping/Validation
+       tab content above it grows — previously just sat at the end of normal
+       page flow, so a long preview table or mapping list pushed it far below
+       the fold with no cue that more scrolling (or zooming out) was needed. */
+    .action-bar {
+      display: flex; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--border); flex-wrap: wrap;
+      position: sticky; bottom: 0; background: var(--surface); border-radius: 0 0 12px 12px; z-index: 2;
+    }
 
     /* ── Toast ────────────────────────────────────────────────────────── */
     #toast {

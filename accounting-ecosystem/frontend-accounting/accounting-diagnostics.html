@@ -1204,10 +1204,7 @@ function escapeSQ(s) {
   return String(s || '').replace(/'/g, "\\'");
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function () {
-  if (typeof createNavigation === 'function') createNavigation();
-});
+// navigation.js self-initializes on DOMContentLoaded — no page-level init needed.
 </script>
     <script src="js/cosmic-bg.js"></script>
 </body>
