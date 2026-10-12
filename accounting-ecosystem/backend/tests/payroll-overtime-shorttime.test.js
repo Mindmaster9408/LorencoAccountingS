@@ -25,13 +25,17 @@
  * ============================================================================
  */
 
-// Load the engine directly. It exposes module.exports = PayrollEngine in Node.js.
-const PayrollEngine = require('../../frontend-payroll/js/payroll-engine.js');
+// Load the single authoritative engine (backend/core) — the frontend copy is
+// display-only and being retired (docs/paytime/REGSTELPLAN_2026-10.md, Fase 0.3).
+const PayrollEngine = require('../core/payroll-engine.js');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const BASE_SALARY = 20000;           // R20,000/month
-const HOURLY_RATE = BASE_SALARY / PayrollEngine.HOURLY_DIVISOR;   // ~R115.38/hr
+// Use the engine's own hourly rate, which is rounded to cents (the rate printed
+// on the payslip, so rate × hours always equals the line amount). Deriving it
+// unrounded here made multi-entry sums drift by a few cents (Fase 0.3).
+const HOURLY_RATE = PayrollEngine.calcHourlyRate(BASE_SALARY);   // R115.39/hr
 
 function makePayroll(basicSalary = BASE_SALARY, extraInputs = []) {
     return { basic_salary: basicSalary, regular_inputs: extraInputs };

@@ -10,6 +10,15 @@ Status labels used throughout: **✅ Working** | **⚠️ Partial** | **❌ Not 
 
 ---
 
+## ⭐ Specification (how Paytime MUST work) — start here for any change
+
+| File | Purpose |
+|---|---|
+| [spec/00_LEESMY.md](spec/00_LEESMY.md) | Owner-approved behaviour spec, one file per program section (Afrikaans). Where code and spec differ, the code is wrong. |
+| [REGSTELPLAN_2026-10.md](REGSTELPLAN_2026-10.md) | Step-by-step, dependency-ordered fix plan from the 2026-10-12 audit, with the golden-test regression gate. |
+
+The documents below describe what the code *did* as of April 2026 and are partly outdated.
+
 ## Documents
 
 | File | Purpose |

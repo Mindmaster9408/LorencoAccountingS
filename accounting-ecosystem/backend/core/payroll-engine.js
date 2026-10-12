@@ -77,6 +77,8 @@
 //      and update DEFAULT_TAX_YEAR.  Source: www.sars.gov.za
 // ============================================================
 
+/* global safeLocalStorage */ // browser-only KV bridge; every use is guarded by a typeof check
+
 const PayrollEngine = {
 
     // === ENGINE METADATA ===
@@ -1055,12 +1057,21 @@ const PayrollEngine = {
                     ? ytdData.prior_periodic_taxable_gross : _ytdPriorTaxable;
                 var _ytdOnceOff  = ytdData.prior_once_off_taxable_gross !== undefined
                     ? ytdData.prior_once_off_taxable_gross : 0;
+                // Annualise over the months this employee actually has payroll data for in
+                // this tax year (locked snapshots incl. imported months, + this month), not the
+                // calendar month number. With complete history the two are equal; for a
+                // mid-year starter (or a company that joined Paytime mid-year) the calendar
+                // number made PAYE collapse to R0 in months 2–3 (finding K2, Fase 3a,
+                // docs/paytime/FASE3_CHANGE_IMPACT_NOTE.md). Capped at the calendar month number.
+                var _periodsWorked = (typeof ytdData.prior_periods_count === 'number' && ytdData.prior_periods_count >= 0)
+                    ? Math.min(ytdData.prior_periods_count + 1, monthInTaxYear)
+                    : monthInTaxYear;
                 paye = PayrollEngine.calculateMonthlyPAYE_YTD(
                     periodicTaxable, onceOffTaxable,
                     _ytdPeriodic, _ytdOnceOff, _ytdPriorPAYE,
-                    monthInTaxYear, opts, tables
+                    _periodsWorked, opts, tables
                 );
-                _ytdCalc = { method: 'cumulative_ytd', currentMonthNumber: monthInTaxYear };
+                _ytdCalc = { method: 'cumulative_ytd', currentMonthNumber: monthInTaxYear, periodsWorked: _periodsWorked };
             }
         } else {
             paye = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);

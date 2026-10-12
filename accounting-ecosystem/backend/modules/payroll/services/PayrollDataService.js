@@ -155,11 +155,14 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
 async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
     // Feature flags:
     //   PAYE_YTD_ENABLED=false        → disable YTD entirely; fall back to monthly annualization.
-    //   PAYE_YTD_METHOD=average_taxable (default) → YTD average taxable gross method.
-    //   PAYE_YTD_METHOD=cumulative               → old cumulative projection method (legacy).
-    //   PAYE_YTD_METHOD=projection_type          → per-item type classification method.
+    //   PAYE_YTD_METHOD=cumulative (default)  → SARS run-to-date: periodic annualised over months
+    //                                           worked, once-off taxed in full when paid. Owner-chosen
+    //                                           method (docs/paytime/spec/06 §B, 2026-10-12).
+    //   PAYE_YTD_METHOD=average_taxable       → averages ALL income incl. bonuses (not SARS-compliant for bonuses).
+    //   PAYE_YTD_METHOD=projection_type       → DO NOT USE: re-taxes once-off income in later months
+    //                                           and refunds voluntary PAYE (findings P1/P2, 2026-10-12).
     if (process.env.PAYE_YTD_ENABLED === 'false') return null;
-    const _ytdMethodEnv  = process.env.PAYE_YTD_METHOD || 'average_taxable';
+    const _ytdMethodEnv  = process.env.PAYE_YTD_METHOD || 'cumulative';
     const _methodName    = _ytdMethodEnv === 'cumulative'        ? 'cumulative_ytd'
                          : _ytdMethodEnv === 'projection_type'   ? 'projection_type_ytd'
                          : 'average_taxable_ytd';

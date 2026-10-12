@@ -44,6 +44,3 @@ if (regressionResults.failed > 0 || prorataResults.failed > 0) {
     console.log('\n✅ ALL TESTS PASSED');
     process.exit(0);
 }
-
-// Exit with appropriate status
-process.exit(testResults.failed > 0 ? 1 : 0);
