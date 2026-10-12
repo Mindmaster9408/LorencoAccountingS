@@ -75,6 +75,20 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
     }
   }
 
+  // Step 2c: Employee-level UIF exemption (employee_payroll_setup.uif_exempt, spec 03 WN-07).
+  // A lookup failure keeps UIF applicable (the statutory default).
+  try {
+    const { data: setup } = await supabase
+      .from('employee_payroll_setup')
+      .select('uif_exempt')
+      .eq('company_id', companyId)
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+    employee.uif_exempt = !!(setup && setup.uif_exempt === true);
+  } catch (setupErr) {
+    employee.uif_exempt = false;
+  }
+
   // Step 3: Fetch employee's work schedule
   const workSchedule = await fetchWorkSchedule(
     companyId,
@@ -734,7 +748,7 @@ async function fetchPeriodInputs(
       // Primary: payroll_items_master
       const { data: masterItems } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif, paye_projection_type, taxable_percentage')
+        .select('item_name, affects_uif, paye_projection_type, taxable_percentage, is_taxable, tax_treatment')
         .eq('company_id', companyId)
         .eq('is_active', true);
 
@@ -761,6 +775,16 @@ async function fetchPeriodInputs(
           // itself, since a 400 there empties ALL period inputs, not just one item).
           if (m.taxable_percentage !== undefined && m.taxable_percentage !== null) {
             ci.taxable_percentage = m.taxable_percentage;
+          }
+          // is_taxable / tax_treatment: a once-off input inherits its item's tax behaviour
+          // exactly like a regular input does (spec 05 PI-01, findings B1/B2 — before
+          // Fase 2 a non-taxable once-off item was taxed and a once-off pension/RA
+          // deduction did not reduce taxable income).
+          if (m.is_taxable !== undefined && m.is_taxable !== null) {
+            ci.is_taxable = m.is_taxable === true;
+          }
+          if (m.tax_treatment) {
+            ci.tax_treatment = m.tax_treatment;
           }
         });
       } else {
@@ -791,6 +815,12 @@ async function fetchPeriodInputs(
               }
               if (kv.taxable_percentage !== undefined && kv.taxable_percentage !== null) {
                 ci.taxable_percentage = kv.taxable_percentage;
+              }
+              if (kv.is_taxable !== undefined && kv.is_taxable !== null) {
+                ci.is_taxable = kv.is_taxable === true;
+              }
+              if (kv.tax_treatment) {
+                ci.tax_treatment = kv.tax_treatment;
               }
             });
           }
@@ -878,8 +908,12 @@ function normalizeCalculationInput(
     description: item.payroll_items?.code || item.description || 'Unknown',
     amount: item.amount || 0,
     type: item.item_type || 'input',
-    // Inherit tax_treatment from the linked payroll item master; default net_only.
-    tax_treatment: item.payroll_items?.tax_treatment || 'net_only',
+    // is_taxable: from payroll_items_master (fetchPeriodInputs); an unknown / free-text
+    // input stays taxable (safe default).
+    is_taxable: item.is_taxable !== false,
+    // tax_treatment: payroll_items_master first (fetchPeriodInputs), then the linked
+    // payroll item, default net_only.
+    tax_treatment: item.tax_treatment || item.payroll_items?.tax_treatment || 'net_only',
     // affects_uif: read from payroll_period_inputs record (stamped at insert,
     // live-overridden from payroll_items_master in fetchPeriodInputs above).
     // Controls UIF contribution base ONLY. Never affects PAYE.
@@ -913,9 +947,14 @@ function normalizeCalculationInput(
     hours_missed: parseFloat(st.hours_missed) || 0 // Decimal hours
   }));
 
-  // Normalize multi-rate (preserve decimal hours)
+  // Normalize multi-rate (preserve decimal hours).
+  // The payslip screen stores the RAND hourly rate the user typed in the
+  // `rate_multiplier` column (spec 05 PI-05: multi-rate = hours × rand rate). The
+  // engine reads `hourly_rate`, which was never set — every multi-rate entry was
+  // paid R0 while the payslip showed it (finding K4, Fase 2).
   const multiRateNormalized = periodInputs.multiRate.map(mr => ({
     hours: parseFloat(mr.hours) || 0, // Decimal hours
+    hourly_rate: parseFloat(mr.rate_multiplier) || 0,
     rate_multiplier: parseFloat(mr.rate_multiplier) || 1.5
   }));
 
@@ -946,9 +985,13 @@ function normalizeCalculationInput(
       medicalMembers: parseInt(employee.medical_aid_members) || 0,
       taxDirective: employee.tax_directive ? parseFloat(employee.tax_directive) : null,
       rebateCode: employee.tax_rebate_code || 'R',
-      // Directors are excluded from UIF per the Unemployment Insurance Act.
-      // is_director === true → engine sets UIF = 0 regardless of company registration.
+      // Director flag — informational. Directors DO pay UIF (Ruan, 2026-10-12, spec 03 WN-06).
       is_director: employee.is_director === true,
+      // Contractor: PAYE on the normal tax tables, no UIF and no SDL (spec 03 WN-08).
+      is_contractor: employee.is_contractor === true,
+      // Employee-level UIF exemption from employee_payroll_setup (spec 03 WN-07). It was
+      // stored but never passed on, so exempt employees still paid UIF (finding B9).
+      uif_exempt: employee.uif_exempt === true,
       // Company-level SDL/UIF registration flags (from migration 018).
       // false = company is exempt → engine returns 0 for that levy.
       // Defaults to true for backward compatibility if flags not yet in DB.

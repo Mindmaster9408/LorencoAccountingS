@@ -58,6 +58,12 @@
 - Engine output gains `voluntary_breakdown` and `voluntary_warnings` (additive).
 - Golden: only S51/S52 changed (intended); new S54, S55, M09, M10, M11.
 
+## Fase 2 (fourth commit) — docs/paytime/FASE2_CHANGE_IMPACT_NOTE.md
+
+- Multi-rate paid (was R0); once-off inputs inherit is_taxable / pre_tax; UIF exemption works; directors pay UIF; contractors no UIF/SDL; SDL on taxable remuneration only.
+- "Set / Change bonus month" button on existing Bonus Spread entries (Ruan sets Bakmeester's himself).
+- Migration 026 confirmed run by Ruan (46 strict ON, 7 OFF).
+
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).

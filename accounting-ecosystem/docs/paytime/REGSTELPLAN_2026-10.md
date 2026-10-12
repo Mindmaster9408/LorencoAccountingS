@@ -76,6 +76,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | **Risiko** | Elke PAYE-syfer vanaf Mrt 2026 verander → **gefinaliseerde maande bly soos hulle is**; kliënte met te veel afgetrekte PAYE kry dit vanself terug teen Februarie (kumulatief) of by assessering. | |
 
 ### Fase 2 — Insette bereik die enjin korrek `[K4, B1, B2, B4, B9]` → spec 05, 03
+
+**✅ Gebou 2026-10-12** — [Change Impact Note](FASE2_CHANGE_IMPACT_NOTE.md): multi-rate betaal, eenmalige insette belasbaar/pre-tax volgens item, UIF-vrystelling werk, direkteure betaal UIF, kontrakteurs geen UIF/SDL, SDL op 80% van reistoelae. Oop: B4 (harde fout as insette nie laai nie), ENJ-21 (pro-rata van vaste toelaes), PI-06/PI-12.
 | Stap | Wat |
 |---|---|
 | 2.1 | Multi-rate: rand-uurtarief word korrek oorgedra (of vermenigvuldiger — volgens Ruan se antwoord 05.2). |
@@ -89,7 +91,7 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 **Status 2026-10-12:** Ruan het besluit om Fase 3 vóór Fase 1 te doen (tabelle is reeds in die data reggestel, D.2; K2 raak regte werknemers).
 - **3a ✅ plaaslik klaar, nog nie gepush nie** — [Change Impact Note](FASE3_CHANGE_IMPACT_NOTE.md). Kumulatiewe metode annualiseer oor die maande wat die werknemer in die belastingjaar data het (gesluite snapshots, insluitend ingevoerde maande) + die huidige maand; kode-standaard is nou `cumulative`. Goue verskille: net M02 (R0 → R4 680,98 elke maand ✅) en M06 (normale PAYE reg; wys nou duidelik die Bonus Spread-dubbeling vir Fase 4). Hek: 15/15 enjin, 127/127 Jest, 0 lint-foute in payroll-kode. Terloops reggestel: dooie kode in `core/run-tests.js` en 'n `global`-verklaring in die enjin (lint, geen gedragsverandering).
 - **3a ✅ gepush** (commit 7fb6bd7).
-- **3b ✅ gebou 2026-10-12** — maand-volgorde per maatskappy (migrasie 026), latere-maand-blok, bevestiging vir oop maande, omkeer-waarskuwing. Sien [Change Impact Note](FASE3_CHANGE_IMPACT_NOTE.md). **Ruan moet migrasie 026 in Supabase hardloop** om die streng instelling vir Pennygrow en nuwe maatskappye aan te skakel.
+- **3b ✅ gebou 2026-10-12** — maand-volgorde per maatskappy (migrasie 026), latere-maand-blok, bevestiging vir oop maande, omkeer-waarskuwing. Sien [Change Impact Note](FASE3_CHANGE_IMPACT_NOTE.md). Migrasie 026 ✅ deur Ruan in Supabase gehardloop (2026-10-12), bevestig: 46 maatskappye streng AAN (insluitend Pennygrow), 7 AF (1, 7, 11, 38, 39, 40, 51).
 | Stap | Wat |
 |---|---|
 | 3.1 | Implementeer die gekose metode (voorstel: SARS kumulatief met maande-gewerk en eenmalige inkomste apart). |

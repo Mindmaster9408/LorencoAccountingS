@@ -188,7 +188,9 @@ const REGRESSION_SCENARIOS = [
             taxableGross: 18500.00,
             paye: 1529.75,
             uif: 177.12,
-            sdl: 195.00,
+            // SDL is on leviable (taxable) remuneration only: 1% × 18 500 — the R1 000
+            // non-taxable allowance is excluded (Fase 2, spec 04 IT-15). Was 195.00 (1% of gross).
+            sdl: 185.00,
             deductions: 0.00,
             net: 17793.13,
             negativeNetPay: false,

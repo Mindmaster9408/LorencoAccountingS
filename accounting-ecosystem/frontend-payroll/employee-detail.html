@@ -666,7 +666,7 @@
                     <div style="margin-bottom:16px;">
                         <label style="display:flex; align-items:center; gap:10px; font-weight:500; cursor:pointer;">
                             <input type="checkbox" id="clf_contractor" style="width:16px; height:16px; cursor:pointer;">
-                            Independent Contractor
+                            Independent Contractor <span style="font-weight:400; color:#888; font-size:12px;">(PAYE on the tax tables; no UIF and no SDL)</span>
                         </label>
                     </div>
 
@@ -3489,7 +3489,11 @@
                     label = '▲ Bonus Spread: R' + (parseFloat(entry.monthly_spread_amount) || 0).toFixed(2) + '/month ' + (entry.start_period || '') + ' to ' + (entry.end_period || '');
                     label += entry.bonus_period
                         ? ' — bonus paid ' + entry.bonus_period
-                        : ' — <strong>bonus month not set</strong> (bonus tax will be deducted again in the bonus month — remove and re-add this entry)';
+                        : ' — <strong>bonus month not set</strong> (bonus tax will be deducted again in the bonus month)';
+                    var _eidBtn = (entry.id || '').replace(/'/g, "\\'");
+                    label += ' <button type="button" onclick="setBonusSpreadMonth(\'' + _eidBtn + '\')" ' +
+                        'style="margin-left:6px; font-size:11px; padding:1px 8px; border-radius:10px; border:1px solid #667eea; background:white; color:#667eea; cursor:pointer;">' +
+                        (entry.bonus_period ? 'Change bonus month' : 'Set bonus month') + '</button>';
                     if (entry.reference) label += ' — ' + entry.reference;
                 } else if (entry.type === 'target_paye') {
                     label = '◎ Target PAYE: R' + (parseFloat(entry.target_paye) || 0).toFixed(2) + range(entry) + ' (never below statutory PAYE)';
@@ -3595,6 +3599,48 @@
                 if (!ok) {
                     _volTaxEntries = _before;
                     showToast('Not saved — the entry was NOT added. Check your connection and try again.', 'error');
+                }
+                renderVolTaxEntries();
+            });
+        }
+
+        // Set or change the month a Bonus Spread's bonus is paid (spec 06 VPA-13) on an existing entry,
+        // so older entries don't have to be deleted and re-created.
+        function setBonusSpreadMonth(id) {
+            var entry = _volTaxEntries.find(function(e) { return e.id === id; });
+            if (!entry) return;
+            var val = prompt(
+                'Month the bonus is paid (YYYY-MM), e.g. 2026-10.\n' +
+                'This spread runs ' + (entry.start_period || '?') + ' to ' + (entry.end_period || '?') + '.',
+                entry.bonus_period || ''
+            );
+            if (val === null) return;
+            val = val.trim();
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(val)) { showToast('Enter the month as YYYY-MM, e.g. 2026-10', 'error'); return; }
+            var updated = Object.assign({}, entry, { bonus_period: val });
+            delete updated.deferral_acknowledged; delete updated.deferral_acknowledged_by; delete updated.deferral_acknowledged_at;
+            // Same rule as a new entry (VPA-17): spread months after the bonus month need confirmation.
+            if (entry.end_period && entry.end_period > val) {
+                var ok = confirm(
+                    'Part of this spread falls AFTER the bonus month (' + val + ').\n\n' +
+                    'The PAYE in the bonus month will be lower than the statutory amount. ' +
+                    'The employer may receive a SARS penalty and interest if audited, even though the year total is correct. ' +
+                    'The full amount must be paid by February.\n\nContinue?'
+                );
+                if (!ok) return;
+                var sess = (typeof AUTH !== 'undefined' && AUTH.getSession) ? (AUTH.getSession() || {}) : {};
+                updated.deferral_acknowledged    = true;
+                updated.deferral_acknowledged_by = sess.email || sess.user_email || null;
+                updated.deferral_acknowledged_at = new Date().toISOString();
+            }
+            var _before = _volTaxEntries.slice();
+            _volTaxEntries = _volTaxEntries.map(function(e) { return e.id === id ? updated : e; });
+            _saveVolTaxToAPI(_volTaxEntries).then(function(ok2) {
+                if (!ok2) {
+                    _volTaxEntries = _before;
+                    showToast('Not saved — the bonus month was NOT changed. Check your connection and try again.', 'error');
+                } else {
+                    showToast('Bonus month set to ' + val + '.', 'success');
                 }
                 renderVolTaxEntries();
             });

@@ -137,6 +137,7 @@ const SCENARIOS = [
   one('S42', 'Company not UIF registered', P, { employee: emp(), company: { uif_registered: false } }),
   one('S43', 'Company not SDL registered', P, { employee: emp(), company: { sdl_registered: false } }),
   one('S44', 'Tax directive 25%', P, { employee: emp({ tax_directive: 25 }) }),
+  one('S45', 'Contractor — PAYE on tables, no UIF, no SDL (WN-08)', P, { employee: emp({ is_contractor: true }) }),
 
   // Voluntary PAYE adjustments
   one('S50', 'Voluntary fixed +R500', P, { employee: emp({ voluntary_tax_config: [{ type: 'fixed', direction: 'increase', fixed_amount: 500 }] }) }),

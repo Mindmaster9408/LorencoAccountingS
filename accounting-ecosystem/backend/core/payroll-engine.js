@@ -810,8 +810,13 @@ const PayrollEngine = {
         // Captured BEFORE pre-tax deductions are applied so that SDL remain based on actual earnings.
         var gross = taxableGross + nonTaxableIncome;
 
+        // SDL leviable amount = remuneration, i.e. the TAXABLE earnings before pre-tax
+        // deductions: non-taxable reimbursements and the non-taxable part of a partly
+        // taxable item (e.g. the 20% of a travel allowance) are excluded (spec 04 IT-15,
+        // Fase 2). Captured here, before pension/RA reduce the PAYE base.
+        var sdlLeviableGross = taxableGross;
+
         // uifApplicableGross is built from the whitelist above — do NOT re-derive from gross.
-        // SDL continues to use full gross — it has no per-item exclusion concept.
         // uifExcludedEarnings is derived for trace/return transparency only.
         var uifExcludedEarnings = PayrollEngine.r2(Math.max(gross - uifApplicableGross, 0));
 
@@ -1077,9 +1082,9 @@ const PayrollEngine = {
             paye = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);
         }
         // UIF is calculated from uifApplicableGross — built positively from UIF-applicable items.
-        // SDL is calculated from full gross — it has no per-item exclusion mechanism.
+        // SDL is calculated from the leviable (taxable) remuneration — see sdlLeviableGross.
         var uif = PayrollEngine.calculateUIF(uifApplicableGross, tables);
-        var sdl = PayrollEngine.calculateSDL(gross, tables);
+        var sdl = PayrollEngine.calculateSDL(sdlLeviableGross, tables);
 
         // Respect company-level SDL/UIF registration flags.
         // employeeOptions.uif_registered === false  →  company not registered for UIF  →  0
@@ -1087,11 +1092,12 @@ const PayrollEngine = {
         // undefined / true (default) → levy calculated normally (backward compatible).
         if (employeeOptions && employeeOptions.uif_registered === false) { uif = 0; }
         if (employeeOptions && employeeOptions.sdl_registered === false) { sdl = 0; }
-        // Directors are excluded from UIF per the Unemployment Insurance Act.
-        // is_director === true overrides even when company is UIF-registered.
-        if (employeeOptions && employeeOptions.is_director === true) { uif = 0; }
-        // Employee-level UIF exemption (stored in employee_payroll_setup.uif_exempt).
+        // Directors DO pay UIF (owner decision 2026-10-12, spec 03 WN-06) — the director flag
+        // no longer zeroes UIF. An individual exemption is set per employee instead (below).
+        // Employee-level UIF exemption (employee_payroll_setup.uif_exempt, spec 03 WN-07).
         if (employeeOptions && employeeOptions.uif_exempt === true) { uif = 0; }
+        // Contractors: PAYE on the tax tables only — no UIF, no SDL (spec 03 WN-08).
+        if (employeeOptions && employeeOptions.is_contractor === true) { uif = 0; sdl = 0; }
 
         // Employer UIF contribution — under the Unemployment Insurance Contributions
         // Act the employer matches the employee's 1% (same base, same monthly cap),
@@ -1311,6 +1317,8 @@ const PayrollEngine = {
             // Exemption flags — included so the frontend can detect intentional UIF = 0
             // and avoid incorrectly recomputing UIF from display gross for exempt employees.
             is_director:  !!(employeeOptions && employeeOptions.is_director),
+            // NOTE (Fase 2): is_director no longer means UIF = 0 — directors pay UIF (spec 03 WN-06).
+            // Contractors (no UIF/SDL) are flagged in is_contractor at the end of this object.
             uif_exempt:   !!(employeeOptions && employeeOptions.uif_exempt),
             // YTD calculation intermediates — populated when YTD method is active, null otherwise.
             // Consumed by PayrollCalculationService to populate _meta transparency fields.
@@ -1322,7 +1330,10 @@ const PayrollEngine = {
             // show each line separately (VPA-07/09) and later months can track bonus spreads.
             voluntary_breakdown: voluntaryBreakdown,
             // [{ code, id, ... }] — TARGET_BELOW_STATUTORY, BONUS_SPREAD_NOT_LINKED, BONUS_SPREAD_DEFERRED
-            voluntary_warnings:  voluntaryWarnings
+            voluntary_warnings:  voluntaryWarnings,
+            // === ADDITIVE FIELDS (Fase 2) ===
+            is_contractor:       !!(employeeOptions && employeeOptions.is_contractor),
+            sdlLeviableGross:    PayrollEngine.r2(sdlLeviableGross)
         };
     },
 
