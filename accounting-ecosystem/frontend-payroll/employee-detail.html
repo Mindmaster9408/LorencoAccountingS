@@ -404,7 +404,7 @@
                     <div class="section" style="margin-bottom: 18px;">
                         <div class="section-title">Voluntary PAYE Adjustment</div>
                         <div style="font-size:12px; color:#5c3317; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:7px 10px; margin-bottom:10px;">
-                            ⚠ Adjustments change the PAYE paid to SARS — not a standard deduction. Increases add extra PAYE; reductions lower PAYE (a reason is required). Multiple entries supported; each appears separately on the payslip.
+                            ⚠ Adjustments change the PAYE paid to SARS — not a standard deduction. They can only <strong>add</strong> PAYE; PAYE never goes below the statutory amount (except a Bonus Spread paid after the bonus month, which asks for confirmation). Multiple entries supported; each appears separately on the payslip.
                         </div>
 
                         <!-- Active entries list -->
@@ -414,7 +414,8 @@
                         <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
                             <span style="font-size:12px; color:#666; align-self:center; font-weight:600;">Add:</span>
                             <button type="button" id="volTaxTabFixed"    class="btn btn-sm" onclick="switchVolTaxTab('fixed')"        style="font-size:12px;">Fixed Monthly</button>
-                            <button type="button" id="volTaxTabVariable" class="btn btn-sm" onclick="switchVolTaxTab('variable')"     style="font-size:12px;">Variable (Period)</button>
+                            <!-- Variable (Period) is INACTIVE (Ruan 2026-10-12, spec 06 VPA-06): hidden, code kept. -->
+                            <button type="button" id="volTaxTabVariable" class="btn btn-sm" onclick="switchVolTaxTab('variable')"     style="font-size:12px; display:none;">Variable (Period)</button>
                             <button type="button" id="volTaxTabSpread"   class="btn btn-sm" onclick="switchVolTaxTab('bonus_spread')" style="font-size:12px;">Bonus Spread</button>
                             <button type="button" id="volTaxTabTarget"   class="btn btn-sm" onclick="switchVolTaxTab('target_paye')"  style="font-size:12px;">Target PAYE Amount</button>
                         </div>
@@ -425,7 +426,8 @@
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <span style="font-size:12px; font-weight:600; color:#555;">Direction:</span>
                                 <button type="button" id="volFixedDirBtnIncrease" onclick="volSetDir('fixed','increase')" style="font-size:11px; padding:3px 12px; border-radius:12px; border:1px solid #28a745; background:#28a745; color:white; cursor:pointer; font-weight:600;">▲ Increase PAYE</button>
-                                <button type="button" id="volFixedDirBtnReduce"   onclick="volSetDir('fixed','reduce')"   style="font-size:11px; padding:3px 12px; border-radius:12px; border:1px solid #999; background:white; color:#666; cursor:pointer; font-weight:600;">▼ Reduce PAYE</button>
+                                <!-- Reduce PAYE is INACTIVE (Ruan 2026-10-12, spec 06 VPA-06): hidden, code kept. -->
+                                <button type="button" id="volFixedDirBtnReduce"   onclick="volSetDir('fixed','reduce')"   style="display:none; font-size:11px; padding:3px 12px; border-radius:12px; border:1px solid #999; background:white; color:#666; cursor:pointer; font-weight:600;">▼ Reduce PAYE</button>
                                 <input type="hidden" id="volFixedDirection" value="increase">
                             </div>
                             <!-- Amount -->
@@ -437,6 +439,13 @@
                             <!-- Description -->
                             <div>
                                 <input type="text" id="volFixedDescription" style="width:100%; border:1px solid #ccc; border-radius:4px; padding:5px 8px; font-size:12px;" placeholder="Optional note">
+                            </div>
+                            <!-- Optional start / end month (VPA-02) -->
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
+                                <label style="margin-bottom:0;">From (optional):</label>
+                                <input type="month" id="volFixedStart" style="border:1px solid #ccc; border-radius:4px; padding:3px 6px; font-size:12px;">
+                                <label style="margin-bottom:0;">To (optional):</label>
+                                <input type="month" id="volFixedEnd" style="border:1px solid #ccc; border-radius:4px; padding:3px 6px; font-size:12px;">
                             </div>
                             <!-- Reduction warning -->
                             <div id="volFixedReduceWarn" style="display:none; font-size:11px; color:#b71c1c; background:#ffebee; border:1px solid #ef9a9a; border-radius:4px; padding:5px 8px;">
@@ -485,8 +494,10 @@
                                 <label style="margin-bottom:0; font-size:13px; font-weight:600;">Bonus amount:</label>
                                 <span style="font-size:13px;">R</span>
                                 <input type="number" id="volBonusAmount" min="0" step="0.01" style="width:120px;" placeholder="0.00">
+                                <label style="margin-bottom:0; font-size:13px; font-weight:600;">paid in:</label>
+                                <input type="month" id="volBonusPeriod" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;" title="The month the bonus is paid — its tax is reconciled against the spread in that month">
                                 <label style="margin-bottom:0; font-size:13px; font-weight:600;">Spread over:</label>
-                                <input type="number" id="volSpreadPeriods" min="1" max="60" value="12" style="width:60px;">
+                                <input type="number" id="volSpreadPeriods" min="1" max="12" value="4" style="width:60px;">
                                 <span style="font-size:13px;">months from</span>
                                 <input type="month" id="volSpreadStart" style="border:1px solid #ccc; border-radius:4px; padding:4px 8px; font-size:13px;">
                                 <button id="volSpreadCalcBtn" class="btn btn-sm" onclick="calcBonusSpread(event)" style="font-size:12px; background:#667eea; color:white;">Calculate PAYE</button>
@@ -502,13 +513,13 @@
                                     <button class="btn btn-sm" onclick="switchVolTaxTab(null)" style="font-size:12px; background:#eee; color:#666;">Cancel</button>
                                 </div>
                             </div>
-                            <div id="volSpreadCalcNotice" style="width:100%; font-size:11px; color:#888; margin-top:4px;">Backend calculates the incremental PAYE from the bonus, then spreads it evenly across the selected periods.</div>
+                            <div id="volSpreadCalcNotice" style="width:100%; font-size:11px; color:#888; margin-top:4px;">The system calculates the extra PAYE the bonus causes in the month it is paid, then spreads it evenly. The spread must end by February. Recommended: end the spread in the bonus month (prepay) — the bonus month then only deducts what is still outstanding.</div>
                         </div>
 
                         <!-- Scenario 4: Target PAYE Amount -->
                         <div id="volTaxPanelTarget" style="display:none; flex-direction:column; gap:8px; padding:10px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0; margin-bottom:8px;">
                             <div style="font-size:12px; color:#5c2d91; background:#ede7f6; border:1px solid #ce93d8; border-radius:4px; padding:6px 8px;">
-                                ℹ Enter the desired final PAYE. The adjustment is computed as <strong>target − system PAYE</strong> at payslip time. If target is lower than system PAYE the adjustment will be negative.
+                                ℹ Enter the desired final PAYE. If it is higher than the statutory PAYE, the difference is added. If it is lower, the statutory PAYE is deducted instead (PAYE never goes below statutory) and a warning is shown.
                             </div>
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <label style="margin-bottom:0; font-size:13px; font-weight:600;">Target final PAYE:</label>
@@ -518,8 +529,12 @@
                             <div>
                                 <input type="text" id="volTargetDescription" style="width:100%; border:1px solid #ccc; border-radius:4px; padding:5px 8px; font-size:12px;" placeholder="Reason for target PAYE (required)">
                             </div>
-                            <div style="font-size:11px; color:#b71c1c; background:#ffebee; border:1px solid #ef9a9a; border-radius:4px; padding:5px 8px;">
-                                ⚠ A target PAYE lower than system-calculated PAYE constitutes a PAYE reduction. This must be approved by the relevant accountant.
+                            <!-- Optional start / end month (VPA-02) -->
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
+                                <label style="margin-bottom:0;">From (optional):</label>
+                                <input type="month" id="volTargetStart" style="border:1px solid #ccc; border-radius:4px; padding:3px 6px; font-size:12px;">
+                                <label style="margin-bottom:0;">To (optional):</label>
+                                <input type="month" id="volTargetEnd" style="border:1px solid #ccc; border-radius:4px; padding:3px 6px; font-size:12px;">
                             </div>
                             <div style="display:flex; gap:8px;">
                                 <button class="btn btn-success btn-sm" onclick="addVolTaxEntry('target_paye')" style="font-size:12px;">Add Entry</button>
@@ -3253,13 +3268,19 @@
             }
 
             // Total Gross — derived from displayed earnings so total always matches line items
-            var previewGross = parseFloat(calc.basicSalary || 0);
-            (calc.allowances || []).forEach(function(a) { previewGross += parseFloat(a.amount) || 0; });
-            previewGross += parseFloat(calc.overtimeAmount || 0);
-            previewGross -= parseFloat(calc.shortTimeAmount || 0);
-            if (previewGross <= 0 && (calc.gross || 0) > 0) previewGross = calc.gross;
+            // Totals ALWAYS come from the backend calculation (spec 08 PS-01/PS-03) — see the
+            // matching note in js/pdf-branding.js (the medical credit used to be subtracted twice).
+            var _lineGross = parseFloat(calc.basicSalary || 0);
+            (calc.allowances || []).forEach(function(a) { _lineGross += parseFloat(a.amount) || 0; });
+            _lineGross += parseFloat(calc.overtimeAmount || 0);
+            _lineGross -= parseFloat(calc.shortTimeAmount || 0);
+            var previewGross = parseFloat(calc.gross) || 0;
+            var _lineMismatch = Math.abs(_lineGross - previewGross) > 0.01 ? Math.round((_lineGross - previewGross) * 100) / 100 : 0;
             html += '<div style="border-top: 2px solid #333; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">';
             html += '<span>TOTAL GROSS</span><span>' + formatMoney(previewGross) + '</span></div>';
+            if (_lineMismatch) {
+                html += '<div style="font-size:11px; color:#c62828; padding:2px 0;">Note: the line items above differ from the calculated gross by ' + formatMoney(_lineMismatch) + '.</div>';
+            }
             html += '</div></div>';
 
             // Deductions Section
@@ -3272,15 +3293,24 @@
             html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
             html += '<span>PAYE (Income Tax)</span><span>' + formatMoney(calc.paye_base) + '</span></div>';
 
-            // Voluntary PAYE Adjustment (signed — positive = increase, negative = reduction)
+            // Voluntary PAYE Adjustment — one line per entry (spec 06 VPA-07), from the engine's
+            // voluntary_breakdown; older results without a breakdown show the single total.
             var _volAdj = calc.voluntary_paye_adjustment || 0;
-            if (_volAdj !== 0) {
-                var _volLabel = _volAdj > 0 ? '↳ Voluntary PAYE Increase' : '↳ PAYE Reduction';
-                var _volColor = _volAdj > 0 ? '#b85c00' : '#1565c0';
-                var _volSign  = _volAdj > 0 ? '+' : '−';
-                html += '<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px; color:' + _volColor + ';">';
-                html += '<span style="padding-left:12px;">' + _volLabel + '</span>';
-                html += '<span>' + _volSign + formatMoney(Math.abs(_volAdj)) + '</span></div>';
+            var _volLines = Array.isArray(calc.voluntary_breakdown)
+                ? calc.voluntary_breakdown.filter(function(v) { return v && !v.inactive && v.amount; })
+                : (_volAdj !== 0 ? [{ type: 'total', amount: _volAdj }] : []);
+            var _volTypeLabel = { fixed: 'Voluntary extra PAYE', target_paye: 'Target PAYE top-up', total: 'Voluntary PAYE adjustment' };
+            if (_volAdj !== 0 || _volLines.length) {
+                _volLines.forEach(function(v) {
+                    var lbl = v.type === 'bonus_spread'
+                        ? (v.phase === 'bonus' ? 'Bonus Spread — tax already paid in advance' : 'Bonus Spread instalment')
+                        : (_volTypeLabel[v.type] || 'Voluntary PAYE');
+                    if (v.description) lbl += ' (' + v.description + ')';
+                    var col = v.amount > 0 ? '#b85c00' : '#1565c0';
+                    html += '<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px; color:' + col + ';">';
+                    html += '<span style="padding-left:12px;">↳ ' + lbl + '</span>';
+                    html += '<span>' + (v.amount > 0 ? '+' : '−') + formatMoney(Math.abs(v.amount)) + '</span></div>';
+                });
                 // Final PAYE summary line
                 html += '<div style="display:flex; justify-content:space-between; padding:4px 0; font-size:13px; font-weight:700; border-top:1px dashed #ccc;">';
                 html += '<span style="padding-left:12px;">↳ Final PAYE</span><span>' + formatMoney(calc.paye) + '</span></div>';
@@ -3292,7 +3322,7 @@
             // Medical Tax Credit
             if (calc.medicalCredit > 0) {
                 html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color: #28a745;">';
-                html += '<span>Medical Tax Credit</span><span>- ' + formatMoney(calc.medicalCredit) + '</span></div>';
+                html += '<span>Medical Tax Credit (already included in PAYE)</span><span>' + formatMoney(calc.medicalCredit) + '</span></div>';
             }
 
             // Other deductions
@@ -3303,11 +3333,9 @@
                 });
             }
 
-            // Total Deductions — derived from displayed line items (matches what's listed above)
-            var previewDed = (parseFloat(calc.paye) || 0) + (parseFloat(calc.uif) || 0) - (parseFloat(calc.medicalCredit) || 0);
-            (calc.deductionsList || []).forEach(function(d) { previewDed += parseFloat(d.amount) || 0; });
-            if (previewDed < 0) previewDed = 0;
-            var previewNet = Math.max(0, previewGross - previewDed);
+            // Total Deductions and Net Pay — from the backend calculation (gross − net), never re-derived.
+            var previewNet = parseFloat(calc.net) || 0;
+            var previewDed = Math.max(0, Math.round((previewGross - previewNet) * 100) / 100);
             html += '<div style="border-top: 2px solid #333; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">';
             html += '<span>TOTAL DEDUCTIONS</span><span>' + formatMoney(previewDed) + '</span></div>';
             html += '</div></div>';
@@ -3449,17 +3477,28 @@
                 var borderColor = isTarget ? '#7b1fa2' : (isReduce ? '#1565c0' : '#28a745');
                 var textColor   = isTarget ? '#5c2d91' : (isReduce ? '#1565c0' : '#2e7d32');
                 var label = '';
+                var range = function(e) {
+                    if (!e.start_period && !e.end_period) return '';
+                    return ' (' + (e.start_period || '…') + ' to ' + (e.end_period || '…') + ')';
+                };
                 if (entry.type === 'fixed') {
-                    label = (isReduce ? '▼ Reduce PAYE' : '▲ Increase PAYE') + ' — Fixed: R' + (parseFloat(entry.fixed_amount) || 0).toFixed(2) + '/month';
+                    label = (isReduce ? '▼ Reduce PAYE' : '▲ Increase PAYE') + ' — Fixed: R' + (parseFloat(entry.fixed_amount) || 0).toFixed(2) + '/month' + range(entry);
                 } else if (entry.type === 'variable') {
                     label = (isReduce ? '▼ Reduce PAYE' : '▲ Increase PAYE') + ' — Variable: R' + (parseFloat(entry.variable_amount) || 0).toFixed(2) + ' for ' + (entry.period || '');
                 } else if (entry.type === 'bonus_spread') {
                     label = '▲ Bonus Spread: R' + (parseFloat(entry.monthly_spread_amount) || 0).toFixed(2) + '/month ' + (entry.start_period || '') + ' to ' + (entry.end_period || '');
+                    label += entry.bonus_period
+                        ? ' — bonus paid ' + entry.bonus_period
+                        : ' — <strong>bonus month not set</strong> (bonus tax will be deducted again in the bonus month — remove and re-add this entry)';
                     if (entry.reference) label += ' — ' + entry.reference;
                 } else if (entry.type === 'target_paye') {
-                    label = '◎ Target PAYE: R' + (parseFloat(entry.target_paye) || 0).toFixed(2) + ' (adjustment computed at payslip time)';
+                    label = '◎ Target PAYE: R' + (parseFloat(entry.target_paye) || 0).toFixed(2) + range(entry) + ' (never below statutory PAYE)';
                 }
                 if (entry.description) label += ' — <em>' + entry.description + '</em>';
+                // Variable and Reduce entries are inactive (spec 06 VPA-06/20) — shown, never applied.
+                if (entry.type === 'variable' || isReduce) {
+                    label = '<s>' + label + '</s> <strong>— INACTIVE (no longer applied)</strong>';
+                }
                 var eid = (entry.id || '').replace(/'/g, "\\'");
                 return '<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:' + bgColor + '; border-radius:4px; border-left:3px solid ' + borderColor + '; margin-bottom:5px; font-size:12px;">' +
                     '<span style="color:' + textColor + ';">✓ ' + label + '</span>' +
@@ -3476,10 +3515,17 @@
                 var dir  = (document.getElementById('volFixedDirection').value) || 'increase';
                 var desc = (document.getElementById('volFixedDescription').value || '').trim();
                 if (dir === 'reduce' && !desc) { showToast('A reason is required when reducing PAYE', 'error'); return; }
+                var fStart = document.getElementById('volFixedStart').value;
+                var fEnd   = document.getElementById('volFixedEnd').value;
+                if (fStart && fEnd && fEnd < fStart) { showToast('"To" month must be after "From" month', 'error'); return; }
                 entry.type = 'fixed'; entry.direction = dir; entry.fixed_amount = amt;
                 if (desc) entry.description = desc;
+                if (fStart) entry.start_period = fStart;
+                if (fEnd)   entry.end_period   = fEnd;
                 document.getElementById('volFixedAmount').value = '';
                 document.getElementById('volFixedDescription').value = '';
+                document.getElementById('volFixedStart').value = '';
+                document.getElementById('volFixedEnd').value = '';
                 volSetDir('fixed', 'increase');
             } else if (type === 'variable') {
                 var varAmt    = parseFloat(document.getElementById('volVariableAmount').value) || 0;
@@ -3500,10 +3546,27 @@
                 var sStart    = document.getElementById('volSpreadStart').value;
                 var sEnd      = document.getElementById('volSpreadEnd').value;
                 var bonusAmt  = parseFloat(document.getElementById('volBonusAmount').value) || 0;
+                var bPeriod   = document.getElementById('volBonusPeriod').value;
                 if (!monthly || !sStart || !sEnd) { showToast('Click Calculate PAYE first', 'error'); return; }
+                if (!bPeriod) { showToast('Select the month the bonus is paid', 'error'); return; }
+                // VPA-17 option B: part of the spread falls after the bonus month → warn and confirm.
+                if (sEnd > bPeriod) {
+                    var ok = confirm(
+                        'Part of this spread falls AFTER the bonus month (' + bPeriod + ').\n\n' +
+                        'The PAYE in the bonus month will be lower than the statutory amount. ' +
+                        'The employer may receive a SARS penalty and interest if audited, even though the year total is correct. ' +
+                        'The full amount must be paid by February.\n\nContinue?'
+                    );
+                    if (!ok) return;
+                    var sess = (typeof AUTH !== 'undefined' && AUTH.getSession) ? (AUTH.getSession() || {}) : {};
+                    entry.deferral_acknowledged    = true;
+                    entry.deferral_acknowledged_by = sess.email || sess.user_email || null;
+                    entry.deferral_acknowledged_at = new Date().toISOString();
+                }
                 entry.type = 'bonus_spread'; entry.direction = 'increase';
                 entry.bonus_amount = bonusAmt; entry.monthly_spread_amount = monthly;
                 entry.start_period = sStart; entry.end_period = sEnd;
+                entry.bonus_period = bPeriod;
                 entry.reference = (document.getElementById('volSpreadRef').value || '').trim();
                 document.getElementById('volBonusAmount').value = '';
                 document.getElementById('volSpreadRef').value = '';
@@ -3512,46 +3575,67 @@
                 if (isNaN(targetAmt) || targetAmt < 0) { showToast('Enter a valid target PAYE amount (minimum R0)', 'error'); return; }
                 var targetDesc = (document.getElementById('volTargetDescription').value || '').trim();
                 if (!targetDesc) { showToast('A reason is required for target PAYE adjustments', 'error'); return; }
+                var tStart = document.getElementById('volTargetStart').value;
+                var tEnd   = document.getElementById('volTargetEnd').value;
+                if (tStart && tEnd && tEnd < tStart) { showToast('"To" month must be after "From" month', 'error'); return; }
                 entry.type = 'target_paye'; entry.target_paye = targetAmt; entry.description = targetDesc;
+                if (tStart) entry.start_period = tStart;
+                if (tEnd)   entry.end_period   = tEnd;
                 document.getElementById('volTargetPaye').value = '';
                 document.getElementById('volTargetDescription').value = '';
+                document.getElementById('volTargetStart').value = '';
+                document.getElementById('volTargetEnd').value = '';
             } else {
                 return;
             }
+            var _before = _volTaxEntries.slice();
             _volTaxEntries.push(entry);
-            _saveVolTaxToAPI(_volTaxEntries);
-            renderVolTaxEntries();
             switchVolTaxTab(null);
+            _saveVolTaxToAPI(_volTaxEntries).then(function(ok) {
+                if (!ok) {
+                    _volTaxEntries = _before;
+                    showToast('Not saved — the entry was NOT added. Check your connection and try again.', 'error');
+                }
+                renderVolTaxEntries();
+            });
         }
 
         function removeVolTaxEntry(id) {
+            var _before = _volTaxEntries.slice();
             _volTaxEntries = _volTaxEntries.filter(function(e) { return e.id !== id; });
-            _saveVolTaxToAPI(_volTaxEntries.length > 0 ? _volTaxEntries : null);
-            renderVolTaxEntries();
+            _saveVolTaxToAPI(_volTaxEntries.length > 0 ? _volTaxEntries : null).then(function(ok) {
+                if (!ok) {
+                    _volTaxEntries = _before;
+                    showToast('Not saved — the entry was NOT removed. Check your connection and try again.', 'error');
+                }
+                renderVolTaxEntries();
+            });
         }
 
+        // Resolves true only when the database confirmed the save (VPA-08) — the screen must
+        // never show an entry that is not stored.
         function _saveVolTaxToAPI(config) {
             var token = safeLocalStorage.getItem('token');
-            if (!token || !currentEmpId) return;
-            fetch(window.location.origin + '/api/employees/' + encodeURIComponent(currentEmpId), {
+            if (!token || !currentEmpId) return Promise.resolve(false);
+            return fetch(window.location.origin + '/api/employees/' + encodeURIComponent(currentEmpId), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                 body: JSON.stringify({ voluntary_tax_config: config || null })
-            }).catch(function() {});
+            }).then(function(r) {
+                if (r.ok && currentEmployee) currentEmployee.voluntary_tax_config = config || null;
+                return r.ok;
+            }).catch(function() { return false; });
         }
 
         async function calcBonusSpread(evt) {
             if (evt) evt.preventDefault();
             var bonusAmt    = parseFloat(document.getElementById('volBonusAmount').value) || 0;
-            var numPer      = parseInt(document.getElementById('volSpreadPeriods').value, 10) || 12;
+            var numPer      = parseInt(document.getElementById('volSpreadPeriods').value, 10) || 4;
             var startPeriod = document.getElementById('volSpreadStart').value;
+            var bonusPeriod = document.getElementById('volBonusPeriod').value;
             if (!bonusAmt || bonusAmt <= 0) { showToast('Enter a bonus amount', 'error'); return; }
+            if (!bonusPeriod) { showToast('Select the month the bonus is paid', 'error'); return; }
             if (!startPeriod) { showToast('Select a start period', 'error'); return; }
-
-            var sd = new Date(startPeriod + '-01');
-            sd.setMonth(sd.getMonth() + numPer - 1);
-            var endPeriod = sd.getFullYear() + '-' + String(sd.getMonth() + 1).padStart(2, '0');
-            document.getElementById('volSpreadEnd').value = endPeriod;
 
             var calcBtn = document.getElementById('volSpreadCalcBtn');
             if (calcBtn) { calcBtn.disabled = true; calcBtn.textContent = 'Calculating...'; }
@@ -3566,14 +3650,17 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({
-                        employee_id: empIdForCalc,
-                        period_key:  startPeriod,
+                        employee_id:  empIdForCalc,
+                        bonus_period: bonusPeriod,
+                        start_period: startPeriod,
                         bonus_amount: bonusAmt,
                         num_periods:  numPer
                     })
                 });
                 var data = await resp.json();
                 if (!data.success) { showToast(data.error || 'Calculation failed', 'error'); return; }
+                var endPeriod = data.end_period;
+                document.getElementById('volSpreadEnd').value = endPeriod;
 
                 document.getElementById('volSpreadIncrPaye').textContent    = (data.incremental_paye      || 0).toFixed(2);
                 document.getElementById('volSpreadMonthly').textContent      = (data.monthly_spread_amount || 0).toFixed(2);

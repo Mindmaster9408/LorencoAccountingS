@@ -200,6 +200,11 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
     let ytdOnceOffTaxableGross  = 0;
     let ytdPAYE                 = 0;
     const periods = [];
+    // Voluntary PAYE per entry (Fase 4, spec 06 §E) — lets the engine credit bonus-spread
+    // instalments in the bonus month and collect deferred amounts afterwards.
+    //   { [entryId]: { prepay, deferred, post } }
+    const priorVoluntaryByEntry = {};
+    let priorVoluntaryUnattributed = 0;   // older snapshots without a per-entry breakdown
 
     for (const snap of snapshots) {
         const out = snap.calculation_output || {};
@@ -228,6 +233,21 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
         ytdPeriodicTaxableGross += periodicTaxable;
         ytdOnceOffTaxableGross  += onceOffTaxable;
         ytdPAYE                 += payeBase;
+
+        if (Array.isArray(out.voluntary_breakdown)) {
+            for (const v of out.voluntary_breakdown) {
+                if (!v || !v.id || v.type !== 'bonus_spread') continue;
+                const agg = priorVoluntaryByEntry[v.id] || (priorVoluntaryByEntry[v.id] = { prepay: 0, deferred: 0, post: 0 });
+                const amt = typeof v.amount === 'number' ? v.amount : 0;
+                if (v.phase === 'prepay' || v.phase === 'unlinked') agg.prepay += amt;
+                else if (v.phase === 'bonus') agg.deferred = typeof v.deferred === 'number' ? v.deferred : 0;
+                else if (v.phase === 'post') agg.post += amt;
+            }
+        } else {
+            const legacyVol = typeof out.voluntary_paye_adjustment === 'number' ? out.voluntary_paye_adjustment
+                            : (typeof out.voluntary_overdeduction === 'number' ? out.voluntary_overdeduction : 0);
+            if (legacyVol > 0) priorVoluntaryUnattributed += legacyVol;
+        }
 
         periods.push({
             period_key:           snap.period_key,
@@ -271,7 +291,9 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
         prior_periodic_taxable_gross: ytdPeriodicTaxableGross,
         prior_once_off_taxable_gross: ytdOnceOffTaxableGross,
         source:                      'locked_snapshots',
-        periods
+        periods,
+        prior_voluntary_by_entry:    priorVoluntaryByEntry,
+        prior_voluntary_unattributed: PayrollEngine.r2(priorVoluntaryUnattributed)
     };
 }
 

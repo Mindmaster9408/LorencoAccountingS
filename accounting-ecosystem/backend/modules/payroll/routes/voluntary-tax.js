@@ -17,83 +17,123 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const PayrollDataService       = require('../services/PayrollDataService');
 const PayrollCalculationService = require('../services/PayrollCalculationService');
+const { taxYearPeriodKeys } = require('../services/periodSequence');
 
 const router = express.Router();
 
 router.use(authenticateToken);
 router.use(requireCompany);
 
+/** Same lookup order as POST /api/payroll/run: global first, then company-specific. */
+async function loadTaxConfig(companyId) {
+  for (const cid of ['__global__', companyId]) {
+    const { data } = await supabase
+      .from('payroll_kv_store_eco')
+      .select('value')
+      .eq('company_id', cid)
+      .eq('key', 'tax_config')
+      .maybeSingle();
+    if (data && data.value) return typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+  }
+  return null;
+}
+
+function addMonths(periodKey, n) {
+  const [y, m] = periodKey.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 /**
  * POST /api/payroll/voluntary-tax/calculate-bonus-spread
+ * Spec: docs/paytime/spec/06_BEREKENINGSENJIN.md §E.4 (VPA-11, VPA-12, VPA-17)
  *
- * Given a bonus amount and number of spread periods, calculate:
- *   1. Base monthly PAYE for the employee (no bonus) — annualPAYE ÷ 12
- *   2. Monthly PAYE WITH the bonus added as once-off income — (annualPAYE+bonus) ÷ 12
- *   3. Incremental annual PAYE = monthly delta × 12  (recovers the true annual figure)
- *   4. Monthly spread = incremental annual PAYE ÷ num_periods
+ *   X       = extra statutory PAYE the bonus causes in its own payment month
+ *             (PAYE with the bonus as once-off income − PAYE without it, same month,
+ *              same year-to-date, same tax tables as Execute Payroll)
+ *   monthly = X ÷ num_periods
  *
- * Body: { employee_id, period_key, bonus_amount, num_periods }
- * Returns: { success, bonus_amount, num_periods, incremental_paye, monthly_spread_amount }
+ * The spread runs num_periods months from start_period and must end by February of the
+ * bonus month's tax year. Months after the bonus month (option B) are allowed but
+ * reported as `months_after_bonus` so the screen can warn before saving.
+ *
+ * Body:    { employee_id, bonus_period, bonus_amount, start_period, num_periods }
+ *          (period_key is accepted as a legacy alias for start_period; bonus_period
+ *           defaults to start_period when omitted)
+ * Returns: { success, bonus_amount, bonus_period, start_period, end_period, num_periods,
+ *            incremental_paye, monthly_spread_amount, months_after_bonus }
  */
 router.post(
   '/calculate-bonus-spread',
   requirePermission('PAYROLL.VIEW'),
   async (req, res) => {
     try {
-      const { employee_id, period_key, bonus_amount, num_periods } = req.body;
+      const { employee_id, bonus_amount, num_periods } = req.body;
+      const startPeriod = req.body.start_period || req.body.period_key;
+      const bonusPeriod = req.body.bonus_period || startPeriod;
 
-      if (!employee_id || !period_key || !bonus_amount || !num_periods) {
+      if (!employee_id || !startPeriod || !bonus_amount || !num_periods) {
         return res.status(400).json({
           success: false,
-          error: 'employee_id, period_key, bonus_amount, and num_periods are required'
+          error: 'employee_id, start_period, bonus_amount, and num_periods are required'
         });
+      }
+      const periodRe = /^\d{4}-(0[1-9]|1[0-2])$/;
+      if (!periodRe.test(startPeriod) || !periodRe.test(bonusPeriod)) {
+        return res.status(400).json({ success: false, error: 'start_period and bonus_period must be YYYY-MM' });
       }
 
       const bonusAmt = parseFloat(bonus_amount);
       const numPer   = parseInt(num_periods, 10);
-
       if (isNaN(bonusAmt) || bonusAmt <= 0) {
         return res.status(400).json({ success: false, error: 'bonus_amount must be a positive number' });
       }
-      if (isNaN(numPer) || numPer < 1 || numPer > 60) {
-        return res.status(400).json({ success: false, error: 'num_periods must be between 1 and 60' });
+      if (isNaN(numPer) || numPer < 1 || numPer > 12) {
+        return res.status(400).json({ success: false, error: 'num_periods must be between 1 and 12' });
       }
 
-      // Fetch normalized calculation inputs for this employee in the given period
+      // VPA-12: the whole spread lies inside the bonus month's tax year (ends by February).
+      const yearKeys  = taxYearPeriodKeys(bonusPeriod);
+      const endPeriod = addMonths(startPeriod, numPer - 1);
+      if (!yearKeys.includes(startPeriod) || !yearKeys.includes(endPeriod)) {
+        return res.status(400).json({
+          success: false,
+          error: `The spread (${startPeriod} to ${endPeriod}) must fall inside the bonus month's tax year ` +
+                 `(${yearKeys[0]} to ${yearKeys[11]}) and be paid by ${yearKeys[11]}.`
+        });
+      }
+
+      const empId = parseInt(employee_id, 10);
+      const taxConfig = await loadTaxConfig(req.companyId);
+
+      // Bonus tax X in the bonus month itself (same YTD and tables as Execute Payroll).
       const normalizedInputs = await PayrollDataService.fetchCalculationInputs(
-        req.companyId, parseInt(employee_id, 10), period_key, supabase
+        req.companyId, empId, bonusPeriod, supabase
       );
+      const baseResult = await PayrollCalculationService.calculate(normalizedInputs, { taxConfig });
 
-      // Calculate base PAYE (without bonus)
-      const baseResult = await PayrollCalculationService.calculate(normalizedInputs);
-      const basePaye = baseResult.paye_base;
-
-      // Deep copy + inject bonus as once-off taxable current income (never annualised)
       const inputsWithBonus = JSON.parse(JSON.stringify(normalizedInputs));
       inputsWithBonus.currentInputs = (inputsWithBonus.currentInputs || []).concat([{
-        type: 'income',
-        amount: bonusAmt,
-        is_taxable: true
+        type: 'income', amount: bonusAmt, is_taxable: true, paye_projection_type: 'ONCE_OFF'
       }]);
+      const bonusResult = await PayrollCalculationService.calculate(inputsWithBonus, { taxConfig });
 
-      // Calculate PAYE with bonus
-      const bonusResult = await PayrollCalculationService.calculate(inputsWithBonus);
-      const bonusPaye = bonusResult.paye_base;
-
-      // paye_base is monthly PAYE (= annualPAYE ÷ 12, computed with ytdData=null).
-      // The delta of two monthly values is annualIncrementalPAYE ÷ 12 — not the annual figure.
-      // Multiply by 12 to recover the true annual incremental tax caused by the bonus,
-      // then divide by spread months to get the correct monthly deduction amount.
-      // Without this ×12 the result would be annualIncremental ÷ (12 × numPer) — off by ×12.
-      const incrementalAnnualPaye = Math.max(0, bonusPaye - basePaye) * 12;
-      const monthlySpreadAmount   = incrementalAnnualPaye / numPer;
+      // paye_base already contains the FULL incremental tax of once-off income in its month
+      // (since the 2026-09-03 bonus fix) — no ×12 (that was finding K5: 12× too high).
+      const incremental = Math.max(0, bonusResult.paye_base - baseResult.paye_base);
+      const monthly     = incremental / numPer;
+      const monthsAfterBonus = Math.max(0, yearKeys.indexOf(endPeriod) - yearKeys.indexOf(bonusPeriod));
 
       res.json({
-        success: true,
+        success:               true,
         bonus_amount:          bonusAmt,
+        bonus_period:          bonusPeriod,
+        start_period:          startPeriod,
+        end_period:            endPeriod,
         num_periods:           numPer,
-        incremental_paye:      Math.round(incrementalAnnualPaye  * 100) / 100,
-        monthly_spread_amount: Math.round(monthlySpreadAmount    * 100) / 100
+        incremental_paye:      Math.round(incremental * 100) / 100,
+        monthly_spread_amount: Math.round(monthly * 100) / 100,
+        months_after_bonus:    monthsAfterBonus
       });
     } catch (err) {
       console.error('[voluntary-tax] calculate-bonus-spread error:', err);

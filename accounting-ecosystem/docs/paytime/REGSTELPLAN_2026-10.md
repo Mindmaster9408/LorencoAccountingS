@@ -100,6 +100,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | **Risiko** | Hoog — dit verander die PAYE van bonus-maande en nuwe werknemers. Goue toetse oor 'n volle jaar is hier verpligtend. |
 
 ### Fase 4 — Vrywillige belasting `[K5, W6]` → spec 06 E
+
+**✅ Gebou 2026-10-12** — [Change Impact Note](FASE4_CHANGE_IMPACT_NOTE.md). Ook reggestel: payslip-voorskou en PDF het die netto self bereken en die mediese krediet twee keer afgetrek (netto te hoog vir almal met 'n mediese fonds). Oop: VPA-05 (rede op backend), Bakmeester se bonusmaande.
 | 4.1 | Bonus-spreiding: verwyder die ×12 (VPA-11); spreiding binne die belastingjaar, uiterlik Februarie (VPA-12). |
 | 4.2 | Variable (Period) en Reduce PAYE **onaktief** via 'n vlag — kode bly (VPA-06). Bestaande inskrywings volgens VPA-20. |
 | 4.3 | Target PAYE: statutêr wen + waarskuwing (VPA-04); rede op backend afgedwing (VPA-05). |

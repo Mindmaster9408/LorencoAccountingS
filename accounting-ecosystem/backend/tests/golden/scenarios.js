@@ -176,6 +176,26 @@ const SCENARIOS = [
       monthly_spread_amount: 1300, start_period: '2026-09', end_period: '2026-12' }] }),
     periods: Object.fromEntries(months('2026-09', '2026-12').map(p =>
       [p, p === '2026-12' ? { inputs: [current('Bonus', 'income', 20000)] } : {}])) },
+  // ── Fase 4: Voluntary PAYE (spec 06 §E) ──
+  one('S54', 'Fixed +R500 that ended in September (VPA-02)', P, {
+    employee: emp({ voluntary_tax_config: [{ id: 'f1', type: 'fixed', fixed_amount: 500, end_period: '2026-09' }] }) }),
+  one('S55', 'Fixed +R500 starting November (VPA-02)', P, {
+    employee: emp({ voluntary_tax_config: [{ id: 'f2', type: 'fixed', fixed_amount: 500, start_period: '2026-11' }] }) }),
+  { id: 'M09', desc: 'Bonus spread A: R1 300 Sep–Dec prepaid, R20 000 bonus December (VPA-14)',
+    employee: emp({ voluntary_tax_config: [{ id: 'bs1', type: 'bonus_spread', bonus_amount: 20000, bonus_period: '2026-12',
+      monthly_spread_amount: 1300, start_period: '2026-09', end_period: '2026-12' }] }),
+    periods: Object.fromEntries(months('2026-09', '2027-02').map(p =>
+      [p, p === '2026-12' ? { inputs: [current('Bonus', 'income', 20000)] } : {}])) },
+  { id: 'M10', desc: 'Bonus spread B: R1 000 Oct–Feb, bonus December — part deferred (VPA-17)',
+    employee: emp({ voluntary_tax_config: [{ id: 'bs2', type: 'bonus_spread', bonus_amount: 20000, bonus_period: '2026-12',
+      monthly_spread_amount: 1000, start_period: '2026-10', end_period: '2027-02' }] }),
+    periods: Object.fromEntries(months('2026-09', '2027-02').map(p =>
+      [p, p === '2026-12' ? { inputs: [current('Bonus', 'income', 20000)] } : {}])) },
+  { id: 'M11', desc: 'Bonus spread planned R20 000, actual bonus only R5 000 (VPA-16)',
+    employee: emp({ voluntary_tax_config: [{ id: 'bs3', type: 'bonus_spread', bonus_amount: 20000, bonus_period: '2026-12',
+      monthly_spread_amount: 1300, start_period: '2026-09', end_period: '2026-12' }] }),
+    periods: Object.fromEntries(months('2026-09', '2027-01').map(p =>
+      [p, p === '2026-12' ? { inputs: [current('Bonus', 'income', 5000)] } : {}])) },
   { id: 'M07', desc: 'M01 under average_taxable method (non-production default)', method: 'average_taxable',
     employee: emp(), periods: Object.fromEntries(months('2026-03', '2027-02').map(p =>
       [p, p === '2026-12' ? { inputs: [current('Bonus', 'income', 20000)] } : {}])) },

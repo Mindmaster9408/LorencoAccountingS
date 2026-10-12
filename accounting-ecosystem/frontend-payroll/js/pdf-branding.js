@@ -69,17 +69,20 @@ const PDFBranding = {
         // NET PAY all reflect the line items actually shown on this payslip.
         // This prevents a mismatch where items stored only in localStorage appear
         // as line items but are absent from the backend-calculated totals.
-        var displayGross = parseFloat(calc.basicSalary || 0);
-        (calc.allowances || []).forEach(function(a) { displayGross += parseFloat(a.amount) || 0; });
-        displayGross += parseFloat(calc.overtimeAmount || 0);
-        displayGross -= parseFloat(calc.shortTimeAmount || 0);
-        if (displayGross <= 0 && (calc.gross || 0) > 0) displayGross = calc.gross;
+        // Totals ALWAYS come from the backend calculation (spec 08 PS-01/PS-03). They used to be
+        // re-derived from the line items here, which also subtracted the medical tax credit a
+        // second time (PAYE is already after the credit) — the printed NET PAY was too high by
+        // the full credit for every employee on a medical scheme.
+        var lineGross = parseFloat(calc.basicSalary || 0);
+        (calc.allowances || []).forEach(function(a) { lineGross += parseFloat(a.amount) || 0; });
+        lineGross += parseFloat(calc.overtimeAmount || 0);
+        lineGross -= parseFloat(calc.shortTimeAmount || 0);
 
-        var displayDed = (parseFloat(calc.paye) || 0) + (parseFloat(calc.uif) || 0) - (parseFloat(calc.medicalCredit) || 0);
-        (calc.deductionsList || []).forEach(function(d) { displayDed += parseFloat(d.amount) || 0; });
-        if (displayDed < 0) displayDed = 0;
-
-        var displayNet = Math.max(0, displayGross - displayDed);
+        var displayGross = parseFloat(calc.gross) || 0;
+        var displayNet   = parseFloat(calc.net) || 0;
+        var displayDed   = Math.max(0, Math.round((displayGross - displayNet) * 100) / 100);
+        // Line items that don't add up to the calculated gross are flagged, never silently "fixed".
+        var lineMismatch = Math.abs(lineGross - displayGross) > 0.01 ? Math.round((lineGross - displayGross) * 100) / 100 : 0;
 
         // ---- Company Header ----
         // Logo (if available)
@@ -225,6 +228,12 @@ const PDFBranding = {
         doc.text('TOTAL GROSS', margin + 3, y);
         doc.text(this.formatMoney(displayGross), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(displayGross)), y);
         doc.setFont(undefined, 'normal');
+        if (lineMismatch) {
+            y += 4.5;
+            doc.setTextColor(200, 0, 0);
+            doc.text('Note: line items above differ from the calculated gross by ' + this.formatMoney(lineMismatch), margin + 3, y);
+            doc.setTextColor(60, 60, 60);
+        }
 
         // ---- Deductions Section ----
         y += 6;
@@ -244,16 +253,38 @@ const PDFBranding = {
         doc.text(this.formatMoney(calc.paye), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(calc.paye)), y);
         y += 4.5;
 
+        // Voluntary PAYE adjustments — one indented line each, included in the PAYE above (spec 06 VPA-07).
+        var volLines = Array.isArray(calc.voluntary_breakdown)
+            ? calc.voluntary_breakdown.filter(function(v) { return v && !v.inactive && v.amount; }) : [];
+        if (volLines.length) {
+            var volTypeLabel = { fixed: 'Voluntary extra PAYE', target_paye: 'Target PAYE top-up' };
+            doc.setFontSize(7.5);
+            doc.setTextColor(120, 120, 120);
+            var self = this;
+            volLines.forEach(function(v) {
+                var lbl = v.type === 'bonus_spread'
+                    ? (v.phase === 'bonus' ? 'Bonus Spread — tax already paid in advance' : 'Bonus Spread instalment')
+                    : (volTypeLabel[v.type] || 'Voluntary PAYE');
+                if (v.description) lbl += ' (' + v.description + ')';
+                var amt = (v.amount > 0 ? '+' : '-') + self.formatMoney(Math.abs(v.amount));
+                doc.text('   incl. ' + lbl, margin + 3, y);
+                doc.text(amt, pageWidth - margin - 3 - doc.getTextWidth(amt), y);
+                y += 3.8;
+            });
+            doc.setFontSize(8);   // body size used for the earnings/deductions sections
+            doc.setTextColor(60, 60, 60);
+        }
+
         // UIF
         doc.text('UIF', margin + 3, y);
         doc.text(this.formatMoney(calc.uif), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(calc.uif)), y);
         y += 4.5;
 
-        // Medical Tax Credit
+        // Medical Tax Credit — informational: it is already deducted inside the PAYE figure above.
         if (calc.medicalCredit > 0) {
             doc.setTextColor(40, 167, 69);
-            doc.text('Medical Tax Credit', margin + 3, y);
-            var creditStr = '-' + this.formatMoney(calc.medicalCredit);
+            doc.text('Medical Tax Credit (already included in PAYE)', margin + 3, y);
+            var creditStr = this.formatMoney(calc.medicalCredit);
             doc.text(creditStr, pageWidth - margin - 3 - doc.getTextWidth(creditStr), y);
             y += 4.5;
             doc.setTextColor(60, 60, 60);

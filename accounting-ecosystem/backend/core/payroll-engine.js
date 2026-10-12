@@ -1100,12 +1100,20 @@ const PayrollEngine = {
         var uif_employer = uif;
 
         // === VOLUNTARY PAYE ADJUSTMENT ===
-        // Supports signed adjustments: direction 'increase' (default) adds to PAYE,
-        // direction 'reduce' subtracts. Types: fixed, variable, bonus_spread, target_paye.
-        // target_paye: adjustment = target_paye - paye_base (computed at runtime).
-        // Multiple entries summed. Final PAYE floored at zero. UIF/SDL unaffected.
-        // Backward compat: entries without direction field treated as 'increase'.
+        // Owner-confirmed rules: docs/paytime/spec/06_BEREKENINGSENJIN.md §E (2026-10-12, Fase 4).
+        //   - PAYE is never reduced below statutory. 'variable' entries and direction 'reduce'
+        //     are INACTIVE: kept in the config, shown as inactive, never applied (VPA-06/20).
+        //   - fixed / target_paye: optional start_period / end_period (VPA-02).
+        //   - target_paye: only ever ADDS (target − statutory); a target below statutory is
+        //     ignored and reported as a warning (VPA-04).
+        //   - bonus_spread linked to its bonus month (bonus_period): instalments before the
+        //     bonus month are credited against the bonus tax in that month; any part planned
+        //     after the bonus month is deferred and collected later, never more than owed
+        //     (VPA-13..17). Unlinked legacy entries keep the old behaviour plus a warning.
+        // The statutory figure (paye_base) is never changed here, so YTD stays consistent.
         var voluntaryPayeAdjustment = 0;
+        var voluntaryBreakdown = [];
+        var voluntaryWarnings = [];
         var voluntaryConfigData = employeeOptions && employeeOptions.voluntaryTaxConfig;
         if (voluntaryConfigData) {
             // Normalise to an array of config entries
@@ -1119,30 +1127,100 @@ const PayrollEngine = {
                 // Multi-config: plain object keyed by type
                 _volConfigs = Object.values(voluntaryConfigData);
             }
+            var _priorVol     = (ytdData && ytdData.prior_voluntary_by_entry) || {};
+            var _unattributed = (ytdData && ytdData.prior_voluntary_unattributed) || 0;
+            var _activeVol    = _volConfigs.filter(function(c) {
+                return c && c.type && c.type !== 'variable' && c.direction !== 'reduce';
+            });
+
+            // Statutory PAYE for this month WITHOUT this month's once-off income — the bonus
+            // tax is (paye − this). Same dispatch as above for the methods in use.
+            var _payeExclOnceOff = function() {
+                if (onceOffTaxable <= 0) return paye;
+                if (ytdData && period && ytdData.method === 'cumulative_ytd') {
+                    return PayrollEngine.calculateMonthlyPAYE_YTD(periodicTaxable, 0,
+                        _ytdPeriodic, _ytdOnceOff, _ytdPriorPAYE, _periodsWorked, opts, tables);
+                }
+                var _withO    = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, onceOffTaxable, opts, tables);
+                var _withoutO = PayrollEngine.calculateMonthlyPAYE(periodicTaxable, 0, opts, tables);
+                return paye - (_withO - _withoutO);
+            };
+            // Months in (afterPeriod, endPeriod], i.e. spread months planned after the bonus month.
+            var _monthsAfter = function(afterPeriod, endPeriod) {
+                if (!endPeriod || endPeriod <= afterPeriod) return 0;
+                var a = afterPeriod.split('-').map(Number), e = endPeriod.split('-').map(Number);
+                return (e[0] - a[0]) * 12 + (e[1] - a[1]);
+            };
+
             for (var _vi = 0; _vi < _volConfigs.length; _vi++) {
                 var voluntaryConfig = _volConfigs[_vi];
                 if (!voluntaryConfig || !voluntaryConfig.type) continue;
-                // direction 'reduce' negates the amount; default (absent or 'increase') is positive
-                var _volSign = (voluntaryConfig.direction === 'reduce') ? -1 : 1;
-                if (voluntaryConfig.type === 'fixed') {
-                    voluntaryPayeAdjustment += _volSign * (parseFloat(voluntaryConfig.fixed_amount) || 0);
-                } else if (voluntaryConfig.type === 'variable') {
-                    if (voluntaryConfig.period === period) {
-                        voluntaryPayeAdjustment += _volSign * (parseFloat(voluntaryConfig.variable_amount) || 0);
+                var _vid  = String(voluntaryConfig.id || voluntaryConfig.type);
+                var _item = { id: _vid, type: voluntaryConfig.type,
+                              description: voluntaryConfig.description || voluntaryConfig.reference || '' };
+                var _amt  = 0;
+
+                if (voluntaryConfig.type === 'variable' || voluntaryConfig.direction === 'reduce') {
+                    _item.inactive = true;            // VPA-06/20 — never applied
+                } else if (voluntaryConfig.type === 'fixed' || voluntaryConfig.type === 'target_paye') {
+                    var _inRange = (!voluntaryConfig.start_period || period >= voluntaryConfig.start_period) &&
+                                   (!voluntaryConfig.end_period   || period <= voluntaryConfig.end_period);
+                    if (_inRange && voluntaryConfig.type === 'fixed') {
+                        _amt = Math.max(parseFloat(voluntaryConfig.fixed_amount) || 0, 0);
+                    } else if (_inRange) {
+                        var _targetPaye = parseFloat(voluntaryConfig.target_paye);
+                        if (!isNaN(_targetPaye) && _targetPaye >= 0) {
+                            if (_targetPaye < paye) {
+                                voluntaryWarnings.push({ code: 'TARGET_BELOW_STATUTORY', id: _vid,
+                                    target: PayrollEngine.r2(_targetPaye), statutory: PayrollEngine.r2(paye) });
+                            } else {
+                                _amt = _targetPaye - paye;
+                            }
+                        }
                     }
                 } else if (voluntaryConfig.type === 'bonus_spread') {
-                    var spreadStart = voluntaryConfig.start_period || '';
-                    var spreadEnd   = voluntaryConfig.end_period   || '';
-                    if (spreadStart && spreadEnd && period >= spreadStart && period <= spreadEnd) {
-                        voluntaryPayeAdjustment += _volSign * (parseFloat(voluntaryConfig.monthly_spread_amount) || 0);
-                    }
-                } else if (voluntaryConfig.type === 'target_paye') {
-                    // adjustment = desired final PAYE − current engine PAYE (computed at runtime)
-                    var _targetPaye = parseFloat(voluntaryConfig.target_paye);
-                    if (!isNaN(_targetPaye) && _targetPaye >= 0) {
-                        voluntaryPayeAdjustment += (_targetPaye - paye);
+                    var _sStart = voluntaryConfig.start_period || '';
+                    var _sEnd   = voluntaryConfig.end_period   || '';
+                    var _monthly = Math.max(parseFloat(voluntaryConfig.monthly_spread_amount) || 0, 0);
+                    var _inst   = (_sStart && _sEnd && period >= _sStart && period <= _sEnd) ? _monthly : 0;
+                    var _bp     = voluntaryConfig.bonus_period || '';
+                    var _pv     = _priorVol[_vid] || null;
+                    if (!_bp) {
+                        _item.phase = 'unlinked';
+                        _amt = _inst;
+                        if (_inst > 0) voluntaryWarnings.push({ code: 'BONUS_SPREAD_NOT_LINKED', id: _vid });
+                    } else if (period < _bp) {
+                        _item.phase = 'prepay';
+                        _amt = _inst;
+                    } else if (period === _bp) {
+                        // Prepaid = this entry's instalments in locked months. Snapshots from before
+                        // per-entry tracking only carry a total: attribute it when this is the
+                        // employee's only active voluntary entry.
+                        var _prepaid = _pv ? (_pv.prepay || 0)
+                                           : (_activeVol.length === 1 ? _unattributed : 0);
+                        var _bonusTax     = Math.max(paye - _payeExclOnceOff(), 0);
+                        var _futurePlan   = _monthly * _monthsAfter(_bp, _sEnd);
+                        var _dueNow       = Math.max(_bonusTax - _prepaid - _futurePlan, 0);
+                        var _deferred     = Math.max(Math.min(_futurePlan, _bonusTax - _prepaid), 0);
+                        _amt = _dueNow - _bonusTax;   // ≤ 0: prepaid credited, later part deferred
+                        _item.phase     = 'bonus';
+                        _item.bonus_tax = PayrollEngine.r2(_bonusTax);
+                        _item.prepaid   = PayrollEngine.r2(_prepaid);
+                        _item.deferred  = PayrollEngine.r2(_deferred);
+                        if (_deferred > 0) {
+                            voluntaryWarnings.push({ code: 'BONUS_SPREAD_DEFERRED', id: _vid,
+                                deferred: PayrollEngine.r2(_deferred) });
+                        }
+                    } else {
+                        // After the bonus month: collect only what was deferred, never more.
+                        var _owed = Math.max(((_pv && _pv.deferred) || 0) - ((_pv && _pv.post) || 0), 0);
+                        _item.phase = 'post';
+                        _amt = Math.min(_inst, _owed);
                     }
                 }
+                _item.amount = PayrollEngine.r2(_amt);
+                voluntaryBreakdown.push(_item);
+                voluntaryPayeAdjustment += _amt;
             }
         }
         // Final PAYE is floored at zero; the raw adjustment may be negative for reductions
@@ -1237,7 +1315,14 @@ const PayrollEngine = {
             // YTD calculation intermediates — populated when YTD method is active, null otherwise.
             // Consumed by PayrollCalculationService to populate _meta transparency fields.
             // Never null-checked downstream — callers must guard on this field being null.
-            _ytdCalc:     _ytdCalc
+            _ytdCalc:     _ytdCalc,
+            // === ADDITIVE FIELDS (Fase 4 — voluntary PAYE per entry, spec 06 §E) ===
+            // One item per configured entry: { id, type, description, amount, inactive?,
+            // phase?, bonus_tax?, prepaid?, deferred? }. Stored in the snapshot so payslips
+            // show each line separately (VPA-07/09) and later months can track bonus spreads.
+            voluntary_breakdown: voluntaryBreakdown,
+            // [{ code, id, ... }] — TARGET_BELOW_STATUTORY, BONUS_SPREAD_NOT_LINKED, BONUS_SPREAD_DEFERRED
+            voluntary_warnings:  voluntaryWarnings
         };
     },
 

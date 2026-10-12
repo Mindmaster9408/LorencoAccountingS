@@ -51,8 +51,17 @@
 | `frontend-payroll/js/payroll-api.js`, `payroll-execution.html`, `employee-detail.html` | Confirm dialog for open earlier months, reversal warning, visible calculate-block message; `showToast` fallback (it was never defined on the payslip page). |
 | `backend/tests/payroll-period-sequence.test.js` | 24 tests incl. company switch and company scoping. |
 
+## Fase 4 (third commit, same day) — docs/paytime/FASE4_CHANGE_IMPACT_NOTE.md
+
+- Voluntary PAYE per spec 06 §E: Variable/Reduce inactive, Target never below statutory, optional dates, Bonus Spread linked to its bonus month (prepaid credited, deferred part collected later), calculator fixed (no ×12, uses global tax tables).
+- Payslip preview + PDF: totals now from the backend; the medical credit was being subtracted twice so printed NET PAY was too high for every employee on a medical scheme.
+- Engine output gains `voluntary_breakdown` and `voluntary_warnings` (additive).
+- Golden: only S51/S52 changed (intended); new S54, S55, M09, M10, M11.
+
 ## Open risks / follow-ups
 
+- Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).
+- VPA-05: target/deferral reason enforced on screen only, not yet on the backend.
 - Migration 026 not yet run → until then every company is non-strict (finalize warns, calculate never blocks).
 - Turn strict ON per company after its missing months are imported (Fase 12): `UPDATE companies SET payroll_strict_period_order = TRUE WHERE id = …`. A UI toggle for super users is a follow-up.
 - SDL on travel allowance is on 100% (should be 80%) — IT-15, Fase 2.

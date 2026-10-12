@@ -60,6 +60,11 @@ Dit gee in die meeste gevalle presies die tabelbedrag, hanteer bonusse soos SARS
 > Afdeling **BEVESTIG deur Ruan op 2026-10-12** (volledig).
 > Skerm: werknemer-detail → Payslip-oortjie → "Voluntary PAYE Adjustment". Gestoor in `employees.voluntary_tax_config` (SQL).
 
+### Status ná Fase 4 (2026-10-12) — [Change Impact Note](../FASE4_CHANGE_IMPACT_NOTE.md)
+
+Gebou en getoets: VPA-02, 04, 06, 07 (skerm + PDF), 08, 09 (snapshot stoor `voluntary_breakdown`), 10, 11, 12, 13, 14, 15, 16, 17, 20 ✅.
+Nog oop: VPA-05 (rede word nog net op die skerm afgedwing, nie op die backend nie). Bakmeester se drie bestaande Bonus Spread-inskrywings het nog geen bonusmaand nie — hulle werk soos voorheen met 'n waarskuwing totdat die maand gestel is.
+
 ### E.1 Hoofreël
 
 **PAYE mag nooit minder wees as die statutêre bedrag nie.** Vrywillige aanpassings mag net **meer** belasting aftrek, nooit minder nie. Die enigste uitsondering is Bonus Spread (E.4), en dit net binne die reëls daar.
