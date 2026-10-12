@@ -72,15 +72,16 @@ var PayrollAPI = (function () {
         },
 
         // POST /api/payroll/finalize
-        // Body: { run_id, period_key }
+        // Body: { run_id, period_key, acknowledge_open_months? }
         // 200: { success, run_id, period_key, locked_count, timestamp }
         // 404: run not found
         // 409: already finalized
-        finalize: function (runId, periodKey) {
-            return request('POST', BASE + '/finalize', {
-                run_id:     runId,
-                period_key: periodKey
-            });
+        // 422 PERIOD_SEQUENCE:     a later month is already finalized (hard block)
+        // 422 OPEN_EARLIER_MONTHS: earlier months open — resend with acknowledgeOpenMonths=true
+        finalize: function (runId, periodKey, acknowledgeOpenMonths) {
+            var body = { run_id: runId, period_key: periodKey };
+            if (acknowledgeOpenMonths === true) body.acknowledge_open_months = true;
+            return request('POST', BASE + '/finalize', body);
         },
 
         // GET /api/payroll/history?period_key=YYYY-MM

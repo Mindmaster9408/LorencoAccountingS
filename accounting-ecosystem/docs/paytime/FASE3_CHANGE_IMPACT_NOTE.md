@@ -65,6 +65,76 @@ Confirmed safe:
 ─────────────────────────────────────────────────────────────
 ```
 
-## Fase 3b (later, aparte stap)
+## Fase 3b — FINAL behaviour (supersedes the "Behaviour" block below)
 
-Maand-volgorde-blok by finalisering (UF-04) en waarskuwing by omkeer van 'n vroeër maand (UF-09) — raak `routes/payruns.js` (HIGH). Eie Change Impact Note.
+After the real-data check (blocking would have stopped Turkstra's 35 employees, Bakmeester,
+Lorenco, le Grange, …), Ruan chose (2026-10-12):
+
+- `services/periodSequence.js` (new, shared): month-order rules + DB helpers.
+- **Calculate** (`POST /api/payroll/calculate`, `POST /api/payroll/run`): refused per employee when
+  the previous month (same tax year) is not locked — **only** for companies with
+  `companies.payroll_strict_period_order = TRUE` (migration 026). First Paytime month this tax year
+  and months before hire are exempt. Locked months are still viewable.
+- **Finalize**: later month already locked → always refused. Open earlier months → refused for strict
+  companies; otherwise 422 `OPEN_EARLIER_MONTHS` + confirm dialog, then `acknowledge_open_months`
+  (recorded in the audit log).
+- **Reverse**: response lists `later_periods_locked`; screen shows a warning.
+- Migration 026: column default TRUE; set FALSE for companies 1, 7, 11, 38, 39, 40, 51. Missing
+  column = non-strict, so the code is safe before the migration runs.
+- Also fixed: `employee-detail.html` called `showToast()` without defining it (Voluntary PAYE
+  validation messages threw instead of showing) — alert-based fallback added.
+- Tests: `tests/payroll-period-sequence.test.js` (24). Gate: 155/155 Jest, core 15/15, 0 lint errors.
+
+## Fase 3b — Change Impact Note (original)
+
+```text
+CHANGE IMPACT NOTE — PAYROLL
+─────────────────────────────────────────────────────────────
+Area being changed:
+  POST /api/payroll/finalize — new month-order guard (UF-04).
+  POST /api/payroll/reverse  — new warning when later months are locked (UF-09).
+  Execute Payroll screen — shows that warning after a reversal.
+
+Files involved:
+  backend/modules/payroll/routes/payruns.js   (CRITICAL — backend/modules/payroll/**)
+  frontend-payroll/payroll-execution.html     (HIGH)
+
+Why this change is needed:
+  YTD PAYE only counts LOCKED prior months. Finalising April while March is
+  open (or with a gap) locks April on incomplete YTD, permanently. Ruan's
+  decision (spec 07, UF-04): block.
+
+Behaviour:
+  Finalize is refused (422, code PERIOD_SEQUENCE, nothing locked) when, for
+  any employee in the run:
+    (a) a LATER month in the same tax year is already locked, or
+    (b) the employee already has a locked month earlier in this tax year and
+        a month between that first locked month and this one — in which the
+        employee was employed (hire date on/before month end) — is not locked.
+  Not blocked: the employee's first locked month in Paytime this tax year
+  (otherwise a company that joins mid-year could never finalise its first
+  month). March is never blocked by (b).
+  Reverse: unchanged behaviour; response gains `later_periods_locked` listing
+  employees with locked later months, and the screen shows a warning.
+
+Is this an explicitly authorised Paytime task?   [x] Yes
+Payroll risk:        [ ] CRITICAL  [x] HIGH  (blocks an action; never changes a figure)
+Regression risk:     [ ] High  [x] Medium  [ ] Low
+  Risk: a legitimate finalise is refused (e.g. a gap month in which the
+  employee was genuinely not paid). The message names the employee and the
+  open month(s); the fix is to run/finalise that month (a R0 month is fine).
+
+Regression tests: TEST-PAY-09 (locked immutable), TEST-PAY-11/12 (company
+  scoping on the new queries); new unit tests for the pure rule function;
+  golden set must be unchanged (no figure changes).
+
+Rollback strategy: revert the commit — guard disappears, no data touched.
+
+Confirmed safe:
+  [x] payroll-engine.js not affected
+  [x] PayrollCalculationService.js not affected
+  [x] Finalized snapshot read path not affected
+  [x] Company context not affected — every new query filters company_id
+  [x] PAYE/UIF/SDL logic not affected
+─────────────────────────────────────────────────────────────
+```

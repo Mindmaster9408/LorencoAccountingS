@@ -40,8 +40,20 @@
 - Run the next payroll for The Infinite Legacy emp 1 & 6 and Turkstra emp 274 (history starts after March): PAYE should now match a normal month on their salary.
 - Bakmeester: 3 employees have a Bonus Spread to Feb 2027 — the bonus month currently deducts the bonus tax in full PLUS the spread (Fase 4 fixes this). Fase 4 must land before that bonus is paid.
 
+## Fase 3b (second commit, same day)
+
+| File | Purpose |
+|---|---|
+| `backend/modules/payroll/services/periodSequence.js` (new) | Shared month-order rules + company-scoped DB helpers. |
+| `backend/modules/payroll/routes/payruns.js` | /run skips employees whose previous month is open (strict companies); /finalize: later month locked → block, open earlier months → block (strict) or confirm (others), acknowledgement audited; /reverse returns `later_periods_locked`. |
+| `backend/modules/payroll/routes/calculate.js` | "Calculate payslip" refused with `PREVIOUS_MONTH_OPEN` for strict companies; locked months still returned. |
+| `backend/migrations/026_payroll_strict_period_order.sql` | `companies.payroll_strict_period_order` (default TRUE; FALSE for 1, 7, 11, 38, 39, 40, 51). **Must be run in Supabase by Ruan.** Code treats a missing column as non-strict. |
+| `frontend-payroll/js/payroll-api.js`, `payroll-execution.html`, `employee-detail.html` | Confirm dialog for open earlier months, reversal warning, visible calculate-block message; `showToast` fallback (it was never defined on the payslip page). |
+| `backend/tests/payroll-period-sequence.test.js` | 24 tests incl. company switch and company scoping. |
+
 ## Open risks / follow-ups
 
-- Fase 3b (month-order block on finalise) not yet built — finalising a month before the previous one is still possible.
+- Migration 026 not yet run → until then every company is non-strict (finalize warns, calculate never blocks).
+- Turn strict ON per company after its missing months are imported (Fase 12): `UPDATE companies SET payroll_strict_period_order = TRUE WHERE id = …`. A UI toggle for super users is a follow-up.
 - SDL on travel allowance is on 100% (should be 80%) — IT-15, Fase 2.
 - Frontend pages (Payslips/payruns.html, Reports, Net-to-Gross) still use the old frontend engine — Fase 9.

@@ -88,7 +88,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 
 **Status 2026-10-12:** Ruan het besluit om Fase 3 vóór Fase 1 te doen (tabelle is reeds in die data reggestel, D.2; K2 raak regte werknemers).
 - **3a ✅ plaaslik klaar, nog nie gepush nie** — [Change Impact Note](FASE3_CHANGE_IMPACT_NOTE.md). Kumulatiewe metode annualiseer oor die maande wat die werknemer in die belastingjaar data het (gesluite snapshots, insluitend ingevoerde maande) + die huidige maand; kode-standaard is nou `cumulative`. Goue verskille: net M02 (R0 → R4 680,98 elke maand ✅) en M06 (normale PAYE reg; wys nou duidelik die Bonus Spread-dubbeling vir Fase 4). Hek: 15/15 enjin, 127/127 Jest, 0 lint-foute in payroll-kode. Terloops reggestel: dooie kode in `core/run-tests.js` en 'n `global`-verklaring in die enjin (lint, geen gedragsverandering).
-- **3b** (maand-volgorde-blok + omkeer-waarskuwing, `routes/payruns.js`) — volgende.
+- **3a ✅ gepush** (commit 7fb6bd7).
+- **3b ✅ gebou 2026-10-12** — maand-volgorde per maatskappy (migrasie 026), latere-maand-blok, bevestiging vir oop maande, omkeer-waarskuwing. Sien [Change Impact Note](FASE3_CHANGE_IMPACT_NOTE.md). **Ruan moet migrasie 026 in Supabase hardloop** om die streng instelling vir Pennygrow en nuwe maatskappye aan te skakel.
 | Stap | Wat |
 |---|---|
 | 3.1 | Implementeer die gekose metode (voorstel: SARS kumulatief met maande-gewerk en eenmalige inkomste apart). |

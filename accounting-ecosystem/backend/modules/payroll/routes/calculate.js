@@ -30,6 +30,7 @@ const {
 const PayrollDataService        = require('../services/PayrollDataService');
 const PayrollCalculationService = require('../services/PayrollCalculationService');
 const PayrollHistoryService     = require('../services/PayrollHistoryService');
+const { getCalculationBlocks, describeCalculationBlocks } = require('../services/periodSequence');
 
 const { supabase } = require('../../../config/database');
 
@@ -148,6 +149,25 @@ router.post(
           snapshot:  formatted,
           locked:    true,
           timestamp: new Date().toISOString()
+        });
+      }
+
+      // STEP 1c: Month-order guard (UF-04, strict companies only — migration 026).
+      // A finalized month is still returned above; an open month can only be
+      // calculated once the previous month is finalized, because PAYE year-to-date
+      // is built from the finalized months.
+      let calcBlocks;
+      try {
+        calcBlocks = await getCalculationBlocks(supabase, req.companyId, [empId], period_key);
+      } catch (blkErr) {
+        return res.status(500).json({ success: false, error: 'Could not verify previous months: ' + blkErr.message });
+      }
+      if (calcBlocks.length > 0) {
+        return res.status(422).json({
+          success: false,
+          code:    'PREVIOUS_MONTH_OPEN',
+          error:   describeCalculationBlocks(period_key, calcBlocks),
+          blocked: calcBlocks
         });
       }
 

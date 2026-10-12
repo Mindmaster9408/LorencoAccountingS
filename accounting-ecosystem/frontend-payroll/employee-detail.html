@@ -1146,6 +1146,12 @@
     <script src="js/payroll-items-helper.js"></script>
     <script src="js/payroll-api.js"></script>
     <script>
+        // This page calls showToast() (Voluntary PAYE validation, month-order guard) but never
+        // loaded a definition, so those messages threw a ReferenceError and the user saw nothing.
+        // Minimal fallback until the page gets a proper toast component.
+        if (typeof window.showToast !== 'function') {
+            window.showToast = function(message) { alert(message); };
+        }
         let currentCompanyId = null;
         let currentEmployee = null;
         let currentEmpId = null;
@@ -2986,6 +2992,10 @@
                     }
                 } else if (calcResult.data && calcResult.data.error) {
                     console.error('[calculatePayslip] backend error:', calcResult.data.error);
+                    // Month-order guard (UF-04): tell the user which month must be finalized first.
+                    if (calcResult.data.code === 'PREVIOUS_MONTH_OPEN') {
+                        showToast(calcResult.data.error, 'warning');
+                    }
                 }
             } catch(e) {
                 console.error('[calculatePayslip] calculate API error:', e.message);

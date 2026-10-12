@@ -1229,6 +1229,19 @@
 
         var res = await PayrollAPI.finalize(state.currentRunId, state.periodKey);
 
+        // Earlier months not finalized in Paytime → the user decides (UF-04, option a).
+        if (res.status === 422 && res.data && res.data.code === 'OPEN_EARLIER_MONTHS') {
+            if (confirm(res.data.error)) {
+                res = await PayrollAPI.finalize(state.currentRunId, state.periodKey, true);
+            } else {
+                btn.disabled    = false;
+                btn.textContent = '✓ Yes, Finalize';
+                closeFinalizeModal();
+                showToast('Not finalized. Import or finalize the earlier month(s) first, or finalize again to continue anyway.', 'warning');
+                return;
+            }
+        }
+
         btn.disabled    = false;
         btn.textContent = '✓ Yes, Finalize';
         closeFinalizeModal();
@@ -1326,6 +1339,15 @@
             'Pay run reversed — ' + (res.data.reversed_count || 0) + ' payslip(s) unlocked. Re-run payroll to make corrections.',
             'success'
         );
+        // UF-09: later months already finalized were calculated on this month's old figures.
+        var _later = res.data.later_periods_locked || [];
+        if (_later.length) {
+            showToast(
+                'Note: ' + _later.join(', ') + ' is already finalized for some of these employees and was ' +
+                'calculated on the figures you just reversed. Reverse and re-run those month(s) too if the correction changes PAYE.',
+                'warning'
+            );
+        }
 
         // If this was the currently-loaded run, update run-view UI back to draft
         if (targetRunId === state.currentRunId) {

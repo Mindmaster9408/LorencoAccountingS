@@ -38,6 +38,17 @@ const PayrollCalculationService = require('../services/PayrollCalculationService
 const PayrollHistoryService     = require('../services/PayrollHistoryService');
 
 const { supabase } = require('../../../config/database');
+// Month-order rules (UF-04 / UF-09) — shared with routes/calculate.js.
+const {
+  taxYearPeriodKeys,
+  findPeriodSequenceViolations,
+  describeLaterLocked,
+  describeOpenEarlier,
+  describeCalculationBlocks,
+  isStrictPeriodOrder,
+  loadEmployeesAndLocked,
+  getCalculationBlocks
+} = require('../services/periodSequence');
 
 const router = express.Router();
 
@@ -238,9 +249,24 @@ router.post(
         console.warn('[payruns] Could not load tax_config from KV:', kvErr.message);
       }
 
+      // ── Month-order guard for strict companies (UF-04, migration 026) ─────
+      // An employee whose previous month is not finalized cannot be calculated —
+      // their PAYE year-to-date would be built on incomplete data.
+      let calcBlocks = [];
+      try {
+        calcBlocks = await getCalculationBlocks(supabase, req.companyId, visibleIds, period_key);
+      } catch (blkErr) {
+        return res.status(500).json({ success: false, error: 'Could not verify previous months: ' + blkErr.message });
+      }
+      const blockedIds = new Set(calcBlocks.map(b => String(b.employee_id)));
+
       // ── Process each employee ─────────────────────────────────────────────
       const processed = [];
       const errors    = [];
+
+      for (const b of calcBlocks) {
+        errors.push({ employee_id: b.employee_id, code: 'PREVIOUS_MONTH_OPEN', error: describeCalculationBlocks(period_key, [b]) });
+      }
 
       // Seed errors for denied employees
       for (const id of deniedIds) {
@@ -248,6 +274,7 @@ router.post(
       }
 
       for (const empId of visibleIds) {
+        if (blockedIds.has(String(empId))) continue;
         try {
           // Guard: verify employee belongs to this company and is eligible for payroll.
           // Active employees pass. Inactive employees pass only when their termination_date
@@ -498,6 +525,51 @@ router.post(
         });
       }
 
+      // Month-order guard (UF-04): refuse — and lock nothing — if finalizing this month
+      // would lock it on incomplete year-to-date data.
+      let openEarlier = [];
+      const { data: runSnaps, error: rsErr } = await supabase
+        .from('payroll_snapshots')
+        .select('employee_id')
+        .eq('company_id', req.companyId)
+        .eq('payroll_run_id', run_id)
+        .eq('is_locked', false);
+      if (rsErr) throw rsErr;
+      const runEmpIds = [...new Set((runSnaps || []).map(s => s.employee_id))];
+      if (runEmpIds.length > 0) {
+        const { employees: empRows, lockedRows } =
+          await loadEmployeesAndLocked(supabase, req.companyId, runEmpIds, period_key);
+        const violations = findPeriodSequenceViolations(period_key, empRows, lockedRows);
+        const laterLocked = violations.filter(v => v.type === 'later_locked');
+        if (laterLocked.length > 0) {
+          return res.status(422).json({
+            success:    false,
+            code:       'PERIOD_SEQUENCE',
+            error:      describeLaterLocked(period_key, laterLocked),
+            violations: laterLocked
+          });
+        }
+        openEarlier = violations.filter(v => v.type === 'missing_previous');
+        // Strict companies (migration 026): open earlier months are a hard block, no confirmation.
+        if (openEarlier.length > 0 && await isStrictPeriodOrder(supabase, req.companyId)) {
+          return res.status(422).json({
+            success:    false,
+            code:       'PERIOD_SEQUENCE',
+            error:      describeCalculationBlocks(period_key, openEarlier),
+            violations: openEarlier
+          });
+        }
+        if (openEarlier.length > 0 && req.body.acknowledge_open_months !== true) {
+          return res.status(422).json({
+            success:               false,
+            code:                  'OPEN_EARLIER_MONTHS',
+            requires_confirmation: true,
+            error:                 describeOpenEarlier(period_key, openEarlier),
+            violations:            openEarlier
+          });
+        }
+      }
+
       // Lock all draft snapshots in this run
       let locked;
       try {
@@ -523,7 +595,11 @@ router.post(
       try {
         await auditFromReq(req, 'PAYROLL_FINALIZE', 'payroll_runs', run_id, {
           period_key,
-          locked_count: locked.length
+          locked_count: locked.length,
+          // Who confirmed finalizing despite open earlier months (UF-04, option a).
+          ...(openEarlier.length > 0 && {
+            acknowledged_open_months: openEarlier.map(v => ({ employee_id: v.employee_id, periods: v.periods }))
+          })
         });
       } catch (auditErr) {
         console.warn('Audit log failed for finalize:', auditErr.message);
@@ -641,6 +717,27 @@ router.post(
         return res.status(500).json({ success: false, error: 'Failed to reverse run header', detail: runReverseErr.message });
       }
 
+      // UF-09: later months in the same tax year that are still locked were calculated on
+      // this month's (now reversed) figures. Never blocks — reported so the user can decide
+      // whether to reverse them too. Best-effort: a lookup failure must not fail the reversal.
+      let laterPeriodsLocked = [];
+      try {
+        const revEmpIds = [...new Set((reversedSnapshots || []).map(s => s.employee_id))];
+        const laterKeys = taxYearPeriodKeys(period_key).filter(p => p > period_key);
+        if (revEmpIds.length && laterKeys.length) {
+          const { data: laterRows } = await supabase
+            .from('payroll_snapshots')
+            .select('employee_id, period_key')
+            .eq('company_id', req.companyId)
+            .eq('is_locked', true)
+            .in('employee_id', revEmpIds)
+            .in('period_key', laterKeys);
+          laterPeriodsLocked = [...new Set((laterRows || []).map(r => r.period_key))].sort();
+        }
+      } catch (laterErr) {
+        console.warn('[reverse] later-period check failed (non-fatal):', laterErr.message);
+      }
+
       // Audit log
       try {
         await auditFromReq(req, 'PAYROLL_REVERSE', 'payroll_runs', run_id, {
@@ -657,6 +754,7 @@ router.post(
         run_id,
         period_key,
         reversed_count:  reversedSnapshots.length,
+        later_periods_locked: laterPeriodsLocked,
         timestamp:       new Date().toISOString()
       });
 
