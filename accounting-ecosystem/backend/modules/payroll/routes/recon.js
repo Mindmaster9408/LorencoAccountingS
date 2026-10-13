@@ -186,9 +186,10 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     const snapshotKeys = new Set(Object.keys(snapDedup));
 
     // ── 2. Aggregate from payroll_historical (imported/CSV data) ─────────────
+    // select('*') so an sdl column is used when it exists (spec 09 RS-05).
     const { data: histData, error: hErr } = await supabase
       .from('payroll_historical')
-      .select('employee_id, period_key, gross, paye, uif, net')
+      .select('*')
       .eq('company_id', companyId)
       .in('period_key', periods);
 
@@ -208,10 +209,11 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     }
 
     // extra: optional enriched fields { basic, overtime, shorttime, voluntary_tax, deductions }
-    function addToPeriod(empId, periodKey, gross, paye, uif, sdl, net, extra) {
+    // uif = EMPLOYEE UIF (a deduction on the payslip); uifEmployer = the employer's matching 1%.
+    function addToPeriod(empId, periodKey, gross, paye, uif, sdl, net, extra, uifEmployer) {
       if (!empMap[empId].periods[periodKey]) {
         empMap[empId].periods[periodKey] = {
-          gross: 0, paye: 0, uif: 0, sdl: 0, net: 0,
+          gross: 0, paye: 0, uif: 0, uif_employer: 0, sdl: 0, net: 0,
           basic: 0, overtime: 0, shorttime: 0, voluntary_tax: 0, deductions: 0
         };
       }
@@ -219,6 +221,7 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       p.gross += parseFloat(gross) || 0;
       p.paye  += parseFloat(paye)  || 0;
       p.uif   += parseFloat(uif)   || 0;
+      p.uif_employer += parseFloat(uifEmployer) || 0;
       p.sdl   += parseFloat(sdl)   || 0;
       p.net   += parseFloat(net)   || 0;
       if (extra) {
@@ -236,7 +239,8 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       const key = `${h.employee_id}_${h.period_key}`;
       if (snapshotKeys.has(key)) continue; // snapshot takes precedence
       ensureEmp(h.employee_id);
-      addToPeriod(h.employee_id, h.period_key, h.gross, h.paye, h.uif, 0, h.net);
+      // Employer UIF matches employee UIF (UI Contributions Act); SDL as imported when present.
+      addToPeriod(h.employee_id, h.period_key, h.gross, h.paye, h.uif, h.sdl || 0, h.net, null, h.uif);
     }
 
     // Snapshots: authoritative source — always included, override historical for same period
@@ -252,38 +256,47 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
           shorttime:     out.shortTimeAmount,
           voluntary_tax: (out.voluntary_paye_adjustment !== undefined ? out.voluntary_paye_adjustment : out.voluntary_overdeduction),
           deductions:    out.deductions
-        }
+        },
+        // Employer UIF: stored by the engine since 2026 (and by the imports); older snapshots
+        // pre-date the field — the employer matches the employee's 1% by law.
+        typeof out.uif_employer === 'number' ? out.uif_employer : out.uif
       );
     }
 
     // ── 4. Build period-level totals ─────────────────────────────────────────
+    // Period `uif` is the EMP201 UIF = employee + employer (spec 09 RS-02, finding W7 —
+    // it used to be the employee 1% only, so it never matched the SARS EMP201).
+    // uif_employee / uif_employer give the split.
+    const emptyTotal = () => ({ gross: 0, paye: 0, uif: 0, uif_employee: 0, uif_employer: 0, sdl: 0, net: 0, employeeCount: 0 });
     const totals = {};
-    periods.forEach(p => {
-      totals[p] = { gross: 0, paye: 0, uif: 0, sdl: 0, net: 0, employeeCount: 0 };
-    });
+    periods.forEach(p => { totals[p] = emptyTotal(); });
 
     const employees = Object.values(empMap);
     for (const emp of employees) {
       for (const [period, vals] of Object.entries(emp.periods)) {
-        if (!totals[period]) totals[period] = { gross: 0, paye: 0, uif: 0, sdl: 0, net: 0, employeeCount: 0 };
-        totals[period].gross  += vals.gross;
-        totals[period].paye   += vals.paye;
-        totals[period].uif    += vals.uif;
-        totals[period].sdl    += vals.sdl;
-        totals[period].net    += vals.net;
+        if (!totals[period]) totals[period] = emptyTotal();
+        totals[period].gross        += vals.gross;
+        totals[period].paye         += vals.paye;
+        totals[period].uif_employee += vals.uif;
+        totals[period].uif_employer += vals.uif_employer;
+        totals[period].sdl          += vals.sdl;
+        totals[period].net          += vals.net;
         totals[period].employeeCount++;
       }
     }
 
     // Round all period totals
+    const rnd = n => Math.round(n * 100) / 100;
     for (const p of Object.keys(totals)) {
       const t = totals[p];
-      t.gross = Math.round(t.gross * 100) / 100;
-      t.paye  = Math.round(t.paye  * 100) / 100;
-      t.uif   = Math.round(t.uif   * 100) / 100;
-      t.sdl   = Math.round(t.sdl   * 100) / 100;
-      t.net   = Math.round(t.net   * 100) / 100;
-      t.total = Math.round((t.paye + t.uif + t.sdl) * 100) / 100;
+      t.gross        = rnd(t.gross);
+      t.paye         = rnd(t.paye);
+      t.uif_employee = rnd(t.uif_employee);
+      t.uif_employer = rnd(t.uif_employer);
+      t.uif          = rnd(t.uif_employee + t.uif_employer);
+      t.sdl          = rnd(t.sdl);
+      t.net          = rnd(t.net);
+      t.total        = rnd(t.paye + t.uif + t.sdl);
     }
 
     // Round employee period values
@@ -292,6 +305,7 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
         vals.gross          = Math.round(vals.gross          * 100) / 100;
         vals.paye           = Math.round(vals.paye           * 100) / 100;
         vals.uif            = Math.round(vals.uif            * 100) / 100;
+        vals.uif_employer   = Math.round(vals.uif_employer   * 100) / 100;
         vals.sdl            = Math.round(vals.sdl            * 100) / 100;
         vals.net            = Math.round(vals.net            * 100) / 100;
         vals.basic          = Math.round(vals.basic          * 100) / 100;
@@ -303,17 +317,20 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     }
 
     // ── 5. Annual totals ─────────────────────────────────────────────────────
-    const annualTotals = { gross: 0, paye: 0, uif: 0, sdl: 0, net: 0 };
+    const annualTotals = { gross: 0, paye: 0, uif: 0, uif_employee: 0, uif_employer: 0, sdl: 0, net: 0 };
     for (const t of Object.values(totals)) {
-      annualTotals.gross += t.gross;
-      annualTotals.paye  += t.paye;
-      annualTotals.uif   += t.uif;
-      annualTotals.sdl   += t.sdl;
-      annualTotals.net   += t.net;
+      annualTotals.gross        += t.gross;
+      annualTotals.paye         += t.paye;
+      annualTotals.uif_employee += t.uif_employee;
+      annualTotals.uif_employer += t.uif_employer;
+      annualTotals.sdl          += t.sdl;
+      annualTotals.net          += t.net;
     }
-    annualTotals.gross = Math.round(annualTotals.gross * 100) / 100;
-    annualTotals.paye  = Math.round(annualTotals.paye  * 100) / 100;
-    annualTotals.uif   = Math.round(annualTotals.uif   * 100) / 100;
+    annualTotals.gross        = Math.round(annualTotals.gross * 100) / 100;
+    annualTotals.paye         = Math.round(annualTotals.paye  * 100) / 100;
+    annualTotals.uif_employee = Math.round(annualTotals.uif_employee * 100) / 100;
+    annualTotals.uif_employer = Math.round(annualTotals.uif_employer * 100) / 100;
+    annualTotals.uif          = Math.round((annualTotals.uif_employee + annualTotals.uif_employer) * 100) / 100;
     annualTotals.sdl   = Math.round(annualTotals.sdl   * 100) / 100;
     annualTotals.net   = Math.round(annualTotals.net   * 100) / 100;
     annualTotals.total = Math.round((annualTotals.paye + annualTotals.uif + annualTotals.sdl) * 100) / 100;
@@ -410,7 +427,8 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       agg.taxable_income += parseFloat(out.taxableGross)             || 0;
       agg.paye           += parseFloat(out.paye)                     || 0;
       agg.uif_employee   += parseFloat(out.uif)                      || 0;
-      agg.uif_employer   += 0; // not captured in current snapshot schema
+      // Employer UIF from the snapshot (engine + imports store it); older snapshots: matches employee.
+      agg.uif_employer   += typeof out.uif_employer === 'number' ? out.uif_employer : (parseFloat(out.uif) || 0);
       agg.sdl            += parseFloat(out.sdl)                      || 0;
       agg.medical_credit += parseFloat(out.medicalCredit)            || 0;
       agg.net_pay        += parseFloat(out.net)                      || 0;
@@ -443,12 +461,14 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     // Also include historical import data as a separate list (no IRP5 breakdown available)
     const { data: histData501 } = await supabase
       .from('payroll_historical')
-      .select('employee_id, gross, paye, uif, net')
+      .select('*')
       .eq('company_id', companyId)
       .in('period_key', periods);
 
     const histAgg = {};
     for (const h of (histData501 || [])) {
+      // A month with a locked snapshot is already in livePayroll — never count it twice (RS-01).
+      if (snapDedup501[`${h.employee_id}_${h.period_key}`]) continue;
       const eid = h.employee_id;
       const he  = empLookup501[eid] || {};
       if (!histAgg[eid]) {
@@ -457,18 +477,20 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
           full_name:   `${he.first_name || ''} ${he.last_name || ''}`.trim(),
           id_number:   he.id_number  || null,
           tax_number:  he.tax_number || null,
-          gross: 0, paye: 0, uif: 0, net: 0
+          gross: 0, paye: 0, uif: 0, uif_employer: 0, sdl: 0, net: 0
         };
       }
       histAgg[eid].gross += parseFloat(h.gross) || 0;
       histAgg[eid].paye  += parseFloat(h.paye)  || 0;
       histAgg[eid].uif   += parseFloat(h.uif)   || 0;
+      histAgg[eid].uif_employer += parseFloat(h.uif) || 0;   // employer matches employee
+      histAgg[eid].sdl   += parseFloat(h.sdl)   || 0;
       histAgg[eid].net   += parseFloat(h.net)   || 0;
     }
 
     const historicalSummary = Object.values(histAgg).map(h => ({
       ...h,
-      gross: r2(h.gross), paye: r2(h.paye), uif: r2(h.uif), net: r2(h.net)
+      gross: r2(h.gross), paye: r2(h.paye), uif: r2(h.uif), uif_employer: r2(h.uif_employer), sdl: r2(h.sdl), net: r2(h.net)
     }));
 
     res.json({

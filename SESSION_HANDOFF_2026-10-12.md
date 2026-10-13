@@ -64,6 +64,13 @@
 - "Set / Change bonus month" button on existing Bonus Spread entries (Ruan sets Bakmeester's himself).
 - Migration 026 confirmed run by Ruan (46 strict ON, 7 OFF).
 
+## Fase 7 (2026-10-13)
+
+- `backend/modules/payroll/routes/recon.js`: period UIF = employee + employer (EMP201), split fields added; EMP501 employer UIF from snapshots (was 0); historical rows never double-count snapshotted months; historical SDL.
+- `frontend-payroll/paye-reconciliation.html`: SARS/bank/finalized state from the DB only (all KV copies were empty), failed saves alert, UIF labels say employee + employer.
+- `backend/tests/payroll-recon-uif.test.js`: 6 tests (real route over HTTP on an in-memory DB).
+- Gate: Jest 167/167, core 15/15, 0 lint errors.
+
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).

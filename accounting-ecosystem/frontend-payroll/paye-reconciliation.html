@@ -303,7 +303,7 @@
                     <div class="summary-card-value" id="sc-paye">R 0.00</div>
                 </div>
                 <div class="summary-card green">
-                    <div class="summary-card-label">Total UIF (Calculated)</div>
+                    <div class="summary-card-label">Total UIF (employee + employer)</div>
                     <div class="summary-card-value" id="sc-uif">R 0.00</div>
                 </div>
                 <div class="summary-card orange">
@@ -420,37 +420,34 @@
         // ─── Finalization helpers ─────────────────────────────────────────────
         function _finalKey() { return 'recon_final_' + currentCompanyId; }
 
+        // Recon state lives ONLY in the database (CLAUDE.md Part D, spec 09 RS-06). The KV copies
+        // (recon_final_*, paye_recon_sars_*/bank_*) were all empty when this was removed (2026-10-13).
         function loadFinalized() {
-            // KV fast-path (avoids blank render on first load)
-            try {
-                finalizedData = JSON.parse(safeLocalStorage.getItem(_finalKey()) || '{}');
-            } catch(e) { finalizedData = {}; }
+            finalizedData = {};
         }
 
         function _loadFinalizedFromAPI() {
             return apiGet('/payroll/recon/finalized').then(function(data) {
-                if (data && data.finalized) {
-                    // Merge API state into finalizedData (SQL is authoritative)
-                    Object.assign(finalizedData, data.finalized);
-                    safeLocalStorage.setItem(_finalKey(), JSON.stringify(finalizedData));
-                }
-            }).catch(function() {});
+                if (data && data.finalized) finalizedData = data.finalized;
+            }).catch(function() {
+                alert('Could not load the reconciliation status from the server. Please refresh the page.');
+            });
         }
 
-        function saveFinalized() {
-            // KV (fast local update)
-            safeLocalStorage.setItem(_finalKey(), JSON.stringify(finalizedData));
-        }
+        function saveFinalized() { /* no local copy — saved by _saveFinalizedToAPI */ }
 
         function _saveFinalizedToAPI(taxYear, isFinalized, userEmail) {
-            apiGet; // ensure apiGet in scope
             var token = safeLocalStorage.getItem('token');
             if (!token) return;
             fetch(window.location.origin + '/api/payroll/recon/finalized', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                 body: JSON.stringify({ tax_year: taxYear, is_finalized: isFinalized, finalized_by: userEmail || null })
-            }).catch(function() {});
+            }).then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+            }).catch(function() {
+                alert('NOT SAVED — the finalized status for ' + taxYear + ' could not be saved. Please try again.');
+            });
         }
 
         function isFinalized(taxYear) {
@@ -670,10 +667,11 @@
 
             filteredPeriods = [];
 
-            // Load SARS/bank submitted values: SQL-primary, KV fallback
-            sarsData = ReconService.loadSARSValues(currentCompanyId);
-            bankData = ReconService.loadBankValues(currentCompanyId);
-            apiGet('/payroll/recon/submitted?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(d) {
+            // SARS / bank values: database only (spec 09 RS-06). Loaded before the summary renders
+            // so the comparison never shows half-loaded figures.
+            sarsData = {};
+            bankData = {};
+            var _submittedLoaded = apiGet('/payroll/recon/submitted?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(d) {
                 if (d && d.submitted) {
                     Object.keys(d.submitted).forEach(function(p) {
                         var s = d.submitted[p];
@@ -681,9 +679,13 @@
                         bankData[p] = { paye: s.paye_bank || 0, uif: s.uif_bank || 0, sdl: s.sdl_bank || 0 };
                     });
                 }
-            }).catch(function() {});
+            }).catch(function() {
+                alert('Could not load the SARS / bank figures from the server. Please refresh the page.');
+            });
 
-            apiGet('/payroll/recon/summary?taxYear=' + encodeURIComponent(currentTaxYear)).then(function(data) {
+            _submittedLoaded.then(function() {
+                return apiGet('/payroll/recon/summary?taxYear=' + encodeURIComponent(currentTaxYear));
+            }).then(function(data) {
                 if (data && data.totals) {
                     payrollTotals = data.totals;
                     if (data.periods && data.periods.length > 0) {
@@ -977,7 +979,7 @@
             if (filteredPeriods.length === 0) { container.innerHTML = emptyHtml('No payroll data for this tax year.'); return; }
 
             var totals = _zeroTotals();
-            var html = tableHeader(['Month', 'Gross Salary', 'PAYE', 'UIF', 'SDL', 'Total (PAYE+UIF+SDL)']);
+            var html = tableHeader(['Month', 'Gross Salary', 'PAYE', 'UIF (employee + employer)', 'SDL', 'Total (PAYE+UIF+SDL)']);
 
             filteredPeriods.forEach(function(p) {
                 var t = payrollTotals[p] || { gross:0, paye:0, uif:0, sdl:0, total:0 };
@@ -1132,12 +1134,7 @@
             // Debounce save
             clearTimeout(saveTimer);
             saveTimer = setTimeout(function() {
-                if (table === 'sars') {
-                    ReconService.saveSARSValues(currentCompanyId, sarsData);
-                } else {
-                    ReconService.saveBankValues(currentCompanyId, bankData);
-                }
-                // SQL persistence — fire-and-forget
+                // Database only (spec 09 RS-06); a failed save is reported, never silent.
                 var token = safeLocalStorage.getItem('token');
                 if (token && period) {
                     var sv = sarsData[period] || {};
@@ -1150,7 +1147,12 @@
                             paye_submitted: sv.paye || 0, uif_submitted: sv.uif || 0, sdl_submitted: sv.sdl || 0,
                             paye_bank:      bv.paye || 0, uif_bank:      bv.uif || 0, sdl_bank:      bv.sdl || 0
                         })
-                    }).catch(function() {});
+                    }).then(function(r) {
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                    }).catch(function() {
+                        alert('NOT SAVED — the ' + (table === 'sars' ? 'SARS' : 'bank') + ' figures for ' + period +
+                              ' could not be saved. Please re-enter them.');
+                    });
                 }
                 updateManualTotals(table);
                 renderReconTable();

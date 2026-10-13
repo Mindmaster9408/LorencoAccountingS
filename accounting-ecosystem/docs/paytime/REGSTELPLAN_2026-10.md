@@ -126,6 +126,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | **Afhanklik van** | Fase 1–5 (die snapshot moet eers die regte inhoud hê) |
 
 ### Fase 7 — Rekonsiliasie en SARS-syfers `[W7, RS-05, RS-06]` → spec 09
+
+**✅ Gebou 2026-10-13.** `routes/recon.js`: maand-UIF = werknemer + werkgewer (met `uif_employee`/`uif_employer`), EMP201-totaal reg; EMP501 werkgewer-UIF uit die snapshot (ou snapshots: = werknemer); historiese rye tel nie dubbel met snapshots nie; SDL vir historiese rye. `paye-reconciliation.html`: SARS/bank/afgehandel net uit die DB (KV-kopieë was almal leeg), stoorfoute word gewys, duidelike UIF-etikette. Toetse: `tests/payroll-recon-uif.test.js` (6). Oop: RS-07/08/09 (e@syFile, UIF-19, ETI) — roadmap; HI-04 (ingevoerde maande outomaties as "ingedien") — Fase 12.
 | 7.1 | UIF in rekon/EMP201 = werknemer + werkgewer. |
 | 7.2 | EMP501: werkgewer-UIF uit snapshot; geen dubbeltelling met historiese data. |
 | 7.3 | SDL vir historiese maande. |
