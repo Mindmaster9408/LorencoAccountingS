@@ -108,15 +108,17 @@ router.get('/period-inputs', requirePermission('PAYROLL.VIEW'), async (req, res)
     const empId = parseInt(employee_id);
     const periodId = period.id;
 
+    // source ('manual' | 'attendance', migration 029) — read without it before 029 has run.
+    const withSource = async (table, cols) => {
+      const q = (c) => supabase.from(table).select(c)
+        .eq('company_id', req.companyId).eq('employee_id', empId)
+        .eq('payroll_period_id', periodId).eq('is_deleted', false);
+      const r = await q(cols + ', source');
+      return r.error && /source/.test(r.error.message || '') ? q(cols) : r;
+    };
     const [otRes, stRes, ciRes, mrRes] = await Promise.all([
-      supabase.from('payroll_overtime')
-        .select('id, hours, rate_multiplier, description')
-        .eq('company_id', req.companyId).eq('employee_id', empId)
-        .eq('payroll_period_id', periodId).eq('is_deleted', false),
-      supabase.from('payroll_short_time')
-        .select('id, hours_missed, description')
-        .eq('company_id', req.companyId).eq('employee_id', empId)
-        .eq('payroll_period_id', periodId).eq('is_deleted', false),
+      withSource('payroll_overtime', 'id, hours, rate_multiplier, description'),
+      withSource('payroll_short_time', 'id, hours_missed, description'),
       supabase.from('payroll_period_inputs')
         .select('id, description, amount, item_type')
         .eq('company_id', req.companyId).eq('employee_id', empId)
@@ -252,7 +254,8 @@ router.post('/overtime', requirePermission('PAYROLL.CREATE'), async (req, res) =
       rows: (entries || []).map(e => ({
         hours: parseFloat(e.hours) || 0,
         rate_multiplier: parseFloat(e.rate_multiplier) || 1.5,
-        description: e.description || 'Overtime'
+        description: e.description || 'Overtime',
+        source: e.source === 'attendance' ? 'attendance' : 'manual'
       }))
     });
     res.json({ success: true });
@@ -284,7 +287,8 @@ router.post('/short-time', requirePermission('PAYROLL.CREATE'), async (req, res)
       periodId, periodKey: period_key,
       rows: (entries || []).map(e => ({
         hours_missed: parseFloat(e.hours_missed || e.hours) || 0,
-        description: e.description || e.reason || 'Short time'
+        description: e.description || e.reason || 'Short time',
+        source: e.source === 'attendance' ? 'attendance' : 'manual'
       }))
     });
     res.json({ success: true });

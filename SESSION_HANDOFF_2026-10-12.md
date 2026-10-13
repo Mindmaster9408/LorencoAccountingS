@@ -102,6 +102,14 @@
 - Golden: only S60/S62 changed as expected. No live employee affected in Oct 2026. Spec statuses for Fase 2–4 items brought up to date.
 - Ruan decided: overtime/short time in a pro-rata month at the NORMAL (full-salary) hourly rate — done, golden S63.
 
+## Fase 8 (2026-10-13) — docs/paytime/FASE8_CHANGE_IMPACT_NOTE.md
+
+- Attendance moved from browser/KV to the `attendance` table; backend API was broken (wrong column names) and is rewritten.
+- "Apply to Payroll" = server-side BCEA proposal → payroll user approves per employee → overtime/short-time rows with source=attendance (migration 029). Manual rows untouched; finalized month refused.
+- Payslip shows "from attendance" badge; overtime/short-time descriptions reach the payslip lines.
+- CLAUDE.md Part D: attendance_* KV follow-up marked done.
+- Pending: migration 029 (Ruan's go-ahead). Until then apply returns 409; everything else works.
+
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).

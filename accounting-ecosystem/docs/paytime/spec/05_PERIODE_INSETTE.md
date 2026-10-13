@@ -17,8 +17,8 @@ Alles wat net vir één maand geld — bonus, eenmalige toelae/aftrekking, oorty
 | PI-05 | "Multi-rate" = ure × **rand-uurtarief** wat die gebruiker insleutel; tel by bruto, PAYE, UIF. | ❌ Word R0 in die backend, maar wys op die payslip [K4] |
 | PI-06 | Insette vir 'n **geslote** periode kan nie bygevoeg/gewysig/verwyder word nie — ook nie via die API nie. | ⚠️ Net die skerm keer dit, nie die backend nie [B3] |
 | PI-07 | As enige inset nie gelaai kan word nie, faal die berekening met 'n duidelike fout. | ❌ Fout word stil ingesluk [B4] |
-| PI-08 | **Bywoning → payroll:** "Apply to Payroll" skep oortyd- en short-time-inskrywings in die DB, gemerk as "uit bywoning", wat die gebruiker kan sien en verwyder. | ❌ Skryf na KV; backend lees dit nooit [V1] |
-| PI-09 | Bywoning-oortyd volg BCEA: oortyd is ure bo die werknemer se rooster (maks 45 gewone ure/week), nie bloot "> 8 uur op 'n dag" nie. Betaalde verlof tel nie as afwesigheid nie. | ❌ |
+| PI-08 | **Bywoning → payroll:** "Apply to Payroll" skep oortyd- en short-time-inskrywings in die DB, gemerk as "uit bywoning", wat die gebruiker kan sien en verwyder. | ✅ Fase 8: voorstel → goedkeur per werknemer → oortyd/short time in die DB, gemerk "from attendance" [V1 reg] |
+| PI-09 | Bywoning-oortyd volg BCEA: oortyd is ure bo die werknemer se rooster (maks 45 gewone ure/week), nie bloot "> 8 uur op 'n dag" nie. Betaalde verlof tel nie as afwesigheid nie. | ✅ Fase 8: oortyd bo rooster + 45h/week, Sondag 2×, openbare vakansiedag +1×, verlof/vakansiedae nie afwesig nie |
 | PI-10 | Elke inset-verandering word geoudit (wie, wanneer, ou/nuwe waarde). | ⚠️ |
 
 ## Regular teenoor Current — hoe dit tans werk (nagegaan 2026-10-12)

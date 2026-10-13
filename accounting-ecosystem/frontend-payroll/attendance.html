@@ -288,7 +288,7 @@
             <!-- SUMMARY VIEW -->
             <div id="summary-view" class="att-tab-content">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-                    <h3>Monthly Summary</h3>
+                    <h3>Monthly Summary <small style="font-weight:400;color:#888;font-size:12px;">(BCEA overtime, leave and public holidays applied)</small></h3>
                     <button class="btn btn-primary" onclick="AttendanceManager.applyToPayroll()">&#x1F4B5; Apply to Payroll</button>
                 </div>
                 <div class="responsive-table-wrapper">
@@ -296,12 +296,12 @@
                         <thead>
                             <tr>
                                 <th>Employee</th>
-                                <th>Days Worked</th>
-                                <th>Total Hours</th>
-                                <th>Regular</th>
-                                <th>Overtime</th>
-                                <th>Absences</th>
-                                <th>Late Days</th>
+                                <th>Leave</th>
+                                <th>Hours Worked</th>
+                                <th>Scheduled</th>
+                                <th>Overtime (h)</th>
+                                <th>Absent Days</th>
+                                <th>Short Days</th>
                             </tr>
                         </thead>
                         <tbody id="summaryBody"></tbody>
@@ -341,6 +341,21 @@
                 <textarea id="entryNotes" rows="2" placeholder="Any additional notes..."></textarea>
             </div>
             <button class="btn btn-success" style="width: 100%;" onclick="AttendanceManager.saveTimeEntry()">Save Entry</button>
+        </div>
+    </div>
+
+    <!-- ATTENDANCE → PAYROLL PROPOSAL (Fase 8: review, then approve) -->
+    <div id="proposalModal" class="modal">
+        <div class="modal-content" style="max-width: 760px;">
+            <div class="modal-header">
+                <h3 id="proposalTitle">Attendance proposal</h3>
+                <button class="btn btn-sm btn-danger" onclick="AttendanceManager.closeModal('proposalModal')">&#x2715;</button>
+            </div>
+            <div id="proposalBody"></div>
+            <div style="display:flex; gap:10px; margin-top:15px;">
+                <button class="btn btn-secondary" style="flex:1;" onclick="AttendanceManager.closeModal('proposalModal')">Cancel</button>
+                <button id="proposalApproveBtn" class="btn btn-success" style="flex:1;" onclick="AttendanceManager.approveProposal()">&#x2705; Approve selected</button>
+            </div>
         </div>
     </div>
 

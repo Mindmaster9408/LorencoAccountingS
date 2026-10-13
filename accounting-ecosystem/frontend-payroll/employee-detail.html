@@ -2350,13 +2350,13 @@
             const otList = document.getElementById('overtimeList');
             const overtime = _periodInputsCache.overtime;
             otList.innerHTML = overtime.length === 0 ? '<p style="color:#999;font-size:14px;">No overtime recorded</p>' :
-                overtime.map(ot => '<div class="salary-item"><span class="salary-label">' + (ot.date ? ot.date + ' - ' : '') + ot.hours + 'hrs @ ' + ot.rate_multiplier + 'x' + (ot.description ? ' (' + ot.description + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteOvertime(' + ot.id + ')">x</button></div>').join('');
+                overtime.map(ot => '<div class="salary-item"><span class="salary-label">' + (ot.date ? ot.date + ' - ' : '') + ot.hours + 'hrs @ ' + ot.rate_multiplier + 'x' + (ot.description ? ' (' + ot.description + ')' : '') + (ot.source === 'attendance' ? ' <span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:1px 6px;font-size:11px;">from attendance</span>' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteOvertime(' + ot.id + ')">x</button></div>').join('');
 
             // Short time — read from backend cache (not KV)
             const stList = document.getElementById('shortTimeList');
             const shortTime = _periodInputsCache.shortTime;
             stList.innerHTML = shortTime.length === 0 ? '<p style="color:#999;font-size:14px;">No short time recorded</p>' :
-                shortTime.map(st => '<div class="salary-item"><span class="salary-label">' + (st.date ? st.date + ' - ' : '') + st.hours_missed + 'hrs missed' + (st.description ? ' (' + st.description + ')' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteShortTime(' + st.id + ')">x</button></div>').join('');
+                shortTime.map(st => '<div class="salary-item"><span class="salary-label">' + (st.date ? st.date + ' - ' : '') + st.hours_missed + 'hrs missed' + (st.description ? ' (' + st.description + ')' : '') + (st.source === 'attendance' ? ' <span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:1px 6px;font-size:11px;">from attendance</span>' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteShortTime(' + st.id + ')">x</button></div>').join('');
 
             // Multi-rate
             const mrList = document.getElementById('multiRateList');
@@ -2841,7 +2841,7 @@
             const desc = document.getElementById('overtimeDesc').value.trim();
             // Build updated set: existing entries + new entry
             const entries = _periodInputsCache.overtime.map(function(ot) {
-                return { hours: ot.hours, rate_multiplier: ot.rate_multiplier, description: ot.description || '' };
+                return { hours: ot.hours, rate_multiplier: ot.rate_multiplier, description: ot.description || '', source: ot.source || 'manual' };
             });
             entries.push({ hours: hours, rate_multiplier: rate, description: desc });
             try {
@@ -2858,7 +2858,7 @@
             if (!confirm('Delete this overtime entry?')) return;
             const entries = _periodInputsCache.overtime
                 .filter(function(ot) { return ot.id !== id; })
-                .map(function(ot) { return { hours: ot.hours, rate_multiplier: ot.rate_multiplier, description: ot.description || '' }; });
+                .map(function(ot) { return { hours: ot.hours, rate_multiplier: ot.rate_multiplier, description: ot.description || '', source: ot.source || 'manual' }; });
             try {
                 await _savePeriodInputs('/api/payroll/transactions/overtime', {
                     employee_id: currentEmpId, period_key: currentPeriod, entries: entries
@@ -2876,7 +2876,7 @@
             if (!hours) { alert('Please enter hours missed'); return; }
             const reason = document.getElementById('shortTimeReason').value.trim();
             const entries = _periodInputsCache.shortTime.map(function(st) {
-                return { hours_missed: st.hours_missed, description: st.description || '' };
+                return { hours_missed: st.hours_missed, description: st.description || '', source: st.source || 'manual' };
             });
             entries.push({ hours_missed: hours, description: reason });
             try {
@@ -2893,7 +2893,7 @@
             if (!confirm('Delete this short time entry?')) return;
             const entries = _periodInputsCache.shortTime
                 .filter(function(st) { return st.id !== id; })
-                .map(function(st) { return { hours_missed: st.hours_missed, description: st.description || '' }; });
+                .map(function(st) { return { hours_missed: st.hours_missed, description: st.description || '', source: st.source || 'manual' }; });
             try {
                 await _savePeriodInputs('/api/payroll/transactions/short-time', {
                     employee_id: currentEmpId, period_key: currentPeriod, entries: entries

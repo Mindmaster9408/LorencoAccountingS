@@ -939,12 +939,15 @@ function normalizeCalculationInput(
   // Normalize overtime (preserve decimal hours)
   const overtimeNormalized = periodInputs.overtime.map(ot => ({
     hours: parseFloat(ot.hours) || 0, // Decimal hours
-    rate_multiplier: parseFloat(ot.rate_multiplier) || 1.5
+    rate_multiplier: parseFloat(ot.rate_multiplier) || 1.5,
+    // Shown as the payslip line (Fase 8: e.g. 'Attendance: overtime'). Not used in any figure.
+    description: ot.description || undefined
   }));
 
   // Normalize short-time (preserve decimal hours)
   const shortTimeNormalized = periodInputs.shortTime.map(st => ({
-    hours_missed: parseFloat(st.hours_missed) || 0 // Decimal hours
+    hours_missed: parseFloat(st.hours_missed) || 0, // Decimal hours
+    description: st.description || undefined
   }));
 
   // Normalize multi-rate (preserve decimal hours).

@@ -89,7 +89,8 @@ async function replacePeriodRows(supabase, p) {
     .eq('company_id', p.companyId).eq('employee_id', employeeId).eq('payroll_period_id', p.periodId);
   if (delErr) throw new InputSaveError(delErr.message);
   if (!rows.length) return 0;
-  const records = rows.map(r => Object.assign({}, r, {
+  // Legacy path predates migration 029 — the source column may not exist yet.
+  const records = rows.map(({ source: _source, ...r }) => Object.assign({}, r, {
     company_id: p.companyId, employee_id: employeeId, payroll_period_id: p.periodId, is_deleted: false
   }));
   const { error: insErr } = await supabase.from(p.table).insert(records);

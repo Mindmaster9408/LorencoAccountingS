@@ -141,6 +141,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | **Afhanklik van** | Fase 6 (lees snapshots) |
 
 ### Fase 8 — Bywoning na payroll `[V1]` → spec 05
+
+**✅ Gebou 2026-10-13** ([FASE8_CHANGE_IMPACT_NOTE.md](FASE8_CHANGE_IMPACT_NOTE.md)). Bywoning in die DB (was blaaier/KV), API herstel, BCEA-voorstel (`services/attendanceProposal.js`), goedkeuring per werknemer skryf oortyd/short time met `source = attendance` (migrasie 029), handmatige rye onaangeraak, gefinaliseerde maand geweier. Toetse: `tests/payroll-fase8.test.js` (14).
 | 8.1 | "Apply to Payroll" skryf na die DB-tabelle (oortyd/short time), sigbaar en verwyderbaar. |
 | 8.2 | BCEA-oortydreël en verlof uitgesluit van afwesigheid. |
 | **Afhanklik van** | Fase 2 · Ruan: vraag 05.1 |

@@ -652,7 +652,7 @@ Business data that currently flows through `safeLocalStorage` → KV must be mig
 Known KV keys that require SQL migration (tracked follow-ups):
 
 - `voluntaryTaxConfig_*` → `employee_tax_overrides` table
-- `attendance_*` → `attendance_records` table
+- ~~`attendance_*` → `attendance_records` table~~ — DONE 2026-10-13 (Paytime Fase 8): attendance lives in the `attendance` table via /api/payroll/attendance; no browser/KV storage left
 - `paye_recon_*` → `paye_reconciliation` table
 - `sean_learning_*` → `sean_knowledge_mappings` table
 - `bank_allocations_*` → `bank_transaction_allocations` table

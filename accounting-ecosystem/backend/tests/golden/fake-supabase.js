@@ -73,6 +73,8 @@ class Query {
   }
   eq(c, v)   { this.filters.push(r => same(r[c], v)); return this; }
   neq(c, v)  { this.filters.push(r => !same(r[c], v)); return this; }
+  gte(c, v)  { this.filters.push(r => r[c] != null && String(r[c]) >= String(v)); return this; }
+  lte(c, v)  { this.filters.push(r => r[c] != null && String(r[c]) <= String(v)); return this; }
   in(c, arr) { this.filters.push(r => arr.some(v => same(r[c], v))); return this; }
   is(c, v)   { this.filters.push(r => (v === null ? r[c] === null || r[c] === undefined : r[c] === v)); return this; }
   not(c, op, v) {
@@ -102,10 +104,13 @@ class Query {
     }
     if (this.op === 'upsert') {
       const keys = this.conflict.map(k => k.trim());
-      let r = rows.find(x => keys.every(k => same(x[k], this.payload[k])));
-      if (r) Object.assign(r, this.payload);
-      else { r = Object.assign({ id: rows.length + 1000 }, this.payload); rows.push(r); }
-      return { data: [project(r, this.cols)], error: null };
+      const out = (Array.isArray(this.payload) ? this.payload : [this.payload]).map(p => {
+        let r = rows.find(x => keys.every(k => same(x[k], p[k])));
+        if (r) Object.assign(r, p);
+        else { r = Object.assign({ id: rows.length + 1000 }, p); rows.push(r); }
+        return r;
+      });
+      return { data: out.map(r => project(r, this.cols)), error: null };
     }
     let out = rows.filter(r => this.filters.every(f => f(r)));
     if (this.sortKey) {
