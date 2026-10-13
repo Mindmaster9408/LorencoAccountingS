@@ -112,6 +112,7 @@
 
 ## Fase 9 (in progress, 2026-10-13)
 
+- 9.1 Old Payslips page (payruns.html) retired: out of menu, redirects to Execute Payroll (?legacy=1 still opens it). Execute Payroll: payslip preview + bulk print from frozen lines (bulk print printed "Lorenco Accounting Services" for every company — fixed), new Bank File (generic CSV + FNB/ABSA/Standard/Nedbank) from finalized net pay, refuses when EFT bank details are missing. Not carried over yet: Xero/Sage export (→ Leo journal VU-04), Sean preflight button, payroll upload (Fase 12), Capitec format.
 - 9.3 Net-to-Gross on the backend (`POST /api/payroll/calculate/net-to-gross`), allowances recurring by default (B12), period tax tables.
 
 ## Open risks / follow-ups

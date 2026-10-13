@@ -771,6 +771,7 @@
     <script src="js/data-access.js"></script>
     <script src="js/permissions.js"></script>
     <script src="js/payroll-api.js"></script>
+    <script src="js/banking-formats.js"></script>
     <script src="js/mobile-utils.js"></script>
     <script>
     // ==========================================================================
@@ -1575,6 +1576,8 @@
             if (isFinalized && !isReversed) {
                 actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
                     'onclick="bulkPrintPayslips(\'' + esc(runId) + '\')">🖨 Bulk Print Payslips</button>';
+                actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
+                    'onclick="openBankFile(\'' + esc(runId) + '\')">🏦 Bank File</button>';
                 actionBtns += '<button type="button" class="btn-reverse" style="font-size:0.8rem;padding:6px 14px;" ' +
                     'onclick="openHistoryReversalModal(\'' + esc(runId) + '\', \'' + esc(periodKey || '') + '\')">🔄 Reverse This Run</button>';
             }
@@ -1606,11 +1609,74 @@
     // ==========================================================================
     // FEATURE — PAYSLIP PREVIEW (from snapshot, read-only)
     // ==========================================================================
+    // Fase 6/9: payslip sections from the lines frozen in the snapshot (spec 08 PS-02).
+    // Returns null for a snapshot without lines (then the older layout is used).
+    function _payslipSections(snap) {
+        var lines = Array.isArray(snap.payslip_lines) ? snap.payslip_lines : null;
+        if (!lines) return null;
+        var out = snap.calculation_output || {};
+        var s = { earn: [], ded: [], comp: [], gross: Number(out.gross || 0), net: Number(out.net || 0),
+                  dedTotal: Number(out.paye || 0) + Number(out.uif || 0) + Number(out.deductions || 0),
+                  medCredit: Number(out.medicalCredit || 0), check: snap.payslip_check || null,
+                  rebuilt: snap.payslip_lines_source === 'rebuilt_from_frozen_inputs',
+                  prorata: out.prorataFactor != null && out.prorataFactor < 1 ? out.prorataFactor : null };
+        lines.forEach(function(l) {
+            var label = esc(l.description || '');
+            if (l.hours && (l.kind === 'overtime' || l.kind === 'multi_rate' || l.kind === 'short_time')) {
+                label += ' (' + l.hours + 'h @ R' + Number(l.rate || 0).toFixed(2) + ')';
+            }
+            if (l.section === 'earning') s.earn.push({ label: label, amount: Number(l.amount) });
+            else if (l.section === 'deduction' || l.section === 'tax') s.ded.push({ label: label, amount: -Number(l.amount) });
+            else if (l.section === 'employer') s.comp.push({ label: label, amount: Number(l.amount) });
+        });
+        return s;
+    }
+
+    // The bulk payslips printed "Lorenco Accounting Services" for every company.
+    function _companyNameForPrint() {
+        try {
+            var c = (typeof AUTH !== 'undefined' && AUTH.getCompanyById) ? AUTH.getCompanyById(state.companyId) : null;
+            return (c && (c.name || c.company_name || c.trading_name)) || 'Company';
+        } catch (e) { return 'Company'; }
+    }
+
+    function _payslipNotes(s) {
+        var n = '';
+        if (s.medCredit > 0) n += '<div style="font-size:0.8rem;color:#555;margin-top:6px;">Medical tax credit ' + fmt(s.medCredit) + ' — already included in PAYE.</div>';
+        if (s.prorata != null) n += '<div style="margin-top:8px;padding:8px 12px;background:#fff3cd;border-radius:8px;font-size:0.8rem;color:#856404;">⚠ Pro-rata applied: ' + (s.prorata * 100).toFixed(2) + '% of the month</div>';
+        if (s.check && s.check.ok === false) n += '<div style="margin-top:8px;padding:8px 12px;background:#fdecea;border-radius:8px;font-size:0.8rem;color:#b71c1c;">The lines above differ from the totals by ' + fmt(s.check.net_diff) + ' — please report this.</div>';
+        if (s.rebuilt) n += '<div style="font-size:0.75rem;color:#888;margin-top:6px;">Lines rebuilt from this payslip\'s frozen inputs (finalized before line storage). Totals are the finalized figures.</div>';
+        return n;
+    }
+
     function openPayslipPreview(snap) {
         var emp = getEmployee(snap.employee_id);
         var name = emp
             ? ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim()
             : 'Employee #' + snap.employee_id;
+
+        var sec = _payslipSections(snap);
+        if (sec) {
+            document.getElementById('payslip-preview-name').textContent = name;
+            document.getElementById('payslip-preview-meta').textContent =
+                'Period: ' + (snap.period_key || '—') + '  ·  ' + (snap.is_locked ? 'Finalized' : 'Draft') +
+                (snap.engine_version ? '  ·  Engine ' + snap.engine_version : '');
+            var h = '<div class="payslip-section-label">Earnings</div>';
+            sec.earn.forEach(function(r) { h += payslipLine(r.label, r.amount, r.amount < 0 ? 'deduction-line' : ''); });
+            h += payslipLine('Total Gross', sec.gross, 'total-line gross-line');
+            h += '<div class="payslip-section-label">Deductions</div>';
+            sec.ded.forEach(function(r) { h += payslipLine(r.label, r.amount, 'deduction-line'); });
+            h += payslipLine('Total Deductions', -sec.dedTotal, 'total-line deduction-line');
+            h += '<div class="payslip-line net-line"><span class="label">NET PAY</span><span class="amount">' + fmt(sec.net) + '</span></div>';
+            if (sec.comp.length) {
+                h += '<div class="payslip-section-label">Company Contributions</div>';
+                sec.comp.forEach(function(r) { h += payslipLine(r.label, r.amount, ''); });
+            }
+            h += _payslipNotes(sec);
+            document.getElementById('payslip-preview-body').innerHTML = h;
+            document.getElementById('payslipPreviewModal').classList.add('show');
+            return;
+        }
 
         var out   = snap.calculation_output || {};
         var items = snap.payslip_line_items  || [];
@@ -1716,6 +1782,95 @@
     // ==========================================================================
     // FEATURE — BULK PRINT PAYSLIPS (from finalized snapshots, no recalculation)
     // ==========================================================================
+    // ── Bank file (Fase 9 — spec 10 VU-03/06/07/09/10) ────────────────────────
+    // Built ONLY from the finalized payslips of this run (net pay) and the employees'
+    // bank details in the database — never recalculated. Replaces the old Payslips
+    // page export, which recalculated with the frontend engine from browser data.
+    async function openBankFile(runId) {
+        var cached = _statutoryCache[runId];
+        if (!cached || !cached.snapshots || !cached.snapshots.length) {
+            alert('Payslip data not loaded yet. Open the run panel first and try again.');
+            return;
+        }
+        var snaps = cached.snapshots.filter(function(s) { return s.is_locked && s.status !== 'reversed'; });
+        var periodKey = cached.periodKey || (snaps[0] && snaps[0].period_key) || '';
+        var format = prompt('Bank file for ' + periodKey + ' — choose the format:\n\n' +
+            '1 = Generic CSV (any bank)\n2 = FNB\n3 = ABSA\n4 = Standard Bank\n5 = Nedbank\n\n' +
+            '(Capitec Business: use 1 until its own format is added.)', '1');
+        if (!format) return;
+        format = { '1': 'csv', '2': 'fnb', '3': 'absa', '4': 'standard', '5': 'nedbank' }[String(format).trim()];
+        if (!format) { alert('Unknown choice.'); return; }
+
+        var empRows;
+        try {
+            var token = safeLocalStorage.getItem('token') || '';
+            var r = await fetch('/api/payroll/employees', { headers: { 'Authorization': 'Bearer ' + token } });
+            var d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+            empRows = d.employees || [];
+        } catch (e) {
+            alert('Could not load bank details: ' + e.message);
+            return;
+        }
+        var byId = {};
+        empRows.forEach(function(e) { byId[String(e.id)] = e; });
+
+        var pay = [], missing = [], notEft = [];
+        snaps.forEach(function(s) {
+            var net = Math.round(Number((s.calculation_output || {}).net || 0) * 100) / 100;
+            if (net <= 0) return;
+            var e = byId[String(s.employee_id)] || getEmployee(s.employee_id) || {};
+            var name = ((e.first_name || '') + ' ' + (e.last_name || '')).trim() || ('Employee #' + s.employee_id);
+            var method = String(e.payment_method || 'EFT').toUpperCase();
+            if (method !== 'EFT') { notEft.push(name + ' (' + method + ', ' + fmt(net) + ')'); return; }
+            var bd = (e.employee_bank_details || []).filter(function(b) { return b.is_primary; })[0] || (e.employee_bank_details || [])[0] || {};
+            var acc = String(bd.account_number || e.account_number || '').replace(/\s/g, '');
+            var branch = String(bd.branch_code || e.branch_code || '').replace(/\s/g, '');
+            if (!acc || !branch) { missing.push(name + (acc ? ' — no branch code' : ' — no account number')); return; }
+            var code = e.employee_code || e.employee_number || String(s.employee_id);
+            pay.push({ id: String(s.employee_id), first_name: e.first_name || '', last_name: e.last_name || '',
+                       employee_number: code, payment_method: 'EFT', account_number: acc, branch_code: branch,
+                       bank_name: bd.bank_name || '', account_type: bd.account_type || 'Cheque',
+                       net: net, reference: 'SAL ' + periodKey + ' ' + code });
+        });
+
+        // VU-09: never leave someone out silently.
+        if (missing.length) {
+            alert('The bank file was NOT created — these EFT employees have incomplete bank details:\n\n- ' +
+                  missing.join('\n- ') + '\n\nAdd the details on the employee page, then try again.');
+            return;
+        }
+        if (!pay.length) { alert('No EFT payments for ' + periodKey + '.'); return; }
+        var total = Math.round(pay.reduce(function(t, p) { return t + p.net; }, 0) * 100) / 100;
+        if (!confirm('Bank file for ' + periodKey + ': ' + pay.length + ' payment(s), total ' + fmt(total) +
+                     (notEft.length ? '\n\nNot paid by EFT (not in the file):\n- ' + notEft.join('\n- ') : '') + '\n\nCreate the file?')) return;
+
+        var netById = {};
+        pay.forEach(function(p) { netById[p.id] = { net: p.net }; });
+        var result;
+        if (format === 'csv') {
+            var rows = [['Name', 'Account Number', 'Branch Code', 'Account Type', 'Amount', 'Reference']];
+            pay.forEach(function(p) {
+                rows.push([(p.first_name + ' ' + p.last_name).trim(), p.account_number, p.branch_code, p.account_type, p.net.toFixed(2), p.reference]);
+            });
+            BankingFormats.downloadCSV(rows, 'Salaries_' + periodKey + '.csv');
+            result = { total: total, count: pay.length };
+        } else {
+            var run = { period: periodKey };
+            var calcFn = function(id) { return netById[String(id)] || { net: 0 }; };
+            if (format === 'fnb')           result = BankingFormats.generateFNB(run, pay, state.companyId, calcFn);
+            else if (format === 'absa')     result = BankingFormats.generateABSA(run, pay, state.companyId, calcFn);
+            else if (format === 'standard') result = BankingFormats.generateStandardBank(run, pay, state.companyId, calcFn);
+            else                            result = BankingFormats.generateNedbank(run, pay, state.companyId, calcFn);
+        }
+        // The file total must equal the sum of the finalized net pay.
+        if (!result || Math.abs((result.total || 0) - total) > 0.01) {
+            alert('Warning: the file total (' + fmt(result ? result.total : 0) + ') differs from the finalized net pay (' + fmt(total) + '). Do not upload it — please report this.');
+            return;
+        }
+        showToast('Bank file created: ' + result.count + ' payment(s), ' + fmt(result.total), 'success');
+    }
+
     function bulkPrintPayslips(runId) {
         var cached = _statutoryCache[runId];
         if (!cached || !cached.snapshots || !cached.snapshots.length) {
@@ -1748,54 +1903,66 @@
                 return '<tr class="' + (cls || '') + '"><td>' + label + '</td><td class="amt">' + fmtR(amount) + '</td></tr>';
             };
 
-            var earningsRows = '';
-            earningsRows += row('Basic Salary', basicSalary);
-            incomeItems.forEach(function(item) {
-                var amt = Number(item.amount || 0);
-                if (amt !== 0) earningsRows += row(item.description || item.type || 'Income', amt);
-            });
-            var overtimeAmt  = Number(out.overtimeAmount  || 0);
-            var shortTimeAmt = Number(out.shortTimeAmount || 0);
-            if (overtimeAmt  > 0) earningsRows += row('Overtime', overtimeAmt);
-            if (shortTimeAmt > 0) earningsRows += row('Short-Time Adjustment', -shortTimeAmt, 'deduct');
-            earningsRows += row('Total Gross', out.gross || 0, 'subtotal');
+            // Fase 6/9: frozen payslip lines when the snapshot has them (spec 08 PS-02).
+            var sec = _payslipSections(snap);
+            if (sec) {
+                var earningsRows = '', deductRows = '', contribRows = '';
+                sec.earn.forEach(function(r) { earningsRows += row(r.label, r.amount, r.amount < 0 ? 'deduct' : ''); });
+                earningsRows += row('Total Gross', sec.gross, 'subtotal');
+                sec.ded.forEach(function(r) { deductRows += row(r.label, r.amount, 'deduct'); });
+                deductRows += row('Total Deductions', -sec.dedTotal, 'subtotal deduct');
+                sec.comp.forEach(function(r) { contribRows += row(r.label, r.amount); });
+                var prorataNote = _payslipNotes(sec);
+            } else {
+                var earningsRows = '';
+                earningsRows += row('Basic Salary', basicSalary);
+                incomeItems.forEach(function(item) {
+                    var amt = Number(item.amount || 0);
+                    if (amt !== 0) earningsRows += row(item.description || item.type || 'Income', amt);
+                });
+                var overtimeAmt  = Number(out.overtimeAmount  || 0);
+                var shortTimeAmt = Number(out.shortTimeAmount || 0);
+                if (overtimeAmt  > 0) earningsRows += row('Overtime', overtimeAmt);
+                if (shortTimeAmt > 0) earningsRows += row('Short-Time Adjustment', -shortTimeAmt, 'deduct');
+                earningsRows += row('Total Gross', out.gross || 0, 'subtotal');
 
-            // Note: SDL is an employer-paid levy, never deducted from the employee's
-            // pay — it does not appear here (see Company Contributions table below).
-            var deductRows = '';
-            deductRows += row('PAYE (Income Tax)', -(out.paye_base || out.paye || 0), 'deduct');
-            deductRows += row('UIF (Employee)', -(out.uif || 0), 'deduct');
-            var volAdj = Number(out.voluntary_paye_adjustment || 0);
-            if (volAdj !== 0) {
-                deductRows += row(volAdj > 0 ? 'Voluntary PAYE Increase' : 'PAYE Reduction', -volAdj, 'deduct');
-                deductRows += row('Final PAYE', -(out.paye || 0), 'deduct');
-            }
-            var medCredit = Number(out.medicalCredit || 0);
-            if (medCredit > 0) deductRows += row('Medical Aid Credit', medCredit);
-            deductionItems.forEach(function(item) {
-                var amt = Number(item.amount || 0);
-                if (amt !== 0) deductRows += row(item.description || 'Deduction', -Math.abs(amt), 'deduct');
-            });
-            deductRows += row('Total Deductions', -(out.deductions || 0), 'subtotal deduct');
+                // Note: SDL is an employer-paid levy, never deducted from the employee's
+                // pay — it does not appear here (see Company Contributions table below).
+                var deductRows = '';
+                deductRows += row('PAYE (Income Tax)', -(out.paye_base || out.paye || 0), 'deduct');
+                deductRows += row('UIF (Employee)', -(out.uif || 0), 'deduct');
+                var volAdj = Number(out.voluntary_paye_adjustment || 0);
+                if (volAdj !== 0) {
+                    deductRows += row(volAdj > 0 ? 'Voluntary PAYE Increase' : 'PAYE Reduction', -volAdj, 'deduct');
+                    deductRows += row('Final PAYE', -(out.paye || 0), 'deduct');
+                }
+                var medCredit = Number(out.medicalCredit || 0);
+                if (medCredit > 0) deductRows += row('Medical Aid Credit', medCredit);
+                deductionItems.forEach(function(item) {
+                    var amt = Number(item.amount || 0);
+                    if (amt !== 0) deductRows += row(item.description || 'Deduction', -Math.abs(amt), 'deduct');
+                });
+                deductRows += row('Total Deductions', -(out.deductions || 0), 'subtotal deduct');
 
-            // Company Contributions — informational, employer-paid, not part of net pay
-            var contribUifEmployer = Number(out.uif_employer || 0);
-            var contribSdl         = Number(out.sdl || 0);
-            var contribRows = '';
-            if (contribUifEmployer > 0) contribRows += row('UIF (Employer)', contribUifEmployer);
-            if (contribSdl > 0)         contribRows += row('SDL (Skills Development Levy)', contribSdl);
-            if (contribRows) contribRows += row('Total Company Contributions', contribUifEmployer + contribSdl, 'subtotal');
+                // Company Contributions — informational, employer-paid, not part of net pay
+                var contribUifEmployer = Number(out.uif_employer || 0);
+                var contribSdl         = Number(out.sdl || 0);
+                var contribRows = '';
+                if (contribUifEmployer > 0) contribRows += row('UIF (Employer)', contribUifEmployer);
+                if (contribSdl > 0)         contribRows += row('SDL (Skills Development Levy)', contribSdl);
+                if (contribRows) contribRows += row('Total Company Contributions', contribUifEmployer + contribSdl, 'subtotal');
 
-            var prorataNote = '';
-            if (out.prorataFactor != null && out.prorataFactor < 1) {
-                prorataNote = '<p class="note">⚠ Pro-rata applied: ' + Math.round(out.prorataFactor * 100) + '% of full-month salary</p>';
+                var prorataNote = '';
+                if (out.prorataFactor != null && out.prorataFactor < 1) {
+                    prorataNote = '<p class="note">⚠ Pro-rata applied: ' + Math.round(out.prorataFactor * 100) + '% of full-month salary</p>';
+                }
             }
 
             var pageBreak = idx < snaps.length - 1 ? 'page-break' : '';
             pages +=
                 '<div class="payslip ' + pageBreak + '">' +
                 '<div class="ps-header">' +
-                    '<div class="ps-company">Lorenco Accounting Services</div>' +
+                    '<div class="ps-company">' + esc(_companyNameForPrint()) + '</div>' +
                     '<div class="ps-title">EMPLOYEE PAYSLIP</div>' +
                     '<div class="ps-period">Period: ' + periodKey + (snap.is_locked ? ' · Finalized' : '') + '</div>' +
                 '</div>' +

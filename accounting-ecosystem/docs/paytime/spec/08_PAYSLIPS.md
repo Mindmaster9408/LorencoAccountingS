@@ -15,7 +15,7 @@
 | PS-03 | Die som van die lynitems = bruto / aftrekkings / netto op dieselfde payslip. (Outomatiese kontrole; as dit nie klop nie, word die PDF nie gegenereer nie.) | ✅ Fase 6: `payslip_check`; PDF word nie gegenereer as lyne nie klop nie |
 | PS-04 | BCEA art. 33-velde: werkgewer naam en adres; werknemer naam, pos, ID/werknemernommer; periode; gewone ure, oortyd-ure en tariewe; elke verdienste en aftrekking met beskrywing; netto bedrag. | ✅ meestal (verifieer ure vir uurwerkers) |
 | PS-05 | Payslip wys ook: belasbare inkomste, PAYE, UIF, mediese krediet, werkgewerbydraes (UIF, SDL), YTD-totale. | ⚠️ YTD-totale ontbreek |
-| PS-06 | Die "Payslips"-blad (grootmaat-PDF, betaalverdeling, EMP201-voorskou, bankuitvoer) lees uit die geslote snapshots. | ❌ Hele ou stelsel op KV + frontend-enjin [K6] |
+| PS-06 | Die "Payslips"-blad (grootmaat-PDF, betaalverdeling, EMP201-voorskou, bankuitvoer) lees uit die geslote snapshots. | ⚠️ Fase 9: ou blad afgeskakel; massa-payslips, banklêer en EMP201/UIF/EMP501-voorskou kom uit die gesluite snapshots op Execute Payroll. Xero/Sage-uitvoer volg met die Leo-joernaal (VU-04) |
 | PS-07 | Gegenereerde PDF word gestoor met 'n hash (bewys dat dit nie verander het nie). | 🆕 |
 | PS-08 | Werknemers kan hul payslips self (veilig) aflaai of per e-pos ontvang. | 🆕 (e-pos op roadmap) |
 
@@ -35,8 +35,8 @@ Tans is daar twee plekke wat amper dieselfde ding doen: **Execute Payroll** (die
 
 | # | Reël | Status |
 |---|---|---|
-| PS-09 | Een plek vir die maandelikse payroll, met die vier stappe hierbo. | ❌ Twee parallelle blaaie |
-| PS-10 | Die ou Payslips-blad word onaktief gemaak (uit die kieslys, herlei na stap 4); kode word nie uitgehaal nie. | ❌ |
+| PS-09 | Een plek vir die maandelikse payroll, met die vier stappe hierbo. | ⚠️ Fase 9: Execute Payroll is die een plek (run → finaliseer → druk/banklêer/opgawes); die volledige 4-stap-uitleg kom later |
+| PS-10 | Die ou Payslips-blad word onaktief gemaak (uit die kieslys, herlei na stap 4); kode word nie uitgehaal nie. | ✅ Fase 9: uit die kieslys, ou skakel herlei na Execute Payroll, kode bly (`?legacy=1`) |
 
 **BEVESTIG deur Ruan 2026-10-12:** die vier-stap-voorstel (PS-09, PS-10) is aanvaar.
 

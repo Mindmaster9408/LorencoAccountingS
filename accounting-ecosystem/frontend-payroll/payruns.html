@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+        // Spec 08 PS-10 (Fase 9): this old Payslips page recalculated payroll in the browser from
+        // browser/KV data. It is retired — everything now comes from the finalized payslips on
+        // Execute Payroll. The code stays in this file, inactive (?legacy=1 still opens it, for checks only — do not use it to run payroll).
+        if (!/[?&]legacy=1/.test(window.location.search)) {
+            window.location.replace('payroll-execution.html' + window.location.search);
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Payslips - Lorenco Paytime</title>

@@ -279,7 +279,7 @@
         <div class="header">
             <div class="header-top">
                 <h1 id="employeeName">Employee Detail</h1>
-                <button class="btn" onclick="window.location.href='payruns.html'">← Back to Pay Runs</button>
+                <button class="btn" onclick="window.location.href='employee-management.html'">← Back to Employees</button>
             </div>
             <div class="employee-info">
                 <div class="info-item"><div class="info-label">Employee Number</div><div class="info-value" id="empNumber">-</div></div>
@@ -1204,7 +1204,7 @@
             currentCompanyId = session.company_id;
             const params = new URLSearchParams(window.location.search);
             currentEmpId = params.get('id');
-            if (!currentEmpId) { alert('No employee specified'); window.location.href = 'payruns.html'; return; }
+            if (!currentEmpId) { alert('No employee specified'); window.location.href = 'employee-management.html'; return; }
             
             // Use setTimeout to ensure DOM is fully ready (Edge compatibility)
             setTimeout(async function() {
@@ -1267,7 +1267,7 @@
             const session = AUTH.getSession();
             session.company_id = companyId;
             safeLocalStorage.setItem('session', JSON.stringify(session));
-            window.location.href = 'payruns.html';
+            window.location.href = 'employee-management.html';
         }
 
         function handleLogout() {
@@ -1289,7 +1289,7 @@
                 console.error('[EmployeeDetail] Failed to load employees from backend:', e.message);
             }
             currentEmployee = _empList.find(e => String(e.id) === String(currentEmpId));
-            if (!currentEmployee) { alert('Employee not found'); window.location.href = 'payruns.html'; return; }
+            if (!currentEmployee) { alert('Employee not found'); window.location.href = 'employee-management.html'; return; }
             renderEmployeeDetails();
 
             // If the ID looks like a Supabase integer, use it directly.
