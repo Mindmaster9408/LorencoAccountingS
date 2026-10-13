@@ -168,7 +168,11 @@ async function _propagate(proposalId, authorizedUserId, proposal) {
     const existing = item.irp5_code;
 
     if (!existing) {
-      const { error: writeError } = await supabase
+      // Paytime Fase 12 (spec 14 SN-03, finding B13; CLAUDE.md B6/B9): the "only when empty"
+      // condition is part of the UPDATE itself. It used to be checked when the list was read
+      // and then written unconditionally — a code an accountant entered in between would
+      // have been overwritten. Now the database only writes if the code is STILL empty.
+      let q = supabase
         .from('payroll_items_master')
         .update({
           irp5_code: proposedCode,
@@ -176,6 +180,26 @@ async function _propagate(proposalId, authorizedUserId, proposal) {
           irp5_code_updated_by: authorizedUserId
         })
         .eq('id', item.id);
+      q = existing === '' ? q.eq('irp5_code', '') : q.is('irp5_code', null);
+      const { data: written, error: writeError } = await q.select('id');
+
+      if (!writeError && !(written || []).length) {
+        // Someone filled the code in after the list was read — never overwrite (B9).
+        const { data: now } = await supabase
+          .from('payroll_items_master').select('irp5_code').eq('id', item.id).maybeSingle();
+        const nowCode = now ? now.irp5_code : null;
+        const same = nowCode === proposedCode;
+        logRows.push({
+          approval_id: proposalId, company_id: item.company_id, payroll_item_id: item.id,
+          payroll_item_name: item.item_name, irp5_code_written: proposedCode,
+          previous_irp5_code: nowCode, action: same ? 'skipped_existing' : 'skipped_exception',
+          notes: same ? 'Code was set to the same value meanwhile'
+                      : `Code ${nowCode} was set meanwhile — not overwritten per CLAUDE.md Rule B9`,
+          created_at: new Date().toISOString()
+        });
+        if (same) skippedExisting++; else exceptions++;
+        continue;
+      }
 
       if (writeError) {
         console.error(`[Sean IRP5] propagate write error for item ${item.id}:`, writeError.message);

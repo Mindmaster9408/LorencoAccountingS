@@ -126,6 +126,10 @@
 
 - DataAccess cache_ in page memory only (purged from browsers) + red offline banner; payslip page no longer writes salary/items to KV and surfaces DB save failures; notes via DB API (+DELETE); audit + report history no longer in KV; narrative memory-only; recon KV writers retired; dashboard KV employee editor redirects.
 - Migration 031 prepared (copy KV-only salaries of 20 employees into employees.basic_salary, audited) — dry run 20 rows; awaiting Ruan's ja. Then remove PayrollDataService KV fallback.
+## Fase 12 (2026-10-13) — docs/paytime/FASE12_CHANGE_IMPACT_NOTE.md
+
+- Sean IRP5 propagation write is conditional (only if still empty); a code set meanwhile is logged as an exception, never overwritten. IRP5 learning tests 53/53.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").

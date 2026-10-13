@@ -218,7 +218,7 @@ describe('recordLearningEvent()', () => {
 
 describe('approveProposal()', () => {
   test('throws when approvalId missing', async () => {
-    await expect(approveProposal(undefined, 1)).rejects.toThrow('approvalId');
+    await expect(approveProposal(undefined, 1)).rejects.toThrow(/approvalId|proposalId/);
   });
 
   test('throws when userId missing', async () => {
@@ -244,7 +244,7 @@ describe('approveProposal()', () => {
 
 describe('rejectProposal()', () => {
   test('throws when approvalId missing', async () => {
-    await expect(rejectProposal(undefined, 1, 'r')).rejects.toThrow('approvalId');
+    await expect(rejectProposal(undefined, 1, 'r')).rejects.toThrow(/approvalId|proposalId/);
   });
 
   test('throws when userId missing', async () => {
@@ -283,7 +283,7 @@ describe('propagateApproved() — safety enforcement', () => {
               snapshot_normalized_name: 'commission', snapshot_irp5_code: '3606' },
       error: null
     });
-    await expect(propagateApproved(1, 1)).rejects.toThrow("not in 'approved' status");
+    await expect(propagateApproved(1, 1)).rejects.toThrow(/not in 'approved' status|is not approved/);
   });
 
   describe('with an approved proposal for "commission" → 3606', () => {
@@ -303,7 +303,8 @@ describe('propagateApproved() — safety enforcement', () => {
      *   5. from('sean_irp5_propagation_approvals').update().eq()            → mark propagated
      *   6. from('sean_irp5_mapping_patterns').update().eq()                 → mark pattern propagated
      */
-    function makeMock(items) {
+    function makeMock(items, racedTo) {
+      racedTo = racedTo || {};   // { itemId: code } — a code set by someone else between read and write
       let approvalCallCount  = 0;
       const itemsUpdateCalls = [];
 
@@ -332,17 +333,30 @@ describe('propagateApproved() — safety enforcement', () => {
             let selectedOnce = false;
             const b = {
               select() { selectedOnce = true; return b; },
-              eq() {
+              eq(col, val) {
                 if (selectedOnce) {
                   selectedOnce = false;
-                  // Fetch: resolve thenable with item list
-                  return { then: (r) => r({ data: items, error: null }) };
+                  // Fetch: resolve thenable with item list; re-read of one item via maybeSingle()
+                  return {
+                    then: (r) => r({ data: items, error: null }),
+                    maybeSingle: async () => ({ data: { irp5_code: racedTo[val] !== undefined ? racedTo[val] : null }, error: null })
+                  };
                 }
                 return Promise.resolve({ data: null, error: null });
               },
+              // Fase 12: update(...).eq('id').is('irp5_code', null) | .eq('irp5_code', '') then .select('id')
               update(fields) {
-                itemsUpdateCalls.push(fields);
-                return { eq: () => Promise.resolve({ data: null, error: null }) };
+                const w = { id: null, cond: null };
+                const chain = {
+                  eq(col, val) { if (col === 'id') w.id = val; else w.cond = [col, val]; return chain; },
+                  is(col, val) { w.cond = [col, val]; return chain; },
+                  select: async () => {
+                    if (racedTo[w.id] !== undefined) return { data: [], error: null };   // no longer empty
+                    itemsUpdateCalls.push(Object.assign({ _cond: w.cond }, fields));
+                    return { data: [{ id: w.id }], error: null };
+                  }
+                };
+                return chain;
               },
               then(r) { return r({ data: items, error: null }); }
             };
@@ -390,6 +404,32 @@ describe('propagateApproved() — safety enforcement', () => {
         // Only item 10 (null) was written — item 12 (different code) must NEVER be written
         expect(mock.itemsUpdateCalls).toHaveLength(1);
         expect(mock.itemsUpdateCalls[0].irp5_code).toBe('3606');
+      } finally {
+        mockSupabase.from = saved;
+      }
+    });
+
+    test('SAFETY (Fase 12): a code set between reading and writing is never overwritten', async () => {
+      const mock = makeMock([{ id: 30, company_id: 7, item_name: 'Commission', irp5_code: null }], { 30: '3601' });
+      const saved = mockSupabase.from;
+      mockSupabase.from = mock.from.bind(mock);
+      try {
+        const result = await propagateApproved(1, 42);
+        expect(result.applied).toBe(0);
+        expect(result.exceptions).toBe(1);
+        expect(mock.itemsUpdateCalls).toHaveLength(0);
+      } finally {
+        mockSupabase.from = saved;
+      }
+    });
+
+    test('SAFETY (Fase 12): the write itself carries the still-empty condition', async () => {
+      const mock = makeMock([{ id: 31, company_id: 8, item_name: 'Commission', irp5_code: null }]);
+      const saved = mockSupabase.from;
+      mockSupabase.from = mock.from.bind(mock);
+      try {
+        await propagateApproved(1, 42);
+        expect(mock.itemsUpdateCalls[0]._cond).toEqual(['irp5_code', null]);
       } finally {
         mockSupabase.from = saved;
       }

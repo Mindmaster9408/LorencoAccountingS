@@ -171,6 +171,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | 11.3 | KV-terugval vir basiese salaris verwyder (ná datakontrole dat alle salarisse in die DB is). |
 
 ### Fase 12 — Sean `[B13]` → spec 14
+
+**✅ Gebou 2026-10-13** ([FASE12_CHANGE_IMPACT_NOTE.md](FASE12_CHANGE_IMPACT_NOTE.md)). Atomiese "vul net in as leeg"-skryf; IRP5-learning-toetse 53/53.
 | 12.1 | Atomiese "vul net in as leeg"-skryf. |
 
 ### Daarna — roadmap en nuwe funksies
