@@ -52,6 +52,7 @@ const {
 const { getTaxConfigForPeriod } = require('../services/taxTables');
 const { payrollEligibility } = require('../services/payrollEligibility');
 const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
+const payrollJournal = require('../services/payrollJournal');
 
 const router = express.Router();
 
@@ -623,11 +624,18 @@ router.post(
         console.warn('Audit log failed for finalize:', auditErr.message);
       }
 
+      // Spec 10 VU-04: payroll journal in Ledger Leo as a DRAFT (the accountant posts it).
+      // Never affects the finalization — the outcome is reported for the screen.
+      const ledgerJournal = await payrollJournal.createDraftForRun(payrollJournal.defaultDeps(), {
+        companyId: req.companyId, runId: run_id, periodKey: period_key, userId: req.user.userId
+      });
+
       res.json({
         success:      true,
         run_id,
         period_key,
         locked_count: locked.length,
+        ledger_journal: ledgerJournal,
         timestamp:    new Date().toISOString()
       });
 
@@ -767,12 +775,18 @@ router.post(
         console.warn('Audit log failed for reversal:', auditErr.message);
       }
 
+      // Spec 10 VU-04: draft journal deleted, or a reversing draft for a posted one.
+      const ledgerJournal = await payrollJournal.handleRunReversal(payrollJournal.defaultDeps(), {
+        companyId: req.companyId, runId: run_id, periodKey: period_key, userId: req.user.userId, reason: reason.trim()
+      });
+
       res.json({
         success:         true,
         run_id,
         period_key,
         reversed_count:  reversedSnapshots.length,
         later_periods_locked: laterPeriodsLocked,
+        ledger_journal:  ledgerJournal,
         timestamp:       new Date().toISOString()
       });
 
@@ -885,6 +899,37 @@ router.get(
   }
 );
 
+
+// ─── POST /api/payroll/ledger-journal ────────────────────────────────────────
+/**
+ * Spec 10 VU-04: (re)create the Ledger Leo DRAFT payroll journal for a finalized run —
+ * e.g. after the missing control accounts were added. Idempotent: an existing journal
+ * for the run is returned, never duplicated. Body: { run_id }
+ */
+router.post(
+  '/ledger-journal',
+  requirePermission('PAYROLL.APPROVE'),
+  async (req, res) => {
+    try {
+      const { run_id } = req.body || {};
+      if (!run_id) return res.status(400).json({ success: false, error: 'run_id is required' });
+      const { data: run, error } = await supabase.from('payroll_runs')
+        .select('id, period_key, status').eq('id', run_id).eq('company_id', req.companyId).maybeSingle();
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      if (!run) return res.status(404).json({ success: false, error: 'Run not found' });
+      if (run.status !== 'finalized') return res.status(409).json({ success: false, error: 'Only a finalized pay run has a payroll journal' });
+      const result = await payrollJournal.createDraftForRun(payrollJournal.defaultDeps(), {
+        companyId: req.companyId, runId: run.id, periodKey: run.period_key, userId: req.user.userId
+      });
+      try {
+        await auditFromReq(req, 'LEDGER_JOURNAL', 'payroll_runs', run.id, { module: 'payroll', period_key: run.period_key, result });
+      } catch (_) { /* audit is best effort */ }
+      res.json({ success: true, ledger_journal: result });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Server error: ' + err.message });
+    }
+  }
+);
 
 // ─── GET /api/payroll/history/run/:run_id ─────────────────────────────────────
 /**

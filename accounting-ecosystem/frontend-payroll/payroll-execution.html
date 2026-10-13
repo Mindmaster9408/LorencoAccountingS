@@ -1304,6 +1304,26 @@
             'Payroll finalized — ' + (res.data.locked_count || 0) + ' snapshot(s) locked.',
             'success'
         );
+        showLedgerJournalResult(res.data.ledger_journal);
+    }
+
+    // Spec 10 VU-04: what happened to the Ledger Leo payroll journal (draft — the accountant posts it).
+    function showLedgerJournalResult(j) {
+        if (!j) return;
+        if (j.created) {
+            showToast('Ledger Leo: draft payroll journal created — your accountant reviews and posts it.', 'success');
+        } else if (j.reason === 'missing_accounts') {
+            showToast('Ledger Leo journal NOT created — add these accounts in Ledger Leo (Chart of Accounts), then use "📒 Ledger Leo Journal" on this run in History: ' +
+                      (j.missing_accounts || []).join(', '), 'warning');
+        } else if (j.reason === 'error' || j.reason === 'not_balanced' || j.reason === 'accounts_unavailable') {
+            showToast('Ledger Leo journal NOT created (' + (j.error || j.reason) + '). Payroll itself is finalized.', 'warning');
+        } else if (j.action === 'draft_deleted') {
+            showToast('Ledger Leo: the draft payroll journal was removed.', 'success');
+        } else if (j.action === 'reversal_draft_created') {
+            showToast('Ledger Leo: the payroll journal was already posted — a reversing DRAFT was created for your accountant to post.', 'warning');
+        } else if (j.action === 'error') {
+            showToast('Ledger Leo journal could not be updated (' + j.error + '). Tell your accountant.', 'warning');
+        }
     }
 
     function markAsFinalized() {
@@ -1375,6 +1395,7 @@
             'Pay run reversed — ' + (res.data.reversed_count || 0) + ' payslip(s) unlocked. Re-run payroll to make corrections.',
             'success'
         );
+        showLedgerJournalResult(res.data.ledger_journal);
         // UF-09: later months already finalized were calculated on this month's old figures.
         var _later = res.data.later_periods_locked || [];
         if (_later.length) {
@@ -1607,6 +1628,8 @@
                     'onclick="bulkPrintPayslips(\'' + esc(runId) + '\')">🖨 Bulk Print Payslips</button>';
                 actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
                     'onclick="openBankFile(\'' + esc(runId) + '\')">🏦 Bank File</button>';
+                actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
+                    'onclick="createLedgerJournal(\'' + esc(runId) + '\')">📒 Ledger Leo Journal</button>';
                 actionBtns += '<button type="button" class="btn-reverse" style="font-size:0.8rem;padding:6px 14px;" ' +
                     'onclick="openHistoryReversalModal(\'' + esc(runId) + '\', \'' + esc(periodKey || '') + '\')">🔄 Reverse This Run</button>';
             }
@@ -1815,6 +1838,26 @@
     // Built ONLY from the finalized payslips of this run (net pay) and the employees'
     // bank details in the database — never recalculated. Replaces the old Payslips
     // page export, which recalculated with the frontend engine from browser data.
+    // Spec 10 VU-04: create (or find) the DRAFT payroll journal in Ledger Leo for a finalized run.
+    async function createLedgerJournal(runId) {
+        try {
+            var token = safeLocalStorage.getItem('token') || '';
+            var r = await fetch('/api/payroll/ledger-journal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ run_id: runId })
+            });
+            var d = await r.json().catch(function() { return {}; });
+            if (!r.ok) { showToast(d.error || ('Failed (HTTP ' + r.status + ')'), 'error'); return; }
+            var j = d.ledger_journal || {};
+            if (j.reason === 'already_exists') showToast('Ledger Leo already has the payroll journal for this run (journal #' + j.journal_id + ').', 'success');
+            else if (j.reason === 'ledger_not_set_up') showToast('This company does not use Ledger Leo yet (no chart of accounts).', 'warning');
+            else showLedgerJournalResult(j);
+        } catch (e) {
+            showToast('Could not reach the server: ' + e.message, 'error');
+        }
+    }
+
     async function openBankFile(runId) {
         var cached = _statutoryCache[runId];
         if (!cached || !cached.snapshots || !cached.snapshots.length) {

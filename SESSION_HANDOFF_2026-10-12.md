@@ -130,6 +130,10 @@
 
 - Sean IRP5 propagation write is conditional (only if still empty); a code set meanwhile is logged as an exception, never overwritten. IRP5 learning tests 53/53.
 
+## Ledger Leo payroll journal (2026-10-13) — docs/paytime/LEO_PAYROLL_JOURNAL_CHANGE_IMPACT_NOTE.md
+
+- Draft journal on finalize (accountant posts), deleted/reversing draft on reverse, idempotent, button on finalized runs. Needs 2 control accounts per company (none have them yet). BT-08 February tax-table warning also shipped.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -142,6 +146,7 @@
 8. Fase 10-toets: ontsluit met 'n ander bestuurder van dieselfde maatskappy (moet werk) en met jouself (moet geweier word); nuwe werknemer sonder belastingnommer (moet vra of die merkie wil hê).
 9. Migrasie 031: sê "ja 031" — kopieer die salaris van 20 werknemers (18 aktief) wat tans net in die ou KV-stoor is, na die werknemertabel (geoudit).
 10. Fase 11-toets: maak 'n werknemer se payslip-blad oop, voeg 'n nota by en vee dit uit; voeg 'n gereelde item by.
+11. Ledger Leo-joernaal: in elke maatskappy wat Leo gebruik, voeg 2 rekeninge in die Chart of Accounts by: "Payroll Deductions Payable" (laste, bv. 2420) en "Salaries Payable" (laste, bv. 2430). Toets dan op TEST: finaliseer 'n run → Leo → Journals wys 'n konsep "PAYROLL YYYY-MM".
 
 ## Open risks / follow-ups
 
