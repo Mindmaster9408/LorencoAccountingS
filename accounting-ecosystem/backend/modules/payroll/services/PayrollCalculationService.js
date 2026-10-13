@@ -369,8 +369,21 @@ function formatError(error) {
   return response;
 }
 
+/**
+ * Net-to-Gross on the backend engine (Fase 9, spec 11 NG-01/02): the basic salary that
+ * gives the target net, with the same tax tables as Execute Payroll.
+ * @param {object} p { targetNet, regularItems, onceOffItems, employeeOptions, period, basicSalaryHi }
+ * @param {object} [options] { taxConfig } — from getTaxConfigForPeriod()
+ */
+function netToGross(p, options = {}) {
+  return PayrollEngine.calculateNetToGross(Object.assign({}, p, {
+    taxOverride: buildEffectiveTables(options.taxConfig || null)
+  }));
+}
+
 module.exports = {
   calculate,
+  netToGross,
   validateOutput,
   formatForResponse,
   formatError,

@@ -273,15 +273,16 @@
                     <table class="items-table" id="items-table">
                         <thead>
                             <tr>
-                                <th style="width:35%;">Description</th>
-                                <th style="width:30%;">Type</th>
-                                <th style="width:20%;">Amount (R)</th>
-                                <th style="width:15%;"></th>
+                                <th style="width:32%;">Description</th>
+                                <th style="width:26%;">Type</th>
+                                <th style="width:18%;">Amount (R)</th>
+                                <th style="width:14%;" title="Paid every month (default). Untick for a once-off amount.">Monthly</th>
+                                <th style="width:10%;"></th>
                             </tr>
                         </thead>
                         <tbody id="items-tbody">
                             <tr id="items-empty-row">
-                                <td colspan="4" class="items-empty">No items added yet. Use the button below to add allowances or deductions.</td>
+                                <td colspan="5" class="items-empty">No items added yet. Use the button below to add allowances or deductions.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -361,7 +362,6 @@
             loadCompaniesCarousel();
 
             // Apply admin-configured tax tables (same KV key as payroll-items.html)
-            PayrollEngine.loadTaxConfig();
 
             // Pre-fill current period
             var now = new Date();
@@ -399,7 +399,7 @@
         // ========== ITEMS MANAGEMENT ==========
         function addItem() {
             itemIdCounter++;
-            itemRows.push({ id: itemIdCounter, description: '', type: 'taxable', amount: '' });
+            itemRows.push({ id: itemIdCounter, description: '', type: 'taxable', amount: '', recurring: true });
             renderItems();
             clearResults();
         }
@@ -413,7 +413,7 @@
         function renderItems() {
             var tbody = document.getElementById('items-tbody');
             if (itemRows.length === 0) {
-                tbody.innerHTML = '<tr id="items-empty-row"><td colspan="4" class="items-empty">No items added yet. Use the button below to add allowances or deductions.</td></tr>';
+                tbody.innerHTML = '<tr id="items-empty-row"><td colspan="5" class="items-empty">No items added yet. Use the button below to add allowances or deductions.</td></tr>';
                 return;
             }
             var html = '';
@@ -428,6 +428,7 @@
                         '</select>' +
                     '</td>' +
                     '<td><input type="number" class="amount-input" placeholder="0.00" min="0" step="0.01" value="' + (row.amount || '') + '" oninput="updateItemField(' + row.id + ', \'amount\', parseFloat(this.value) || 0); clearResults();"></td>' +
+                    '<td style="text-align:center;"><input type="checkbox"' + (row.recurring !== false ? ' checked' : '') + ' onchange="updateItemField(' + row.id + ', \'recurring\', this.checked)" title="Paid every month"></td>' +
                     '<td style="text-align:center;"><button class="btn-remove" onclick="removeItem(' + row.id + ')" title="Remove">&#x2715;</button></td>' +
                 '</tr>';
             });
@@ -444,14 +445,11 @@
             return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        function getItemsForEngine() {
+        // Fase 9 (spec 11 NG-02): items are monthly (recurring) unless unticked.
+        function getItemsForApi() {
             return itemRows.map(function(row) {
-                var amt = parseFloat(row.amount) || 0;
-                if (row.type === 'deduction') {
-                    return { type: 'deduction', is_taxable: false, amount: amt };
-                } else {
-                    return { type: 'income', is_taxable: row.type !== 'nontaxable', amount: amt };
-                }
+                return { description: row.description || '', type: row.type, amount: parseFloat(row.amount) || 0,
+                         once_off: row.recurring === false };
             });
         }
 
@@ -470,31 +468,36 @@
             var taxDir    = parseFloat(document.getElementById('tax-directive').value) || 0;
             var hiLimit   = parseFloat(document.getElementById('search-limit').value) || 500000;
 
-            var empOpts = {};
-            if (age && age > 0)   empOpts.age            = age;
-            if (medMem > 0)       empOpts.medicalMembers = medMem;
-            if (taxDir > 0)       empOpts.taxDirective   = taxDir;
-
-            var params = {
-                targetNet:       targetNet,
-                items:           getItemsForEngine(),
-                employeeOptions: empOpts,
-                period:          period || null,
-                basicSalaryHi:   hiLimit
+            // Fase 9 (spec 11 NG-01): calculated by the BACKEND engine with the same tax
+            // tables as Execute Payroll — the browser no longer calculates tax.
+            var body = {
+                target_net:      targetNet,
+                period_key:      period || null,
+                age:             age || null,
+                medical_members: medMem,
+                tax_directive:   taxDir,
+                search_limit:    hiLimit,
+                items:           getItemsForApi()
             };
 
             var btn = document.getElementById('calculate-btn');
             btn.disabled = true;
             btn.textContent = 'Calculating…';
-
-            // Run synchronously (pure function) — use setTimeout so UI updates first
-            setTimeout(function() {
-                var result = PayrollEngine.calculateNetToGross(params);
+            var token = safeLocalStorage.getItem('token') || '';
+            fetch('/api/payroll/calculate/net-to-gross', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify(body)
+            }).then(function(r) { return r.json(); }).then(function(result) {
+                if (result.success === undefined) result = { success: false, error: result.error || 'Calculation failed' };
                 lastResult = result;
-                renderResult(result, targetNet, period);
+                renderResult(result, targetNet, result.period_key || period);
+            }).catch(function(e) {
+                renderResult({ success: false, error: 'Could not reach the server: ' + e.message }, targetNet, period);
+            }).then(function() {
                 btn.disabled = false;
                 btn.textContent = 'Calculate Required Basic Salary';
-            }, 0);
+            });
         }
 
         function clearResults() {
@@ -531,7 +534,7 @@
 
             var netDiff     = Math.abs(result.net - targetNet);
             var netOk       = netDiff <= 0.02;
-            var taxYear     = period ? PayrollEngine.getTaxYearForPeriod(period) : PayrollEngine.TAX_YEAR;
+            var taxYear     = result.tax_year || (period ? PayrollEngine.getTaxYearForPeriod(period) : PayrollEngine.TAX_YEAR);
             var uifCapped   = result.uif >= (PayrollEngine.UIF_MONTHLY_CAP - 0.01);
             var iterNote    = result.iterations > 1 ? ' (' + result.iterations + ' iterations)' : '';
             var noteHtml    = result.note ? '<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:12px 15px; margin-bottom:20px; font-size:13px; color:#856404;">' + escHtml(result.note) + '</div>' : '';

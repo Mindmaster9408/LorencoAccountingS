@@ -1501,7 +1501,12 @@ const PayrollEngine = {
      */
     calculateNetToGross: function(params) {
         var targetNet = typeof params.targetNet    === 'number' ? params.targetNet    : 0;
-        var items     = params.items               || [];
+        // Fase 9 / spec 11 NG-02 (finding B12): allowances are RECURRING by default — they go in
+        // as regular items (projected every month), not as once-off current inputs. Once-off
+        // items (params.onceOffItems, or the legacy params.items) stay current inputs.
+        var regularItems = params.regularItems     || [];
+        var items     = (params.onceOffItems || []).concat(params.items || []);
+        var taxOverride = params.taxOverride       || null;
         var empOpts   = params.employeeOptions     || {};
         var period    = params.period              || null;
         var ytdData   = params.ytdData             || null;
@@ -1524,12 +1529,13 @@ const PayrollEngine = {
         // Run one trial calculation with a given basic salary
         function trial(trialBasic) {
             return self.calculateFromData(
-                { basic_salary: trialBasic, regular_inputs: [] },
+                { basic_salary: trialBasic, regular_inputs: regularItems },
                 items,
                 [], [], [],
                 empOpts,
                 period,
-                ytdData
+                ytdData,
+                taxOverride
             );
         }
 
@@ -1594,7 +1600,9 @@ const PayrollEngine = {
             net: resultData.net,
             medicalCredit: resultData.medicalCredit,
             negativeNetPay: resultData.negativeNetPay,
-            iterations: iterations
+            iterations: iterations,
+            payslip_lines: resultData.payslip_lines,
+            tax_year: resultData.tax_year
         };
     },
 

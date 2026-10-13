@@ -108,7 +108,11 @@
 - "Apply to Payroll" = server-side BCEA proposal → payroll user approves per employee → overtime/short-time rows with source=attendance (migration 029). Manual rows untouched; finalized month refused.
 - Payslip shows "from attendance" badge; overtime/short-time descriptions reach the payslip lines.
 - CLAUDE.md Part D: attendance_* KV follow-up marked done.
-- Pending: migration 029 (Ruan's go-ahead). Until then apply returns 409; everything else works.
+- Migration 029 run + verified 2026-10-13 (re-apply replaces only attendance rows; manual kept).
+
+## Fase 9 (in progress, 2026-10-13)
+
+- 9.3 Net-to-Gross on the backend (`POST /api/payroll/calculate/net-to-gross`), allowances recurring by default (B12), period tax tables.
 
 ## Open risks / follow-ups
 

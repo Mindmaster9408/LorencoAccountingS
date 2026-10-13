@@ -340,6 +340,68 @@ router.post(
 );
 
 /**
+ * POST /api/payroll/calculate/net-to-gross   (Fase 9, spec 11 NG-01/02)
+ *
+ * Body: { target_net, period_key?, age?, medical_members?, tax_directive?, search_limit?,
+ *         items: [{ description, type: 'taxable'|'nontaxable'|'deduction', amount, once_off?, pre_tax? }] }
+ * Allowances are recurring unless once_off is true. Uses the period's tax tables (default:
+ * the current month). Pure calculation — nothing is saved.
+ */
+router.post(
+  '/net-to-gross',
+  requirePermission('PAYROLL.VIEW'),
+  requirePaytimeModule('payroll'),
+  async (req, res) => {
+    try {
+      const b = req.body || {};
+      const targetNet = parseFloat(b.target_net);
+      if (!(targetNet > 0)) return res.status(400).json({ success: false, error: 'target_net must be greater than zero' });
+      const periodKey = /^\d{4}-(0[1-9]|1[0-2])$/.test(b.period_key || '')
+        ? b.period_key : new Date(Date.now() + 2 * 3600000).toISOString().slice(0, 7);
+
+      let taxConfig;
+      try {
+        taxConfig = await getTaxConfigForPeriod(supabase, req.companyId, periodKey);
+      } catch (ttErr) {
+        if (ttErr.code === 'TAX_TABLES_MISSING') return res.status(422).json({ success: false, code: ttErr.code, error: ttErr.message });
+        throw ttErr;
+      }
+
+      const regularItems = [], onceOffItems = [];
+      (Array.isArray(b.items) ? b.items : []).forEach(i => {
+        const amount = parseFloat(i.amount) || 0;
+        if (!amount) return;
+        const isDed = i.type === 'deduction';
+        const item = {
+          description: String(i.description || (isDed ? 'Deduction' : 'Allowance')).slice(0, 100),
+          type: isDed ? 'deduction' : 'allowance',
+          amount,
+          is_taxable: !isDed && i.type !== 'nontaxable',
+          tax_treatment: isDed && i.pre_tax ? 'pre_tax' : 'net_only'
+        };
+        if (i.once_off) onceOffItems.push(Object.assign(item, { type: isDed ? 'deduction' : 'income', paye_projection_type: 'ONCE_OFF' }));
+        else regularItems.push(item);
+      });
+
+      const employeeOptions = {};
+      if (parseInt(b.age, 10) > 0) employeeOptions.age = parseInt(b.age, 10);
+      if (parseInt(b.medical_members, 10) > 0) employeeOptions.medicalMembers = parseInt(b.medical_members, 10);
+      if (parseFloat(b.tax_directive) > 0) employeeOptions.taxDirective = parseFloat(b.tax_directive);
+
+      const result = PayrollCalculationService.netToGross({
+        targetNet, regularItems, onceOffItems, employeeOptions, period: periodKey,
+        basicSalaryHi: parseFloat(b.search_limit) > 0 ? Math.min(parseFloat(b.search_limit), 5000000) : 500000
+      }, { taxConfig });
+
+      res.status(result.success ? 200 : 422).json(Object.assign({ period_key: periodKey }, result));
+    } catch (err) {
+      console.error('[net-to-gross] error:', err);
+      res.status(500).json({ success: false, error: 'Server error: ' + err.message });
+    }
+  }
+);
+
+/**
  * POST /api/payroll/calculate/batch
  *
  * Alias for POST /api/payroll/run — use that endpoint for batch payroll runs.
