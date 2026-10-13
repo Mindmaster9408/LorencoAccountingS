@@ -48,12 +48,9 @@ function periodDates(key) {
   return { start_date: `${key}-01`, end_date: `${key}-${String(last).padStart(2, '0')}` };
 }
 
-// Mirrors routes/payruns.js isEligibleForPayroll()
-function isEligible(emp, ps, pe) {
-  if (emp.is_active) return true;
-  const td = emp.termination_date;
-  return !!(td && td >= ps && td <= pe);
-}
+// The same rule as Execute Payroll (Fase 5: services/payrollEligibility.js).
+const { payrollEligibility } = require('../../modules/payroll/services/payrollEligibility');
+function isEligible(emp, ps, pe) { return payrollEligibility(emp, ps, pe).eligible; }
 
 function buildDb(sc) {
   const db = {

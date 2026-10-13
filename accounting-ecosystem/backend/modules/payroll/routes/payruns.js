@@ -50,6 +50,7 @@ const {
   getCalculationBlocks
 } = require('../services/periodSequence');
 const { getTaxConfigForPeriod } = require('../services/taxTables');
+const { payrollEligibility } = require('../services/payrollEligibility');
 
 const router = express.Router();
 
@@ -64,10 +65,9 @@ const router = express.Router();
  * @param {string}      periodEnd   - period end date string "YYYY-MM-DD"
  */
 function isEligibleForPayroll(empRow, periodStart, periodEnd) {
-  if (!empRow) return false;
-  if (empRow.is_active) return true;
-  const td = empRow.termination_date;
-  return !!(td && periodStart && periodEnd && td >= periodStart && td <= periodEnd);
+  // Fase 5: one shared rule (services/payrollEligibility.js) — also blocks a hire date
+  // after the period (WN-10) and a termination before it (UF-02).
+  return payrollEligibility(empRow, periodStart, periodEnd).eligible;
 }
 
 router.use(authenticateToken);
@@ -255,13 +255,14 @@ router.post(
           // terminated employees even if their IDs are passed directly in the request body.
           const { data: empRow } = await supabase
             .from('employees')
-            .select('is_active, termination_date')
+            .select('is_active, hire_date, termination_date, first_name, last_name')
             .eq('id', empId)
             .eq('company_id', req.companyId)
             .single();
 
-          if (!isEligibleForPayroll(empRow, period.start_date, period.end_date)) {
-            errors.push({ employee_id: empId, error: 'Employee is not active — skipped' });
+          const elig = payrollEligibility(empRow, period.start_date, period.end_date);
+          if (!elig.eligible) {
+            errors.push({ employee_id: empId, code: elig.code, error: elig.message });
             continue;
           }
 

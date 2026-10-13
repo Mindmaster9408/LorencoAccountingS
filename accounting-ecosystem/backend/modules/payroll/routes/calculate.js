@@ -32,6 +32,7 @@ const PayrollCalculationService = require('../services/PayrollCalculationService
 const PayrollHistoryService     = require('../services/PayrollHistoryService');
 const { getCalculationBlocks, describeCalculationBlocks } = require('../services/periodSequence');
 const { getTaxConfigForPeriod } = require('../services/taxTables');
+const { payrollEligibility } = require('../services/payrollEligibility');
 
 const { supabase } = require('../../../config/database');
 
@@ -170,6 +171,26 @@ router.post(
           error:   describeCalculationBlocks(period_key, calcBlocks),
           blocked: calcBlocks
         });
+      }
+
+      // STEP 1d: Eligibility (Fase 5 — WN-10 / UF-02): no payslip for a month before the
+      // employee starts or after they left. Same rule as Execute Payroll.
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(String(period_key))) {
+        const [py, pm] = period_key.split('-').map(Number);
+        const pStart = `${period_key}-01`;
+        const pEnd   = `${period_key}-${String(new Date(Date.UTC(py, pm, 0)).getUTCDate()).padStart(2, '0')}`;
+        const { data: empRow } = await supabase
+          .from('employees')
+          .select('is_active, hire_date, termination_date, first_name, last_name')
+          .eq('company_id', req.companyId)
+          .eq('id', empId)
+          .maybeSingle();
+        const elig = payrollEligibility(empRow, pStart, pEnd);
+        if (!elig.eligible) {
+          return res.status(elig.code === 'NOT_FOUND' ? 404 : 422).json({
+            success: false, code: elig.code, error: elig.message
+          });
+        }
       }
 
       // STEP 2: Fetch and normalize calculation inputs

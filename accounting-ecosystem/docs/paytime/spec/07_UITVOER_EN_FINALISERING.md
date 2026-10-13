@@ -11,7 +11,7 @@ Die maandelikse lewensiklus van 'n payroll is beheerd, in volgorde, en ouditeerb
 | # | Reël | Status |
 |---|---|---|
 | UF-01 | **Run** bereken alle gekose werknemers op die backend en stoor 'n draft-snapshot per werknemer. 'n Herhaalde run vervang die draft. | ✅ |
-| UF-02 | Werknemers wat nie in die periode aktief was nie (aangestel ná die periode / beëindig vóór die periode) word uitgesluit. | ⚠️ Aanstelling ná periode word ingesluit [V4] |
+| UF-02 | Werknemers wat nie in die periode aktief was nie (aangestel ná die periode / beëindig vóór die periode) word uitgesluit. | ✅ Fase 5: aangestel ná / beëindig vóór die periode word uitgesluit [V4 reg] |
 | UF-03 | **Voor finalisering** wys die stelsel 'n nagaan-verslag: verskil per werknemer teenoor verlede maand, ontbrekende belastingnommers, negatiewe netto, items sonder IRP5-kode. | 🆕 |
 | UF-04 | **Volgorde:** 'n maand kan net gefinaliseer word as die vorige maand in dieselfde belastingjaar gefinaliseer is (of die werknemer toe nie in diens was nie). | ✅ Fase 3b: per-maatskappy streng volgorde (migrasie 026); ander kry 'n bevestiging |
 | UF-05 | **Finaliseer** sluit al die run se snapshots (`is_locked = true`) — enigste finaliseringspad. | ✅ |

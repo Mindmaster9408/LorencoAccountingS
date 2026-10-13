@@ -95,6 +95,13 @@
 - Tax table + sha256 frozen in `calculation_output._meta`.
 - Gate: golden 0 diffs, payroll Jest 198/198, core 15/15. Migration 028 run + verified (function refuses locked month / bad table / other company; API sees it); 41 stale draft runs marked superseded (10 real drafts remain).
 
+## Fase 5 (2026-10-13) — docs/paytime/FASE5_CHANGE_IMPACT_NOTE.md
+
+- Pro-rata factor unrounded (B8); basic + fixed allowances pro-rated (ENJ-21); once-off/overtime/deductions not.
+- services/payrollEligibility.js: hired after period → blocked with message (WN-10); terminated before → excluded (UF-02). Used by Execute Payroll, single payslip and golden harness.
+- Golden: only S60/S62 changed as expected. No live employee affected in Oct 2026. Spec statuses for Fase 2–4 items brought up to date.
+- Open: overtime hourly rate in a pro-rata month (full vs pro-rated) — asked Ruan.
+
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).

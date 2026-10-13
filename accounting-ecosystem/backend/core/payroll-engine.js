@@ -1711,14 +1711,17 @@ const PayrollEngine = {
             return { factor: 0, expectedHours: 0, workedHours: 0 };
         }
 
-        var factor = this.r2(workedHours / expectedHours);
+        // Spec 06 ENJ-20 (Fase 5, finding B8): NOT rounded — only rand amounts are rounded
+        // to cents. Rounding the factor to 2 decimals cost up to ~R150 on a R30 000 salary.
+        var factor = workedHours / expectedHours;
         return { factor: factor, expectedHours: expectedHours, workedHours: workedHours };
     },
 
     /**
      * Calculate payroll WITH pro-rata support (HOURS-BASED).
      * Wrapper around calculateFromData that pre-applies pro-rata factor to basic_salary.
-     * Pro-rata is applied ONLY to basic salary; overtime, short-time, allowances, and deductions are NOT pro-rated.
+     * Pro-rata is applied to basic salary and fixed (regular) allowances (ENJ-21); once-off inputs,
+     * overtime, multi-rate, short-time and deductions are NOT pro-rated.
      *
      * @param {Object} payrollData           - Full payroll data including basic_salary, workSchedule, hours_per_day
      * @param {string} [startDate]           - Employee start date (YYYY-MM-DD); null = 1st of month
@@ -1737,12 +1740,18 @@ const PayrollEngine = {
         var defaultHrs = payrollData.hours_per_day || 8;
         var prorataInfo = this.calculateProRataFactor(startDate, endDate, period, payrollData.workSchedule, defaultHrs);
 
-        // Apply pro-rata to basic salary ONLY
+        // Spec 06 ENJ-21 (BEVESTIG 2026-10-12, Fase 5): basic salary AND fixed (regular)
+        // allowances are pro-rated. Percentage items follow the pro-rated basic salary.
+        // Current (once-off) inputs, overtime, multi-rate, short time and deductions are NOT.
+        var factor = prorataInfo.factor;
         var adjustedPayrollData = Object.assign({}, payrollData);
-        adjustedPayrollData.basic_salary = (payrollData.basic_salary || 0) * prorataInfo.factor;
+        adjustedPayrollData.basic_salary = PayrollEngine.r2((payrollData.basic_salary || 0) * factor);
+        adjustedPayrollData.regular_inputs = (payrollData.regular_inputs || []).map(function(ri) {
+            if (ri.type === 'deduction' || ri.is_percentage) return ri;
+            return Object.assign({}, ri, { amount: PayrollEngine.r2((parseFloat(ri.amount) || 0) * factor) });
+        });
 
-        // Calculate with adjusted salary
-        // Overtime, short-time, allowances, deductions are NOT pro-rated
+        // Calculate with adjusted salary and allowances
         var result = this.calculateFromData(
             adjustedPayrollData,
             currentInputs,

@@ -3018,6 +3018,10 @@
                     if (calcResult.data.code === 'PREVIOUS_MONTH_OPEN') {
                         showToast(calcResult.data.error, 'warning');
                     }
+                    // Fase 5 (WN-10 / UF-02): not employed in this month.
+                    if (['STARTS_AFTER_PERIOD', 'TERMINATED_BEFORE_PERIOD', 'INACTIVE'].indexOf(calcResult.data.code) !== -1) {
+                        showToast(calcResult.data.error, 'warning');
+                    }
                 }
             } catch(e) {
                 console.error('[calculatePayslip] calculate API error:', e.message);
