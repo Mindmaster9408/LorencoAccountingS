@@ -20,8 +20,9 @@ let _hasPendingCol = null;
 async function hasPendingColumn() {
   if (_hasPendingCol !== null) return _hasPendingCol;
   const { error } = await supabase.from('employees').select('tax_number_pending').limit(1);
-  _hasPendingCol = !error;
-  return _hasPendingCol;
+  // Only remember "exists": a missing column is re-checked, so migration 030 takes effect without a restart.
+  if (!error) _hasPendingCol = true;
+  return !error;
 }
 const NEEDS_030 = '"Not yet registered with SARS" needs database update 030 — fill in the tax number for now.';
 
