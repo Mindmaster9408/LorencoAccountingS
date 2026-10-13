@@ -89,7 +89,7 @@ Onaktief beteken: die kode word **nie uitgehaal nie**. Dit word net deur 'n inst
 | VPA-02 | Fixed Monthly en Target PAYE kry 'n **opsionele begin- en eindmaand**. As dit leeg gelaat word, geld dit elke maand (soos nou). | ✅ Fase 4 |
 | VPA-03 | **Target PAYE:** as die teiken **hoër** as statutêr is, word die verskil as ekstra PAYE bygevoeg. | ✅ |
 | VPA-04 | **Target PAYE:** as die teiken **laer** as statutêr is, word die statutêre PAYE afgetrek (statutêr wen) en die gebruiker kry 'n **waarskuwing** (op die skerm en in die Execute Payroll-resultate). | ✅ Fase 4: statutêr wen + waarskuwing [W6 reg] |
-| VPA-05 | 'n Rede is verpligtend vir Target PAYE en word op die **backend** afgedwing, nie net op die skerm nie. | ⚠️ Net skerm |
+| VPA-05 | 'n Rede is verpligtend vir Target PAYE en word op die **backend** afgedwing, nie net op die skerm nie. | ✅ Backend (PUT /api/employees/:id): nuwe of gewysigde Target PAYE sonder rede of met ongeldige bedrag word geweier (400); ou onveranderde inskrywings blokkeer nie |
 | VPA-06 | Variable (Period) en Reduce PAYE is onaktief vir nuwe inskrywings (E.2). | ✅ Fase 4 |
 | VPA-07 | Verskeie inskrywings mag saam bestaan; elkeen verskyn as 'n **aparte lyn** op die payslip-skerm **en** die PDF, met sy beskrywing/rede. | ✅ Fase 4 (skerm + PDF), Fase 6 (gevries) |
 | VPA-08 | Stoor van 'n inskrywing wys sukses of 'n fout. 'n Inskrywing verskyn nie op die skerm as dit nie in die databasis gestoor is nie. | ✅ Fase 4 |

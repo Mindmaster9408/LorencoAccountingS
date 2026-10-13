@@ -162,7 +162,7 @@
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).
-- VPA-05: target/deferral reason enforced on screen only, not yet on the backend.
+- VPA-05: DONE 2026-10-13 — Target PAYE reason enforced on the backend (shared/routes/employees.js voluntaryTaxProblems). Deferral acknowledgement (VPA-17) is still screen-only.
 - Migration 026: run and verified by Ruan (46 strict ON, 7 OFF).
 - Migration 027 (tax tables): to be run by Ruan; then verify read-only that 6 confirmed rows exist.
 - BT-08 February warning for next year's tables; BT-09 table hash in snapshot (Fase 6).

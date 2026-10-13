@@ -38,6 +38,29 @@ async function findDuplicateId(companyId, idNumber, excludeId) {
   return d ? (`${d.first_name || ''} ${d.last_name || ''}`.trim() || ('#' + d.id)) : null;
 }
 
+/**
+ * Paytime spec 06 VPA-05: a Target PAYE entry needs a reason (and a valid amount) —
+ * enforced here, not only on the screen. Like Fase 10, only NEW or CHANGED entries are
+ * checked, so an older entry never blocks saving the rest of the list.
+ */
+function voluntaryTaxProblems(next, prev) {
+  if (next === null) return [];
+  if (!Array.isArray(next)) return ['voluntary_tax_config must be a list'];
+  const before = {};
+  (Array.isArray(prev) ? prev : []).forEach(e => { if (e && e.id != null) before[String(e.id)] = e; });
+  const problems = [];
+  next.forEach(e => {
+    if (!e || e.type !== 'target_paye') return;
+    const was = e.id != null ? before[String(e.id)] : null;
+    if (was && was.type === 'target_paye' && String(was.target_paye) === String(e.target_paye) &&
+        String(was.description || '') === String(e.description || '')) return;   // unchanged
+    if (!String(e.description || '').trim()) problems.push('A reason is required for a Target PAYE entry');
+    const amt = Number(e.target_paye);
+    if (!(amt >= 0) || !isFinite(amt)) problems.push('Target PAYE amount must be zero or more');
+  });
+  return [...new Set(problems)];
+}
+
 router.use(authenticateToken);
 router.use(requireCompany);
 
@@ -232,6 +255,9 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
       }
       updates.tax_number = clean(updates.tax_number) || null;
     }
+    if (updates.voluntary_tax_config !== undefined) {
+      problems.push(...voluntaryTaxProblems(updates.voluntary_tax_config, old.voluntary_tax_config));
+    }
     if (problems.length) return res.status(400).json({ error: problems.join('; '), problems });
     if (updates.tax_number) updates.tax_number_pending = false;   // a valid number replaces the flag
     if (updates.tax_number_pending !== undefined && !(await hasPendingColumn())) {
@@ -357,3 +383,4 @@ router.delete('/:id', requirePermission('EMPLOYEES.DELETE'), async (req, res) =>
 });
 
 module.exports = router;
+module.exports.voluntaryTaxProblems = voluntaryTaxProblems;
