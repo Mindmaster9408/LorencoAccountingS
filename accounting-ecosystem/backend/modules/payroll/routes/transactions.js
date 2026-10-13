@@ -13,6 +13,7 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { auditFromReq } = require('../../../middleware/audit');
 const { getEmployeeFilter, requirePaytimeModule } = require('../services/paytimeAccess');
 const PayrollDataService = require('../services/PayrollDataService');
+const { replacePeriodRows, assertPeriodOpen, sendInputError } = require('../services/periodInputs');
 
 const router = express.Router();
 
@@ -154,12 +155,10 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
     const periodId = period ? period.id : null;
     if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    // Replace the full set for this employee+period
-    await supabase.from('payroll_period_inputs').delete()
-      .eq('company_id', req.companyId)
-      .eq('employee_id', employee_id)
-      .eq('payroll_period_id', periodId);
+    // Fase 6: refuse a finalized month before doing any work.
+    await assertPeriodOpen(supabase, req.companyId, parseInt(employee_id), period_key);
 
+    let records = [];
     if (inputs && inputs.length > 0) {
       // Stamp affects_uif from payroll_items_master (authoritative after migration).
       // Falls back to KV for companies that haven't yet visited payroll-items.html.
@@ -204,29 +203,28 @@ router.post('/inputs', requirePermission('PAYROLL.CREATE'), async (req, res) => 
         // Non-fatal: if lookup fails all inputs default to affects_uif = true (safe).
       }
 
-      const records = inputs.map(i => {
+      records = inputs.map(i => {
         const rawType = i.type || i.input_type || 'earning';
         const itemType = rawType === 'deduction' ? 'deduction' : 'earning';
         const desc = (i.description || i.name || '').trim();
         const descKey = desc.toLowerCase();
         return {
-          company_id:        req.companyId,
-          payroll_period_id: periodId,
-          employee_id:       parseInt(employee_id),
           item_type:         itemType,
           description:       desc,
           amount:            parseFloat(i.amount) || 0,
-          affects_uif:       Object.prototype.hasOwnProperty.call(uifMap, descKey) ? uifMap[descKey] : true,
-          is_deleted:        false
+          affects_uif:       Object.prototype.hasOwnProperty.call(uifMap, descKey) ? uifMap[descKey] : true
         };
       });
-      const { error } = await supabase.from('payroll_period_inputs').insert(records);
-      if (error) return res.status(500).json({ error: error.message });
     }
 
+    // Replace the full set for this employee+period — one transaction (Fase 6).
+    await replacePeriodRows(supabase, {
+      table: 'payroll_period_inputs', companyId: req.companyId, employeeId: employee_id,
+      periodId, periodKey: period_key, rows: records
+    });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    sendInputError(res, err);
   }
 });
 
@@ -246,29 +244,20 @@ router.post('/overtime', requirePermission('PAYROLL.CREATE'), async (req, res) =
     const periodId = period ? period.id : null;
     if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    // Replace full set for this employee+period
-    await supabase.from('payroll_overtime').delete()
-      .eq('company_id', req.companyId)
-      .eq('employee_id', employee_id)
-      .eq('payroll_period_id', periodId);
-
-    if (entries && entries.length > 0) {
-      const records = entries.map(e => ({
-        company_id: req.companyId,
-        payroll_period_id: periodId,
-        employee_id: parseInt(employee_id),
+    // Replace the full set for this employee+period — one transaction, refused when
+    // the month is finalized (Fase 6, services/periodInputs.js).
+    await replacePeriodRows(supabase, {
+      table: 'payroll_overtime', companyId: req.companyId, employeeId: employee_id,
+      periodId, periodKey: period_key,
+      rows: (entries || []).map(e => ({
         hours: parseFloat(e.hours) || 0,
         rate_multiplier: parseFloat(e.rate_multiplier) || 1.5,
-        description: e.description || 'Overtime',
-        is_deleted: false
-      }));
-      const { error } = await supabase.from('payroll_overtime').insert(records);
-      if (error) return res.status(500).json({ error: error.message });
-    }
-
+        description: e.description || 'Overtime'
+      }))
+    });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    sendInputError(res, err);
   }
 });
 
@@ -288,27 +277,19 @@ router.post('/short-time', requirePermission('PAYROLL.CREATE'), async (req, res)
     const periodId = period ? period.id : null;
     if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    await supabase.from('payroll_short_time').delete()
-      .eq('company_id', req.companyId)
-      .eq('employee_id', employee_id)
-      .eq('payroll_period_id', periodId);
-
-    if (entries && entries.length > 0) {
-      const records = entries.map(e => ({
-        company_id: req.companyId,
-        payroll_period_id: periodId,
-        employee_id: parseInt(employee_id),
+    // Replace the full set for this employee+period — one transaction, refused when
+    // the month is finalized (Fase 6, services/periodInputs.js).
+    await replacePeriodRows(supabase, {
+      table: 'payroll_short_time', companyId: req.companyId, employeeId: employee_id,
+      periodId, periodKey: period_key,
+      rows: (entries || []).map(e => ({
         hours_missed: parseFloat(e.hours_missed || e.hours) || 0,
-        description: e.description || e.reason || 'Short time',
-        is_deleted: false
-      }));
-      const { error } = await supabase.from('payroll_short_time').insert(records);
-      if (error) return res.status(500).json({ error: error.message });
-    }
-
+        description: e.description || e.reason || 'Short time'
+      }))
+    });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    sendInputError(res, err);
   }
 });
 
@@ -328,28 +309,20 @@ router.post('/multi-rate', requirePermission('PAYROLL.CREATE'), async (req, res)
     const periodId = period ? period.id : null;
     if (!periodId) return res.status(404).json({ error: 'Period not found' });
 
-    await supabase.from('payroll_multi_rate').delete()
-      .eq('company_id', req.companyId)
-      .eq('employee_id', employee_id)
-      .eq('payroll_period_id', periodId);
-
-    if (entries && entries.length > 0) {
-      const records = entries.map(e => ({
-        company_id: req.companyId,
-        payroll_period_id: periodId,
-        employee_id: parseInt(employee_id),
+    // Replace the full set for this employee+period — one transaction, refused when
+    // the month is finalized (Fase 6, services/periodInputs.js).
+    await replacePeriodRows(supabase, {
+      table: 'payroll_multi_rate', companyId: req.companyId, employeeId: employee_id,
+      periodId, periodKey: period_key,
+      rows: (entries || []).map(e => ({
         hours: parseFloat(e.hours) || 0,
         rate_multiplier: parseFloat(e.rate_multiplier) || 1,
-        description: e.description || 'Multi-rate',
-        is_deleted: false
-      }));
-      const { error } = await supabase.from('payroll_multi_rate').insert(records);
-      if (error) return res.status(500).json({ error: error.message });
-    }
-
+        description: e.description || 'Multi-rate'
+      }))
+    });
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    sendInputError(res, err);
   }
 });
 

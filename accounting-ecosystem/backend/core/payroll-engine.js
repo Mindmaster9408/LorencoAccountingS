@@ -1269,7 +1269,7 @@ const PayrollEngine = {
             }
         }
 
-        return {
+        var _result = {
             gross: PayrollEngine.r2(gross),
             taxableGross: PayrollEngine.r2(taxableGross),
             paye: PayrollEngine.r2(payeWithVoluntary),
@@ -1337,8 +1337,117 @@ const PayrollEngine = {
             voluntary_warnings:  voluntaryWarnings,
             // === ADDITIVE FIELDS (Fase 2) ===
             is_contractor:       !!(employeeOptions && employeeOptions.is_contractor),
-            sdlLeviableGross:    PayrollEngine.r2(sdlLeviableGross)
+            sdlLeviableGross:    PayrollEngine.r2(sdlLeviableGross),
+            // === ADDITIVE FIELDS (Fase 6 — payslip lines frozen in the snapshot, spec 08 PS-02/03) ===
+            // Every line the payslip prints, with the exact amounts used above. Stored in
+            // calculation_output, so a finalized payslip is reprinted from these lines —
+            // never from the employee's current items.
+            payslip_lines: PayrollEngine.buildPayslipLines({
+                basicSalary:    payrollData.basic_salary || 0,
+                regularInputs:  resolvedRegularInputs,
+                currentInputs:  currentInputs || [],
+                overtime:       overtime || [],
+                multiRate:      multiRate || [],
+                shortTime:      shortTime || [],
+                hourlyRate:     hourlyRate,
+                payeBase:       paye,
+                voluntary:      voluntaryBreakdown,
+                payeTotal:      payeWithVoluntary,
+                uif:            uif,
+                uifEmployer:    uif_employer,
+                sdl:            sdl
+            }),
+            // { earnings, deductions, net, gross_diff, deductions_diff, net_diff, ok }
+            payslip_check: null
         };
+        _result.payslip_check = PayrollEngine.checkPayslipLines(_result.payslip_lines, _result);
+        return _result;
+    },
+
+    /**
+     * Payslip lines for one calculation (Fase 6, spec 08 PS-02). Pure.
+     * Sections: 'earning' (incl. short time as a negative line), 'deduction'
+     * (employee deductions), 'tax' (PAYE, voluntary PAYE, UIF), 'employer' (UIF, SDL).
+     * Amounts are rounded to cents. Also used to rebuild lines for snapshots made
+     * before Fase 6 from their frozen calculation_input.
+     */
+    buildPayslipLines: function(c) {
+        var r2 = PayrollEngine.r2;
+        var lines = [];
+        var desc = function(x, fallback) { return (x && (x.description || x.name)) || fallback; };
+        if (c.basicSalary) lines.push({ section: 'earning', kind: 'basic', description: 'Basic Salary', amount: r2(c.basicSalary) });
+        (c.regularInputs || []).forEach(function(ri) {
+            var a = r2(parseFloat(ri.amount) || 0);
+            if (!a) return;
+            lines.push({ section: ri.type === 'deduction' ? 'deduction' : 'earning', kind: 'regular',
+                description: desc(ri, ri.type === 'deduction' ? 'Deduction' : 'Allowance'), amount: a,
+                pre_tax: ri.type === 'deduction' && ri.tax_treatment === 'pre_tax' ? true : undefined,
+                taxable_percentage: ri.type !== 'deduction' && ri.taxable_percentage != null && Number(ri.taxable_percentage) !== 100
+                    ? Number(ri.taxable_percentage) : undefined });
+        });
+        (c.currentInputs || []).forEach(function(ci) {
+            var a = r2(parseFloat(ci.amount) || 0);
+            if (!a) return;
+            lines.push({ section: ci.type === 'deduction' ? 'deduction' : 'earning', kind: 'current',
+                description: desc(ci, ci.type === 'deduction' ? 'Deduction' : 'Earning'), amount: a,
+                pre_tax: ci.type === 'deduction' && ci.tax_treatment === 'pre_tax' ? true : undefined });
+        });
+        (c.overtime || []).forEach(function(ot) {
+            var h = parseFloat(ot.hours) || 0, m = parseFloat(ot.rate_multiplier) || 1.5;
+            if (!h) return;
+            lines.push({ section: 'earning', kind: 'overtime',
+                description: desc(ot, m === 1.5 ? 'Overtime' : m === 2 ? 'Double Time' : 'Overtime ×' + m),
+                hours: h, rate: r2(c.hourlyRate * m), multiplier: m, amount: r2(h * c.hourlyRate * m) });
+        });
+        (c.multiRate || []).forEach(function(mr) {
+            var h = parseFloat(mr.hours) || 0, rate = parseFloat(mr.hourly_rate) || 0;
+            if (!h) return;
+            lines.push({ section: 'earning', kind: 'multi_rate', description: desc(mr, 'Paid at Different Rate'),
+                hours: h, rate: r2(rate), amount: r2(h * rate) });
+        });
+        (c.shortTime || []).forEach(function(st) {
+            var h = parseFloat(st.hours_missed) || 0;
+            if (!h) return;
+            lines.push({ section: 'earning', kind: 'short_time', description: desc(st, 'Short Time'),
+                hours: h, rate: r2(c.hourlyRate), amount: -r2(h * c.hourlyRate) });
+        });
+        lines.push({ section: 'tax', kind: 'paye', description: 'PAYE', amount: r2(c.payeBase || 0) });
+        var volSum = 0;
+        (c.voluntary || []).forEach(function(v) {
+            if (v.inactive || !v.amount) return;
+            volSum += v.amount;
+            lines.push({ section: 'tax', kind: 'voluntary', id: v.id, type: v.type,
+                description: 'Voluntary PAYE' + (v.description ? ' — ' + v.description : ''), amount: r2(v.amount) });
+        });
+        // PAYE is floored at zero after voluntary credits; show the floor so the lines add up.
+        var floorAdj = r2((c.payeTotal || 0) - ((c.payeBase || 0) + volSum));
+        if (Math.abs(floorAdj) >= 0.01) lines.push({ section: 'tax', kind: 'paye_floor', description: 'PAYE cannot be negative', amount: floorAdj });
+        if (c.uif) lines.push({ section: 'tax', kind: 'uif', description: 'UIF', amount: r2(c.uif) });
+        if (c.uifEmployer) lines.push({ section: 'employer', kind: 'uif_employer', description: 'UIF (employer)', amount: r2(c.uifEmployer) });
+        if (c.sdl) lines.push({ section: 'employer', kind: 'sdl', description: 'SDL', amount: r2(c.sdl) });
+        return lines;
+    },
+
+    /**
+     * PS-03: do the lines add up to the totals on the same payslip? Pure.
+     * @returns {{ earnings, deductions, net, gross_diff, deductions_diff, net_diff, ok }}
+     */
+    checkPayslipLines: function(lines, totals) {
+        var r2 = PayrollEngine.r2, e = 0, d = 0;
+        (lines || []).forEach(function(l) {
+            if (l.section === 'earning') e += l.amount;
+            else if (l.section === 'deduction' || l.section === 'tax') d += l.amount;
+        });
+        e = r2(e); d = r2(d);
+        var totDed = r2((totals.paye || 0) + (totals.uif || 0) + (totals.deductions || 0));
+        var res = {
+            earnings: e, deductions: d, net: r2(e - d),
+            gross_diff: r2(e - (totals.gross || 0)),
+            deductions_diff: r2(d - totDed),
+            net_diff: r2((e - d) - (totals.net || 0))
+        };
+        res.ok = Math.abs(res.gross_diff) < 0.015 && Math.abs(res.deductions_diff) < 0.015 && Math.abs(res.net_diff) < 0.015;
+        return res;
     },
 
     // === NET-TO-GROSS REVERSE CALCULATION ===

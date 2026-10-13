@@ -81,6 +81,20 @@
 - Tests: `tests/payroll-tax-tables.test.js` (25); golden harness loads per-period tables from the migration; core regression baselines moved to correct 2027 values (were on 2024/25 tables for April 2026).
 - Gate: payroll Jest 183/183, core 15/15, 0 lint errors in changed files. Pre-existing, unrelated: 5 Sean suites + payroll-employee-sync (needs live pg) fail; lint parse error in sean/pdf-statement-parsers/nedbank-parser.js.
 
+## Migrations + Supabase access (2026-10-13)
+
+- Claude can now run SQL: `SUPABASE_DB_URL` in backend/.env (local only) + `backend/scripts/run-sql.js` (check / query read-only / file in one transaction).
+- Ran (Ruan's go-ahead, verified): 167 jurisdiction (fixed POS serial-tracking flag + Stockton settings), 169/170 Stockton, 168 audit_log append-only, 166 Collector, 165 Commander, 026 QA, 019 coaching. 027 tax tables confirmed present.
+- Ruan reset the Supabase DB password → Leo broke → fixed by updating `COACHING_DATABASE_URL` on Zeabur (Leo + Coaching use it). Any future reset must update it.
+
+## Fase 6 (2026-10-13) — docs/paytime/FASE6_CHANGE_IMPACT_NOTE.md
+
+- Payslip lines frozen in the snapshot (`payslip_lines`, `payslip_check`); preview + PDF print them; old snapshots rebuilt from frozen inputs; PDF blocked when lines don't add up.
+- Input routes: finalized month → 423; atomic replace via `paytime_replace_period_rows` (migration 028, falls back before it runs).
+- Replaced draft runs → "superseded" (needs 028); finalize of superseded/empty run → 409 RUN_SUPERSEDED.
+- Tax table + sha256 frozen in `calculation_output._meta`.
+- Gate: golden 0 diffs, payroll Jest 198/198, core 15/15. Pending: migration 028 + one-off marking of 41 stale draft runs (Ruan's go-ahead).
+
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).

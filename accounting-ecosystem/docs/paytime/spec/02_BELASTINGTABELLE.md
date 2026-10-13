@@ -18,7 +18,7 @@ Die program moet vir elke betaalperiode outomaties die korrekte SARS-tabelle van
 | BT-06 | Nuwe jaar se tabelle kan vooraf gelaai word, maar word eers vanaf 1 Maart gebruik. | ✅ Fase 1: 'n nuwe jaar se ry geld net vir sy eie maande |
 | BT-07 | **BEVESTIG 2026-10-12:** slegs 'n **super user** (Infinite Legacy as die programmaker) kan belastingtabelle invoer of verander. Geen tweede goedkeuring nodig nie — solank dit korrek is. Kliëntmaatskappye kan dit sien maar nie verander nie. Elke verandering word geoudit (wie, wanneer, ou/nuwe waardes). | ✅ Fase 1: PUT slegs super_admin in die global-authority-maatskappy; oudit met ou/nuwe waardes; ander sien lees-alleen |
 | BT-08 | Gereedheidskontrole: vanaf 1 Februarie wys die stelsel 'n waarskuwing as die volgende jaar se tabelle nie bevestig is nie; Maart-payroll word geblokkeer tot dit bevestig is. | ⚠️ Maart word geblokkeer as die jaar ontbreek/onbevestig is (BT-15); die 1-Februarie-waarskuwing is nog nie gebou nie |
-| BT-09 | Elke snapshot stoor die belastingjaar en 'n verwysing/hash van die presiese tabel wat gebruik is. | ⚠️ Snapshot stoor `tax_year`; nog geen hash van die presiese tabel nie [B7] |
+| BT-09 | Elke snapshot stoor die belastingjaar en 'n verwysing/hash van die presiese tabel wat gebruik is. | ✅ Fase 6: `_meta.taxTable` + `taxTableHash` in die snapshot |
 | BT-10 | UIF: 1% werknemer + 1% werkgewer, plafon R17 712/maand (R177,12 elk). | ✅ |
 | BT-11 | SDL: 1% van leviable remuneration; 0 as maatskappy nie geregistreer is nie (onder R500k payroll per jaar). | ✅ (vlag-gebaseer) |
 

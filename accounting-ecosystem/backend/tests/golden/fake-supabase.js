@@ -9,6 +9,8 @@
  *   terminals: await (thenable), maybeSingle(), single()
  *   from().insert(row).select().single()   (payroll_periods auto-create)
  *   from().upsert(row, { onConflict }).select().single()   (tax tables, KV mirror)
+ *   from().update(patch).eq(...) / from().delete().eq(...)  (filters honoured)
+ *   rpc(name, args) → db.__rpc[name](args, db) or a PGRST202 "function not found" error
  *
  * Column projection is honoured, including nested joins such as
  * "payroll_items(code, name)". This matters: a real PostgREST select only
@@ -81,14 +83,22 @@ class Query {
   order(c, opts) { this.sortKey = c; this.sortAsc = !opts || opts.ascending !== false; return this; }
   limit(n) { this.max = n; return this; }
   insert(row) { this.op = 'insert'; this.payload = row; return this; }
+  update(patch) { this.op = 'update'; this.payload = patch; return this; }
+  delete() { this.op = 'delete'; return this; }
   upsert(row, opts) { this.op = 'upsert'; this.payload = row; this.conflict = ((opts && opts.onConflict) || 'id').split(','); return this; }
 
   _run() {
     const rows = this.db[this.table] || (this.db[this.table] = []);
     if (this.op === 'insert') {
-      const r = Object.assign({ id: rows.length + 1000 }, this.payload);
-      rows.push(r);
-      return { data: [project(r, this.cols)], error: null };
+      const added = (Array.isArray(this.payload) ? this.payload : [this.payload])
+        .map(p => { const r = Object.assign({ id: rows.length + 1000 }, p); rows.push(r); return r; });
+      return { data: added.map(r => project(r, this.cols)), error: null };
+    }
+    if (this.op === 'update' || this.op === 'delete') {
+      const hit = rows.filter(r => this.filters.every(f => f(r)));
+      if (this.op === 'update') hit.forEach(r => Object.assign(r, this.payload));
+      else this.db[this.table] = rows.filter(r => !hit.includes(r));
+      return { data: hit.map(r => project(r, this.cols)), error: null };
     }
     if (this.op === 'upsert') {
       const keys = this.conflict.map(k => k.trim());
@@ -121,7 +131,15 @@ class Query {
 }
 
 function createFakeSupabase(db) {
-  return { from: table => new Query(db, table) };
+  return {
+    from: table => new Query(db, table),
+    rpc: async (name, args) => {
+      const fn = db.__rpc && db.__rpc[name];
+      if (!fn) return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.' + name } };
+      try { return { data: await fn(args, db), error: null }; }
+      catch (e) { return { data: null, error: { code: 'P0001', message: e.message } }; }
+    }
+  };
 }
 
 module.exports = { createFakeSupabase };

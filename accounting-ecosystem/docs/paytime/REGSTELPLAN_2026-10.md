@@ -121,6 +121,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | 5.3 | Toelaes pro-rata of nie (vraag 06.3). |
 
 ### Fase 6 — Snapshot en payslip onveranderlik `[B3, B7, K6-deel]` → spec 07, 08
+
+**✅ Gebou 2026-10-13** ([FASE6_CHANGE_IMPACT_NOTE.md](FASE6_CHANGE_IMPACT_NOTE.md)). 6.1 insette van 'n gesluite maand → 423, alles-of-niks stoor (migrasie 028); 6.2 `payslip_lines` + `payslip_check` in die snapshot, tabel + hash in `_meta` (stap 1.4); 6.3 payslip-skerm en PDF lees die lyne, PDF geblokkeer as dit nie klop nie; 6.4 vervangde draft-runs "superseded". Toetse: `tests/payroll-fase6.test.js` (15). Oop: PS-05 YTD op payslip, PS-07 PDF-hash, Fase 9-blad.
 | 6.1 | Backend weier insetwysigings vir geslote periodes. |
 | 6.2 | Snapshot stoor die volledige payslip-lynitems (bevrore). |
 | 6.3 | Payslip-skerm en PDF lees lynitems uit die snapshot; kontrole lynitems = totale. |

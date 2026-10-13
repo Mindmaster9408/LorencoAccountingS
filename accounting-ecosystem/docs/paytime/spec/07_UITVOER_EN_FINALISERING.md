@@ -13,9 +13,9 @@ Die maandelikse lewensiklus van 'n payroll is beheerd, in volgorde, en ouditeerb
 | UF-01 | **Run** bereken alle gekose werknemers op die backend en stoor 'n draft-snapshot per werknemer. 'n Herhaalde run vervang die draft. | ✅ |
 | UF-02 | Werknemers wat nie in die periode aktief was nie (aangestel ná die periode / beëindig vóór die periode) word uitgesluit. | ⚠️ Aanstelling ná periode word ingesluit [V4] |
 | UF-03 | **Voor finalisering** wys die stelsel 'n nagaan-verslag: verskil per werknemer teenoor verlede maand, ontbrekende belastingnommers, negatiewe netto, items sonder IRP5-kode. | 🆕 |
-| UF-04 | **Volgorde:** 'n maand kan net gefinaliseer word as die vorige maand in dieselfde belastingjaar gefinaliseer is (of die werknemer toe nie in diens was nie). | ❌ [V2] |
+| UF-04 | **Volgorde:** 'n maand kan net gefinaliseer word as die vorige maand in dieselfde belastingjaar gefinaliseer is (of die werknemer toe nie in diens was nie). | ✅ Fase 3b: per-maatskappy streng volgorde (migrasie 026); ander kry 'n bevestiging |
 | UF-05 | **Finaliseer** sluit al die run se snapshots (`is_locked = true`) — enigste finaliseringspad. | ✅ |
-| UF-06 | 'n Ou draft-run wat deur 'n nuwer run vervang is, word as "vervang" gemerk en kan nie meer gefinaliseer word nie. | ❌ Bly as draft met ou totale [V5] |
+| UF-06 | 'n Ou draft-run wat deur 'n nuwer run vervang is, word as "vervang" gemerk en kan nie meer gefinaliseer word nie. | ✅ Fase 6: ou draft-runs sonder oop payslips → "superseded", kan nie gefinaliseer word nie (migrasie 028) |
 | UF-07 | Aanvullende run vir 'n vergete werknemer in 'n reeds gefinaliseerde maand is toegelaat. | ✅ |
 | UF-08 | **Omkeer** van 'n gefinaliseerde run vereis 'n rede, behou die ou snapshots (as "reversed"), en laat 'n nuwe run toe. | ✅ |
 | UF-09 | As 'n maand omgekeer word terwyl latere maande reeds gesluit is, waarsku die stelsel dat daardie latere maande se PAYE op ou syfers gebaseer is, en bied aan om dit ook om te keer. | 🆕 |

@@ -391,6 +391,12 @@ router.post(
         ...totals
       });
 
+      // ── Fase 6 / UF-06: older draft runs of this month whose payslips all moved
+      // into this run are marked 'superseded' (cannot be finalized any more).
+      const supersededRunIds = await PayrollHistoryService.markSupersededRuns(
+        supabase, req.companyId, period_key, run.id
+      );
+
       // ── Audit log ─────────────────────────────────────────────────────────
       try {
         await auditFromReq(req, 'PAYROLL_RUN', 'payroll_runs', run.id, {
@@ -418,6 +424,7 @@ router.post(
           uif:   totals.totalUif,
           sdl:   totals.totalSdl
         },
+        superseded_run_ids: supersededRunIds,
         timestamp: new Date().toISOString()
       });
 
@@ -498,6 +505,19 @@ router.post(
         });
       }
 
+      // Fase 6 / UF-06: a replaced or reversed run can never be finalized.
+      if (run.status === 'superseded') {
+        return res.status(409).json({
+          success: false,
+          code:    'RUN_SUPERSEDED',
+          error:   `This pay run was replaced by a newer run for ${period_key}. Finalize the newest run instead.`,
+          superseded_by_run_id: run.superseded_by_run_id || null
+        });
+      }
+      if (run.status === 'reversed') {
+        return res.status(409).json({ success: false, error: `Payroll run ${run_id} was reversed` });
+      }
+
       // Month-order guard (UF-04): refuse — and lock nothing — if finalizing this month
       // would lock it on incomplete year-to-date data.
       let openEarlier = [];
@@ -509,7 +529,17 @@ router.post(
         .eq('is_locked', false);
       if (rsErr) throw rsErr;
       const runEmpIds = [...new Set((runSnaps || []).map(s => s.employee_id))];
-      if (runEmpIds.length > 0) {
+      // Fase 6 / UF-06: a run that no longer owns any open payslip was replaced by a
+      // newer run (its employees were recalculated there) — finalizing it would lock nothing
+      // and mark stale totals as final.
+      if (runEmpIds.length === 0) {
+        return res.status(409).json({
+          success: false,
+          code:    'RUN_SUPERSEDED',
+          error:   'This pay run has no open payslips left — they were recalculated in a newer run for ' + period_key + '. Finalize the newest run instead.'
+        });
+      }
+      {
         const { employees: empRows, lockedRows } =
           await loadEmployeesAndLocked(supabase, req.companyId, runEmpIds, period_key);
         const violations = findPeriodSequenceViolations(period_key, empRows, lockedRows);

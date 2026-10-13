@@ -2989,6 +2989,13 @@
                     if (calc && calcResult.data.snapshot && calcResult.data.snapshot.basic_salary != null) {
                         calc._snapshotBasicSalary = calcResult.data.snapshot.basic_salary;
                     }
+                    // Fase 6: finalized months — payslip lines frozen in the snapshot (or rebuilt
+                    // from its frozen inputs for snapshots made before Fase 6).
+                    if (calc && calcResult.data.snapshot && Array.isArray(calcResult.data.snapshot.payslip_lines)) {
+                        calc._payslipLines       = calcResult.data.snapshot.payslip_lines;
+                        calc._payslipCheck       = calcResult.data.snapshot.payslip_check || null;
+                        calc._payslipLinesSource = calcResult.data.snapshot.payslip_lines_source || 'snapshot';
+                    }
                     // DB-authoritative lock state: backend returns locked:true when payroll_snapshots.is_locked = true
                     _isDbLocked = !!(calcResult.data.locked);
                     // When locked, capture frozen inputs from snapshot for renderPayroll() display.
@@ -3097,6 +3104,14 @@
 
             var backedCalc = _lastBackendCalc;
 
+            // Fase 6 (spec 08 PS-02): the backend returns the payslip lines — frozen in the
+            // snapshot for finalized months. When present they are the ONLY source of the
+            // printed lines; the employee's current items are never used for them.
+            var _psLines = backedCalc && (backedCalc._payslipLines || backedCalc.payslip_lines);
+            if (Array.isArray(_psLines)) {
+                return _payslipDataFromLines(backedCalc, _psLines);
+            }
+
             // Build itemized display lists from server-backed cache (for PDF line items only —
             // NOT used for gross/paye/net totals which come from backedCalc).
             var currentInputs = _periodInputsCache.currentInputs;
@@ -3195,6 +3210,34 @@
                 period: currentPeriod,
                 companyId: currentCompanyId
             };
+        }
+
+        // Fase 6: map the backend payslip lines onto the shape the preview and PDF use.
+        function _payslipDataFromLines(backedCalc, lines) {
+            var calc = Object.assign({}, backedCalc);
+            var sum = function(kind) {
+                return lines.filter(function(l) { return l.kind === kind; })
+                            .reduce(function(s, l) { return s + (Number(l.amount) || 0); }, 0);
+            };
+            calc.basicSalary = PayrollEngine.r2(sum('basic'));
+            calc.allowances = lines.filter(function(l) {
+                return l.section === 'earning' && (l.kind === 'regular' || l.kind === 'current' || l.kind === 'multi_rate');
+            }).map(function(l) { return { description: l.description, amount: l.amount }; });
+            calc.deductionsList = lines.filter(function(l) { return l.section === 'deduction'; })
+                .map(function(l) { return { description: l.description, amount: l.amount }; });
+            calc.overtimeAmount  = PayrollEngine.r2(sum('overtime'));
+            calc.shortTimeAmount = PayrollEngine.r2(-sum('short_time'));
+            calc.ratesEntries = lines.filter(function(l) { return l.kind === 'overtime' || l.kind === 'short_time'; })
+                .map(function(l) { return { type: l.description, quantity: l.hours, rate: l.rate }; });
+            var firstOt = lines.filter(function(l) { return l.kind === 'overtime' && l.multiplier; })[0];
+            var firstSt = lines.filter(function(l) { return l.kind === 'short_time'; })[0];
+            calc.hourlyRate = firstSt ? firstSt.rate : (firstOt ? PayrollEngine.r2(firstOt.rate / firstOt.multiplier) : PayrollEngine.calcHourlyRate(calc.basicSalary, _workingDaysData, _workScheduleHoursPerDay));
+            var weeklyHours = PayrollEngine.calcWeeklyHours(_workingDaysData, _workScheduleHoursPerDay);
+            calc.normalHoursPerMonth = weeklyHours > 0 ? Math.round(weeklyHours * 4.33 * 100) / 100 : PayrollEngine.HOURLY_DIVISOR;
+            calc.totalDeductions = calc.deductions;
+            calc.payslipCheck = backedCalc._payslipCheck || backedCalc.payslip_check || null;
+            calc.payslipLinesSource = backedCalc._payslipLinesSource || 'calculation';
+            return { calc: calc, employee: currentEmployee, period: currentPeriod, companyId: currentCompanyId };
         }
 
         function previewPayslip() {
@@ -3757,6 +3800,15 @@
 
         function downloadPayslipPDF() {
             var data = getPayslipData();
+            // Spec 08 PS-03: lines that don't add up to the totals → no PDF. Lines rebuilt
+            // for a pre-Fase-6 snapshot only get the on-page note (they are a reconstruction).
+            var _chk = data.calc.payslipCheck;
+            if (_chk && _chk.ok === false && data.calc.payslipLinesSource !== 'rebuilt_from_frozen_inputs') {
+                alert('This payslip was not generated: its lines do not add up to the totals ' +
+                      '(earnings ' + formatMoney(_chk.earnings) + ' vs gross ' + formatMoney(data.calc.gross) +
+                      ', deductions difference ' + formatMoney(_chk.deductions_diff) + '). Please report this.');
+                return;
+            }
             var narrativeOptions = _getExplanationNarrativeOptions();
             PDFBranding.generatePayslipPDF(data.employee, data.period, data.calc, data.companyId, narrativeOptions);
             AuditTrail.logExport(currentCompanyId, 'payslip', 'Exported payslip PDF for ' + currentEmployee.first_name + ' ' + currentEmployee.last_name + ' - ' + formatPeriodLabel(currentPeriod));

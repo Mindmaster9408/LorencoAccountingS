@@ -27,6 +27,7 @@
  * ============================================================================
  */
 
+const crypto = require('crypto');
 const PayrollEngine = require('../../../core/payroll-engine');
 
 /**
@@ -230,6 +231,19 @@ async function calculate(normalizedInputs, options = {}) {
       ytdPriorTotalPAYEPaid:        _ytdCalc ? (_ytdCalc.priorTotalPAYEPaid        ?? null) : null,
       ytdRemainingTax:              _ytdCalc ? (_ytdCalc.remainingTax              ?? null) : null
     };
+
+    // Fase 6 / BT-09: freeze the exact tax table used, plus a fingerprint, in the
+    // snapshot (calculation_output._meta) — proof of which SARS figures taxed this month.
+    const usedTables = PayrollEngine.getTablesForPeriod(normalizedInputs.period, taxOverride);
+    result._meta.taxTable = {
+      tax_year:         usedTables.TAX_YEAR || result.tax_year || null,
+      brackets:         (usedTables.BRACKETS || []).map(b => ({ min: b.min, max: b.max === Infinity ? null : b.max, base: b.base, rate: b.rate })),
+      rebates:          [usedTables.PRIMARY_REBATE, usedTables.SECONDARY_REBATE, usedTables.TERTIARY_REBATE],
+      medical_credits:  [usedTables.MEDICAL_CREDIT_MAIN, usedTables.MEDICAL_CREDIT_FIRST_DEP, usedTables.MEDICAL_CREDIT_ADDITIONAL],
+      uif:              [usedTables.UIF_RATE, usedTables.UIF_MONTHLY_CAP],
+      sdl_rate:         usedTables.SDL_RATE
+    };
+    result._meta.taxTableHash = crypto.createHash('sha256').update(JSON.stringify(result._meta.taxTable)).digest('hex');
 
     return result;
   } catch (err) {

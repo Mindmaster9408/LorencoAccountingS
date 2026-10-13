@@ -295,6 +295,7 @@
         .status-draft    { background: #fff3cd; color: #856404; }
         .status-finalized { background: #d4edda; color: #155724; }
         .status-reversed  { background: #f8d7da; color: #721c24; }
+        .status-superseded { background: #e2e3e5; color: #383d41; }
 
         /* ── REVERSAL MODAL ── */
         .reversal-warning {
@@ -1246,6 +1247,11 @@
         btn.textContent = '✓ Yes, Finalize';
         closeFinalizeModal();
 
+        // Fase 6 / UF-06: this run was replaced by a newer run for the same month.
+        if (res.status === 409 && res.data && res.data.code === 'RUN_SUPERSEDED') {
+            showToast(res.data.error, 'warning');
+            return;
+        }
         if (res.status === 409) {
             showToast('This payroll run is already finalized.', 'warning');
             markAsFinalized();
@@ -1879,7 +1885,7 @@
         }
 
         var run = res.data.run || {};
-        var statusBadgeClass = run.status === 'finalized' ? 'status-finalized' : (run.status === 'reversed' ? 'status-reversed' : 'status-draft');
+        var statusBadgeClass = run.status === 'finalized' ? 'status-finalized' : (run.status === 'reversed' ? 'status-reversed' : (run.status === 'superseded' ? 'status-superseded' : 'status-draft'));
 
         container.innerHTML =
             '<div style="background:#f8f9fa;border-radius:10px;padding:16px 20px;font-size:0.88rem;">' +

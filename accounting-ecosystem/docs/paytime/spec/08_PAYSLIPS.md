@@ -11,8 +11,8 @@
 | # | Reël | Status |
 |---|---|---|
 | PS-01 | Alle bedrae op die payslip kom van die backend-berekening (draft) of die geslote snapshot (gefinaliseer). Die frontend bereken niks. | ⚠️ Totale ✅, maar lynitems word op die frontend uit lewendige data saamgestel |
-| PS-02 | 'n Gefinaliseerde payslip se lynitems (toelaes, aftrekkings, oortyd, ure, tariewe) kom uit die snapshot — nie uit die werknemer se huidige items nie. | ❌ [B3] |
-| PS-03 | Die som van die lynitems = bruto / aftrekkings / netto op dieselfde payslip. (Outomatiese kontrole; as dit nie klop nie, word die PDF nie gegenereer nie.) | 🆕 |
+| PS-02 | 'n Gefinaliseerde payslip se lynitems (toelaes, aftrekkings, oortyd, ure, tariewe) kom uit die snapshot — nie uit die werknemer se huidige items nie. | ✅ Fase 6: lyne gevries in die snapshot (`payslip_lines`); ou snapshots herbou uit hul gevriesde insette |
+| PS-03 | Die som van die lynitems = bruto / aftrekkings / netto op dieselfde payslip. (Outomatiese kontrole; as dit nie klop nie, word die PDF nie gegenereer nie.) | ✅ Fase 6: `payslip_check`; PDF word nie gegenereer as lyne nie klop nie |
 | PS-04 | BCEA art. 33-velde: werkgewer naam en adres; werknemer naam, pos, ID/werknemernommer; periode; gewone ure, oortyd-ure en tariewe; elke verdienste en aftrekking met beskrywing; netto bedrag. | ✅ meestal (verifieer ure vir uurwerkers) |
 | PS-05 | Payslip wys ook: belasbare inkomste, PAYE, UIF, mediese krediet, werkgewerbydraes (UIF, SDL), YTD-totale. | ⚠️ YTD-totale ontbreek |
 | PS-06 | Die "Payslips"-blad (grootmaat-PDF, betaalverdeling, EMP201-voorskou, bankuitvoer) lees uit die geslote snapshots. | ❌ Hele ou stelsel op KV + frontend-enjin [K6] |

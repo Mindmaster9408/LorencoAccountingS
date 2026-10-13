@@ -45,6 +45,8 @@
  * ============================================================================
  */
 
+const PayrollEngine = require('../../../core/payroll-engine');
+
 /**
  * Prepare calculation result for snapshot storage.
  * Packages raw calculation output into archive-safe format.
@@ -335,6 +337,52 @@ function compareSnapshots(snapshot1, snapshot2) {
  * @param {object} snapshot - Snapshot to format
  * @returns {object} API-safe snapshot format
  */
+/**
+ * Payslip lines for a stored snapshot (Fase 6). Pure — never recalculates figures:
+ * totals always come from calculation_output; only the line split is rebuilt for
+ * old snapshots, from their frozen calculation_input.
+ * @returns {{ payslip_lines: Array|null, payslip_check: object|null, payslip_lines_source: string }}
+ */
+function payslipLinesFor(input, output) {
+  if (Array.isArray(output.payslip_lines)) {
+    return {
+      payslip_lines: output.payslip_lines,
+      payslip_check: output.payslip_check || PayrollEngine.checkPayslipLines(output.payslip_lines, output),
+      payslip_lines_source: 'snapshot'
+    };
+  }
+  if (!input || input.basic_salary == null) {
+    return { payslip_lines: null, payslip_check: null, payslip_lines_source: 'none' };
+  }
+  const factor = output.prorataFactor != null ? Number(output.prorataFactor) : 1;
+  const basic  = (Number(input.basic_salary) || 0) * factor;
+  const regular = (input.regular_inputs || []).map(ri => (ri.is_percentage && ri.percentage_value)
+    ? Object.assign({}, ri, { amount: PayrollEngine.r2((ri.percentage_value / 100) * basic) }) : ri);
+  const hourlyRate = PayrollEngine.calcHourlyRate(basic, input.workSchedule, input.hours_per_day);
+  const voluntary = Array.isArray(output.voluntary_breakdown) ? output.voluntary_breakdown
+    : (output.voluntary_paye_adjustment ? [{ amount: output.voluntary_paye_adjustment, description: '' }] : []);
+  const lines = PayrollEngine.buildPayslipLines({
+    basicSalary:   basic,
+    regularInputs: regular,
+    currentInputs: input.currentInputs || [],
+    overtime:      input.overtime || [],
+    multiRate:     (input.multiRate || []).map(m => Object.assign({}, m, { hourly_rate: m.hourly_rate != null ? m.hourly_rate : m.rate_multiplier })),
+    shortTime:     input.shortTime || [],
+    hourlyRate,
+    payeBase:      output.paye_base != null ? output.paye_base : output.paye,
+    voluntary,
+    payeTotal:     output.paye,
+    uif:           output.uif,
+    uifEmployer:   output.uif_employer != null ? output.uif_employer : output.uif,
+    sdl:           output.sdl
+  });
+  return {
+    payslip_lines: lines,
+    payslip_check: PayrollEngine.checkPayslipLines(lines, output),
+    payslip_lines_source: 'rebuilt_from_frozen_inputs'
+  };
+}
+
 function formatForResponse(snapshot) {
   // metadata is not a DB column — reconstruct from calculation_output.
   // calculation_output._meta and pro-rata fields carry this data.
@@ -375,6 +423,11 @@ function formatForResponse(snapshot) {
     // Expose regular_inputs (allowances/deductions line items) for payslip preview.
     // These are the normalized items used in the calculation — read-only, snapshot-frozen.
     payslip_line_items: Array.isArray(input.regular_inputs) ? input.regular_inputs : [],
+    // Fase 6 (PS-02/03): the payslip lines to print, frozen in the snapshot, plus the
+    // check that they add up to the totals. Snapshots from before Fase 6 have no stored
+    // lines: they are rebuilt from the FROZEN calculation_input (never the employee's
+    // current items) and flagged with payslip_lines_source.
+    ...payslipLinesFor(input, output),
     // calculation_input is internal — not exposed to frontend by default
     _includes_input: !!snapshot.calculation_input
   };
@@ -573,6 +626,48 @@ async function updatePayrollRunTotals(supabase, runId, totals) {
 }
 
 /**
+ * Fase 6 / UF-06: after a new run for a month, older DRAFT runs of that month whose
+ * payslips were all recalculated into a newer run no longer own any open snapshot.
+ * Mark them 'superseded' so they cannot be finalized and their stale totals are not
+ * mistaken for the current figures. Best effort: never fails the new run (before
+ * migration 028 the status value is not allowed yet — then nothing is marked).
+ * @returns {Promise<string[]>} ids marked superseded
+ */
+async function markSupersededRuns(supabase, companyId, periodKey, newRunId) {
+  const marked = [];
+  try {
+    const { data: drafts, error } = await supabase
+      .from('payroll_runs')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('period_key', periodKey)
+      .eq('status', 'draft')
+      .neq('id', newRunId);
+    if (error || !drafts || !drafts.length) return marked;
+    for (const r of drafts) {
+      const { data: open, error: cntErr } = await supabase
+        .from('payroll_snapshots')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('payroll_run_id', r.id)
+        .neq('status', 'reversed')
+        .limit(1);
+      if (cntErr || (open && open.length)) continue;
+      const { error: upErr } = await supabase
+        .from('payroll_runs')
+        .update({ status: 'superseded', superseded_by_run_id: newRunId, superseded_at: new Date().toISOString() })
+        .eq('id', r.id)
+        .eq('status', 'draft');
+      if (upErr) { console.warn('[payroll] could not mark run superseded (migration 028?):', upErr.message); break; }
+      marked.push(r.id);
+    }
+  } catch (e) {
+    console.warn('[payroll] markSupersededRuns failed (non-fatal):', e.message);
+  }
+  return marked;
+}
+
+/**
  * Mark a payroll run as finalized (status → 'finalized').
  *
  * @param {object} supabase
@@ -692,6 +787,7 @@ module.exports = {
   validateSnapshot,
   compareSnapshots,
   formatForResponse,
+  payslipLinesFor,
   // DB persistence — snapshots
   saveSnapshot,
   getSnapshot,
@@ -701,6 +797,7 @@ module.exports = {
   createPayrollRun,
   updatePayrollRunTotals,
   finalizePayrollRun,
+  markSupersededRuns,
   getPayrollRun,
   // Reversal (Migration 024)
   reverseSnapshotsForRun,
