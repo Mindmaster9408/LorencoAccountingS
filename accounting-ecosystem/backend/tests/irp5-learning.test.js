@@ -122,7 +122,7 @@ describe('normalizeName()', () => {
     expect(normalizeName('')).toBe('');
   });
 
-  test('Comm. and Commission remain distinct (conservative matching)', () => {
+  test('normalizeName is only the light clean-up — meaning matching lives in item-meaning (SN-04)', () => {
     expect(normalizeName('Comm.')).not.toBe(normalizeName('Commission'));
   });
 });
@@ -404,6 +404,24 @@ describe('propagateApproved() — safety enforcement', () => {
         // Only item 10 (null) was written — item 12 (different code) must NEVER be written
         expect(mock.itemsUpdateCalls).toHaveLength(1);
         expect(mock.itemsUpdateCalls[0].irp5_code).toBe('3606');
+      } finally {
+        mockSupabase.from = saved;
+      }
+    });
+
+    test('SN-04: matched on meaning ("Comm." = "Commission"); the same name on the deduction side is never touched', async () => {
+      const mock = makeMock([
+        { id: 40, company_id: 4, item_name: 'Comm.', item_type: 'income', irp5_code: null },                // → applied
+        { id: 41, company_id: 5, item_name: 'Monthly Commission', item_type: 'earning', irp5_code: null },  // → applied
+        { id: 42, company_id: 6, item_name: 'Commission', item_type: 'deduction', irp5_code: null }         // other side — not matched
+      ]);
+      const saved = mockSupabase.from;
+      mockSupabase.from = mock.from.bind(mock);
+      try {
+        const result = await propagateApproved(1, 42);
+        expect(result.applied).toBe(2);
+        expect(result.exceptions).toBe(0);
+        expect(mock.itemsUpdateCalls).toHaveLength(2);
       } finally {
         mockSupabase.from = saved;
       }

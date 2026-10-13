@@ -415,6 +415,7 @@
                         <span><span class="badge badge-conflict">${conflicting.length}</span> conflicting (never touched)</span>
                         <span><span class="badge badge-correct">${correct.length}</span> already correct</span>
                     </div>
+                    ${missing.length ? `<div style="font-size:0.78rem; margin-bottom:6px;">Will be filled (matched on meaning — check each name): ${missing.map(m => esc((m.companyName || m.company_name || m.companyId || m.company_id) + ' — "' + (m.itemName || '') + '"')).join(', ')}</div>` : ''}
                     ${conflicting.length ? `<div class="safety-note">Conflicting clients: ${conflicting.map(c => esc(c.companyName || c.company_name || c.companyId || c.company_id)).join(', ')} — Sean will never overwrite these.</div>` : ''}
                     <div class="action-row" style="margin-top:10px;">
                         ${canDecide ? `

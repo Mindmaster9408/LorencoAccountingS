@@ -134,6 +134,10 @@
 
 - Draft journal on finalize (accountant posts), deleted/reversing draft on reverse, idempotent, button on finalized runs. Needs 2 control accounts per company (none have them yet). BT-08 February tax-table warning also shipped.
 
+## Fase 12b — Sean SN-04 (2026-10-13) — docs/paytime/FASE12_CHANGE_IMPACT_NOTE.md
+
+- Sean matches payroll items on meaning + side (`backend/sean/item-meaning.js`): "Comm." = "Commission"; an earning "Savings" ≠ a deduction "Savings" (before: name only — a deduction code could have landed on an earning). SEVCO proposal card lists every company + item name that will be filled. Safety rules unchanged (only empty codes, conditional write). No DB change.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -147,7 +151,8 @@
 9. Migrasie 031: sê "ja 031" — kopieer die salaris van 20 werknemers (18 aktief) wat tans net in die ou KV-stoor is, na die werknemertabel (geoudit).
 10. Fase 11-toets: maak 'n werknemer se payslip-blad oop, voeg 'n nota by en vee dit uit; voeg 'n gereelde item by.
 11. Ledger Leo-joernaal: in elke maatskappy wat Leo gebruik, voeg 2 rekeninge in die Chart of Accounts by: "Payroll Deductions Payable" (laste, bv. 2420) en "Salaries Payable" (laste, bv. 2430). Toets dan op TEST: finaliseer 'n run → Leo → Journals wys 'n konsep "PAYROLL YYYY-MM".
-12. Migrasie 032: sê "ja 032" — tabel vir versteekte payroll-items (was in KV; geen data om oor te skuif nie).
+12. Migrasie 032: sê "ja 032" — tabel vir versteekte payroll-items (was in KV; geen data om oor te skuif nie). Toets dan: Payroll Items → versteek 'n item → dit verdwyn uit die payslip se item-kieser; 'n nuwe maatskappy-item verskyn wel in die kieser.
+13. Sean (SEVCO): wanneer 'n IRP5-voorstel verskyn, lees die "Will be filled"-lys (maatskappy + itemnaam) voor jy goedkeur — Sean pas nou op betekenis, so kyk dat elke naam regtig dieselfde item is.
 
 ## Open risks / follow-ups
 

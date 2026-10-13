@@ -24,7 +24,25 @@ Full Jest 940 pass; remaining failing suites (5) are pre-existing and unrelated 
 payroll figures: historical-comparatives-dashboard, payroll-employee-sync (needs live
 pg), pdf-statement-import, supplier-invoice-ocr-drafts, teach-paytime (text parsing).
 
-Not in this phase (spec 14): SN-04 meaning-based item matching ("Comm." = "Commission"),
-SN-05 plain-language PAYE change explanations.
+Added later (Fase 12b, 2026-10-13) — SN-04 meaning-based matching:
+  - backend/sean/item-meaning.js (new, reusable): name → meaning ("Comm." = "Commission",
+    "Basic Pay" = "Salary" = "Basic Salary", "O/T" = "Overtime", "13th Cheque" = bonus …)
+    with a deliberately short, unambiguous word list; anything doubtful stays unmatched.
+  - The SIDE is part of the meaning: an earning "Savings" and a deduction "Savings" are
+    different items. Before, matching was on the name only — an approved deduction code
+    could have been written onto an earning with the same name (live data has exactly
+    this: "Savings" as earning and as deduction).
+  - Subject stored on patterns: "commission", "savings [deduction]", "pension fund
+    [employer]". 0 patterns existed, so nothing to convert; old plain subjects are read
+    as earning-side names (canonicalSubject).
+  - Grouping (analysis), proposal buckets, propagation and /exceptions all use it.
+    GET /exceptions accepts an optional &type=.
+  - SEVCO proposal card lists each "will be filled" company + the actual item name,
+    so the approver checks every meaning match before approving (B8).
+  - Safety rules unchanged: only empty codes are filled, conditionally (SN-03/B9).
+  Tests: sean-item-meaning (4 new), irp5-learning +1 (meaning + side) → 58/58.
+  Full Jest 958 pass; same 5 pre-existing failing suites.
+
+Not in this phase (spec 14): SN-05 plain-language PAYE change explanations.
 Rollback: git revert.
 ─────────────────────────────────────────────────────────────

@@ -252,17 +252,21 @@ router.post('/proposals/:id/propagate', requireSuperAdmin, async (req, res) => {
 // ─── GET /exceptions — Exception Clients ─────────────────────────────────────
 //
 // Lists clients that have a different IRP5 code for a given item + proposed code.
-// Query params: ?name=commission&code=3606
+// Query params: ?name=commission&code=3606[&type=deduction]
+// name may be a raw item name ("Comm.") or a stored subject ("savings [deduction]") —
+// matched on meaning + side (spec 14 SN-04).
 
 router.get('/exceptions', requireSuperAdmin, async (req, res) => {
   try {
-    const { name, code } = req.query;
+    const { name, code, type } = req.query;
 
     if (!name || !code) {
       return res.status(400).json({ error: 'name and code query params are required' });
     }
 
-    const normalizedName = IRP5Learning.normalizeName(name);
+    const normalizedName = type
+      ? IRP5Learning.subjectFor(name, type)
+      : IRP5Learning.canonicalSubject(name);
     const exceptions = await IRP5Learning.getExceptions(normalizedName, code);
 
     res.json({

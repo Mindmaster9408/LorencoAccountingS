@@ -47,22 +47,14 @@ const MIN_CONFIDENCE_FOR_PROPOSAL = 60;
 const CONFIDENCE_OCCURRENCE_WEIGHT = 0.3;
 const CONFIDENCE_CLIENT_WEIGHT     = 0.7;
 
-// ─── Name Normalisation ───────────────────────────────────────────────────────
+// ─── Name Normalisation / meaning ─────────────────────────────────────────────
 
-/**
- * Normalize a payroll item name to a consistent form for pattern matching.
- * Intentionally conservative — exact duplicate detection only. Semantic
- * matching (e.g. "Comm" ≡ "Commission") is left to the pattern analyst who
- * reviews proposals, not done automatically.
- */
-function normalizeName(name) {
-  return (name || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\b(monthly|weekly|annual|yearly|2024|2025|2026|per month|per year)\b/g, '')
-    .trim();
-}
+// Paytime spec 14 SN-04: items are matched on MEANING + side ("Comm." = "Commission";
+// an earning "Savings" ≠ a deduction "Savings"). See ./item-meaning.js.
+const { normalizeName, subjectFor, canonicalSubject } = require('./item-meaning');
+
+/** Matching key of a payroll_items_master row. */
+const itemSubject = item => subjectFor(item.item_name, item.item_type);
 
 // ─── Tax Year Derivation ──────────────────────────────────────────────────────
 
@@ -104,12 +96,12 @@ function calculateConfidence(occurrenceCount, clientsObserved, totalOccurrences)
  *   - Companies that have a matching item with the SAME code → already correct
  */
 async function _enrichProposal(proposal) {
-  const normalizedName = proposal.snapshot_normalized_name;
+  const normalizedName = canonicalSubject(proposal.snapshot_normalized_name);
   const proposedCode   = proposal.snapshot_irp5_code;
 
   const { data: items, error } = await supabase
     .from('payroll_items_master')
-    .select('id, company_id, item_name, irp5_code, is_active')
+    .select('id, company_id, item_name, item_type, irp5_code, is_active')
     .eq('is_active', true);
 
   if (error || !items) {
@@ -117,7 +109,7 @@ async function _enrichProposal(proposal) {
     return { ...proposal, missing: [], conflicting: [], alreadyCorrect: [] };
   }
 
-  const matching = items.filter(item => normalizeName(item.item_name) === normalizedName);
+  const matching = items.filter(item => itemSubject(item) === normalizedName);
 
   const missing = [];
   const conflicting = [];
@@ -146,17 +138,17 @@ async function _enrichProposal(proposal) {
  *   - irp5_code is something ELSE → NEVER overwrite, log 'skipped_exception'
  */
 async function _propagate(proposalId, authorizedUserId, proposal) {
-  const normalizedName = proposal.snapshot_normalized_name;
+  const normalizedName = canonicalSubject(proposal.snapshot_normalized_name);
   const proposedCode   = proposal.snapshot_irp5_code;
 
   const { data: allItems, error: itemsError } = await supabase
     .from('payroll_items_master')
-    .select('id, company_id, item_name, irp5_code')
+    .select('id, company_id, item_name, item_type, irp5_code')
     .eq('is_active', true);
 
   if (itemsError) throw new Error(`propagateApproved items fetch error: ${itemsError.message}`);
 
-  const matching = (allItems || []).filter(item => normalizeName(item.item_name) === normalizedName);
+  const matching = (allItems || []).filter(item => itemSubject(item) === normalizedName);
 
   let applied = 0;
   let skippedExisting = 0;
@@ -265,7 +257,7 @@ const domain = createLearningDomain({
   patternSuggestionField: 'suggested_irp5_code',
   // sean_learning_events stores only the raw payroll_item_name/new_irp5_code —
   // no pre-normalized columns exist on that table, unlike the pattern table.
-  getEventSubject: ev => normalizeName(ev.payroll_item_name),
+  getEventSubject: ev => subjectFor(ev.payroll_item_name, ev.item_category),
   getEventSuggestion: ev => ev.new_irp5_code,
   calculateConfidence,
   minClientsForProposal: MIN_CLIENTS_FOR_PROPOSAL,
@@ -376,16 +368,17 @@ async function propagateApproved(approvalId, authorizedUserId) {
  * that have a different code set — these are exceptions requiring manual review.
  */
 async function getExceptions(normalizedItemName, proposedCode) {
+  const subject = canonicalSubject(normalizedItemName);
   const { data: items, error } = await supabase
     .from('payroll_items_master')
-    .select('id, company_id, item_name, irp5_code')
+    .select('id, company_id, item_name, item_type, irp5_code')
     .eq('is_active', true)
     .not('irp5_code', 'is', null);
 
   if (error) throw new Error(`getExceptions error: ${error.message}`);
 
   return (items || [])
-    .filter(item => normalizeName(item.item_name) === normalizedItemName && item.irp5_code !== proposedCode)
+    .filter(item => itemSubject(item) === subject && item.irp5_code !== proposedCode)
     .map(item => ({
       companyId: item.company_id,
       itemId: item.id,
@@ -419,6 +412,8 @@ async function getStats({ sourceApp = SOURCE_APP } = {}) {
 
 module.exports = {
   normalizeName,
+  subjectFor,
+  canonicalSubject,
   calculateConfidence,
   currentTaxYear,
   recordLearningEvent,
