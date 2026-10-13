@@ -268,7 +268,8 @@ var ReconService = (function() {
     }
 
     function saveSARSValues(companyId, data) {
-        safeLocalStorage.setItem(_sarsKey(companyId), JSON.stringify(data));
+        // Fase 7/11: SARS values are stored on the server (paye_reconciliation) — never in KV.
+        console.error('[ReconService] saveSARSValues is retired — use the PAYE reconciliation API');
     }
 
     function setSARSPeriod(companyId, period, paye, uif, sdl) {
@@ -291,7 +292,7 @@ var ReconService = (function() {
     }
 
     function saveBankValues(companyId, data) {
-        safeLocalStorage.setItem(_bankKey(companyId), JSON.stringify(data));
+        console.error('[ReconService] saveBankValues is retired — use the PAYE reconciliation API');
     }
 
     function setBankPeriod(companyId, period, paye, uif, sdl) {

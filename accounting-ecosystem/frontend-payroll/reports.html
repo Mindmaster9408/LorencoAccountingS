@@ -398,17 +398,9 @@
             }
         }
 
+        // Fase 11: the KV 'report_history_' copy was written but never read — the audit
+        // log (server) is the record of who generated which report.
         function logReportGeneration(reportType, parameters) {
-            const session = AUTH.getSession();
-            const history = JSON.parse(safeLocalStorage.getItem('report_history_' + currentCompanyId) || '[]');
-            history.push({
-                id: 'rpt-' + Math.random().toString(36).substr(2, 9),
-                report_type: reportType,
-                generated_by: session.name || session.email,
-                generated_at: new Date().toISOString(),
-                parameters: parameters
-            });
-            safeLocalStorage.setItem('report_history_' + currentCompanyId, JSON.stringify(history));
             logAudit('GENERATE', 'report', 'Generated ' + reportType + ' report', null, parameters);
         }
 
@@ -826,17 +818,32 @@
         }
 
         // ========== REPORT 5a: AUDIT TRAIL - USER ACTIVITY ==========
-        function generateAuditUser() {
+        // Fase 11: audit reports read the server audit log (audit_log table), not the
+        // browser/KV copy the pages used to keep (CLAUDE.md Part D).
+        async function fetchAuditRows(dateFrom, dateTo, actionFilter) {
+            var qs = '?module=payroll&limit=2000' + (actionFilter ? '&action_type=' + encodeURIComponent(actionFilter) : '') +
+                     (dateFrom ? '&from=' + dateFrom : '') + (dateTo ? '&to=' + dateTo + 'T23:59:59' : '');
+            var token = safeLocalStorage.getItem('token') || '';
+            var r = await fetch('/api/audit' + qs, { headers: { 'Authorization': 'Bearer ' + token } });
+            var d = await r.json().catch(function() { return {}; });
+            if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+            return (d.audit_logs || []).map(function(a) {
+                var meta = {};
+                try { meta = typeof a.metadata === 'string' ? JSON.parse(a.metadata) : (a.metadata || {}); } catch (e) { meta = {}; }
+                return { timestamp: a.created_at, user_name: a.user_email || '-', action_type: a.action_type,
+                         entity_type: a.entity_type, entity_id: a.entity_id != null ? String(a.entity_id) : '',
+                         description: meta.description || (meta.period_key ? 'Period ' + meta.period_key : '') || a.field_name || '-' };
+            });
+        }
+
+        async function generateAuditUser() {
             const dateFrom = document.getElementById('filter-date-from').value;
             const dateTo = document.getElementById('filter-date-to').value;
             const actionFilter = document.getElementById('filter-action').value;
 
-            let logs = JSON.parse(safeLocalStorage.getItem('audit_log_' + currentCompanyId) || '[]');
-            logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-            if (dateFrom) logs = logs.filter(l => l.timestamp.slice(0, 10) >= dateFrom);
-            if (dateTo) logs = logs.filter(l => l.timestamp.slice(0, 10) <= dateTo);
-            if (actionFilter) logs = logs.filter(l => l.action_type === actionFilter);
+            let logs;
+            try { logs = await fetchAuditRows(dateFrom, dateTo, actionFilter); }
+            catch (e) { alert('Could not load the audit log: ' + e.message); return; }
 
             const headers = ['Timestamp', 'User', 'Action Type', 'Entity Type', 'Description'];
             const rows = logs.map(l => [
@@ -856,19 +863,18 @@
         }
 
         // ========== REPORT 5b: AUDIT TRAIL - PER EMPLOYEE ==========
-        function generateAuditEmployee() {
+        async function generateAuditEmployee() {
             const empFilter = document.getElementById('filter-employee').value;
             if (!empFilter) { alert('Please select an employee'); return; }
             const dateFrom = document.getElementById('filter-date-from').value;
             const dateTo = document.getElementById('filter-date-to').value;
 
             const emp = employees.find(e => e.id === empFilter);
-            let logs = JSON.parse(safeLocalStorage.getItem('audit_log_' + currentCompanyId) || '[]');
-            logs = logs.filter(l => l.employee_id === empFilter);
-            logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-            if (dateFrom) logs = logs.filter(l => l.timestamp.slice(0, 10) >= dateFrom);
-            if (dateTo) logs = logs.filter(l => l.timestamp.slice(0, 10) <= dateTo);
+            let logs;
+            try { logs = await fetchAuditRows(dateFrom, dateTo, ''); }
+            catch (e) { alert('Could not load the audit log: ' + e.message); return; }
+            // Employee events: entity id is the employee id, or 'empId_period' for payslips.
+            logs = logs.filter(l => l.entity_id === String(empFilter) || l.entity_id.indexOf(String(empFilter) + '_') === 0);
 
             const headers = ['Timestamp', 'User', 'Action Type', 'Description'];
             const rows = logs.map(l => [

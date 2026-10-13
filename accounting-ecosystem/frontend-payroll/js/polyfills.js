@@ -47,7 +47,8 @@
         eco_user:1, eco_companies:1, eco_company_name:1, eco_super_admin:1,
         sso_source:1, activeCompanyId:1, selectedCompanyId:1, company:1,
         eco_client_id:1, demoMode:1, isSuperAdmin:1,
-        coaching_app_current_user:1, coaching_app_admin_mode:1
+        coaching_app_current_user:1, coaching_app_admin_mode:1,
+        __storage_test__:1   // storageAvailable() probe — was written to the KV table
     };
     var LOCAL_PFX = ['theme','darkMode','dark_','sidebar',
                      'viewMode','language','lang_','_lastVisit','cache_',

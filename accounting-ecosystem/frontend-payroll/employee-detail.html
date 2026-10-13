@@ -2231,13 +2231,11 @@
             return d;
         }
 
-        function savePayrollData() {
-            try {
-                safeLocalStorage.setItem(getPayrollKey(), JSON.stringify(payrollData));
-            } catch(e) {
-                console.error('Error saving payroll data:', e);
-            }
-        }
+        // Fase 11 (CLAUDE.md Part D): salary and recurring items live only in the DB
+        // (employees.basic_salary, employee_payroll_items). The KV copy (emp_payroll_*) is no
+        // longer written; calls are kept so the page flow is unchanged. The KV value is still
+        // READ once, to move old browser-only items into the DB (_migrateLocalStorageRecurringToDB).
+        function savePayrollData() { /* intentionally no browser/KV write */ }
 
         // ========== HOURLY RATE DISPLAY ==========
         function _updateHourlyRateDisplay() {
@@ -2431,7 +2429,7 @@
             if (ri._dbId) {
                 try {
                     var token = safeLocalStorage.getItem('token') || '';
-                    await fetch('/api/payroll/items/employee/' + ri._dbId, {
+                    var _ur = await fetch('/api/payroll/items/employee/' + ri._dbId, {
                         method: 'PUT',
                         headers: {
                             'Authorization': 'Bearer ' + token,
@@ -2440,8 +2438,9 @@
                         },
                         body: JSON.stringify({ amount: ri.amount })
                     });
+                    if (!_ur.ok) { alert('Amount not saved (HTTP ' + _ur.status + ') — reloading.'); loadPayrollData(); return; }
                 } catch(e) {
-                    console.warn('[saveVariableAmount] DB update error:', e.message);
+                    alert('Amount not saved — could not reach the server. Reloading.'); loadPayrollData(); return;
                 }
             }
 
@@ -2680,10 +2679,13 @@
                             input.id    = 'ri-db-' + d.item.id;
                         }
                     } else {
-                        console.warn('[saveRegularInput] DB save failed, storing in localStorage only');
+                        var _err = await r.json().catch(function() { return {}; });
+                        alert('Not saved: ' + (_err.error || ('HTTP ' + r.status)));
+                        return;
                     }
                 } catch(e) {
-                    console.warn('[saveRegularInput] DB save error:', e.message);
+                    alert('Not saved — could not reach the server: ' + e.message);
+                    return;
                 }
             }
 
@@ -2701,15 +2703,17 @@
             if (deleted && deleted._dbId) {
                 try {
                     var token = safeLocalStorage.getItem('token') || '';
-                    await fetch('/api/payroll/items/employee/' + deleted._dbId, {
+                    var _dr = await fetch('/api/payroll/items/employee/' + deleted._dbId, {
                         method: 'DELETE',
                         headers: {
                             'Authorization': 'Bearer ' + token,
                             'x-company-id': String(currentCompanyId)
                         }
                     });
+                    if (!_dr.ok) { alert('Not deleted (HTTP ' + _dr.status + ').'); return; }
                 } catch(e) {
-                    console.warn('[deleteRegularInput] DB delete error:', e.message);
+                    alert('Not deleted — could not reach the server: ' + e.message);
+                    return;
                 }
             }
 
@@ -2727,7 +2731,7 @@
             if (ri._dbId) {
                 try {
                     var token = safeLocalStorage.getItem('token') || '';
-                    await fetch('/api/payroll/items/employee/' + ri._dbId, {
+                    var _ur = await fetch('/api/payroll/items/employee/' + ri._dbId, {
                         method: 'PUT',
                         headers: {
                             'Authorization': 'Bearer ' + token,
@@ -2736,8 +2740,9 @@
                         },
                         body: JSON.stringify({ amount: ri.amount })
                     });
+                    if (!_ur.ok) { alert('Amount not saved (HTTP ' + _ur.status + ') — reloading.'); loadPayrollData(); return; }
                 } catch(e) {
-                    console.warn('[updateVariableAmount] DB update error:', e.message);
+                    alert('Amount not saved — could not reach the server. Reloading.'); loadPayrollData(); return;
                 }
             }
         }
@@ -4167,25 +4172,53 @@
         }
 
         // ========== NOTES ==========
-        function loadNotes() {
-            const notes = JSON.parse(safeLocalStorage.getItem(getNotesKey()) || '[]');
+        // Fase 11 (CLAUDE.md Part D): notes are stored in the database (employee_notes)
+        // through /api/payroll/employees/:id/notes — they were kept in browser/KV storage.
+        function _notesUrl(suffix) {
+            return '/api/payroll/employees/' + encodeURIComponent(_supabaseEmpId || currentEmpId) + '/notes' + (suffix || '');
+        }
+        function _noteEsc(t) {
+            return String(t == null ? '' : t).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+        }
+        async function loadNotes() {
             const list = document.getElementById('notesList');
+            let notes = [];
+            try {
+                const r = await fetch(_notesUrl(), { headers: _authHeaders() });
+                const d = await r.json().catch(function() { return {}; });
+                if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+                notes = d.data || [];
+            } catch (e) {
+                list.innerHTML = '<p style="color:#c62828;text-align:center;padding:20px;">Could not load notes: ' + _noteEsc(e.message) + '</p>';
+                return;
+            }
             if (notes.length === 0) { list.innerHTML = '<p style="color:#999;text-align:center;padding:20px;">No notes yet. Add a note above.</p>'; return; }
-            list.innerHTML = [...notes].sort((a, b) => b.date_created.localeCompare(a.date_created)).map(n => {
-                const d = parseStandardDate(n.date_created);
-                return '<div class="note-item"><div class="note-header"><span class="note-meta">' + formatDateTime(d) + ' - ' + (n.author || 'System') + '</span><button class="btn btn-danger btn-sm" onclick="deleteNote(\'' + n.id + '\')">Delete</button></div><div class="note-text">' + n.text.replace(/\n/g, '<br>') + '</div></div>';
+            list.innerHTML = notes.map(function(n) {
+                const d = parseStandardDate(n.created_at);
+                return '<div class="note-item"><div class="note-header"><span class="note-meta">' + formatDateTime(d) + ' - ' + _noteEsc(n.author || 'System') +
+                       '</span><button class="btn btn-danger btn-sm" onclick="deleteNote(' + Number(n.id) + ')">Delete</button></div><div class="note-text">' +
+                       _noteEsc(n.content).split(String.fromCharCode(10)).join('<br>') + '</div></div>';
             }).join('');
         }
-        function addNote() {
+        async function addNote() {
             const text = document.getElementById('newNote').value.trim();
             if (!text) { alert('Please enter a note'); return; }
-            const session = AUTH.getSession();
-            const notes = JSON.parse(safeLocalStorage.getItem(getNotesKey()) || '[]');
-            notes.push({ id: 'nt-' + Math.random().toString(36).substr(2, 9), text: text, date_created: new Date().toISOString(), author: session.name || session.email });
-            safeLocalStorage.setItem(getNotesKey(), JSON.stringify(notes));
-            document.getElementById('newNote').value = ''; loadNotes();
+            try {
+                const r = await fetch(_notesUrl(), { method: 'POST', headers: _authHeaders(), body: JSON.stringify({ notes: [{ content: text }] }) });
+                const d = await r.json().catch(function() { return {}; });
+                if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+            } catch (e) { alert('Note not saved: ' + e.message); return; }
+            document.getElementById('newNote').value = '';
+            loadNotes();
         }
-        function deleteNote(id) { if (!confirm('Delete this note?')) return; const notes = JSON.parse(safeLocalStorage.getItem(getNotesKey()) || '[]').filter(n => n.id !== id); safeLocalStorage.setItem(getNotesKey(), JSON.stringify(notes)); loadNotes(); }
+        async function deleteNote(id) {
+            if (!confirm('Delete this note?')) return;
+            try {
+                const r = await fetch(_notesUrl('/' + Number(id)), { method: 'DELETE', headers: _authHeaders() });
+                if (!r.ok) { const d = await r.json().catch(function() { return {}; }); throw new Error(d.error || ('HTTP ' + r.status)); }
+            } catch (e) { alert('Note not deleted: ' + e.message); return; }
+            loadNotes();
+        }
 
         // ========== HELPERS ==========
         function formatMoney(amount) { return 'R ' + (parseFloat(amount) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }

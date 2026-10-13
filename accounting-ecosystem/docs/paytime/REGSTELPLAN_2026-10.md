@@ -164,6 +164,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | 10.3 | Duplikaat-werknemer-kontrole. |
 
 ### Fase 11 — Blaaierberging/KV opruim `[B11]` → spec 13
+
+**⚠️ Grootliks gebou 2026-10-13** ([FASE11_CHANGE_IMPACT_NOTE.md](FASE11_CHANGE_IMPACT_NOTE.md)). 11.1 klaar (cache_ net geheue + waarskuwing); 11.2 salaris/items, notas, oudit, verduideliking, rekon van KV af; 11.3 data-migrasie 031 voorberei (20 werknemers se salaris net in KV) — wag op Ruan se "ja", daarna val die backend-KV-terugval weg. Oor: invoerblad, versteekte items.
 | 11.1 | Verwyder `cache_`-besigheidsdata en stil terugval. |
 | 11.2 | Oorblywende KV-sleutels (notas, rekon, versteekte items, ens.) na SQL. |
 | 11.3 | KV-terugval vir basiese salaris verwyder (ná datakontrole dat alle salarisse in die DB is). |

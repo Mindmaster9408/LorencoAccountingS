@@ -765,7 +765,12 @@
 
         // ========== EMPLOYEE MANAGEMENT FUNCTIONS ==========
 
+        // Fase 11 (CLAUDE.md Part D): this old in-page employee editor kept employees in
+        // browser/KV storage only and is not reachable from the UI. Employees are managed on
+        // employee-management.html (database). Kept as a redirect so nothing can write KV.
         function showEmployeeManagement() {
+            window.location.href = 'employee-management.html';
+            return;
             document.getElementById('dashboard-view').style.display = 'none';
             document.getElementById('employee-management-view').style.display = 'block';
             loadEmployeesFromStorage();
@@ -907,7 +912,8 @@
                 employees.push(newEmployee);
             }
 
-            safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
+            window.location.href = 'employee-management.html';   // no browser/KV write (Fase 11)
+            return;
 
             successDiv.textContent = isEdit ? 'Employee updated successfully!' : 'Employee added successfully!';
             successDiv.style.display = 'block';
@@ -922,8 +928,8 @@
 
         function deleteEmployee(id) {
             if (confirm('Are you sure you want to delete this employee?')) {
-                employees = employees.filter(e => e.id !== id);
-                safeLocalStorage.setItem('employees_' + currentCompanyId, JSON.stringify(employees));
+                window.location.href = 'employee-management.html';   // no browser/KV write (Fase 11)
+                return;
                 displayEmployees();
                 updateEmployeeCount();
             }

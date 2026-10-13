@@ -63,17 +63,46 @@ var DataAccess = (function() {
     function PUT(path, body)  { return apiRequest('PUT', path, body); }
     function DELETE(path)     { return apiRequest('DELETE', path); }
 
-    // ─── Local Cache (fallback for offline reads) ────────────────────────────
+    // ─── Fallback cache — MEMORY ONLY (Paytime Fase 11, CLAUDE.md Part D, POPIA) ──
+    // This used to write employees, salaries, leave, notes and payroll items to the
+    // browser's localStorage ('cache_' keys) and fall back to them silently whenever the
+    // API failed. Now the copy lives only in this page's memory, and using it shows a
+    // visible warning (spec 13 TS-05/TS-06). Old 'cache_' keys are deleted on load.
+    var _memCache = {};
+    var _offlineWarned = false;
 
-    function cacheSet(key, data) {
-        try { safeLocalStorage.setItem('cache_' + key, JSON.stringify(data)); } catch(e) {}
+    (function purgeBrowserCache() {
+        try {
+            var native = window.localStorage, doomed = [];
+            for (var i = 0; i < native.length; i++) {
+                var k = Storage.prototype.key.call(native, i);
+                if (k && k.indexOf('cache_') === 0) doomed.push(k);
+            }
+            doomed.forEach(function(k) { Storage.prototype.removeItem.call(native, k); });
+        } catch (e) { /* storage unavailable — nothing to purge */ }
+    })();
+
+    function warnOffline() {
+        if (_offlineWarned || typeof document === 'undefined') return;
+        _offlineWarned = true;
+        var show = function() {
+            var b = document.createElement('div');
+            b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b71c1c;color:#fff;padding:10px 16px;font:600 14px sans-serif;text-align:center;';
+            b.textContent = 'Could not reach the server — showing data loaded earlier on this page. Refresh before making changes.';
+            document.body.appendChild(b);
+        };
+        if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
     }
 
+    function cacheSet(key, data) {
+        _memCache[key] = data;
+    }
+
+    // Only called from the API-failure paths below.
     function cacheGet(key) {
-        try {
-            const val = safeLocalStorage.getItem('cache_' + key);
-            return val ? JSON.parse(val) : null;
-        } catch(e) { return null; }
+        if (!Object.prototype.hasOwnProperty.call(_memCache, key)) return null;
+        warnOffline();
+        return _memCache[key];
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -81,6 +110,10 @@ var DataAccess = (function() {
     // ═══════════════════════════════════════════════════════════════════════════
 
     return {
+        // Read what this page already loaded (no warning, no network) — e.g. company
+        // details for the payslip header (pdf-branding.js).
+        peekCache: function(key) { return Object.prototype.hasOwnProperty.call(_memCache, key) ? _memCache[key] : null; },
+
 
         // === SESSION (local — token-based) ===
 

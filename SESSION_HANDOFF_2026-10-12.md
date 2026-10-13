@@ -122,6 +122,10 @@
 - Tax number required again (off since 2026-04-20) unless "not yet registered with SARS" (migration 030); SA ID/tax validation + duplicate ID check on the shared employees route (only changed fields on edit).
 - Run warnings + EMP501 irp5_blocked; shared auditFromReq now keeps top-level context; Execute Payroll cards no longer subtract SDL.
 
+## Fase 11 (2026-10-13) — docs/paytime/FASE11_CHANGE_IMPACT_NOTE.md
+
+- DataAccess cache_ in page memory only (purged from browsers) + red offline banner; payslip page no longer writes salary/items to KV and surfaces DB save failures; notes via DB API (+DELETE); audit + report history no longer in KV; narrative memory-only; recon KV writers retired; dashboard KV employee editor redirects.
+- Migration 031 prepared (copy KV-only salaries of 20 employees into employees.basic_salary, audited) — dry run 20 rows; awaiting Ruan's ja. Then remove PayrollDataService KV fallback.
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -131,8 +135,9 @@
 5. Fase 8-toets: Attendance → inskrywings → Apply to Payroll → goedkeur → payslip wys "from attendance".
 6. Fase 9-toets (Infinite Legacy — TEST): Bank File (CSV) + Bulk Print; Net-to-Gross met 'n toelae; Reports → Payroll Summary.
 7. Capitec Business: voorbeeld-betaallêer (vals name) stuur.
-8. Migrasie 030: "ja 030" (vir "nog nie by SARS geregistreer nie").
-9. Fase 10-toets: ontsluit met 'n ander bestuurder van dieselfde maatskappy (moet werk) en met jouself (moet geweier word); nuwe werknemer sonder belastingnommer (moet vra of die merkie wil hê).
+8. Fase 10-toets: ontsluit met 'n ander bestuurder van dieselfde maatskappy (moet werk) en met jouself (moet geweier word); nuwe werknemer sonder belastingnommer (moet vra of die merkie wil hê).
+9. Migrasie 031: sê "ja 031" — kopieer die salaris van 20 werknemers (18 aktief) wat tans net in die ou KV-stoor is, na die werknemertabel (geoudit).
+10. Fase 11-toets: maak 'n werknemer se payslip-blad oop, voeg 'n nota by en vee dit uit; voeg 'n gereelde item by.
 
 ## Open risks / follow-ups
 

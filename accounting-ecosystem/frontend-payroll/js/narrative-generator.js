@@ -522,19 +522,18 @@ const NarrativeGenerator = {
     },
 
     // ---- Storage ----
+    // Fase 11 (CLAUDE.md Part D): page memory only. The text is regenerated from the
+    // backend calculation every time; it used to be written to KV (narrative_*) unread.
+    _mem: {},
     save: function(companyId, empId, period, narrative) {
-        var key = 'narrative_' + companyId + '_' + empId + '_' + period;
-        safeLocalStorage.setItem(key, JSON.stringify(narrative));
+        this._mem[companyId + '_' + empId + '_' + period] = narrative;
     },
 
     load: function(companyId, empId, period) {
-        var key = 'narrative_' + companyId + '_' + empId + '_' + period;
-        var stored = safeLocalStorage.getItem(key);
-        return stored ? JSON.parse(stored) : null;
+        return this._mem[companyId + '_' + empId + '_' + period] || null;
     },
 
     clear: function(companyId, empId, period) {
-        var key = 'narrative_' + companyId + '_' + empId + '_' + period;
-        safeLocalStorage.removeItem(key);
+        delete this._mem[companyId + '_' + empId + '_' + period];
     }
 };

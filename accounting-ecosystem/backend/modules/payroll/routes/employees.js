@@ -284,44 +284,87 @@ router.put('/:id/bank-details', requirePermission('PAYROLL.CREATE'), requirePayt
 // EMPLOYEE NOTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Notes are personal data: company-scoped and subject to the confidential-employee
+// filter (spec 03 WN-14). They used to be kept in browser/KV storage on the payslip page
+// (Fase 11, CLAUDE.md Part D) — that page now uses these routes.
+async function noteEmployee(req) {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return null;
+  const { data: emp } = await supabase.from('employees').select('id, classification')
+    .eq('company_id', req.companyId).eq('id', id).maybeSingle();
+  if (!emp) return null;
+  return (await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp)) ? emp : null;
+}
+
 /**
  * GET /api/payroll/employees/:id/notes
  */
 router.get('/:id/notes', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   try {
+    const emp = await noteEmployee(req);
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
     const { data, error } = await supabase
       .from('employee_notes')
       .select('*')
       .eq('company_id', req.companyId)
-      .eq('employee_id', req.params.id)
+      .eq('employee_id', emp.id)
       .order('created_at', { ascending: false });
-
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ data: data || [] });
+
+    const userIds = [...new Set((data || []).map(n => n.created_by).filter(Boolean))];
+    const names = {};
+    if (userIds.length) {
+      const { data: users } = await supabase.from('users').select('id, full_name, email').in('id', userIds);
+      (users || []).forEach(u => { names[u.id] = u.full_name || u.email; });
+    }
+    res.json({ data: (data || []).map(n => Object.assign({}, n, { author: names[n.created_by] || null })) });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 /**
- * POST /api/payroll/employees/:id/notes
+ * POST /api/payroll/employees/:id/notes   { notes: 'text' | [{ content, note_type }] }
  */
 router.post('/:id/notes', requirePermission('PAYROLL.CREATE'), async (req, res) => {
   try {
     const { notes } = req.body;
     if (!notes) return res.status(400).json({ error: 'notes field is required' });
+    const emp = await noteEmployee(req);
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
 
     const records = (Array.isArray(notes) ? notes : [notes]).map(n => ({
       company_id: req.companyId,
-      employee_id: parseInt(req.params.id),
-      note_type: n.note_type || 'general',
-      content: typeof n === 'string' ? n : n.content,
+      employee_id: emp.id,
+      note_type: (n && n.note_type) || 'general',
+      content: String(typeof n === 'string' ? n : (n && n.content) || '').slice(0, 5000),
       created_by: req.user.userId
-    }));
+    })).filter(r => r.content.trim());
+    if (!records.length) return res.status(400).json({ error: 'Note text is required' });
 
     const { data, error } = await supabase.from('employee_notes').insert(records).select();
     if (error) return res.status(500).json({ error: error.message });
+    await auditFromReq(req, 'CREATE', 'employee_note', emp.id, { module: 'payroll', count: records.length });
     res.status(201).json({ data: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * DELETE /api/payroll/employees/:id/notes/:noteId
+ */
+router.delete('/:id/notes/:noteId', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const emp = await noteEmployee(req);
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    const { data, error } = await supabase.from('employee_notes').delete()
+      .eq('company_id', req.companyId).eq('employee_id', emp.id).eq('id', parseInt(req.params.noteId, 10))
+      .select('id, content');
+    if (error) return res.status(500).json({ error: error.message });
+    if (!(data || []).length) return res.status(404).json({ error: 'Note not found' });
+    await auditFromReq(req, 'DELETE', 'employee_note', emp.id, { module: 'payroll', oldValue: data[0] });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

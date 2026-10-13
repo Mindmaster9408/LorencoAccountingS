@@ -31,22 +31,17 @@ var AuditTrail = {
             company_id: companyId
         };
 
-        // KV cache (capped — local display only)
-        var key = 'audit_log_' + companyId;
-        var log = [];
-        try { log = JSON.parse(safeLocalStorage.getItem(key) || '[]'); } catch(e) { log = []; }
-        log.push(entry);
-        if (log.length > 1000) { log = log.slice(log.length - 1000); }
-        safeLocalStorage.setItem(key, JSON.stringify(log));
-
-        // SQL persistence — fire-and-forget, never blocks the UI
+        // Fase 11 (CLAUDE.md Part D): the audit trail lives only in the server audit_log.
+        // The capped KV copy ('audit_log_<company>') is no longer written; the reports page
+        // reads GET /api/audit. A failed write is reported in the console (never blocks the UI).
         var token = safeLocalStorage.getItem('token');
         if (token) {
             fetch(window.location.origin + '/api/audit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                 body: JSON.stringify({ action_type: actionType, entity_type: entityType, description: description, details: details || null })
-            }).catch(function() {});
+            }).then(function(r) { if (!r.ok) console.warn('[AuditTrail] audit write failed: HTTP ' + r.status); })
+              .catch(function(e) { console.warn('[AuditTrail] audit write failed:', e.message); });
         }
 
         return entry;

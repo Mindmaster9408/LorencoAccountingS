@@ -499,9 +499,10 @@ const PDFBranding = {
         // 2. Try DataAccess cache key written by ecosystem data-access.js
         // Raw DB record — field names normalized by _normalizeDetails (e.g. payslip_address_line1 → address_line1)
         try {
-            var apiCached = safeLocalStorage.getItem('cache_company_' + companyId);
+            // Fase 11: DataAccess keeps this in page memory only (no browser storage).
+            var apiCached = (window.DataAccess && DataAccess.peekCache) ? DataAccess.peekCache('company_' + companyId) : null;
             if (apiCached) {
-                n = this._normalizeDetails(JSON.parse(apiCached));
+                n = this._normalizeDetails(apiCached);
                 if (n) return n;
             }
         } catch(e) {}
