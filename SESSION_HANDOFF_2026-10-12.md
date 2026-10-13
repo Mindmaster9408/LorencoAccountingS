@@ -93,7 +93,7 @@
 - Input routes: finalized month → 423; atomic replace via `paytime_replace_period_rows` (migration 028, falls back before it runs).
 - Replaced draft runs → "superseded" (needs 028); finalize of superseded/empty run → 409 RUN_SUPERSEDED.
 - Tax table + sha256 frozen in `calculation_output._meta`.
-- Gate: golden 0 diffs, payroll Jest 198/198, core 15/15. Pending: migration 028 + one-off marking of 41 stale draft runs (Ruan's go-ahead).
+- Gate: golden 0 diffs, payroll Jest 198/198, core 15/15. Migration 028 run + verified (function refuses locked month / bad table / other company; API sees it); 41 stale draft runs marked superseded (10 real drafts remain).
 
 ## Open risks / follow-ups
 
