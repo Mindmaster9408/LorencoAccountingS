@@ -146,6 +146,10 @@
 
 - Employer contributions were stored as earnings and paid out in net. Now never in gross/net; a taxable one adds to taxable income (PAYE, SDL) but not UIF; payslip line under employer. Engine (CRITICAL) change, golden 0 diffs, core 15/15. No live items of this type. Follow-up: Leo journal accounts for employer contributions; s11F/s6A with IT-06/07.
 
+## PI-07 / B4 load errors (2026-10-13) — docs/paytime/PI07_LOAD_ERRORS_CHANGE_IMPACT_NOTE.md
+
+- A failed read of inputs/items/YTD/schedule/SDL flags no longer produces a quietly wrong payslip: the calculation stops with a clear message (pay run: per employee; Calculate: 503). Live check: 40 employees load fine.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").

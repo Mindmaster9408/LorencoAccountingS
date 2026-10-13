@@ -215,6 +215,10 @@ router.post(
             error: `Employee ${empId} not found`
           });
         }
+        // Spec 05 PI-07: an input could not be loaded — say so instead of a generic 500.
+        if (err.code === 'INPUTS_UNAVAILABLE') {
+          return res.status(503).json({ success: false, code: err.code, error: err.message });
+        }
         throw err;
       }
 

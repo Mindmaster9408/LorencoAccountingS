@@ -35,6 +35,20 @@ const PayrollEngine = require('../../../core/payroll-engine');
  * @param {object} supabase - Supabase client instance
  * @returns {Promise<object>} Normalized calculation input object for PayrollEngine
  */
+/**
+ * Spec 05 PI-07 (finding B4): when an input cannot be LOADED the calculation stops with a
+ * clear error. It used to carry on with the input missing (empty overtime, no YTD, default
+ * schedule, "registered" for SDL …) and produce a payslip that looked fine but was wrong.
+ * Callers: payruns report it per employee; /calculate returns 503 INPUTS_UNAVAILABLE.
+ */
+function inputsUnavailable(what, employeeId, detail) {
+  const e = new Error('Could not load ' + what + ' for employee ' + employeeId +
+    ' — nothing was calculated, so no wrong payslip was made. Please try again.' +
+    (detail ? ' (' + detail + ')' : ''));
+  e.code = 'INPUTS_UNAVAILABLE';
+  return e;
+}
+
 async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase) {
   if (!companyId || !employeeId || !periodKey) {
     throw new Error('companyId, employeeId, and periodKey are required');
@@ -197,14 +211,11 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
             .in('period_key', priorPeriods)
             .order('period_key', { ascending: true });
 
-        if (error) {
-            console.warn('[PayrollDataService] fetchYtdData: DB error, falling back to monthly method:', error.message);
-            return null;
-        }
+        if (error) throw inputsUnavailable('the year-to-date payslips', employeeId, error.message);
         snapshots = data;
     } catch (ex) {
-        console.warn('[PayrollDataService] fetchYtdData: exception, falling back to monthly method:', ex.message);
-        return null;
+        if (ex.code === 'INPUTS_UNAVAILABLE') throw ex;
+        throw inputsUnavailable('the year-to-date payslips', employeeId, ex.message);
     }
 
     if (!snapshots || snapshots.length === 0) return null;
@@ -423,12 +434,8 @@ async function fetchWorkSchedule(companyId, employeeId, supabase) {
       .eq('employee_id', employeeId)
       .single();
 
-    if (error || !data) {
-      if (error && error.code !== 'PGRST116') {
-        console.warn('[PayrollDataService] fetchWorkSchedule: query error, using default schedule.', error.code);
-      }
-      return getDefaultWorkSchedule();
-    }
+    if (error && error.code !== 'PGRST116') throw inputsUnavailable('the work schedule', employeeId, error.message);
+    if (!data) return getDefaultWorkSchedule();   // no schedule saved → the standard week
 
     const hpd = parseFloat(data.hours_per_day) || 8;
     const days = Array.isArray(data.working_days) ? data.working_days : [];
@@ -448,8 +455,8 @@ async function fetchWorkSchedule(companyId, employeeId, supabase) {
       };
     });
   } catch (ex) {
-    console.warn('[PayrollDataService] fetchWorkSchedule: exception, using default schedule.', ex.message);
-    return getDefaultWorkSchedule();
+    if (ex.code === 'INPUTS_UNAVAILABLE') throw ex;
+    throw inputsUnavailable('the work schedule', employeeId, ex.message);
   }
 }
 
@@ -550,10 +557,7 @@ async function fetchCompanyRegistrationFlags(companyId, supabase) {
     .eq('id', companyId)
     .maybeSingle();
 
-  if (error) {
-    console.warn('[PayrollDataService] fetchCompanyRegistrationFlags: error fetching flags, defaulting to registered.', error.code);
-    return { sdl_registered: true, uif_registered: true };
-  }
+  if (error) throw inputsUnavailable('the company SDL/UIF registration', 'of company ' + companyId, error.message);
 
   return {
     sdl_registered: data?.sdl_registered !== false, // null or true → true; only explicit false = false
@@ -578,12 +582,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
     .eq('employee_id', employeeId)
     .eq('is_active', true);
 
-  if (error) {
-    if (error.code !== 'PGRST116') {
-      console.warn('[PayrollDataService] fetchRecurringPayrollItems: table unavailable, returning [].', error.code);
-    }
-    return [];
-  }
+  if (error) throw inputsUnavailable('the regular payroll items', employeeId, error.message);
 
   const loadedItems = data || [];
 
@@ -593,11 +592,12 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
   if (loadedItems.length > 0) {
     try {
       // Primary: query payroll_items_master (authoritative after migration)
-      const { data: masterItems } = await supabase
+      const { data: masterItems, error: masterErr } = await supabase
         .from('payroll_items_master')
         .select('item_name, affects_uif, paye_projection_type, is_taxable, tax_treatment, taxable_percentage')
         .eq('company_id', companyId)
         .eq('is_active', true);
+      if (masterErr) throw inputsUnavailable('the payroll item settings', employeeId, masterErr.message);
 
       if (masterItems && masterItems.length > 0) {
         const masterMap = {};
@@ -670,6 +670,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
         }
       }
     } catch (overrideErr) {
+      if (overrideErr.code === 'INPUTS_UNAVAILABLE') throw overrideErr;
       console.warn('[PayrollDataService] item config override failed (non-fatal):', overrideErr.message);
     }
   }
@@ -705,7 +706,8 @@ async function fetchPeriodInputs(
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
-    .eq('payroll_period_id', periodId);
+    .eq('payroll_period_id', periodId)
+    .eq('is_deleted', false);   // same rows the Payslip screen shows
 
   // Fetch overtime entries
   const { data: overtime, error: err2 } = await supabase
@@ -734,9 +736,10 @@ async function fetchPeriodInputs(
     .eq('payroll_period_id', periodId)
     .eq('is_deleted', false);
 
-  if (err1 || err2 || err3 || err4) {
-    const errors = [err1, err2, err3, err4].filter(Boolean);
-    console.error('Error fetching period inputs:', errors);
+  const loadErr = err1 || err2 || err3 || err4;
+  if (loadErr) {
+    const what = err1 ? 'the once-off inputs' : err2 ? 'the overtime' : err3 ? 'the short time' : 'the multi-rate hours';
+    throw inputsUnavailable(what, employeeId, loadErr.message);
   }
 
   // Override affects_uif and paye_projection_type from payroll_items_master.
@@ -746,11 +749,12 @@ async function fetchPeriodInputs(
   if (loadedInputs.length > 0) {
     try {
       // Primary: payroll_items_master
-      const { data: masterItems } = await supabase
+      const { data: masterItems, error: masterErr } = await supabase
         .from('payroll_items_master')
         .select('item_name, affects_uif, paye_projection_type, taxable_percentage, is_taxable, tax_treatment')
         .eq('company_id', companyId)
         .eq('is_active', true);
+      if (masterErr) throw inputsUnavailable('the payroll item settings', employeeId, masterErr.message);
 
       if (masterItems && masterItems.length > 0) {
         const masterMap = {};
@@ -827,6 +831,7 @@ async function fetchPeriodInputs(
         }
       }
     } catch (overrideErr) {
+      if (overrideErr.code === 'INPUTS_UNAVAILABLE') throw overrideErr;
       console.warn('[PayrollDataService] period input override failed (non-fatal):', overrideErr.message);
     }
   }
