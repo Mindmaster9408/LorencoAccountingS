@@ -12,9 +12,9 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../../config/database');
-const { authenticateToken, JWT_SECRET } = require('../../middleware/auth');
+const { authenticateToken, invalidateUserSessions, JWT_SECRET } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
-const { getRolePermissions, canManageRole } = require('../../config/permissions');
+const { getRolePermissions, canManageRole, hasPermission } = require('../../config/permissions');
 const { logPosEvent, POS_EVENTS } = require('../../modules/pos/services/posAuditLogger');
 const { PIN_ELIGIBLE_ROLES: PIN_ELIGIBLE_ROLES_SET } = require('../../modules/pos/routes/pin');
 const tfa = require('../../services/twoFactorAuth');
@@ -40,27 +40,8 @@ function _cleanPendingLogins() {
 }
 setInterval(_cleanPendingLogins, 5 * 60 * 1000).unref();
 
-// The permanent, paid-by-default module set every company gets regardless of
-// account type or trial state. 'sean' is deliberately always in this set —
-// it is infrastructure the other apps use, never a separately-listed,
-// separately-purchased product (dashboard.html already hides its tile from
-// anyone but a super admin; it must never be presented as a trial "unlock").
-const BASE_MODULES = ['pos', 'payroll', 'accounting', 'sean'];
-
-/**
- * The full set of modules a company is EVER eligible for, by account type —
- * used both to grant the 30-day full-access trial at registration and as the
- * ceiling nothing (trial or otherwise) may exceed. Firmflow (practice) is
- * accounting-practice-only, unconditionally, trial included — a business
- * owner is never shown or granted it, at any point (Ruan's explicit rule).
- */
-function trialModulesFor(holderType) {
-  if (holderType === 'accounting_practice') return [...BASE_MODULES, 'inventory', 'practice'];
-  if (holderType === 'business_owner')      return [...BASE_MODULES, 'inventory'];
-  return [...BASE_MODULES];
-}
-
-const TRIAL_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — same convention as the Paytime demo company
+// Module sets + trial length — shared with companies.js (see config/company-modules.js).
+const { BASE_MODULES, trialModulesFor, TRIAL_PERIOD_MS } = require('../../config/company-modules');
 
 /**
  * Lazily reverts an expired full-access trial back to the company's real
@@ -1412,6 +1393,22 @@ function canManageCompanyUsers(req, companyId, accessRows) {
   return (accessRows || []).some(r => String(r.company_id) === String(companyId) && r.is_active);
 }
 
+// The caller's role AT THE TARGET COMPANY (not req.user.role, which belongs to
+// whichever company their token was issued for). null = not an active member.
+function callerRoleAtCompany(req, companyId, accessRows) {
+  if (req.user.isSuperAdmin || req.user.role === 'super_admin') return 'super_admin';
+  const row = (accessRows || []).find(r => String(r.company_id) === String(companyId) && r.is_active);
+  return row ? row.role : null;
+}
+
+// Write access to a company's user list: membership alone is not enough — the
+// caller must hold USERS.CREATE (management roles) at that company. Without this
+// any member, down to a cashier, could add users (and give them any role).
+function canWriteCompanyUsers(req, companyId, accessRows) {
+  const role = callerRoleAtCompany(req, companyId, accessRows);
+  return !!role && hasPermission(role, 'USERS', 'CREATE');
+}
+
 /**
  * GET /api/auth/companies/:companyId/users
  * List active users for a company.
@@ -1473,16 +1470,19 @@ router.post('/companies/:companyId/users', authenticateToken, async (req, res) =
 
     const { data: myAccess } = await supabase
       .from('user_company_access')
-      .select('company_id, is_active')
+      .select('company_id, role, is_active')
       .eq('user_id', req.user.userId);
 
-    if (!canManageCompanyUsers(req, companyId, myAccess)) {
-      return res.status(403).json({ error: 'Access denied to this company' });
+    if (!canWriteCompanyUsers(req, companyId, myAccess)) {
+      return res.status(403).json({ error: 'Only managers of this company can add users' });
     }
 
     const { username, password, full_name, email, role, employee_id } = req.body;
     if (!username || !password || !full_name || !role) {
       return res.status(400).json({ error: 'username, password, full_name and role are required' });
+    }
+    if (!canManageRole(callerRoleAtCompany(req, companyId, myAccess), role)) {
+      return res.status(403).json({ error: 'You cannot assign this role level' });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -1577,11 +1577,11 @@ router.post('/companies/:companyId/users/link-existing', authenticateToken, asyn
 
     const { data: myAccess } = await supabase
       .from('user_company_access')
-      .select('company_id, is_active')
+      .select('company_id, role, is_active')
       .eq('user_id', req.user.userId);
 
-    if (!canManageCompanyUsers(req, companyId, myAccess)) {
-      return res.status(403).json({ error: 'Access denied to this company' });
+    if (!canWriteCompanyUsers(req, companyId, myAccess)) {
+      return res.status(403).json({ error: 'Only managers of this company can add users' });
     }
 
     const { identifier, role, employee_id } = req.body;
@@ -1589,7 +1589,8 @@ router.post('/companies/:companyId/users/link-existing', authenticateToken, asyn
       return res.status(400).json({ error: 'identifier (username or email) and role are required' });
     }
 
-    if (!canManageRole(req.user.role, role)) {
+    // Role level is judged at the TARGET company, not the company in the caller's token.
+    if (!canManageRole(callerRoleAtCompany(req, companyId, myAccess), role)) {
       return res.status(403).json({ error: 'You cannot assign this role level' });
     }
 
@@ -1690,11 +1691,22 @@ router.delete('/companies/:companyId/users/:userId', authenticateToken, async (r
 
     const { data: myAccess } = await supabase
       .from('user_company_access')
-      .select('company_id, is_active')
+      .select('company_id, role, is_active')
       .eq('user_id', req.user.userId);
 
-    if (!canManageCompanyUsers(req, companyId, myAccess)) {
-      return res.status(403).json({ error: 'Access denied to this company' });
+    if (!canWriteCompanyUsers(req, companyId, myAccess)) {
+      return res.status(403).json({ error: 'Only managers of this company can remove users' });
+    }
+
+    // Cannot remove someone above your own level (e.g. a store manager removing the owner).
+    const { data: targetAccess } = await supabase
+      .from('user_company_access')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (targetAccess && !canManageRole(callerRoleAtCompany(req, companyId, myAccess), targetAccess.role)) {
+      return res.status(403).json({ error: 'You cannot remove a user with a higher role than yours' });
     }
 
     const { error } = await supabase
@@ -1704,6 +1716,7 @@ router.delete('/companies/:companyId/users/:userId', authenticateToken, async (r
       .eq('company_id', companyId);
 
     if (error) return res.status(500).json({ error: error.message });
+    invalidateUserSessions(userId);
 
     await auditFromReq(req, 'UPDATE', 'user_company_access', userId, {
       action: 'remove_company_user',

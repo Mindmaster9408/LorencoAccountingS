@@ -223,7 +223,7 @@ f5df233 Harden cross-browser payroll compatibility and cloud storage bridge
 
 **Total Commits**: 5  
 **Branch**: main  
-**Remote**: origin (https://github.com/Mindmaster9408/LorencoAccountingS)  
+**Remote**: origin (https://github.com/<REDACTED>)  
 **Status**: ✅ All work pushed and backed up
 
 ---

@@ -170,7 +170,7 @@ Three options, recommendation needed:
 2. `839e9d2` - Phase 3 cont: Add webkit prefixes, deploy polyfills to POS/ecosystem, create data persistence policy
 
 **Branch**: main  
-**Remote**: origin (https://github.com/Mindmaster9408/LorencoAccountingS)
+**Remote**: origin (https://github.com/<REDACTED>)
 
 ---
 

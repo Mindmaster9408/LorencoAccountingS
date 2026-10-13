@@ -7,7 +7,7 @@ const ADMIN_MODE_KEY = 'coaching_app_admin_mode';
 // Admin credentials
 const ADMIN_USER = {
     username: 'ruanvlog@lorenco.co.za',
-    password: 'Mindmaster@277477',
+    password: '<REDACTED>',
     fullName: 'Ruan van Loggerenberg (Admin)',
     isAdmin: true
 };

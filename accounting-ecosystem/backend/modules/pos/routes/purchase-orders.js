@@ -913,13 +913,16 @@ router.post('/:id/deliveries/:deliveryId/resolve-variance', requirePermission('P
     const { data: po } = await supabase.from('pos_purchase_orders').select('*').eq('id', poId).eq('company_id', req.companyId).maybeSingle();
     if (!po) return res.status(404).json({ error: 'Purchase order not found' });
 
-    const { data: disc } = await supabase.from('pos_transfer_discrepancies').select('*').eq('id', discrepancy_id).eq('transfer_id', deliveryId).maybeSingle();
+    // company_id: the discrepancy was flagged by this (receiving) company on receive —
+    // without it, a valid own PO id plus another company's delivery/discrepancy ids
+    // would resolve that other company's discrepancy.
+    const { data: disc } = await supabase.from('pos_transfer_discrepancies').select('*').eq('id', discrepancy_id).eq('transfer_id', deliveryId).eq('company_id', req.companyId).maybeSingle();
     if (!disc) return res.status(404).json({ error: 'Discrepancy not found' });
     if (disc.resolved_at) return res.status(400).json({ error: 'This discrepancy has already been resolved' });
 
     const { data: updated } = await supabase.from('pos_transfer_discrepancies').update({
       resolution_reason, resolution_notes: resolution_notes || null, resolved_by: req.user.userId, resolved_at: new Date().toISOString(),
-    }).eq('id', discrepancy_id).select().single();
+    }).eq('id', discrepancy_id).eq('company_id', req.companyId).select().single();
 
     posAuditFromReq(req, POS_EVENTS.PO_VARIANCE_RESOLVED, { entityType: 'purchase_order', entityId: poId, metadata: { po_number: po.po_number, delivery_id: deliveryId, discrepancy_id, resolution_reason } });
 

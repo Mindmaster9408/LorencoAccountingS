@@ -64,6 +64,22 @@ function requireModule(moduleKey) {
       // Zero rows → no restriction recorded → allow through
     }
 
+    // 4. The membership's own apps_access list (the second per-user app gate).
+    // sso-launch only checked it when an app was opened, so removing an app from
+    // someone kept working until their app token expired. req.companyAccess is
+    // set fresh by authenticateToken's session check (middleware/auth.js).
+    // null = unrestricted. 'sean' is exempt: it is infrastructure the other apps
+    // call (BASE_MODULES), never an app a user is granted on its own.
+    const appsAccess = req.companyAccess && req.companyAccess.apps_access;
+    if (Array.isArray(appsAccess) && moduleKey !== 'sean' && !req.user?.isSuperAdmin
+        && !appsAccess.includes(moduleKey)) {
+      return res.status(403).json({
+        error: 'App access not granted',
+        module: moduleKey,
+        message: `You do not have access to the ${modules[moduleKey]?.name || moduleKey} app. Contact your administrator.`
+      });
+    }
+
     next();
   };
 }

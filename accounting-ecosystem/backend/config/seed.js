@@ -8,12 +8,24 @@
  */
 
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+
+// Seed passwords come from env vars only (SEED_*_PASSWORD). Passwords used to be
+// hardcoded in this file — removed 2026-10-01; they remain in git history and
+// must be treated as compromised. If the env var is not set, the account is
+// created with an unguessable random password and the owner sets their own via
+// "Forgot password" (the reset code is logged server-side for an admin).
+function seedPassword(fromEnv, email) {
+  if (fromEnv && fromEnv.length >= 12) return fromEnv;
+  console.warn(`  ⚠️  No seed password env var for ${email} — using a random one; use Forgot Password to set it.`);
+  return crypto.randomBytes(24).toString('hex');
+}
 
 const MASTER_USER = {
   username: 'ruanvlog@lorenco.co.za',
   email: 'ruanvlog@lorenco.co.za',
   full_name: 'Ruan',
-  password: 'Mindmaster@277477',
+  password: process.env.SEED_MASTER_ADMIN_PASSWORD || null, // never hardcode — see seedPassword()
   is_super_admin: true,
   role: 'super_admin'
 };
@@ -47,7 +59,7 @@ async function seedMasterAdmin(supabase) {
     console.log('  🌱 No users found — seeding master admin...');
 
     // Hash master password
-    const password_hash = await bcrypt.hash(MASTER_USER.password, 12);
+    const password_hash = await bcrypt.hash(seedPassword(MASTER_USER.password, MASTER_USER.email), 12);
 
     // Create master user
     const { data: user, error: userError } = await supabase
@@ -111,7 +123,7 @@ async function seedMasterAdmin(supabase) {
 
     console.log('\n  🎉 Seed complete! Login with:');
     console.log(`     Email:    ${MASTER_USER.email}`);
-    console.log(`     Password: ${MASTER_USER.password}\n`);
+    console.log('     Password: (from SEED_MASTER_ADMIN_PASSWORD, or use Forgot Password)\n');
 
   } catch (err) {
     console.error('  ❌ Seed error:', err.message);
@@ -128,7 +140,7 @@ async function seedAdditionalUsers(supabase) {
       username: 'mj@lorenco.co.za',
       email: 'mj@lorenco.co.za',
       full_name: 'MJ van Loggerenberg',
-      password: 'mJmR@9423$',
+      password: process.env.SEED_MJ_PASSWORD || null,
       role: 'business_owner',
       is_super_admin: false
     },
@@ -136,7 +148,7 @@ async function seedAdditionalUsers(supabase) {
       username: 'anrichvstryp@lorencoeco.com',
       email: 'anrichvstryp@lorencoeco.com',
       full_name: 'Anrich van Stryp',
-      password: 'V$tryp96',
+      password: process.env.SEED_ANRICH_PASSWORD || null,
       role: 'super_admin',
       is_super_admin: true
     }
@@ -157,7 +169,7 @@ async function seedAdditionalUsers(supabase) {
       }
 
       // Hash password
-      const password_hash = await bcrypt.hash(u.password, 12);
+      const password_hash = await bcrypt.hash(seedPassword(u.password, u.email), 12);
 
       // Create user
       const { data: newUser, error: userError } = await supabase
@@ -221,10 +233,17 @@ async function seedAdditionalUsers(supabase) {
 async function forceResetMasterAdmin(supabase) {
   if (process.env.FORCE_RESET_ADMIN !== 'true') return;
 
+  // The new password must be supplied explicitly — there is no default any more.
+  const newPassword = process.env.FORCE_RESET_ADMIN_PASSWORD;
+  if (!newPassword || newPassword.length < 12) {
+    console.error('  ❌ FORCE_RESET_ADMIN=true but FORCE_RESET_ADMIN_PASSWORD is missing or shorter than 12 characters — skipping reset.');
+    return;
+  }
+
   console.log('  ⚠️  FORCE_RESET_ADMIN=true — resetting master admin password...');
 
   try {
-    const password_hash = await bcrypt.hash(MASTER_USER.password, 12);
+    const password_hash = await bcrypt.hash(newPassword, 12);
 
     const { data: user, error: findError } = await supabase
       .from('users')

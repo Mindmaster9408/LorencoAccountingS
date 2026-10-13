@@ -6,7 +6,7 @@
 
 const BASE   = 'http://localhost:3000';
 const EMAIL  = 'ruanvlog@lorenco.co.za';
-const PASS   = 'Mindmaster@277477';
+const PASS   = process.env.TEST_PASSWORD;
 const TS     = Date.now();
 
 const results = [];

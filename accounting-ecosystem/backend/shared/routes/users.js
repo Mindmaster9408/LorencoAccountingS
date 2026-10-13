@@ -9,7 +9,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
-const { authenticateToken, requireCompany, requirePermission } = require('../../middleware/auth');
+const { authenticateToken, requireCompany, requirePermission, invalidateUserSessions } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { canManageRole, getAllRoles } = require('../../config/permissions');
 
@@ -28,6 +28,28 @@ async function sanitiseAppsAccess(appsAccess, companyId) {
   if (isTIL) return appsAccess;
   const stripped = appsAccess.filter(a => a !== 'inventory');
   return stripped.length > 0 ? stripped : null;
+}
+
+// Tenant guard for write routes on /:id. A non-super-admin may only act on a user
+// who is an active member of the caller's current company. Also reports whether
+// that user belongs to any OTHER company, because platform-wide fields (name,
+// email, username, is_active) on such a user must not be changed by one company —
+// that would affect, or take over, their access everywhere else.
+// Returns { allowed, sharedWithOtherCompanies }.
+async function checkTargetMembership(req, targetUserId) {
+  if (req.user.isSuperAdmin) return { allowed: true, sharedWithOtherCompanies: false };
+
+  const { data: rows } = await supabase
+    .from('user_company_access')
+    .select('company_id')
+    .eq('user_id', targetUserId)
+    .eq('is_active', true);
+
+  const companyIds = (rows || []).map(r => String(r.company_id));
+  return {
+    allowed: companyIds.includes(String(req.companyId)),
+    sharedWithOtherCompanies: companyIds.some(id => id !== String(req.companyId)),
+  };
 }
 
 /**
@@ -296,6 +318,16 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
     const userId = req.params.id;
     const { full_name, email, username, role, is_active, company_ids, apps_access, revoke_company_access } = req.body;
 
+    const membership = await checkTargetMembership(req, userId);
+    if (!membership.allowed) {
+      return res.status(403).json({ error: 'Access denied — this user is not a member of your company' });
+    }
+
+    // company_ids moves a user between arbitrary companies — super admin only.
+    if (company_ids !== undefined && !req.user.isSuperAdmin) {
+      return res.status(403).json({ error: 'Only a super admin can change which companies a user belongs to' });
+    }
+
     // Revoke this user's access from the current company (without deactivating them globally)
     if (revoke_company_access) {
       await supabase
@@ -303,6 +335,7 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
         .update({ is_active: false })
         .eq('user_id', userId)
         .eq('company_id', req.companyId);
+      invalidateUserSessions(userId);
       await auditFromReq(req, 'UPDATE', 'user', userId, { metadata: { action: 'revoked_company_access', companyId: req.companyId } });
       return res.json({ success: true, message: 'User access revoked from this company' });
     }
@@ -315,6 +348,22 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
       .single();
 
     if (!oldUser) return res.status(404).json({ error: 'User not found' });
+
+    // Platform-wide fields of a user who also works at another company may only be
+    // changed by a super admin. Unchanged values are fine — the edit forms resend
+    // every field, and role / app access below stay scoped to this company.
+    if (membership.sharedWithOtherCompanies) {
+      // null and '' count as the same "empty" value, so a resent blank email isn't a change
+      const norm = v => (v === null || v === undefined) ? '' : (typeof v === 'string' ? v.trim() : v);
+      const changes = (field, value) => value !== undefined && norm(value) !== norm(oldUser[field]);
+      const changesUsername = username !== undefined && username.trim() && username.trim() !== oldUser.username;
+      if (changes('full_name', full_name) || changes('email', email) || changes('is_active', is_active) || changesUsername) {
+        return res.status(403).json({
+          error: 'This user also works at another company. Their name, email, username or active status can only be changed by a super admin. ' +
+                 'You can still change their role and app access here, or remove them from your company.'
+        });
+      }
+    }
 
     // Update user profile fields
     const updates = {};
@@ -428,6 +477,9 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
       }
     }
 
+    // Role / app access / active status may have changed — make it effective now.
+    invalidateUserSessions(userId);
+
     await auditFromReq(req, 'UPDATE', 'user', userId, {
       oldValue: { full_name: oldUser.full_name, email: oldUser.email },
       newValue: { full_name: updates.full_name, email: updates.email, role }
@@ -458,24 +510,31 @@ router.put('/:id/password', async (req, res) => {
     const userId = req.params.id;
     const { current_password, new_password } = req.body;
     const isSelf = req.user.userId === parseInt(userId);
-    const isManager = ['super_admin', 'business_owner', 'practice_manager', 'administrator'].includes(req.user.role);
+    const isPlatformAdmin = !!req.user.isSuperAdmin || req.user.role === 'super_admin';
 
-    // Only self or management can change passwords
-    if (!isSelf && !isManager) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    // Owner-equivalent roles can only reset passwords for users in their own company
-    if (!isSelf && ['business_owner', 'practice_manager', 'administrator'].includes(req.user.role)) {
-      const { data: access } = await supabase
-        .from('user_company_access')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('company_id', req.companyId)
-        .eq('is_active', true)
-        .limit(1);
-      if (!access || access.length === 0) {
+    // Resetting SOMEONE ELSE's password (Ruan's rule, 2026-10-01): only the company's
+    // actual owner — not any owner-equivalent/manager role — and only for a person who
+    // works exclusively at that company. A person who also works elsewhere, another
+    // owner, or a super admin can only be reset by a super admin; otherwise one
+    // company could take over that person's access to their other companies.
+    if (!isSelf && !isPlatformAdmin) {
+      if (req.user.role !== 'business_owner') {
+        return res.status(403).json({ error: 'Only the company owner (or a super admin) can reset another user\'s password' });
+      }
+      const membership = await checkTargetMembership(req, userId);
+      if (!membership.allowed) {
         return res.status(403).json({ error: 'You can only reset passwords for users in your company' });
+      }
+      if (membership.sharedWithOtherCompanies) {
+        return res.status(403).json({ error: 'This user also works at another company — only a super admin can reset their password' });
+      }
+      const [{ data: targetAccess }, { data: targetUser }] = await Promise.all([
+        supabase.from('user_company_access').select('role')
+          .eq('user_id', userId).eq('company_id', req.companyId).eq('is_active', true).maybeSingle(),
+        supabase.from('users').select('is_super_admin').eq('id', userId).maybeSingle(),
+      ]);
+      if ((targetAccess && targetAccess.role === 'business_owner') || (targetUser && targetUser.is_super_admin)) {
+        return res.status(403).json({ error: 'Another owner\'s or a super admin\'s password can only be reset by a super admin' });
       }
     }
 
@@ -577,6 +636,17 @@ router.delete('/:id/company-access', requirePermission('USERS.DELETE'), async (r
       return res.status(400).json({ error: 'You cannot remove yourself from the practice' });
     }
 
+    // Cannot remove someone above your own level (e.g. an administrator removing the owner).
+    const { data: targetAccess } = await supabase
+      .from('user_company_access')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (targetAccess && !canManageRole(req.user.role, targetAccess.role)) {
+      return res.status(403).json({ error: 'You cannot remove a user with a higher role than yours' });
+    }
+
     const { error } = await supabase
       .from('user_company_access')
       .update({ is_active: false })
@@ -584,6 +654,7 @@ router.delete('/:id/company-access', requirePermission('USERS.DELETE'), async (r
       .eq('company_id', companyId);
 
     if (error) return res.status(500).json({ error: error.message });
+    invalidateUserSessions(userId);
 
     await auditFromReq(req, 'DELETE', 'user_company_access', userId, {
       metadata: { removed_from_company: companyId }
@@ -753,6 +824,28 @@ router.put('/:id/paytime-employees', requirePermission('USERS.EDIT'), async (req
  */
 router.delete('/:id', requirePermission('USERS.DELETE'), async (req, res) => {
   try {
+    const membership = await checkTargetMembership(req, req.params.id);
+    if (!membership.allowed) {
+      return res.status(403).json({ error: 'Access denied — this user is not a member of your company' });
+    }
+
+    // A user who also works at another company is only removed from THIS company —
+    // their login and their other companies stay untouched.
+    if (membership.sharedWithOtherCompanies) {
+      const { error: revokeErr } = await supabase
+        .from('user_company_access')
+        .update({ is_active: false })
+        .eq('user_id', req.params.id)
+        .eq('company_id', req.companyId);
+      if (revokeErr) return res.status(500).json({ error: revokeErr.message });
+      invalidateUserSessions(req.params.id);
+
+      await auditFromReq(req, 'UPDATE', 'user', req.params.id, {
+        metadata: { action: 'revoked_company_access', companyId: req.companyId, reason: 'delete_of_multi_company_user' }
+      });
+      return res.json({ success: true, message: 'User removed from this company (they still have access to their other companies)' });
+    }
+
     const { error } = await supabase
       .from('users')
       .update({ is_active: false })
@@ -765,6 +858,7 @@ router.delete('/:id', requirePermission('USERS.DELETE'), async (req, res) => {
       .from('user_company_access')
       .update({ is_active: false })
       .eq('user_id', req.params.id);
+    invalidateUserSessions(req.params.id);
 
     await auditFromReq(req, 'DELETE', 'user', req.params.id);
     res.json({ success: true, message: 'User deactivated' });

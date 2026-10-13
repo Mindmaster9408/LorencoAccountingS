@@ -32,7 +32,7 @@
 
 ## ROOT CAUSES FIXED
 
-1. **Hardcoded production passwords in git** — `Mindmaster@277477` and `Lorenco@190409` were committed in `auth.js`. Removed and replaced with server-side credential verification.
+1. **Hardcoded production passwords in git** — `<REDACTED>` and `Lorenco@190409` were committed in `auth.js`. Removed and replaced with server-side credential verification.
 
 2. **Legacy storage API with zero authentication** — `/api/storage` routes accepted any request with no token. Added `requireStorageAuth` middleware gated by `PAYROLL_API_SECRET` env var.
 
@@ -87,7 +87,7 @@ FOLLOW-UP NOTE
 ### HIGH
 ```
 FOLLOW-UP NOTE
-- Area: Git history contains plaintext passwords (Mindmaster@277477, Lorenco@190409)
+- Area: Git history contains plaintext passwords (<REDACTED>, Lorenco@190409)
 - Risk: Credential exposure if repo is ever shared publicly
 - Recommended fix: Rotate both passwords. BFG Repo Cleaner to scrub history.
 ```

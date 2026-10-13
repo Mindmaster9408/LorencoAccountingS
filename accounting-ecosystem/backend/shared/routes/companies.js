@@ -11,6 +11,8 @@ const express = require('express');
 const { supabase } = require('../../config/database');
 const { authenticateToken, requireCompany, requirePermission, requireSuperAdmin } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
+const { BASE_MODULES } = require('../../config/company-modules');
+const { hasPermission } = require('../../config/permissions');
 
 const router = express.Router();
 
@@ -179,12 +181,21 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Modules are decided by the server, not the client. A non-super-admin gets the
+    // permanent BASE_MODULES only — previously any module list in the request body
+    // was stored as-is, so e.g. Firmflow ('practice') could be self-granted to a
+    // company that is not an accounting practice. Super admins may still set any
+    // list (subject to the Stockton guard below).
+    const resolvedModules = isSuperAdmin && Array.isArray(modules_enabled) && modules_enabled.length > 0
+      ? modules_enabled
+      : [...BASE_MODULES];
+
     // Guard: Lorenco Storehouse (inventory) may only be enabled for The Infinite Legacy
-    if (Array.isArray(modules_enabled) && modules_enabled.includes('inventory')) {
+    if (resolvedModules.includes('inventory')) {
       const isTIL = company_name === 'The Infinite Legacy' ||
         (trading_name && trading_name === 'The Infinite Legacy');
       if (!isTIL) {
-        return res.status(403).json({ error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.' });
+        return res.status(403).json({ error: 'Stockton can only be assigned under The Infinite Legacy.' });
       }
     }
 
@@ -223,7 +234,7 @@ router.post('/', async (req, res) => {
         payslip_address_line1: payslip_address_line1 || null,
         registration_date: registration_date || null,
         directors: directors || null,
-        modules_enabled: modules_enabled || ['pos', 'payroll', 'accounting', 'sean'],
+        modules_enabled: resolvedModules,
         is_active: true,
         subscription_status: 'active'
       })
@@ -267,6 +278,25 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
   try {
     const id = req.params.id;
 
+    // Tenant guard — same rule as GET /:id. Without it, anyone holding
+    // COMPANIES.EDIT in their own company could edit ANY company by id
+    // (including its bank details and active status).
+    if (!req.user.isSuperAdmin) {
+      const jwtCoversThisCompany = req.companyId && parseInt(req.companyId) === parseInt(id);
+      if (!jwtCoversThisCompany) {
+        const { data: access } = await supabase
+          .from('user_company_access')
+          .select('role')
+          .eq('user_id', req.user.userId)
+          .eq('company_id', parseInt(id))
+          .eq('is_active', true)
+          .maybeSingle();
+        if (!access || !hasPermission(access.role, 'COMPANIES', 'EDIT')) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+    }
+
     // Get old values for audit
     const { data: old } = await supabase.from('companies').select('*').eq('id', id).single();
 
@@ -299,8 +329,16 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
       'absa_user_code', 'fnb_originator_code',
     ];
     const updates = {};
+    // Which apps a company has, and whether it is active at all, are platform
+    // decisions — a company may not grant itself modules (e.g. Firmflow) or
+    // (de)activate itself. Only super admin screens send these fields.
+    const SUPER_ADMIN_ONLY_FIELDS = ['modules_enabled', 'is_active'];
     for (const key of allowed) {
-      if (req.body[key] !== undefined) updates[key] = req.body[key];
+      if (req.body[key] === undefined) continue;
+      if (SUPER_ADMIN_ONLY_FIELDS.includes(key) && !req.user.isSuperAdmin) {
+        return res.status(403).json({ error: `Only a super admin can change ${key}` });
+      }
+      updates[key] = req.body[key];
     }
     // Super admins may also update the account_holder_type classification
     if (req.user.isSuperAdmin && req.body.account_holder_type !== undefined) {
@@ -339,7 +377,7 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
         old.trading_name === 'The Infinite Legacy'
       );
       if (!isTIL) {
-        return res.status(403).json({ error: 'Lorenco Storehouse can only be assigned under The Infinite Legacy.' });
+        return res.status(403).json({ error: 'Stockton can only be assigned under The Infinite Legacy.' });
       }
     }
 

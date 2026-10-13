@@ -16,7 +16,7 @@
 
 const express = require('express');
 const { supabase } = require('../../config/database');
-const { authenticateToken, requireSuperAdmin } = require('../../middleware/auth');
+const { authenticateToken, requireSuperAdmin, invalidateUserSessions } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { canManageRole } = require('../../config/permissions');
 
@@ -142,6 +142,7 @@ router.put('/companies/:companyId/users/:userId/role', async (req, res) => {
       .eq('company_id', companyId);
 
     if (updateErr) return res.status(500).json({ error: updateErr.message });
+    invalidateUserSessions(userId); // role change takes effect on their next request
 
     // If the new role is an owner-equivalent, also update the users.role column
     // so that the user's default role is reflected across the platform.

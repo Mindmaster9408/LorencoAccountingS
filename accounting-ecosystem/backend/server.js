@@ -188,16 +188,20 @@ app.get('/api/version', (req, res) => {
 });
 
 // ─── One-time admin password reset endpoint ───────────────────────────────────
-// Protected by FORCE_RESET_ADMIN env var. Remove env var after use.
+// Break-glass recovery for the master super admin. Needs BOTH env vars set in
+// Zeabur: FORCE_RESET_ADMIN=true and FORCE_RESET_ADMIN_PASSWORD=<new password>.
+// Remove both after use. The password is never kept in source — a hardcoded
+// one used to live here (2026-10-01: removed; it is still in git history and
+// must be treated as compromised).
 app.get('/api/admin/reset-master', async (req, res) => {
-  if (process.env.FORCE_RESET_ADMIN !== 'true') {
+  const password = process.env.FORCE_RESET_ADMIN_PASSWORD;
+  if (process.env.FORCE_RESET_ADMIN !== 'true' || !password || password.length < 12) {
     return res.status(403).json({ error: 'Disabled' });
   }
   try {
     const bcrypt = require('bcryptjs');
     const { supabase } = require('./config/database');
     const email = 'ruanvlog@lorenco.co.za';
-    const password = 'Mindmaster@277477';
     const password_hash = await bcrypt.hash(password, 12);
 
     // Check if user exists

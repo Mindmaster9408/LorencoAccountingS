@@ -116,7 +116,7 @@ const SUPER_ADMINS = [
   {
     id: 'sa-001',
     email: 'ruanvlog@lorenco.co.za',
-    password: 'Mindmaster@277477',
+    password: '<REDACTED>',
     firstName: 'Ruan',
     lastName: 'van Loggerenberg',
     role: 'admin',

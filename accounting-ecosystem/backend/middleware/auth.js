@@ -58,8 +58,8 @@ function _readCache(key) {
   return e;
 }
 
-function _writeCache(key, ok, status, reason) {
-  _sessionCache.set(key, { ok, status, reason, ts: Date.now() });
+function _writeCache(key, ok, status, reason, access = null) {
+  _sessionCache.set(key, { ok, status, reason, access, ts: Date.now() });
   // Evict expired entries when the map grows large (bounded by active sessions)
   if (_sessionCache.size > 2000) {
     const cutoff = Date.now() - _SESSION_TTL;
@@ -67,6 +67,40 @@ function _writeCache(key, ok, status, reason) {
       if (v.ts < cutoff) _sessionCache.delete(k);
     }
   }
+}
+
+/**
+ * Drop every cached session verdict for a user so the next request re-reads the
+ * DB. Call this whenever a user's access changes (removed from a company, role or
+ * app access changed, deactivated) — that is what makes those changes take effect
+ * immediately instead of after the 60 s cache window (Ruan's rule, 2026-10-01).
+ * In-process cache: with more than one server instance, other instances still
+ * converge within 60 s.
+ */
+function invalidateUserSessions(userId) {
+  const prefix = `${userId}_`;
+  for (const key of _sessionCache.keys()) {
+    if (key.startsWith(prefix)) _sessionCache.delete(key);
+  }
+}
+
+/**
+ * Final step for a non-super-admin request with a company: the role inside the
+ * token must still be the membership's current role. A token issued before a
+ * role change (e.g. demoted owner → cashier) would otherwise keep the old role's
+ * permissions until it expires (up to 12 h), because requirePermission() trusts
+ * req.user.role. The user simply logs in again and gets a token with the new role.
+ * Exempt: role 'super_admin' tokens (platform-level, may use X-Company-Id).
+ */
+function _finishSession(req, res, next, facts) {
+  if (facts && req.user && req.user.role !== 'super_admin' && facts.role && req.user.role !== facts.role) {
+    return res.status(401).json({
+      error: 'Your access for this company has changed — please log in again.',
+      code: 'SESSION_ROLE_CHANGED',
+    });
+  }
+  req.companyAccess = facts || null; // { role, apps_access } — read by module-check.js
+  next();
 }
 
 // Lazy-load the Supabase client to avoid any startup-order issues.
@@ -103,11 +137,13 @@ async function _checkActiveSession(req, res, next) {
   const cacheKey  = `${userId}_${companyId || '0'}`;
 
   // ── Cache hit ───────────────────────────────────────────────────────────────
+  // The cache holds the DB facts (incl. the membership's current role), not a
+  // per-token verdict — two tokens for the same user+company (e.g. one issued
+  // before a role change, one after) must still be judged separately.
   const cached = _readCache(cacheKey);
   if (cached) {
-    return cached.ok
-      ? next()
-      : res.status(cached.status).json({ error: cached.reason });
+    if (!cached.ok) return res.status(cached.status).json({ error: cached.reason });
+    return _finishSession(req, res, next, cached.access);
   }
 
   // ── DB checks ───────────────────────────────────────────────────────────────
@@ -147,7 +183,7 @@ async function _checkActiveSession(req, res, next) {
       if (!isSA) {
         const { data: access } = await db
           .from('user_company_access')
-          .select('id')
+          .select('id, role, apps_access')
           .eq('user_id', userId)
           .eq('company_id', companyId)
           .eq('is_active', true)
@@ -157,6 +193,10 @@ async function _checkActiveSession(req, res, next) {
           _writeCache(cacheKey, false, 403, 'Access to this company has been revoked');
           return res.status(403).json({ error: 'Access to this company has been revoked' });
         }
+
+        const facts = { role: access.role, apps_access: access.apps_access || null };
+        _writeCache(cacheKey, true, 200, null, facts);
+        return _finishSession(req, res, next, facts);
       }
     }
 
@@ -311,5 +351,6 @@ module.exports = {
   requireRole,
   selfOrRole,
   requireSuperAdmin,
+  invalidateUserSessions,
   JWT_SECRET
 };

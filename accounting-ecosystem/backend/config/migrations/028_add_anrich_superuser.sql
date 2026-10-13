@@ -58,7 +58,7 @@ BEGIN
             'anrichvstryp@lorencoeco.com',
             'anrichvstryp@lorencoeco.com',
             'Anrich van Stryp',
-            crypt('V$tryp96', gen_salt('bf', 12)),
+            crypt('<SET-A-NEW-PASSWORD-BEFORE-RUNNING — original removed 2026-10-01>', gen_salt('bf', 12)),
             'super_admin',
             true,
             false,

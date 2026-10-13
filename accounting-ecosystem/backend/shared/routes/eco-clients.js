@@ -14,6 +14,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
+const { MANAGEMENT_ROLES } = require('../../config/permissions');
 
 const router = express.Router();
 
@@ -21,6 +22,44 @@ const router = express.Router();
 // is false/null but user_company_access.role = 'super_admin'). Accept both.
 function isAdminUser(user) {
   return !!(user && (user.isSuperAdmin || user.role === 'super_admin'));
+}
+
+// ─── Tenant guards (2026-10-01) ─────────────────────────────────────────────
+// An eco_client row is a TRUST link: select-company and sso-launch grant a
+// practice's staff access to eco_clients.client_company_id. So who may create,
+// edit or remove these rows is a security boundary, not just data hygiene.
+
+// May the caller manage clients for practice `practiceId`? Requires an active
+// management-role membership AT that practice (or super admin).
+async function canManageClientsOf(req, practiceId) {
+  if (isAdminUser(req.user)) return true;
+  if (!practiceId) return false;
+  if (String(practiceId) === String(req.companyId)) {
+    return MANAGEMENT_ROLES.includes(req.user.role);
+  }
+  const { data: access } = await supabase
+    .from('user_company_access')
+    .select('role')
+    .eq('user_id', req.user.userId)
+    .eq('company_id', parseInt(practiceId))
+    .eq('is_active', true)
+    .maybeSingle();
+  return !!(access && MANAGEMENT_ROLES.includes(access.role));
+}
+
+// Load an eco_client and confirm the caller is its managing practice (with a
+// management role) or super admin. Returns { client } or { status, error }.
+async function loadManagedClient(req, clientId) {
+  const { data: client } = await supabase
+    .from('eco_clients')
+    .select('*')
+    .eq('id', clientId)
+    .maybeSingle();
+  if (!client) return { status: 404, error: 'Client not found' };
+  if (!(await canManageClientsOf(req, client.company_id))) {
+    return { status: 403, error: 'Access denied — this client is not managed by your practice' };
+  }
+  return { client };
 }
 
 // ─── Storehouse Guard ───────────────────────────────────────────────────────
@@ -746,6 +785,27 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Client name is required' });
     }
 
+    // ── Tenant guards ──────────────────────────────────────────────────────────
+    // client_company_id links this client to an EXISTING company, which then
+    // grants the managing practice access to it (select-company / sso-launch).
+    // Accepting it from a non-admin let anyone attach — and so take over — any
+    // company on the platform. Linking existing companies is a super admin
+    // action (see POST /adopt-company); everyone else gets a fresh company.
+    if (client_company_id && !isAdminUser(req.user)) {
+      return res.status(403).json({ error: 'Only a super admin can link an existing company to a client' });
+    }
+    // A client may only be created under a practice the caller manages.
+    if (!(await canManageClientsOf(req, parseInt(company_id) || req.companyId))) {
+      return res.status(403).json({ error: 'You can only add clients to a practice you manage' });
+    }
+    // Same rule as PUT /:id: Firmflow only for accounting practices — a freshly
+    // created client company never is one, so it can't start with Firmflow.
+    if (Array.isArray(apps) && apps.includes('practice') && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        error: 'Firmflow can only be activated for accounting practices. Create the client first, set its type to "Accounting Practice", then activate Firmflow.'
+      });
+    }
+
     // ── Per-practice duplicate check (by id_number / registration number) ──────────────
     // Scoped to the managing practice (company_id) — the same client CAN legitimately
     // exist under different practices, but never twice under the same practice.
@@ -904,16 +964,11 @@ router.put('/:id', async (req, res) => {
   try {
     const clientId = parseInt(req.params.id);
 
-    // Fetch current version for audit
-    const { data: old, error: fetchError } = await supabase
-      .from('eco_clients')
-      .select('*')
-      .eq('id', clientId)
-      .single();
-
-    if (fetchError || !old) {
-      return res.status(404).json({ error: 'Client not found' });
-    }
+    // Fetch current version for audit — and confirm the caller manages this client
+    // (previously any logged-in user could edit any practice's client by id).
+    const loaded = await loadManagedClient(req, clientId);
+    if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
+    const old = loaded.client;
 
     // ── Storehouse restriction: inventory may only be assigned under The Infinite Legacy ──
     if (Array.isArray(req.body.apps)) {
@@ -1160,6 +1215,11 @@ router.get('/:id/firm-access', async (req, res) => {
 
     if (clientErr || !client) {
       return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Only the managing firm (or super admin) may see which other firms have access.
+    if (!isAdminUser(req.user) && String(client.company_id) !== String(req.companyId)) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     // Fetch all active firm-access records for this client
@@ -1588,6 +1648,9 @@ router.post('/:ecoClientId/create-owner', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const clientId = parseInt(req.params.id);
+
+    const loaded = await loadManagedClient(req, clientId);
+    if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
 
     const { data: updated, error } = await supabase
       .from('eco_clients')

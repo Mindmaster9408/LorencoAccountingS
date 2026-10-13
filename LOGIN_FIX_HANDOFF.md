@@ -7,7 +7,7 @@ The login screen at `https://lorenco.zeabur.app` returns **401 Invalid Credentia
 
 ## Credentials (Master Admin)
 - **Email:** `ruanvlog@lorenco.co.za`
-- **Password:** `Mindmaster@277477`
+- **Password:** `<REDACTED>`
 - **Role:** `super_admin`, `is_super_admin: true`
 
 ---
@@ -50,7 +50,7 @@ If the user already exists in Supabase with a different/corrupted password hash,
 **File:** `accounting-ecosystem/backend/config/seed.js`  
 Added a function that runs on startup **only when `FORCE_RESET_ADMIN=true`** is set.  
 It finds the master admin user and updates:
-- `password_hash` (fresh bcrypt hash of `Mindmaster@277477`)
+- `password_hash` (fresh bcrypt hash of `<REDACTED>`)
 - `is_active = true`
 - `is_super_admin = true`
 - `role = 'super_admin'`
@@ -97,7 +97,7 @@ A GET endpoint that:
 3. **Visit** `https://lorenco.zeabur.app/api/admin/reset-master`  
    Expected response: `{"success":true,"action":"updated","id":"..."}`
 
-4. **Try logging in** with `ruanvlog@lorenco.co.za` / `Mindmaster@277477`
+4. **Try logging in** with `ruanvlog@lorenco.co.za` / `<REDACTED>`
 
 5. **If login works**, go to Zeabur Variables and **delete `FORCE_RESET_ADMIN`** to disable the reset endpoint
 
