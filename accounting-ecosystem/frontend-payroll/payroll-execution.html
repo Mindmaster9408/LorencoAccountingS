@@ -595,7 +595,7 @@
 
                     <!-- Errors Block -->
                     <div class="errors-block" id="errors-block" style="display:none;">
-                        <div class="errors-block-title">⚠ Errors</div>
+                        <div class="errors-block-title">⚠ Errors and warnings</div>
                         <div id="errors-list"></div>
                     </div>
 
@@ -1131,7 +1131,10 @@
                     : 'Employee #' + row.employee_id;
                 var number = emp && emp.employee_number ? ' · #' + emp.employee_number : '';
 
-                var totalDeductions = (row.paye || 0) + (row.uif || 0) + (row.sdl || 0);
+                // Everything between gross and net (PAYE, UIF and other deductions). SDL is an
+                // employer cost and was wrongly subtracted here before (Fase 10).
+                var totalDeductions = Math.round(((row.gross || 0) - (row.net || 0)) * 100) / 100;
+                var otherDeductions = Math.round((totalDeductions - (row.paye || 0) - (row.uif || 0)) * 100) / 100;
 
                 var prorataBadge = '';
                 if (row.prorataFactor !== undefined && row.prorataFactor !== null && row.prorataFactor < 1) {
@@ -1160,20 +1163,27 @@
                                 '<div class="payslip-section-title">Statutory Deductions</div>' +
                                 '<div class="payslip-row deduction"><span class="label">PAYE (Income Tax)</span><span class="amount" style="color:#dc3545;">- ' + fmt(row.paye) + '</span></div>' +
                                 '<div class="payslip-row deduction"><span class="label">UIF (Employee)</span><span class="amount" style="color:#dc3545;">- ' + fmt(row.uif) + '</span></div>' +
-                                '<div class="payslip-row deduction"><span class="label">SDL (Employer)</span><span class="amount" style="color:#9c27b0;">- ' + fmt(row.sdl) + '</span></div>' +
+                                (otherDeductions > 0.004 ? '<div class="payslip-row deduction"><span class="label">Other Deductions</span><span class="amount" style="color:#dc3545;">- ' + fmt(otherDeductions) + '</span></div>' : '') +
                                 '<div class="payslip-row subtotal"><span class="label">Total Deductions</span><span class="amount" style="color:#dc3545;">- ' + fmt(totalDeductions) + '</span></div>' +
                             '</div>' +
                             '<div class="payslip-row net-pay"><span class="label">Net Pay</span><span class="amount">' + fmt(row.net) + '</span></div>' +
+                            '<div class="payslip-row"><span class="label" style="color:#9c27b0;">SDL (employer cost — not deducted)</span><span class="amount" style="color:#9c27b0;">' + fmt(row.sdl) + '</span></div>' +
                         '</div>' +
                     '</div>' +
                 '</div>';
             }).join('');
         }
 
-        // ── Errors ──────────────────────────────────────────────────────────
-        if (errors.length > 0) {
+        // ── Errors + tax-number warnings (Fase 10, spec 03 WN-02) ──────────
+        var warnings = data.warnings || [];
+        if (errors.length > 0 || warnings.length > 0) {
             var errList = document.getElementById('errors-list');
-            errList.innerHTML = errors.map(function (err) {
+            errList.innerHTML = warnings.map(function (w) {
+                return '<div class="error-item" style="background:#fff8e1;">' +
+                    '<span class="error-emp">' + esc(w.name || ('Employee #' + w.employee_id)) + '</span>' +
+                    '<span class="error-msg" style="color:#8a6d00;">⚠ ' + esc(w.issues.join('; ')) + ' — IRP5/EMP501 blocked until fixed</span>' +
+                '</div>';
+            }).join('') + errors.map(function (err) {
                 var emp  = getEmployee(err.employee_id);
                 var name = emp
                     ? (emp.first_name || '') + ' ' + (emp.last_name || '')

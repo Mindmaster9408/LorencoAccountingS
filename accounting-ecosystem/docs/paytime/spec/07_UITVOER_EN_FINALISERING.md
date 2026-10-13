@@ -19,7 +19,7 @@ Die maandelikse lewensiklus van 'n payroll is beheerd, in volgorde, en ouditeerb
 | UF-07 | Aanvullende run vir 'n vergete werknemer in 'n reeds gefinaliseerde maand is toegelaat. | ✅ |
 | UF-08 | **Omkeer** van 'n gefinaliseerde run vereis 'n rede, behou die ou snapshots (as "reversed"), en laat 'n nuwe run toe. | ✅ |
 | UF-09 | As 'n maand omgekeer word terwyl latere maande reeds gesluit is, waarsku die stelsel dat daardie latere maande se PAYE op ou syfers gebaseer is, en bied aan om dit ook om te keer. | 🆕 |
-| UF-10 | **Ontsluit van 'n individuele payslip** (buite 'n gefinaliseerde run): goedkeurder moet 'n bestuurder **in dieselfde maatskappy** wees, mag nie die versoeker self wees nie, pogings word beperk, en as enige kontrole faal, word ontsluiting geweier. | ❌ [B6] |
+| UF-10 | **Ontsluit van 'n individuele payslip** (buite 'n gefinaliseerde run): goedkeurder moet 'n bestuurder **in dieselfde maatskappy** wees, mag nie die versoeker self wees nie, pogings word beperk, en as enige kontrole faal, word ontsluiting geweier. | ✅ Fase 10: dieselfde maatskappy, geen self-goedkeuring, 5 pogings/15 min, faal-geslote, geoudit [B6 reg] |
 | UF-11 | Pligskeiding: die persoon wat die run voorberei, is nie die een wat finaliseer nie (opsioneel per maatskappy). | 🆕 |
 | UF-12 | Elke run, finalisering, omkeer en ontsluiting word geoudit. | ✅ |
 | UF-13 | 'n Run is "alles of niks" per werknemer: 'n fout by een werknemer word gerapporteer, nie stilweg met halwe data bereken nie. | ⚠️ Per-werknemer foute word gerapporteer; insetfoute word egter ingesluk [B4] |

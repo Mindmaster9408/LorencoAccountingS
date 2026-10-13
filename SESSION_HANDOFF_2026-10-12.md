@@ -116,6 +116,24 @@
 - 9.2 reports.html: Summary/Tax/YTD/Variance from finalized snapshots. 9.4: frontend engine no longer loads KV tax config; only historical-import.html still calculates in the browser (Fase 12).
 - 9.3 Net-to-Gross on the backend (`POST /api/payroll/calculate/net-to-gross`), allowances recurring by default (B12), period tax tables.
 
+## Fase 10 (2026-10-13) — docs/paytime/FASE10_CHANGE_IMPACT_NOTE.md
+
+- Unlock rewritten: same-company manager or super user, no self-approval, 5 failures/15 min, generic denial, fail-closed, audit to audit_log (it wrote to non-existent audit_logs), own auth middleware.
+- Tax number required again (off since 2026-04-20) unless "not yet registered with SARS" (migration 030); SA ID/tax validation + duplicate ID check on the shared employees route (only changed fields on edit).
+- Run warnings + EMP501 irp5_blocked; shared auditFromReq now keeps top-level context; Execute Payroll cards no longer subtract SDL.
+
+## Ruan se take (hou by — bygewerk na elke fase)
+
+1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
+2. EMP201 (Pennygrow, Turkstra) teen SimplePay vergelyk.
+3. Volgende PAYE van die 3 K2-werknemers nagaan (Infinite Legacy 1 & 6, Turkstra 274).
+4. Fase 6-toets: gefinaliseerde maand se payslip-PDF wys betaalde lyne; inset in gefinaliseerde maand word geweier.
+5. Fase 8-toets: Attendance → inskrywings → Apply to Payroll → goedkeur → payslip wys "from attendance".
+6. Fase 9-toets (Infinite Legacy — TEST): Bank File (CSV) + Bulk Print; Net-to-Gross met 'n toelae; Reports → Payroll Summary.
+7. Capitec Business: voorbeeld-betaallêer (vals name) stuur.
+8. Migrasie 030: "ja 030" (vir "nog nie by SARS geregistreer nie").
+9. Fase 10-toets: ontsluit met 'n ander bestuurder van dieselfde maatskappy (moet werk) en met jouself (moet geweier word); nuwe werknemer sonder belastingnommer (moet vra of die merkie wil hê).
+
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).

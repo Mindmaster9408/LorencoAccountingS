@@ -76,6 +76,14 @@ async function logAudit({
  * Helper: build audit params from Express request
  */
 function auditFromReq(req, actionType, entityType, entityId, extra = {}) {
+  // Any extra key that is not a known column goes into metadata. Callers passed context
+  // such as { period_key, employee_count } at the top level and it was silently dropped
+  // (found 2026-10-13, Paytime Fase 10) — e.g. payroll run/finalize/reverse audit rows
+  // carried no period or totals. Additive: known fields behave exactly as before.
+  const KNOWN = ['module', 'fieldName', 'oldValue', 'newValue', 'metadata'];
+  const loose = {};
+  Object.keys(extra || {}).forEach(k => { if (!KNOWN.includes(k)) loose[k] = extra[k]; });
+  const mergedMeta = Object.assign({}, loose, (extra && extra.metadata) || {});
   return logAudit({
     companyId: req.companyId || (req.user && req.user.companyId) || null,
     userId: (req.user && req.user.userId) || null,
@@ -89,7 +97,7 @@ function auditFromReq(req, actionType, entityType, entityId, extra = {}) {
     newValue: extra.newValue || null,
     ipAddress: req.ip || req.connection?.remoteAddress || null,
     userAgent: req.headers['user-agent'] || null,
-    metadata: extra.metadata || {},
+    metadata: mergedMeta,
   });
 }
 

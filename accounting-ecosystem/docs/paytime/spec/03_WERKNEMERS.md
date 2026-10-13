@@ -10,10 +10,10 @@ Elke werknemer het volledige, geldige data wat SARS en die UIF vereis, sodat pay
 
 | # | Reël | Status |
 |---|---|---|
-| WN-01 | Verpligte velde: naam, van, SA ID-nommer **of** paspoortnommer (+ land), aanstellingsdatum, betaalfrekwensie, basiese salaris of uurtarief. | ⚠️ Backend vereis net naam en van |
-| WN-02 | **BEVESTIG 2026-10-12 (opsie b):** SARS-belastingnommer is verpligtend (10 syfers, modulus-10-kontrole). Uitsondering: 'n merkie "nog nie by SARS geregistreer nie" laat die werknemer toe sonder nommer, met 'n waarskuwing op elke run; die EMP501/IRP5 word vir daardie werknemer **geblokkeer** totdat die nommer ingevul is. | ❌ Gedeaktiveer sedert 2026-04-20 [V6] |
-| WN-03 | ID-nommer word gevalideer (13 syfers, Luhn, geboortedatum geldig) — op die backend, nie net in die blaaier nie. | ⚠️ Net frontend |
-| WN-04 | Geen duplikaat-werknemers: dieselfde ID-nommer kan nie twee keer aktief in dieselfde maatskappy wees nie. | ❌ |
+| WN-01 | Verpligte velde: naam, van, SA ID-nommer **of** paspoortnommer (+ land), aanstellingsdatum, betaalfrekwensie, basiese salaris of uurtarief. | ⚠️ Fase 10: ID/paspoort + belastingnommer verpleg by skep; aanstellingsdatum/frekwensie nog nie |
+| WN-02 | **BEVESTIG 2026-10-12 (opsie b):** SARS-belastingnommer is verpligtend (10 syfers, modulus-10-kontrole). Uitsondering: 'n merkie "nog nie by SARS geregistreer nie" laat die werknemer toe sonder nommer, met 'n waarskuwing op elke run; die EMP501/IRP5 word vir daardie werknemer **geblokkeer** totdat die nommer ingevul is. | ✅ Fase 10: verpligtend + modulus-10; "nog nie by SARS geregistreer nie" (migrasie 030), waarskuwing per run, IRP5 geblokkeer [V6 reg] |
+| WN-03 | ID-nommer word gevalideer (13 syfers, Luhn, geboortedatum geldig) — op die backend, nie net in die blaaier nie. | ✅ Fase 10: op die backend (13 syfers, Luhn, geboortedatum) |
+| WN-04 | Geen duplikaat-werknemers: dieselfde ID-nommer kan nie twee keer aktief in dieselfde maatskappy wees nie. | ✅ Fase 10: duplikaat-ID in dieselfde maatskappy geweier |
 | WN-05 | Ouderdom vir kortings word bereken op die laaste dag van die belastingjaar (uit geboortedatum, anders ID). | ✅ |
 | WN-06 | **BEVESTIG 2026-10-12: direkteure betaal UIF.** Die direkteur-vlag bly bestaan (vir verslae en vertroulikheid, WN-14), maar maak UIF nie meer 0 nie. | ✅ Fase 2 |
 | WN-07 | UIF-vrystelling per werknemer (bv. < 24 uur/maand) word in die berekening toegepas. | ✅ Fase 2 [B9 reg] |

@@ -1076,8 +1076,9 @@
                 <div class="form-group"><label>ID Number</label><input type="text" id="editIdNumberInput" maxlength="13"></div>
             </div>
             <div class="form-row">
-                <!-- RE-ACTIVATE: change label back to class="required" and restore required attribute on input -->
-                <div class="form-group"><label>Tax Number</label><input type="text" id="editTaxNumberInput" maxlength="10" data-tax-required-inactive="true" placeholder="e.g. 1234567890"></div>
+                <!-- Fase 10 (spec 03 WN-02): required again, unless "not yet registered with SARS" -->
+                <div class="form-group"><label>SARS Tax Number *</label><input type="text" id="editTaxNumberInput" maxlength="10" placeholder="10 digits">
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:12px;margin-top:6px;"><input type="checkbox" id="editTaxPendingInput" style="width:auto;"> Not yet registered with SARS (IRP5 blocked)</label></div>
             </div>
             <div class="form-row">
                 <div class="form-group"><label>Medical Aid Members</label><input type="number" id="editMedicalMembersInput" min="0" max="20" step="1" placeholder="0 = none"></div>
@@ -3970,6 +3971,7 @@
             document.getElementById('editPayMethodInput').value = e.payment_method || 'EFT';
             document.getElementById('editIdNumberInput').value = e.id_number || '';
             document.getElementById('editTaxNumberInput').value = e.tax_number || '';
+            document.getElementById('editTaxPendingInput').checked = e.tax_number_pending === true;
             document.getElementById('editMedicalMembersInput').value = e.medical_aid_members || '';
             document.getElementById('editTaxDirectiveInput').value = e.tax_directive || '';
             document.getElementById('editBankName').value = e.bank_name || '';
@@ -3997,9 +3999,12 @@
             currentEmployee.payment_method = document.getElementById('editPayMethodInput').value;
             currentEmployee.id_number = document.getElementById('editIdNumberInput').value.trim();
             var taxNum = document.getElementById('editTaxNumberInput').value.trim();
-            // TAX NUMBER REQUIRED — DEACTIVATED FOR TESTING (2026-04-20) — RE-ACTIVATE: uncomment the line below
-            // if (!taxNum) { alert('Tax Number is required for all employees.'); return; }
+            // Fase 10 (spec 03 WN-02): required unless "not yet registered with SARS"; the server
+            // checks the number (10 digits, check digit) and shows what is wrong.
+            var taxPending = document.getElementById('editTaxPendingInput').checked;
+            if (!taxNum && !taxPending) { alert('SARS tax number is required — or tick "Not yet registered with SARS".'); return; }
             currentEmployee.tax_number = taxNum;
+            currentEmployee.tax_number_pending = taxPending;
             currentEmployee.medical_aid_members = parseInt(document.getElementById('editMedicalMembersInput').value) || 0;
             currentEmployee.tax_directive = parseFloat(document.getElementById('editTaxDirectiveInput').value) || 0;
             currentEmployee.bank_name = document.getElementById('editBankName').value.trim();
@@ -4019,6 +4024,7 @@
                         phone:               currentEmployee.phone,
                         id_number:           currentEmployee.id_number,
                         tax_number:          currentEmployee.tax_number,
+                        tax_number_pending:  currentEmployee.tax_number_pending === true,
                         department:          currentEmployee.department,
                         position:            currentEmployee.position,
                         job_title:           currentEmployee.job_title,

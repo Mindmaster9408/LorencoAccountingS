@@ -9,7 +9,7 @@
 | TS-01 | Elke DB-navraag is tot die maatskappy (`company_id`) beperk. | ✅ |
 | TS-02 | Beperkte Paytime-gebruikers sien net hul toegelate werknemers (ID-lys of "publiek"). | ✅ |
 | TS-03 | Super-users het toegang tot alles (CLAUDE.md Part F); Coaching bly onsigbaar. | ✅ |
-| TS-04 | Wagwoord-gebaseerde goedkeurings (ontsluit) word beperk (bv. 5 pogings / 15 min), sê nie of 'n e-posadres bestaan nie, en aanvaar slegs bestuurders van dieselfde maatskappy, nie die versoeker self nie. | ❌ [B6] |
+| TS-04 | Wagwoord-gebaseerde goedkeurings (ontsluit) word beperk (bv. 5 pogings / 15 min), sê nie of 'n e-posadres bestaan nie, en aanvaar slegs bestuurders van dieselfde maatskappy, nie die versoeker self nie. | ✅ Fase 10 (ontsluit) |
 | TS-05 | Geen besigheids- of persoonlike data in blaaierberging nie (Part D + POPIA): ook nie as "kas" nie. | ❌ `cache_`-sleutels hou werknemers, salarisse, verlof; KV-brug vir notas, bywoning, rekon, ens. [B11] |
 | TS-06 | As 'n API-oproep faal, wys die skerm 'n fout — dit val nooit stil terug op ou gekaste data nie. | ❌ DataAccess val terug op kas |
 | TS-07 | KV-skryf (solank dit nog bestaan) moet suksesvol wees of 'n fout wys. | ❌ "Fire-and-forget" |

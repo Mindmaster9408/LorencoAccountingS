@@ -15,6 +15,7 @@
  */
 
 const express = require('express');
+const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 
@@ -454,7 +455,10 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
         sdl:            r2(agg.sdl),
         medical_credit: r2(agg.medical_credit),
         net_pay:        r2(agg.net_pay),
-        irp5_codes:     Object.values(agg.irp5_codes)
+        irp5_codes:     Object.values(agg.irp5_codes),
+        // Fase 10 / spec 03 WN-02: no IRP5 for an employee without a valid tax / ID number.
+        irp5_blocked:   employeeTaxIssues(emp).length > 0,
+        irp5_issues:    employeeTaxIssues(emp)
       };
     });
 
@@ -497,6 +501,7 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       taxYear,
       complianceNote: 'This is a reporting foundation only. Full SARS EMP501/IRP5 XML submission format is not yet implemented. Use this data as the basis for manual IRP5 certificate preparation.',
       livePayroll: emp501Records,
+      irp5BlockedCount: emp501Records.filter(r => r.irp5_blocked).length,
       historicalImports: historicalSummary
     });
   } catch (err) {

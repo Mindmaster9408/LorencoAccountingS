@@ -51,6 +51,7 @@ const {
 } = require('../services/periodSequence');
 const { getTaxConfigForPeriod } = require('../services/taxTables');
 const { payrollEligibility } = require('../services/payrollEligibility');
+const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
 
 const router = express.Router();
 
@@ -398,6 +399,18 @@ router.post(
         supabase, req.companyId, period_key, run.id
       );
 
+      // ── Fase 10 / spec 03 WN-02: warn on every run about missing or invalid SARS tax
+      // numbers and ID numbers (IRP5/EMP501 is blocked for these employees). Never blocks the run.
+      let warnings = [];
+      if (processed.length) {
+        const { data: taxRows } = await supabase.from('employees').select('*')
+          .eq('company_id', req.companyId).in('id', processed.map(p => p.employee_id));
+        warnings = (taxRows || []).map(e => ({
+          employee_id: e.id, name: ((e.first_name || '') + ' ' + (e.last_name || '')).trim(),
+          issues: employeeTaxIssues(e)
+        })).filter(w => w.issues.length);
+      }
+
       // ── Audit log ─────────────────────────────────────────────────────────
       try {
         await auditFromReq(req, 'PAYROLL_RUN', 'payroll_runs', run.id, {
@@ -426,6 +439,7 @@ router.post(
           sdl:   totals.totalSdl
         },
         superseded_run_ids: supersededRunIds,
+        warnings,
         timestamp: new Date().toISOString()
       });
 

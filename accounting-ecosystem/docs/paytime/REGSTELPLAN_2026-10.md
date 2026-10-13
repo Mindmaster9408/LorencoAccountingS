@@ -157,6 +157,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | **Afhanklik van** | Fase 1–7 (hierdie skerms vertoon net wat die vorige fases korrek maak) |
 
 ### Fase 10 — Sekuriteit en verpligte velde `[B6, V6]` → spec 13, 03
+
+**✅ Gebou 2026-10-13** ([FASE10_CHANGE_IMPACT_NOTE.md](FASE10_CHANGE_IMPACT_NOTE.md)). Ontsluit herskryf (maatskappy, self, limiet, faal-geslote, oudit — ouditlog het na 'n nie-bestaande tabel geskryf); belastingnommer weer verpligtend met "nog nie geregistreer nie" (migrasie 030); ID-validering en duplikate op die backend; run-waarskuwings + EMP501-blok; gedeelde oudit-helper hou konteks. Toetse: `tests/payroll-fase10.test.js` (18).
 | 10.1 | Ontsluiting: dieselfde maatskappy, nie self-goedkeuring, poging-limiet, faal-geslote. |
 | 10.2 | Belastingnommer en ID-validering op die backend (vraag 03.1). |
 | 10.3 | Duplikaat-werknemer-kontrole. |

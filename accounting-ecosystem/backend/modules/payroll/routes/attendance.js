@@ -131,7 +131,7 @@ router.post('/', requirePermission('ATTENDANCE.RECORD'), async (req, res) => {
       .upsert(rows, { onConflict: 'company_id,employee_id,attendance_date' })
       .select('id');
     if (error) return res.status(500).json({ error: error.message });
-    try { await auditFromReq(req, 'CREATE', 'attendance', null, { module: 'payroll', count: rows.length }); } catch (_) { /* audit is best effort */ }
+    try { await auditFromReq(req, 'CREATE', 'attendance', null, { module: 'payroll', metadata: { count: rows.length } }); } catch (_) { /* audit is best effort */ }
     res.status(201).json({ success: true, saved: (data || []).length });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -147,7 +147,7 @@ router.delete('/:id(\\d+)', requirePermission('ATTENDANCE.RECORD'), async (req, 
     if (!row || !visible.includes(row.employee_id)) return res.status(404).json({ error: 'Attendance record not found' });
     const { error } = await supabase.from('attendance').delete().eq('id', row.id).eq('company_id', req.companyId);
     if (error) return res.status(500).json({ error: error.message });
-    try { await auditFromReq(req, 'DELETE', 'attendance', row.id, { module: 'payroll', date: row.attendance_date, employee_id: row.employee_id }); } catch (_) { /* best effort */ }
+    try { await auditFromReq(req, 'DELETE', 'attendance', row.id, { module: 'payroll', metadata: { date: row.attendance_date, employee_id: row.employee_id } }); } catch (_) { /* best effort */ }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -237,7 +237,7 @@ router.post('/apply', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     }
     try {
       await auditFromReq(req, 'APPLY', 'attendance', null, {
-        module: 'payroll', period_key: periodKey, applied, skipped
+        module: 'payroll', metadata: { period_key: periodKey, applied, skipped }
       });
     } catch (_) { /* best effort */ }
     res.json({ success: true, period_key: periodKey, applied, skipped });

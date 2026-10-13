@@ -668,9 +668,12 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <!-- RE-ACTIVATE: change label back to class="required" and restore required attribute on input -->
-                        <label>Tax Number</label>
-                        <input type="text" id="tax_number" placeholder="e.g. 1234567890" maxlength="10" data-tax-required-inactive="true">
+                        <!-- Fase 10 (spec 03 WN-02): required again, unless "not yet registered with SARS" -->
+                        <label class="required">SARS Tax Number</label>
+                        <input type="text" id="tax_number" placeholder="10 digits, e.g. 0123456789" maxlength="10">
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:0.85rem;margin-top:6px;">
+                            <input type="checkbox" id="tax_number_pending" style="width:auto;"> Not yet registered with SARS (IRP5 blocked until the number is filled in)
+                        </label>
                     </div>
 
                     <div class="form-group">
@@ -1051,6 +1054,7 @@
                 document.getElementById('id_number').value = emp.id_number || '';
                 onIdNumberChange();
                 document.getElementById('tax_number').value = emp.tax_number || '';
+                document.getElementById('tax_number_pending').checked = emp.tax_number_pending === true;
                 document.getElementById('email').value = emp.email || '';
                 document.getElementById('phone').value = emp.phone || '';
                 document.getElementById('job_title').value = emp.job_title || '';
@@ -1097,16 +1101,16 @@
                 submitBtn.textContent = 'Save Employee';
                 return;
             }
-            /* TAX NUMBER REQUIRED — DEACTIVATED FOR TESTING (2026-04-20)
-             * RE-ACTIVATE: uncomment this block when testing is complete
-            if (!taxNumber) {
-                errorDiv.textContent = 'Tax number is required for PAYE compliance.';
+            // Fase 10 (spec 03 WN-02): tax number required unless "not yet registered with SARS".
+            // The server checks the number itself (10 digits, check digit).
+            var taxPending = document.getElementById('tax_number_pending').checked;
+            if (!taxNumber && !taxPending) {
+                errorDiv.textContent = 'SARS tax number is required — or tick "Not yet registered with SARS".';
                 errorDiv.style.display = 'block';
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Save Employee';
                 return;
             }
-            */
 
             var payload = {
                 first_name:      firstName,
@@ -1114,6 +1118,7 @@
                 employee_number: document.getElementById('employee_number').value.trim(),
                 id_number:       document.getElementById('id_number').value.trim()    || null,
                 tax_number:      taxNumber,
+                tax_number_pending: taxPending,
                 email:           document.getElementById('email').value.trim()        || null,
                 phone:           document.getElementById('phone').value.trim()        || null,
                 department:      document.getElementById('department').value.trim()   || null,
@@ -1172,9 +1177,8 @@
 
             } catch (err) {
                 var msg = err.message || 'Save failed. Please try again.';
-                if (msg.indexOf('tax_number') !== -1 || msg.indexOf('PAYE') !== -1) {
-                    msg = 'Tax number is required for PAYE compliance.';
-                } else if (msg.indexOf('unique') !== -1 || msg.indexOf('duplicate') !== -1 || msg.indexOf('23505') !== -1) {
+                // Tax / ID messages from the server are shown as they are — they say exactly what is wrong.
+                if (msg.indexOf('unique') !== -1 || msg.indexOf('duplicate') !== -1 || msg.indexOf('23505') !== -1) {
                     msg = 'An employee with this employee number already exists.';
                 } else if (msg.indexOf('first_name') !== -1 || msg.indexOf('last_name') !== -1) {
                     msg = 'Employee name is required.';
@@ -1492,7 +1496,9 @@
                         department:      row.department      || null,
                         position:        row.position || row.job_title || null,
                         hire_date:       row.date_appointed  || null,
-                        tax_number:      row.tax_number      || null
+                        tax_number:      row.tax_number      || null,
+                        // Imported staff without a tax number are flagged, not rejected (WN-02).
+                        tax_number_pending: !row.tax_number
                     });
                     imported++;
                 } catch (err) {

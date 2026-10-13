@@ -11,8 +11,31 @@ const express = require('express');
 const { supabase } = require('../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
+const { clean, idNumberError, taxNumberError } = require('../utils/saIdentity');
 
 const router = express.Router();
+
+/** Does employees.tax_number_pending exist yet (migration 030)? Cached once known. */
+let _hasPendingCol = null;
+async function hasPendingColumn() {
+  if (_hasPendingCol !== null) return _hasPendingCol;
+  const { error } = await supabase.from('employees').select('tax_number_pending').limit(1);
+  _hasPendingCol = !error;
+  return _hasPendingCol;
+}
+const NEEDS_030 = '"Not yet registered with SARS" needs database update 030 — fill in the tax number for now.';
+
+/** Name of another ACTIVE employee in this company with the same ID number, or null (WN-04). */
+async function findDuplicateId(companyId, idNumber, excludeId) {
+  const v = clean(idNumber);
+  if (!v) return null;
+  let q = supabase.from('employees').select('id, first_name, last_name')
+    .eq('company_id', companyId).eq('is_active', true).eq('id_number', v);
+  if (excludeId) q = q.neq('id', excludeId);
+  const { data } = await q.limit(1);
+  const d = (data || [])[0];
+  return d ? (`${d.first_name || ''} ${d.last_name || ''}`.trim() || ('#' + d.id)) : null;
+}
 
 router.use(authenticateToken);
 router.use(requireCompany);
@@ -99,10 +122,22 @@ router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
     if (!first_name || !last_name) {
       return res.status(400).json({ error: 'first_name and last_name are required' });
     }
-    // TAX NUMBER REQUIRED — DEACTIVATED FOR TESTING (2026-04-20) — RE-ACTIVATE: uncomment the block below
-    // if (!tax_number) {
-    //   return res.status(400).json({ error: 'tax_number is required — all employees must have a SARS tax reference number for PAYE compliance' });
-    // }
+    // Paytime Fase 10 (spec 03 WN-01/02/03/04): ID or passport required and valid; SARS tax
+    // number required and valid unless "not yet registered with SARS" is ticked; no second
+    // active employee with the same ID number in this company. Re-activates the tax-number
+    // requirement that was switched off for testing on 2026-04-20.
+    const taxPending = req.body.tax_number_pending === true;
+    if (taxPending && !clean(tax_number) && !(await hasPendingColumn())) return res.status(409).json({ error: NEEDS_030 });
+    const problems = [];
+    const idErr = idNumberError(id_number);
+    if (idErr) problems.push(idErr);
+    if (clean(tax_number) || !taxPending) {
+      const taxErr = taxNumberError(tax_number);
+      if (taxErr) problems.push(taxErr);
+    }
+    if (problems.length) return res.status(400).json({ error: problems.join('; '), problems });
+    const dupe = await findDuplicateId(req.companyId, id_number, null);
+    if (dupe) return res.status(409).json({ error: 'Another active employee (' + dupe + ') already has this ID number', code: 'DUPLICATE_ID' });
 
     const { data, error } = await supabase
       .from('employees')
@@ -112,7 +147,6 @@ router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
         last_name,
         email,
         phone,
-        id_number,
         employee_code: employee_number || `EMP-${Date.now()}`,
         department,
         position,
@@ -120,7 +154,9 @@ router.post('/', requirePermission('EMPLOYEES.CREATE'), async (req, res) => {
         hire_date: hire_date || new Date().toISOString().split('T')[0],
         hourly_rate: hourly_rate || 0,
         salary: 0,
-        tax_number,
+        tax_number: clean(tax_number) || null,
+        id_number: clean(id_number),
+        ...(taxPending && await hasPendingColumn() ? { tax_number_pending: true } : {}),
         is_active: true
       })
       .select()
@@ -160,7 +196,9 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
       'job_title', 'payment_method', 'medical_aid_members', 'tax_directive',
       'basic_salary', 'bank_name', 'account_holder', 'account_number', 'branch_code',
       // Voluntary PAYE over-deduction config (migration 012)
-      'voluntary_tax_config'
+      'voluntary_tax_config',
+      // "not yet registered with SARS" (migration 030, spec 03 WN-02)
+      'tax_number_pending'
     ];
     const updates = {};
     for (const key of allowed) {
@@ -172,6 +210,36 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
     if (req.body.date_appointed !== undefined) {
       updates.hire_date = req.body.date_appointed || null;
     }
+    // Paytime Fase 10: validate only what changes, so an existing incomplete record can still
+    // be edited — but a changed ID / tax number must be valid, and clearing the tax number
+    // needs "not yet registered with SARS".
+    const problems = [];
+    if (updates.id_number !== undefined && clean(updates.id_number) !== clean(old.id_number)) {
+      const idErr = idNumberError(updates.id_number);
+      if (idErr) problems.push(idErr);
+      else {
+        updates.id_number = clean(updates.id_number);
+        const dupe = await findDuplicateId(req.companyId, updates.id_number, old.id);
+        if (dupe) return res.status(409).json({ error: 'Another active employee (' + dupe + ') already has this ID number', code: 'DUPLICATE_ID' });
+      }
+    }
+    const pendingAfter = updates.tax_number_pending !== undefined ? updates.tax_number_pending === true : old.tax_number_pending === true;
+    if (updates.tax_number !== undefined && clean(updates.tax_number) !== clean(old.tax_number)) {
+      if (clean(updates.tax_number) || !pendingAfter) {
+        const taxErr = taxNumberError(updates.tax_number);
+        if (taxErr) problems.push(taxErr);
+      }
+      updates.tax_number = clean(updates.tax_number) || null;
+    }
+    if (problems.length) return res.status(400).json({ error: problems.join('; '), problems });
+    if (updates.tax_number) updates.tax_number_pending = false;   // a valid number replaces the flag
+    if (updates.tax_number_pending !== undefined && !(await hasPendingColumn())) {
+      if (updates.tax_number_pending === true && !clean(updates.tax_number !== undefined ? updates.tax_number : old.tax_number)) {
+        return res.status(409).json({ error: NEEDS_030 });
+      }
+      delete updates.tax_number_pending;
+    }
+
     updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
