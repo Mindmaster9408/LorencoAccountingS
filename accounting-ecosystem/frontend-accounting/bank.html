@@ -2356,6 +2356,7 @@ Click OK to simulate uploading a file.`;
             ${txn.status === 'unmatched' ? `<tr class="rule-suggestion-row" id="ruleBannerRow_${txn.id}">
                 <td colspan="13">
                     <div class="rule-suggestion-banner" id="ruleBanner_${txn.id}"></div>
+                    <div class="rule-suggestion-banner" id="payrollBanner_${txn.id}" style="display:none;"></div>
                 </td>
             </tr>` : ''}`;
         }
@@ -2379,6 +2380,7 @@ Click OK to simulate uploading a file.`;
                 restoreAllocationsToUI();
                 prefillRuleSuggestions(slice); // non-blocking
                 prefillSeanSuggestions(slice); // non-blocking
+                prefillPayrollMatches(slice); // non-blocking
             }
 
             renderPaginationBar(_allTxnData.length, page);
@@ -4077,6 +4079,88 @@ Click OK to simulate uploading a file.`;
                 bannerRow.classList.remove('show');
                 banner.innerHTML = '';
             }
+        }
+
+        // ── Payroll payments (Paytime spec 10 VU-04 part 2) ─────────────────────────
+        // Suggest which payroll payment an outgoing bank line is (exact amount + date
+        // window, from finalized payslips): net pay → Salaries Payable; SARS EMP201 →
+        // PAYE/UIF Payable + SDL Payable. Suggestion only — the user confirms, then the
+        // normal allocate endpoint posts the journal. Kept in page memory only.
+        const _payrollMatches = {};
+        async function prefillPayrollMatches(slice) {
+            const ids = (slice || []).filter(t => t.status === 'unmatched' && Number(t.amount) < 0).map(t => t.id);
+            if (!ids.length) return;
+            try {
+                const res = await fetch('/api/accounting/bank/payroll-matches?ids=' + encodeURIComponent(ids.join(',')), { headers: getAuthHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                Object.entries(data.matches || {}).forEach(([id, list]) => {
+                    _payrollMatches[id] = list;
+                    renderPayrollBanner(id, 0);
+                });
+            } catch (err) {
+                // Non-blocking — never breaks the page
+            }
+        }
+
+        function renderPayrollBanner(id, index) {
+            const list = _payrollMatches[id] || [];
+            const m = list[index];
+            const banner = document.getElementById('payrollBanner_' + id);
+            const bannerRow = document.getElementById('ruleBannerRow_' + id);
+            if (!m || !banner || !bannerRow) return;
+            const fmt = n => 'R ' + Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            let html = '&#128181; <strong>Payroll match:</strong> ' + escapeHtml(m.label) + ' (' + fmt(m.amount) + ')';
+            if (m.lines.length) html += ' &rarr; ' + m.lines.map(l => escapeHtml(l.accountCode + ' ' + l.accountName) + (m.lines.length > 1 ? ' ' + fmt(l.amount) : '')).join(' + ');
+            if (m.already_matched) html += ' <span style="color:#b06000;">&#9888; a bank payment was already allocated to this — check it is not a double payment</span>';
+            if (m.missing_accounts.length) {
+                html += ' <span style="color:#b06000;">&#9888; Add to your Chart of Accounts first: ' + m.missing_accounts.map(escapeHtml).join(', ') + '</span>';
+            } else {
+                html += ' <button class="btn-secondary" style="padding:2px 10px;font-size:12px;" onclick="allocatePayrollMatch(\'' + id + '\', ' + index + ')">Allocate as payroll payment</button>';
+            }
+            if (list.length > 1) html += ' <a href="#" style="font-size:11px;" onclick="renderPayrollBanner(\'' + id + '\', ' + ((index + 1) % list.length) + ');return false;">other match (' + (index + 1) + '/' + list.length + ')</a>';
+            banner.innerHTML = html;
+            banner.style.display = '';
+            bannerRow.classList.add('show');
+        }
+
+        function allocatePayrollMatch(id, index) {
+            const m = (_payrollMatches[id] || [])[index];
+            const txnData = getTransactionData(id);
+            if (!m || !txnData || !m.lines.length) return;
+            const fmt = n => 'R ' + Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            openBankActionModal({
+                title: 'Allocate payroll payment',
+                detailsHtml: [
+                    '<p><strong>' + escapeHtml(m.label) + '</strong></p>',
+                    '<p><strong>Bank:</strong> ' + escapeHtml(txnData.date) + ' &middot; ' + escapeHtml(txnData.description) + ' &middot; ' + fmt(Math.abs(txnData.amount)) + '</p>',
+                    '<p>' + m.lines.map(l => escapeHtml(l.accountCode + ' ' + l.accountName) + ': ' + fmt(l.amount)).join('<br>') + '</p>',
+                    m.already_matched ? '<p style="color:#b06000;">&#9888; A bank payment was already allocated to this payroll item.</p>' : ''
+                ].join(''),
+                confirmText: 'Allocate',
+                loadingText: 'Allocating…',
+                actionKey: 'allocatePayroll:' + id,
+                onConfirm: async () => {
+                    const res = await fetch('/api/accounting/bank/transactions/' + id + '/allocate', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({
+                            lines: m.lines.map(l => ({ accountId: l.accountId, amount: l.amount, description: m.label })),
+                            description: m.label,
+                            allocationType: 'account',
+                            payrollMatchKey: m.key
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+                    delete _payrollMatches[id];
+                    delete transactionAllocations[id];
+                    saveAllocationsToStorage();
+                    await loadTransactions();
+                    switchTab('reviewed', null);
+                    showBankPageAlert('Payroll payment allocated. Journal Reference: ' + escapeHtml(data.journal ? data.journal.reference : '—') + '. Reconcile it in the Reviewed tab.', 'warning');
+                }
+            });
         }
 
         // Fetch and apply bank rule suggestions for all unmatched rows on the current page.

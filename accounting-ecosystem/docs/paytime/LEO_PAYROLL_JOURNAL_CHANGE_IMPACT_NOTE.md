@@ -26,8 +26,26 @@ Behaviour:
     Nothing is ever created in a client's chart of accounts automatically.
   - Never affects finalization/reversal: any failure is reported, payroll continues.
 
-Not built yet (rest of VU-04 / VU-10): Leo pulling the employee payments from the bank
-and matching them to the net pay (reference "SAL YYYY-MM CODE").
+Added 2026-10-13 — bank payments (rest of VU-04):
+  - modules/accounting/services/payrollBankMatching.js (new) + GET
+    /api/accounting/bank/payroll-matches?ids=… (bank.view). For UNMATCHED money-out bank
+    lines it suggests, by exact amount (to the cent) and date window, from finalized
+    snapshots only:
+      net pay of one employee (1st of month → 20 days after month end) → Salaries Payable
+      net pay of a whole run (bulk EFT, 2+ employees)                → Salaries Payable
+      SARS EMP201 of the month (−10 → +60 days of month end)         → 2400 PAYE/UIF + 2410 SDL
+  - Bank page: "Payroll match" line under the transaction + "Allocate as payroll
+    payment" → the normal confirm dialog → the normal /allocate endpoint (journal
+    posted + validated + reversible as before). Several candidates: "other match".
+  - /allocate stores a validated metadata.payrollMatchKey on the bank journal. A match
+    already used by a non-reversed bank journal is still shown but ranked last with a
+    double-payment warning. Unallocating (journal reversed) frees it again.
+  - Missing control account → the line names the account to add; no button.
+  - Nothing is allocated automatically. Today no company has both finalized payroll and
+    Leo bank lines, so nothing shows anywhere yet.
+  Not built: matching by bank reference text (amount+date is enough so far); Capitec
+  format (needs a sample).
+  Tests: tests/payroll-bank-matching.test.js (9); ofx-bank-import unchanged (16).
 
 Tests: tests/payroll-ledger-journal.test.js (8). Payroll gate 327 pass; golden 0 diffs.
 Rollback: git revert (drafts already created can be deleted in Leo).

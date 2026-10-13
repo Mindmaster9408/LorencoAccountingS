@@ -13,7 +13,7 @@ Bestuur kan payroll-koste ontleed, die bank kan betaal word uit 'n lêer, en die
 | VU-01 | Alle verslae lees uit die backend (snapshots + ingevoerde historiese data), nooit uit KV/blaaier nie. | ✅ Fase 9/11: syfer- en ouditverslae uit die backend |
 | VU-02 | Standaardverslae: payroll-register per maand, koste per departement, jaaranalise per werknemer, items per kode, oortyd-verslag. | ⚠️ `annual-analysis` bestaan op backend |
 | VU-03 | Banklêer (EFT) word gegenereer uit die geslote snapshots se netto bedrae + werknemer-bankbesonderhede; totaal = som van netto. | ✅ Fase 9: uit die gesluite snapshots (netto) + bankbesonderhede in die DB |
-| VU-04 | **Payroll-joernaal na Ledger Leo** per gefinaliseerde run: salarisuitgawe, werkgewerkoste (UIF, SDL), PAYE/UIF/SDL-laste, netto-betaalbaar. Omkeer van 'n run keer die joernaal om. | ⚠️ Konsep-joernaal by finalisering + omkeer gebou (LEO_PAYROLL_JOURNAL_CHANGE_IMPACT_NOTE.md); bankbetalings-passing nog nie |
+| VU-04 | **Payroll-joernaal na Ledger Leo** per gefinaliseerde run: salarisuitgawe, werkgewerkoste (UIF, SDL), PAYE/UIF/SDL-laste, netto-betaalbaar. Omkeer van 'n run keer die joernaal om. | ✅ Konsep-joernaal by finalisering + omkeer; Leo se Bank-blad herken salaris- en EMP201-betalings (voorstel, rekenmeester bevestig) — LEO_PAYROLL_JOURNAL_CHANGE_IMPACT_NOTE.md |
 | VU-05 | Uitvoere na Xero/ander pakkette is opsioneel en lees dieselfde snapshots. | ⚠️ Knoppie bestaan, nie volledig nie |
 
 ## Beantwoord deur Ruan (2026-10-12)

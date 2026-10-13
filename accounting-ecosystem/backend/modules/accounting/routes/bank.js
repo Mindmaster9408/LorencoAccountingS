@@ -13,6 +13,7 @@ const PdfStatementImportService = require('../../../sean/pdf-statement-import-se
 const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
 const OFXParserService = require('../services/ofxParserService');
+const PayrollBankMatching = require('../services/payrollBankMatching');
 
 const router = express.Router();
 
@@ -1277,9 +1278,25 @@ async function _validatePostedAllocationJournal(companyId, journalId, bankTxn, l
  *   CUSTOMER/SUPPLIER payment lines must NOT carry vatSettingId — they are settling
  *   invoices where VAT is already handled on the invoice side.
  */
+// ─── GET /payroll-matches — which payroll payment is this bank line? ────────────
+// Paytime spec 10 VU-04 part 2. Suggestions only (exact amount + date window) from
+// finalized payslips: net pay per employee / per run → Salaries Payable; EMP201 →
+// PAYE/UIF Payable (2400) + SDL Payable (2410). The accountant confirms via /allocate.
+// Query: ?ids=1,2,3 (unmatched money-out transactions of the current company).
+router.get('/payroll-matches', authenticate, hasPermission('bank.view'), async (req, res) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').filter(Boolean);
+    const matches = await PayrollBankMatching.suggestForTransactions(supabase, req.user.companyId, ids);
+    res.json({ success: true, matches });
+  } catch (err) {
+    console.error('[bank.payroll-matches]', err.message);
+    res.status(500).json({ success: false, error: 'Could not check payroll payments' });
+  }
+});
+
 router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
   try {
-    const { lines, description, allocationType, appliedRuleId } = req.body;
+    const { lines, description, allocationType, appliedRuleId, payrollMatchKey } = req.body;
 
     // Validate appliedRuleId if provided — must belong to company and be active
     if (appliedRuleId != null) {
@@ -1473,7 +1490,9 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       lines: journalLines,
       metadata: Object.assign(
         { bankTransactionId: bankTxn.id },
-        appliedRuleId != null ? { appliedRuleId } : {}
+        appliedRuleId != null ? { appliedRuleId } : {},
+        // Paytime spec 10 VU-04: which payroll payment this bank line was confirmed as
+        PayrollBankMatching.cleanMatchKey(payrollMatchKey) ? { payrollMatchKey: PayrollBankMatching.cleanMatchKey(payrollMatchKey) } : {}
       )
     });
 

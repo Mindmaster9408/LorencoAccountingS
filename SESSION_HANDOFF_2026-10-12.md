@@ -138,6 +138,10 @@
 
 - Sean matches payroll items on meaning + side (`backend/sean/item-meaning.js`): "Comm." = "Commission"; an earning "Savings" ≠ a deduction "Savings" (before: name only — a deduction code could have landed on an earning). SEVCO proposal card lists every company + item name that will be filled. Safety rules unchanged (only empty codes, conditional write). No DB change.
 
+## Leo bank payments for payroll (2026-10-13) — docs/paytime/LEO_PAYROLL_JOURNAL_CHANGE_IMPACT_NOTE.md
+
+- Leo Bank page suggests which outgoing bank line is an employee's net pay, a whole run's net pay, or the month's EMP201 (exact amount + date window, finalized payslips only); "Allocate as payroll payment" uses the normal allocate flow (Salaries Payable / 2400 + 2410). Used matches are flagged against double payment. No DB change, nothing automatic.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -153,6 +157,7 @@
 11. Ledger Leo-joernaal: in elke maatskappy wat Leo gebruik, voeg 2 rekeninge in die Chart of Accounts by: "Payroll Deductions Payable" (laste, bv. 2420) en "Salaries Payable" (laste, bv. 2430). Toets dan op TEST: finaliseer 'n run → Leo → Journals wys 'n konsep "PAYROLL YYYY-MM".
 12. Migrasie 032: sê "ja 032" — tabel vir versteekte payroll-items (was in KV; geen data om oor te skuif nie). Toets dan: Payroll Items → versteek 'n item → dit verdwyn uit die payslip se item-kieser; 'n nuwe maatskappy-item verskyn wel in die kieser.
 13. Sean (SEVCO): wanneer 'n IRP5-voorstel verskyn, lees die "Will be filled"-lys (maatskappy + itemnaam) voor jy goedkeur — Sean pas nou op betekenis, so kyk dat elke naam regtig dieselfde item is.
+14. Leo-bankpassing (ná punt 11): op TEST, voer 'n banklyn in met presies die netto betaling van 'n werknemer van 'n gefinaliseerde maand (datum in daardie maand) → Leo → Bank wys "Payroll match" → "Allocate as payroll payment" → joernaal Dr Salaries Payable / Cr Bank. Probeer ook die EMP201-totaal.
 
 ## Open risks / follow-ups
 
