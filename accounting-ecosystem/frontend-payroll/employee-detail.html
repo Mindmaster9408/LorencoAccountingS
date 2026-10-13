@@ -1208,8 +1208,6 @@
             
             // Use setTimeout to ensure DOM is fully ready (Edge compatibility)
             setTimeout(async function() {
-                // Load custom tax tables from Supabase KV (super-admin can update annually)
-                PayrollEngine.loadTaxConfig();
                 await loadEmployee();
                 loadEmployeeNav();
                 // If coming via SSO, availableCompanies may be empty — fetch async then render

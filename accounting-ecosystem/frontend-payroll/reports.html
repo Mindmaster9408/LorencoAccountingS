@@ -354,8 +354,34 @@
             return JSON.parse(safeLocalStorage.getItem('emp_payslip_status_' + currentCompanyId + '_' + empId + '_' + period) || '{"status":"draft"}');
         }
 
+        // Fase 9 (spec 10 VU-01): reports show the FINALIZED payslips from the backend
+        // snapshots — the browser no longer recalculates anything (it used the frontend
+        // engine on browser/KV data, which could differ from what was actually paid).
+        // An employee without a finalized payslip for a month is left out (gross 0).
+        var _periodSnapCache = {};
+        async function _finalizedOutputs(period) {
+            if (!_periodSnapCache[period]) {
+                _periodSnapCache[period] = PayrollAPI.getHistory(period).then(function(res) {
+                    var map = {};
+                    var snaps = (res && res.ok && res.data && res.data.snapshots) || [];
+                    snaps.forEach(function(s) {
+                        if (s.is_locked && s.status !== 'reversed') map[String(s.employee_id)] = s.calculation_output || {};
+                    });
+                    return map;
+                }).catch(function() { return {}; });
+            }
+            return _periodSnapCache[period];
+        }
         async function calculateEmployeePeriod(empId, period) {
-            return await PayrollEngine.calculateEmployeePeriod(currentCompanyId, empId, period);
+            var out = (await _finalizedOutputs(period))[String(empId)];
+            if (!out) return { gross: 0, taxableGross: 0, paye: 0, uif: 0, uif_employer: 0, sdl: 0, deductions: 0, net: 0 };
+            return {
+                gross: Number(out.gross || 0), taxableGross: Number(out.taxableGross || 0),
+                paye: Number(out.paye || 0), paye_base: Number(out.paye_base != null ? out.paye_base : out.paye || 0),
+                uif: Number(out.uif || 0), uif_employer: Number(out.uif_employer != null ? out.uif_employer : out.uif || 0),
+                sdl: Number(out.sdl || 0), deductions: Number(out.deductions || 0), net: Number(out.net || 0),
+                medicalCredit: Number(out.medicalCredit || 0)
+            };
         }
 
         function r2(n) { return Math.round(n * 100) / 100; }
@@ -505,6 +531,7 @@
 
         // ========== GENERATE REPORT ==========
         async function generateReport() {
+            _periodSnapCache = {};   // always read the latest finalized payslips
             switch (currentReport) {
                 case 'transaction-history': await generateTransactionHistory(); break;
                 case 'employee-master': generateEmployeeMaster(); break;
@@ -751,7 +778,7 @@
                 for (const emp of filteredEmps) {
                     const calc = await calculateEmployeePeriod(emp.id, period);
                     if (calc.gross <= 0) continue;
-                    const uifEr = calc.uif; // Employer matches
+                    const uifEr = calc.uif_employer; // from the finalized payslip
                     rows.push([
                         emp.employee_number, emp.first_name + ' ' + emp.last_name, emp.department || '-',
                         formatMoney(calc.gross), formatMoney(calc.paye), formatMoney(calc.uif),
@@ -874,7 +901,7 @@
                 for (const emp of employees) {
                     const calc = await calculateEmployeePeriod(emp.id, period);
                     if (calc.gross <= 0) continue;
-                    const uifEr = calc.uif;
+                    const uifEr = calc.uif_employer; // from the finalized payslip
                     rows.push([
                         emp.employee_number, emp.first_name + ' ' + emp.last_name,
                         emp.id_number || '-', formatMoney(calc.gross), formatMoney(calc.paye),

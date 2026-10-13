@@ -148,6 +148,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | **Afhanklik van** | Fase 2 · Ruan: vraag 05.1 |
 
 ### Fase 9 — Een enjin; Payslips-blad, verslae, Net-to-Gross op die backend `[K6, B5, B12]` → spec 08, 10, 11
+
+**✅ Gebou 2026-10-13** ([FASE9_CHANGE_IMPACT_NOTE.md](FASE9_CHANGE_IMPACT_NOTE.md)). 9.1 ou Payslips-blad afgeskakel + banklêer/massa-payslips uit snapshots; 9.2 verslae uit gesluite snapshots; 9.3 Net-to-Gross op die backend (toelaes herhalend); 9.4 frontend-enjin bereken nêrens meer nie behalwe die invoerblad (Fase 12). Oop: Leo-joernaal (VU-04), Capitec-formaat, Sean-preflight.
 | 9.1 | Payslips-blad (`payruns.html`): afskaf of herbou op snapshots (vraag 08.1). |
 | 9.2 | Reports na backend (roadmap P1-B). |
 | 9.3 | Net-to-Gross via backend; toelaes as herhalend. |

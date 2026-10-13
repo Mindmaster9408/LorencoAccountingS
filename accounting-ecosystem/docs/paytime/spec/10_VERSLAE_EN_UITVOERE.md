@@ -10,7 +10,7 @@ Bestuur kan payroll-koste ontleed, die bank kan betaal word uit 'n lêer, en die
 
 | # | Reël | Status |
 |---|---|---|
-| VU-01 | Alle verslae lees uit die backend (snapshots + ingevoerde historiese data), nooit uit KV/blaaier nie. | ❌ `reports.html` gebruik die frontend-enjin + KV (roadmap P1-B) |
+| VU-01 | Alle verslae lees uit die backend (snapshots + ingevoerde historiese data), nooit uit KV/blaaier nie. | ⚠️ Fase 9: syfer-verslae uit gesluite snapshots; oudit-/verslaggeskiedenis-lyste nog KV (Fase 11) |
 | VU-02 | Standaardverslae: payroll-register per maand, koste per departement, jaaranalise per werknemer, items per kode, oortyd-verslag. | ⚠️ `annual-analysis` bestaan op backend |
 | VU-03 | Banklêer (EFT) word gegenereer uit die geslote snapshots se netto bedrae + werknemer-bankbesonderhede; totaal = som van netto. | ✅ Fase 9: uit die gesluite snapshots (netto) + bankbesonderhede in die DB |
 | VU-04 | **Payroll-joernaal na Ledger Leo** per gefinaliseerde run: salarisuitgawe, werkgewerkoste (UIF, SDL), PAYE/UIF/SDL-laste, netto-betaalbaar. Omkeer van 'n run keer die joernaal om. | 🆕 Bestaan nie |

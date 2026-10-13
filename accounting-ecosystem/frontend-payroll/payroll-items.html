@@ -874,7 +874,6 @@
             }
 
             currentCompanyId = session.company_id;
-            PayrollEngine.loadTaxConfig(); // Load Supabase-stored tax tables if set
 
             // Tax Configuration: visible to all, but editable only for super_admin.
             // Non-super_admin companies see the global standard as read-only.
@@ -1834,30 +1833,14 @@
             if (!m || Number(m[2]) !== Number(m[1]) + 1) { alert('Invalid format. Use YYYY/YYYY — e.g. 2027/2028'); return; }
             if (taxYearsData[label]) { switchToTaxYear(label); return; }
 
-            // Start from the code default for that year if known, else copy the latest year,
-            // and save it as an unconfirmed draft straight away.
-            var ht = PayrollEngine.HISTORICAL_TABLES && PayrollEngine.HISTORICAL_TABLES[label];
+            // Start from a copy of the latest year in the database (the frontend engine's tables
+            // are stale — Fase 9), saved straight away as an unconfirmed draft.
             var labels = Object.keys(taxYearsData).sort();
             var base = labels.length ? taxYearsData[labels[labels.length - 1]] : null;
-            var payload;
-            if (ht) {
-                payload = {
-                    tax_year: label,
-                    brackets: ht.BRACKETS.map(function(b, i, all) {
-                        return { min: b.min, max: i === all.length - 1 ? null : b.max, base: b.base, rate: b.rate };
-                    }),
-                    primary_rebate: ht.PRIMARY_REBATE, secondary_rebate: ht.SECONDARY_REBATE, tertiary_rebate: ht.TERTIARY_REBATE,
-                    uif_rate: ht.UIF_RATE, uif_monthly_cap: ht.UIF_MONTHLY_CAP, sdl_rate: ht.SDL_RATE,
-                    medical_credit_main: ht.MEDICAL_CREDIT_MAIN, medical_credit_first_dep: ht.MEDICAL_CREDIT_FIRST_DEP,
-                    medical_credit_additional: ht.MEDICAL_CREDIT_ADDITIONAL
-                };
-            } else if (base) {
-                payload = { tax_year: label, brackets: base.brackets };
-                ['primary_rebate', 'secondary_rebate', 'tertiary_rebate', 'uif_rate', 'uif_monthly_cap', 'sdl_rate',
-                 'medical_credit_main', 'medical_credit_first_dep', 'medical_credit_additional'].forEach(function(k) { payload[k] = base[k]; });
-            } else {
-                alert('No year to copy from.'); return;
-            }
+            if (!base) { alert('No year to copy from.'); return; }
+            var payload = { tax_year: label, brackets: base.brackets };
+            ['primary_rebate', 'secondary_rebate', 'tertiary_rebate', 'uif_rate', 'uif_monthly_cap', 'sdl_rate',
+             'medical_credit_main', 'medical_credit_first_dep', 'medical_credit_additional'].forEach(function(k) { payload[k] = base[k]; });
             payload.confirmed = false;
             payload.source = 'Copied as a starting point — update from the SARS budget';
             putTaxYear(payload, '✅ ' + label + ' added as a draft (copied). Update the figures from the SARS budget, Save, then Confirm.');

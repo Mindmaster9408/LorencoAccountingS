@@ -129,7 +129,7 @@ Onaktief beteken: die kode word **nie uitgehaal nie**. Dit word net deur 'n inst
 
 | # | Reël | Status |
 |---|---|---|
-| ENJ-40 | Daar is net een enjin; die frontend roep die backend vir elke syfer (ook Net-to-Gross en verslae). | ❌ Frontend-enjin nog in gebruik [B5] |
+| ENJ-40 | Daar is net een enjin; die frontend roep die backend vir elke syfer (ook Net-to-Gross en verslae). | ⚠️ Fase 9: payslip, Execute Payroll, verslae, banklêer en Net-to-Gross op die backend; net die invoerblad nog op die frontend-enjin (Fase 12) |
 | ENJ-41 | Elke berekening is herhaalbaar: dieselfde invoer + tabelle = presies dieselfde uitset (goue toetse). | ✅ Golden-toetse (S01–S72, M01–M11) — almal slaag |
 | ENJ-42 | **BEVESTIG 2026-10-12:** betaalfrekwensies **maandeliks, tweeweekliks, weekliks en daagliks** word ondersteun en korrek belas (12 / 26 / 52 / werkdae per jaar). Die frekwensie kom uit die maatskappy se instelling in *Company Details* (reeds ingebou: Monthly, Bi-Weekly, Weekly; Daily moet bygevoeg word) en die werknemer se betaalskedule. | 🆕 Enjin is tans net maandeliks |
 

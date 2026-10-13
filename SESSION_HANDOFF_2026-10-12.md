@@ -110,9 +110,10 @@
 - CLAUDE.md Part D: attendance_* KV follow-up marked done.
 - Migration 029 run + verified 2026-10-13 (re-apply replaces only attendance rows; manual kept).
 
-## Fase 9 (in progress, 2026-10-13)
+## Fase 9 (2026-10-13) — docs/paytime/FASE9_CHANGE_IMPACT_NOTE.md
 
 - 9.1 Old Payslips page (payruns.html) retired: out of menu, redirects to Execute Payroll (?legacy=1 still opens it). Execute Payroll: payslip preview + bulk print from frozen lines (bulk print printed "Lorenco Accounting Services" for every company — fixed), new Bank File (generic CSV + FNB/ABSA/Standard/Nedbank) from finalized net pay, refuses when EFT bank details are missing. Not carried over yet: Xero/Sage export (→ Leo journal VU-04), Sean preflight button, payroll upload (Fase 12), Capitec format.
+- 9.2 reports.html: Summary/Tax/YTD/Variance from finalized snapshots. 9.4: frontend engine no longer loads KV tax config; only historical-import.html still calculates in the browser (Fase 12).
 - 9.3 Net-to-Gross on the backend (`POST /api/payroll/calculate/net-to-gross`), allowances recurring by default (B12), period tax tables.
 
 ## Open risks / follow-ups
