@@ -35,6 +35,28 @@ const FIELDS = [
   'confirmed', 'source'
 ];
 
+/**
+ * Spec 02 BT-08 (Fase 1 follow-up): is the tax table for the CURRENT tax year confirmed,
+ * and — from 1 February — the NEXT one? Pure; used for the warning banners.
+ * @returns {{ current_tax_year, current_ready, next_tax_year, next_ready, warn, message }}
+ */
+function taxYearReadiness(rows, periodKey) {
+  const ready = (y) => rows.some(r => r.tax_year === y && r.confirmed === true);
+  const cur = PayrollEngine.getTaxYearForPeriod(periodKey);
+  const end = parseInt(cur.split('/')[1], 10);
+  const next = end + '/' + (end + 1);
+  const isFeb = Number(periodKey.split('-')[1]) === 2;
+  const out = { current_tax_year: cur, current_ready: ready(cur), next_tax_year: next, next_ready: ready(next), warn: false, message: null };
+  if (!out.current_ready) {
+    out.warn = true;
+    out.message = 'The tax tables for ' + cur + ' are not confirmed — payroll for this tax year cannot be calculated. A super user must load and confirm them in Payroll Items → Tax Configuration.';
+  } else if (isFeb && !out.next_ready) {
+    out.warn = true;
+    out.message = 'March payroll needs the ' + next + ' tax tables, which are not confirmed yet. Load the SARS budget figures in Payroll Items → Tax Configuration and confirm them before running March.';
+  }
+  return out;
+}
+
 router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -45,10 +67,12 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       if (isMissingTableError(error)) return res.json({ success: true, migrated: false, tables: [] });
       return res.status(500).json({ success: false, error: error.message });
     }
+    const nowKey = new Date(Date.now() + 2 * 3600000).toISOString().slice(0, 7);   // SA time
     res.json({
       success: true,
       migrated: true,
-      current_tax_year: PayrollEngine.getTaxYearForPeriod(new Date().toISOString().slice(0, 7)),
+      current_tax_year: PayrollEngine.getTaxYearForPeriod(nowKey),
+      readiness: taxYearReadiness(data || [], nowKey),
       can_edit: req.user && req.user.role === 'super_admin' && await isGlobalPayrollAuthority(req.companyId),
       tables: data || []
     });
@@ -148,4 +172,5 @@ router.put('/', async (req, res) => {
   }
 });
 
+router.taxYearReadiness = taxYearReadiness;
 module.exports = router;

@@ -252,3 +252,21 @@ describe('/api/payroll/tax-tables routes', () => {
     }
   });
 });
+
+describe('BT-08 tax-year readiness (warning banner)', () => {
+  const { taxYearReadiness } = require('../modules/payroll/routes/tax-tables');
+  const rows = [{ tax_year: '2026/2027', confirmed: true }, { tax_year: '2027/2028', confirmed: false }];
+  test('quiet during the year when the current year is confirmed', () => {
+    expect(taxYearReadiness(rows, '2026-10').warn).toBe(false);
+  });
+  test('from February: warns when next year is not confirmed', () => {
+    const r = taxYearReadiness(rows, '2027-02');
+    expect([r.warn, r.next_tax_year, r.next_ready]).toEqual([true, '2027/2028', false]);
+  });
+  test('February is quiet once next year is confirmed', () => {
+    expect(taxYearReadiness([rows[0], { tax_year: '2027/2028', confirmed: true }], '2027-02').warn).toBe(false);
+  });
+  test('current year missing / unconfirmed always warns', () => {
+    expect(taxYearReadiness(rows, '2027-03').message).toMatch(/2027\/2028 are not confirmed/);
+  });
+});
