@@ -24,19 +24,7 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(requireCompany);
 
-/** Same lookup order as POST /api/payroll/run: global first, then company-specific. */
-async function loadTaxConfig(companyId) {
-  for (const cid of ['__global__', companyId]) {
-    const { data } = await supabase
-      .from('payroll_kv_store_eco')
-      .select('value')
-      .eq('company_id', cid)
-      .eq('key', 'tax_config')
-      .maybeSingle();
-    if (data && data.value) return typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-  }
-  return null;
-}
+const { getTaxConfigForPeriod } = require('../services/taxTables');
 
 function addMonths(periodKey, n) {
   const [y, m] = periodKey.split('-').map(Number);
@@ -104,7 +92,14 @@ router.post(
       }
 
       const empId = parseInt(employee_id, 10);
-      const taxConfig = await loadTaxConfig(req.companyId);
+      // Tax tables of the BONUS month's tax year (spec 02, Fase 1).
+      let taxConfig;
+      try {
+        taxConfig = await getTaxConfigForPeriod(supabase, req.companyId, bonusPeriod);
+      } catch (ttErr) {
+        if (ttErr.code === 'TAX_TABLES_MISSING') return res.status(422).json({ success: false, error: ttErr.message });
+        throw ttErr;
+      }
 
       // Bonus tax X in the bonus month itself (same YTD and tables as Execute Payroll).
       const normalizedInputs = await PayrollDataService.fetchCalculationInputs(

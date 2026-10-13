@@ -25,13 +25,13 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 20000.00,
             taxableGross: 20000.00,
-            paye: 1819.06,
+            paye: 1739.00,
             uif: 177.12,
             sdl: 200.00,
             deductions: 0.00,
-            net: 18003.82,
+            net: 18083.88,
             negativeNetPay: false,
-            medicalCredit: 364.00
+            medicalCredit: 376.00
         }
     },
     {
@@ -48,13 +48,13 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 21384.68,
             taxableGross: 21384.68,
-            paye: 2179.08,
+            paye: 1988.24,
             uif: 177.12,
             sdl: 213.85,
             deductions: 0.00,
-            net: 19028.48,
+            net: 19219.32,
             negativeNetPay: false,
-            medicalCredit: 364.00
+            medicalCredit: 376.00
         }
     },
     {
@@ -71,13 +71,13 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 18846.10,
             taxableGross: 18846.10,
-            paye: 1592.05,
+            paye: 1531.30,
             uif: 177.12,
             sdl: 188.46,
             deductions: 0.00,
-            net: 17076.93,
+            net: 17137.68,
             negativeNetPay: false,
-            medicalCredit: 364.00
+            medicalCredit: 376.00
         }
     },
     {
@@ -94,11 +94,11 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 20000.00,
             taxableGross: 20000.00,
-            paye: 2183.06,
+            paye: 2115.00,
             uif: 177.12,
             sdl: 200.00,
             deductions: 0.00,
-            net: 17639.82,
+            net: 17707.88,
             negativeNetPay: false,
             medicalCredit: 0.00
         }
@@ -123,7 +123,7 @@ const REGRESSION_SCENARIOS = [
             deductions: 0.00,
             net: 16822.88,
             negativeNetPay: false,
-            medicalCredit: 364.00
+            medicalCredit: 376.00
         }
     },
     {
@@ -140,13 +140,13 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 20000.00,
             taxableGross: 20000.00,
-            paye: 1209.06,
+            paye: 1109.00,
             uif: 177.12,
             sdl: 200.00,
             deductions: 0.00,
-            net: 18613.82,
+            net: 18713.88,
             negativeNetPay: false,
-            medicalCredit: 974.00
+            medicalCredit: 1006.00
         }
     },
     {
@@ -163,13 +163,13 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 20000.00,
             taxableGross: 20000.00,
-            paye: 1032.06,
+            paye: 925.25,
             uif: 177.12,
             sdl: 200.00,
             deductions: 0.00,
-            net: 18790.82,
+            net: 18897.63,
             negativeNetPay: false,
-            medicalCredit: 364.00
+            medicalCredit: 376.00
         }
     },
     {
@@ -186,15 +186,15 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 19500.00,
             taxableGross: 18500.00,
-            paye: 1529.75,
+            paye: 1469.00,
             uif: 177.12,
             // SDL is on leviable (taxable) remuneration only: 1% × 18 500 — the R1 000
             // non-taxable allowance is excluded (Fase 2, spec 04 IT-15). Was 195.00 (1% of gross).
             sdl: 185.00,
             deductions: 0.00,
-            net: 17793.13,
+            net: 17853.88,
             negativeNetPay: false,
-            medicalCredit: 364.00
+            medicalCredit: 376.00
         }
     },
     {
@@ -234,13 +234,13 @@ const REGRESSION_SCENARIOS = [
         baseline: {
             gross: 24154.04,
             taxableGross: 24154.04,
-            paye: 2899.11,
+            paye: 2486.73,
             uif: 177.12,
             sdl: 241.54,
             deductions: 0.00,
-            net: 21077.81,
+            net: 21490.19,
             negativeNetPay: false,
-            medicalCredit: 364.00
+            medicalCredit: 376.00
         }
     }
 ];

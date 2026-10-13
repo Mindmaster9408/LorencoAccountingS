@@ -8,6 +8,7 @@
  *   from().select(cols).eq/neq/in/is/not/ilike/order/limit
  *   terminals: await (thenable), maybeSingle(), single()
  *   from().insert(row).select().single()   (payroll_periods auto-create)
+ *   from().upsert(row, { onConflict }).select().single()   (tax tables, KV mirror)
  *
  * Column projection is honoured, including nested joins such as
  * "payroll_items(code, name)". This matters: a real PostgREST select only
@@ -80,12 +81,20 @@ class Query {
   order(c, opts) { this.sortKey = c; this.sortAsc = !opts || opts.ascending !== false; return this; }
   limit(n) { this.max = n; return this; }
   insert(row) { this.op = 'insert'; this.payload = row; return this; }
+  upsert(row, opts) { this.op = 'upsert'; this.payload = row; this.conflict = ((opts && opts.onConflict) || 'id').split(','); return this; }
 
   _run() {
     const rows = this.db[this.table] || (this.db[this.table] = []);
     if (this.op === 'insert') {
       const r = Object.assign({ id: rows.length + 1000 }, this.payload);
       rows.push(r);
+      return { data: [project(r, this.cols)], error: null };
+    }
+    if (this.op === 'upsert') {
+      const keys = this.conflict.map(k => k.trim());
+      let r = rows.find(x => keys.every(k => same(x[k], this.payload[k])));
+      if (r) Object.assign(r, this.payload);
+      else { r = Object.assign({ id: rows.length + 1000 }, this.payload); rows.push(r); }
       return { data: [project(r, this.cols)], error: null };
     }
     let out = rows.filter(r => this.filters.every(f => f(r)));

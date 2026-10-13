@@ -66,6 +66,8 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 | 0.4 | Skep 'n snapshot-vergelykingsinstrument (voor/ná per werknemer in company 51). | Nee |
 
 ### Fase 1 — Belastingtabelle `[K1, W2, W3, B10]` → spec 02
+
+**✅ Gebou 2026-10-13** ([FASE1_CHANGE_IMPACT_NOTE.md](FASE1_CHANGE_IMPACT_NOTE.md)). Tabel `payroll_tax_tables` (migrasie 027, een ry per jaar, net bevestigde jare word gebruik); `services/taxTables.js` kies die periode se eie jaar; ontbrekende/onbevestigde jaar → 422; Tax Configuration-skerm op die API sonder "aktiewe jaar"; enjin ignoreer 'n oorskrywing van 'n ander jaar (W3); kode-verstekke 2027 + W2 reggestel; min = vorige maks (B10). Toetse: `tests/payroll-tax-tables.test.js` (25), golden per periode. Oop: 1.4 (tabel-hash in snapshot → Fase 6), BT-08 (Februarie-waarskuwing).
 | Stap | Wat | Verwagte verandering |
 |---|---|---|
 | 1.1 | Tabelle per belastingjaar (DB-tabel of jaar-gesleutelde konfigurasie); oorskrywing geld net vir sy eie jaar. | Periodes van vorige jare gebruik weer hul eie tabelle |

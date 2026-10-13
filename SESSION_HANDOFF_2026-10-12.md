@@ -71,11 +71,23 @@
 - `backend/tests/payroll-recon-uif.test.js`: 6 tests (real route over HTTP on an in-memory DB).
 - Gate: Jest 167/167, core 15/15, 0 lint errors.
 
+## Fase 1 (2026-10-13) — docs/paytime/FASE1_CHANGE_IMPACT_NOTE.md
+
+- NEW `backend/migrations/027_payroll_tax_tables.sql`: one row per SARS tax year (2021/22–2026/27 seeded, all confirmed). **Ruan must run it in the Supabase SQL Editor.** Until then the backend keeps using KV `tax_config` (safe to deploy code first).
+- NEW `services/taxTables.js` + `routes/tax-tables.js` (GET all users, PUT super user in the authority company, audited).
+- calculate.js / payruns.js / voluntary-tax.js: each period loads its own year; missing/unconfirmed year → 422 `TAX_TABLES_MISSING`.
+- Engine: code defaults = 2027; 2022/23 + 2023/24 rebates/medical fixed (W2); override only for its own year (W3); min = previous max (B10).
+- `payroll-items.html` Tax Configuration: API-based, no "Set as Active Year", Save draft / Confirm / Unconfirm, no browser/KV writes.
+- Tests: `tests/payroll-tax-tables.test.js` (25); golden harness loads per-period tables from the migration; core regression baselines moved to correct 2027 values (were on 2024/25 tables for April 2026).
+- Gate: payroll Jest 183/183, core 15/15, 0 lint errors in changed files. Pre-existing, unrelated: 5 Sean suites + payroll-employee-sync (needs live pg) fail; lint parse error in sean/pdf-statement-parsers/nedbank-parser.js.
+
 ## Open risks / follow-ups
 
 - Bakmeester: set `bonus_period` on the 3 Bonus Spread entries once Ruan confirms which month each employee's bonus is paid (May / October).
 - VPA-05: target/deferral reason enforced on screen only, not yet on the backend.
-- Migration 026 not yet run → until then every company is non-strict (finalize warns, calculate never blocks).
+- Migration 026: run and verified by Ruan (46 strict ON, 7 OFF).
+- Migration 027 (tax tables): to be run by Ruan; then verify read-only that 6 confirmed rows exist.
+- BT-08 February warning for next year's tables; BT-09 table hash in snapshot (Fase 6).
 - Turn strict ON per company after its missing months are imported (Fase 12): `UPDATE companies SET payroll_strict_period_order = TRUE WHERE id = …`. A UI toggle for super users is a follow-up.
 - SDL on travel allowance is on 100% (should be 80%) — IT-15, Fase 2.
 - Frontend pages (Payslips/payruns.html, Reports, Net-to-Gross) still use the old frontend engine — Fase 9.

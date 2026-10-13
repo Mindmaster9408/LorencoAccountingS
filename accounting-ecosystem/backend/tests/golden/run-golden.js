@@ -23,9 +23,11 @@
 const fs = require('fs');
 const path = require('path');
 const { createFakeSupabase } = require('./fake-supabase');
-const { SCENARIOS, PROD_GLOBAL_TAX_CONFIG } = require('./scenarios');
+const { SCENARIOS } = require('./scenarios');
 const PayrollDataService = require('../../modules/payroll/services/PayrollDataService');
 const PayrollCalculationService = require('../../modules/payroll/services/PayrollCalculationService');
+const { getTaxConfigForPeriod } = require('../../modules/payroll/services/taxTables');
+const { loadTaxTableSeedRows } = require('../helpers/taxTableSeed');
 
 const BASELINE_PATH = path.join(__dirname, 'baseline.json');
 const CID = 900;
@@ -69,7 +71,9 @@ function buildDb(sc) {
     payroll_short_time: [],
     payroll_multi_rate: [],
     payroll_snapshots: [],
-    payroll_kv_store_eco: []
+    payroll_kv_store_eco: [],
+    // Fase 1: the tax tables production is seeded with (migration 027), one row per tax year.
+    payroll_tax_tables: loadTaxTableSeedRows()
   };
 
   const addMaster = (name, type, cfg) => {
@@ -111,7 +115,10 @@ function buildDb(sc) {
 async function runScenario(sc) {
   const db = buildDb(sc);
   const supabase = createFakeSupabase(db);
-  const taxConfig = sc.taxConfig === undefined ? PROD_GLOBAL_TAX_CONFIG : sc.taxConfig;
+  // Default = production since Fase 1: each period loads ITS OWN tax year from payroll_tax_tables
+  // through the real loader (routes/calculate.js, payruns.js). A scenario may pin taxConfig:
+  // null = engine code defaults, an object = a fixed override (e.g. the legacy KV table).
+  const pinnedTaxConfig = sc.taxConfig;
   const prevMethod = process.env.PAYE_YTD_METHOD;
   // Production default. History: projection_type until 2026-10-12, then Zeabur switched to
   // cumulative (REGSTELPLAN step D.1 — stops the double bonus tax, finding P1).
@@ -153,6 +160,8 @@ async function runScenario(sc) {
         // Mirrors routes/payruns.js POST /run auto pro-rata detection.
         const s = inputs.start_date, e = inputs.end_date, ps = inputs.period_start_date, pe = inputs.period_end_date;
         const auto = (s && ps && pe && s > ps && s <= pe) || (e && ps && pe && e < pe && e >= ps);
+        const taxConfig = pinnedTaxConfig !== undefined ? pinnedTaxConfig
+          : await getTaxConfigForPeriod(supabase, CID, periodKey);
         const calc = await PayrollCalculationService.calculate(inputs, {
           startDate: auto ? s : null, endDate: auto ? e : null, useProRata: !!auto, taxConfig
         });

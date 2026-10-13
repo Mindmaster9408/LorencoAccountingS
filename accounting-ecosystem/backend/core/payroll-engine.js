@@ -70,11 +70,10 @@
 // Future engines MUST preserve these version fields and NEVER recalculate finalized payslips.
 //
 // TAX TABLE UPDATE GUIDE (every 1 March):
-//   1. Go to Payroll → Payroll Items → Tax Configuration (super-admin)
-//   2. Enter new brackets/rebates from the SARS budget announcement
-//   3. Save — tables are stored in Supabase and override these defaults
-//   4. If you need to update code defaults, edit BRACKETS/REBATES below
-//      and update DEFAULT_TAX_YEAR.  Source: www.sars.gov.za
+//   1. Payroll -> Payroll Items -> Tax Configuration (super user, The Infinite Legacy)
+//   2. Add the new tax year with the SARS budget figures and tick Confirmed
+//   3. Saved to payroll_tax_tables (migration 027); each period uses its own year
+//   4. Keep HISTORICAL_TABLES below in step (code defaults for tests). Source: www.sars.gov.za
 // ============================================================
 
 /* global safeLocalStorage */ // browser-only KV bridge; every use is guarded by a typeof check
@@ -85,137 +84,140 @@ const PayrollEngine = {
     ENGINE_VERSION: '2026-04-12-v1',
     SCHEMA_VERSION: '1.0',
 
-    // === DEFAULT TAX CONSTANTS (SA 2026/2027 — same brackets as 2025/2026, pending SARS confirmation) ===
-    // Override via Tax Configuration in Payroll Items (stored in Supabase KV)
+    // === DEFAULT TAX CONSTANTS (SA 2026/2027 = SARS "2027 tax year") ===
+    // Production reads payroll_tax_tables (migration 027) per period; these code
+    // defaults are only used by tests and before that migration has run.
+    // Bracket convention (SARS wording, finding B10 fixed 2026-10-13):
+    //   tax = base + rate × (income − min), min = the PREVIOUS bracket's max.
     TAX_YEAR: '2026/2027',
 
     BRACKETS: [
-        { min: 0,       max: 237100,   base: 0,      rate: 0.18 },
-        { min: 237101,  max: 370500,   base: 42678,   rate: 0.26 },
-        { min: 370501,  max: 512800,   base: 77362,   rate: 0.31 },
-        { min: 512801,  max: 673000,   base: 121475,  rate: 0.36 },
-        { min: 673001,  max: 857900,   base: 179147,  rate: 0.39 },
-        { min: 857901,  max: 1817000,  base: 251258,  rate: 0.41 },
-        { min: 1817001, max: Infinity, base: 644489,  rate: 0.45 }
+        { min: 0,       max: 245100,   base: 0,      rate: 0.18 },
+        { min: 245100,  max: 383100,   base: 44118,  rate: 0.26 },
+        { min: 383100,  max: 530200,   base: 79998,  rate: 0.31 },
+        { min: 530200,  max: 695800,   base: 125599, rate: 0.36 },
+        { min: 695800,  max: 887000,   base: 185215, rate: 0.39 },
+        { min: 887000,  max: 1878600,  base: 259783, rate: 0.41 },
+        { min: 1878600, max: Infinity, base: 666339, rate: 0.45 }
     ],
 
-    PRIMARY_REBATE: 17235,
-    SECONDARY_REBATE: 9444,     // age >= 65
-    TERTIARY_REBATE: 3145,      // age >= 75
+    PRIMARY_REBATE: 17820,
+    SECONDARY_REBATE: 9765,     // age >= 65
+    TERTIARY_REBATE: 3249,      // age >= 75
 
     UIF_RATE: 0.01,
     UIF_MONTHLY_CAP: 177.12,
     SDL_RATE: 0.01,
     HOURLY_DIVISOR: 173.33,
 
-    // Medical Tax Credits (Section 6A/6B) - 2025/2026
-    MEDICAL_CREDIT_MAIN: 364,
-    MEDICAL_CREDIT_FIRST_DEP: 364,
-    MEDICAL_CREDIT_ADDITIONAL: 246,
+    // Medical Tax Credits (Section 6A/6B) — 2027 tax year
+    MEDICAL_CREDIT_MAIN: 376,
+    MEDICAL_CREDIT_FIRST_DEP: 376,
+    MEDICAL_CREDIT_ADDITIONAL: 254,
 
     // ============================================================
-    // HISTORICAL SA TAX TABLES (auto-selected by pay period)
-    // Source: www.sars.gov.za — verify before each new tax year.
-    // Periods auto-resolve: e.g. '2023-07' → tax year '2023/2024'.
-    // SA tax year runs 1 March → last day of February.
-    // Admin can override the CURRENT year via Tax Config UI.
+    // HISTORICAL SA TAX TABLES (code defaults, mirror migration 027)
+    // Source: www.sars.gov.za, checked 2026-10-12. Key = tax year label
+    // (1 March → end February), e.g. '2026/2027' = SARS "2027 tax year".
+    // 2022/2023 and 2023/2024 rebates / medical credits corrected 2026-10-13
+    // (they were one year behind — finding W2).
     // ============================================================
     HISTORICAL_TABLES: {
 
-        // --- 2021/2022 (1 Mar 2021 – 28 Feb 2022) ---
+        // --- 2021/2022 (SARS 2022 tax year) ---
         '2021/2022': {
             BRACKETS: [
                 { min: 0,        max: 216200,   base: 0,       rate: 0.18 },
-                { min: 216201,   max: 337800,   base: 38916,   rate: 0.26 },
-                { min: 337801,   max: 467500,   base: 70532,   rate: 0.31 },
-                { min: 467501,   max: 613600,   base: 110739,  rate: 0.36 },
-                { min: 613601,   max: 782200,   base: 163335,  rate: 0.39 },
-                { min: 782201,   max: 1656600,  base: 229089,  rate: 0.41 },
-                { min: 1656601,  max: Infinity, base: 587593,  rate: 0.45 }
+                { min: 216200,   max: 337800,   base: 38916,   rate: 0.26 },
+                { min: 337800,   max: 467500,   base: 70532,   rate: 0.31 },
+                { min: 467500,   max: 613600,   base: 110739,  rate: 0.36 },
+                { min: 613600,   max: 782200,   base: 163335,  rate: 0.39 },
+                { min: 782200,   max: 1656600,  base: 229089,  rate: 0.41 },
+                { min: 1656600,  max: Infinity, base: 587593,  rate: 0.45 }
             ],
             PRIMARY_REBATE: 15714, SECONDARY_REBATE: 8613, TERTIARY_REBATE: 2871,
             UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
             MEDICAL_CREDIT_MAIN: 332, MEDICAL_CREDIT_FIRST_DEP: 332, MEDICAL_CREDIT_ADDITIONAL: 224
         },
 
-        // --- 2022/2023 (1 Mar 2022 – 28 Feb 2023) ---
+        // --- 2022/2023 (SARS 2023 tax year) ---
         '2022/2023': {
             BRACKETS: [
                 { min: 0,        max: 226000,   base: 0,       rate: 0.18 },
-                { min: 226001,   max: 353100,   base: 40680,   rate: 0.26 },
-                { min: 353101,   max: 488700,   base: 73726,   rate: 0.31 },
-                { min: 488701,   max: 641400,   base: 115762,  rate: 0.36 },
-                { min: 641401,   max: 817600,   base: 170734,  rate: 0.39 },
-                { min: 817601,   max: 1731600,  base: 239452,  rate: 0.41 },
-                { min: 1731601,  max: Infinity, base: 614192,  rate: 0.45 }
-            ],
-            PRIMARY_REBATE: 15714, SECONDARY_REBATE: 8613, TERTIARY_REBATE: 2871,
-            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
-            MEDICAL_CREDIT_MAIN: 332, MEDICAL_CREDIT_FIRST_DEP: 332, MEDICAL_CREDIT_ADDITIONAL: 224
-        },
-
-        // --- 2023/2024 (1 Mar 2023 – 29 Feb 2024) ---
-        '2023/2024': {
-            BRACKETS: [
-                { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
-                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
-                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
-                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
-                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
-                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
-                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+                { min: 226000,   max: 353100,   base: 40680,   rate: 0.26 },
+                { min: 353100,   max: 488700,   base: 73726,   rate: 0.31 },
+                { min: 488700,   max: 641400,   base: 115762,  rate: 0.36 },
+                { min: 641400,   max: 817600,   base: 170734,  rate: 0.39 },
+                { min: 817600,   max: 1731600,  base: 239452,  rate: 0.41 },
+                { min: 1731600,  max: Infinity, base: 614192,  rate: 0.45 }
             ],
             PRIMARY_REBATE: 16425, SECONDARY_REBATE: 9000, TERTIARY_REBATE: 2997,
             UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
             MEDICAL_CREDIT_MAIN: 347, MEDICAL_CREDIT_FIRST_DEP: 347, MEDICAL_CREDIT_ADDITIONAL: 234
         },
 
-        // --- 2024/2025 (1 Mar 2024 – 28 Feb 2025) ---
+        // --- 2023/2024 (SARS 2024 tax year) ---
+        '2023/2024': {
+            BRACKETS: [
+                { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
+                { min: 237100,   max: 370500,   base: 42678,   rate: 0.26 },
+                { min: 370500,   max: 512800,   base: 77362,   rate: 0.31 },
+                { min: 512800,   max: 673000,   base: 121475,  rate: 0.36 },
+                { min: 673000,   max: 857900,   base: 179147,  rate: 0.39 },
+                { min: 857900,   max: 1817000,  base: 251258,  rate: 0.41 },
+                { min: 1817000,  max: Infinity, base: 644489,  rate: 0.45 }
+            ],
+            PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
+            UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
+            MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
+        },
+
+        // --- 2024/2025 (SARS 2025 tax year — unchanged from 2024) ---
         '2024/2025': {
             BRACKETS: [
                 { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
-                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
-                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
-                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
-                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
-                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
-                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+                { min: 237100,   max: 370500,   base: 42678,   rate: 0.26 },
+                { min: 370500,   max: 512800,   base: 77362,   rate: 0.31 },
+                { min: 512800,   max: 673000,   base: 121475,  rate: 0.36 },
+                { min: 673000,   max: 857900,   base: 179147,  rate: 0.39 },
+                { min: 857900,   max: 1817000,  base: 251258,  rate: 0.41 },
+                { min: 1817000,  max: Infinity, base: 644489,  rate: 0.45 }
             ],
             PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
             UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
             MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
         },
 
-        // --- 2025/2026 (1 Mar 2025 – 28 Feb 2026) — same brackets as 2024/2025 ---
+        // --- 2025/2026 (SARS 2026 tax year — unchanged) ---
         '2025/2026': {
             BRACKETS: [
                 { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
-                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
-                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
-                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
-                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
-                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
-                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+                { min: 237100,   max: 370500,   base: 42678,   rate: 0.26 },
+                { min: 370500,   max: 512800,   base: 77362,   rate: 0.31 },
+                { min: 512800,   max: 673000,   base: 121475,  rate: 0.36 },
+                { min: 673000,   max: 857900,   base: 179147,  rate: 0.39 },
+                { min: 857900,   max: 1817000,  base: 251258,  rate: 0.41 },
+                { min: 1817000,  max: Infinity, base: 644489,  rate: 0.45 }
             ],
             PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
             UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
             MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
         },
 
-        // --- 2026/2027 (1 Mar 2026 – 28 Feb 2027) — verify from www.sars.gov.za after budget speech ---
+        // --- 2026/2027 (SARS 2027 tax year) ---
         '2026/2027': {
             BRACKETS: [
-                { min: 0,        max: 237100,   base: 0,       rate: 0.18 },
-                { min: 237101,   max: 370500,   base: 42678,   rate: 0.26 },
-                { min: 370501,   max: 512800,   base: 77362,   rate: 0.31 },
-                { min: 512801,   max: 673000,   base: 121475,  rate: 0.36 },
-                { min: 673001,   max: 857900,   base: 179147,  rate: 0.39 },
-                { min: 857901,   max: 1817000,  base: 251258,  rate: 0.41 },
-                { min: 1817001,  max: Infinity, base: 644489,  rate: 0.45 }
+                { min: 0,        max: 245100,   base: 0,       rate: 0.18 },
+                { min: 245100,   max: 383100,   base: 44118,   rate: 0.26 },
+                { min: 383100,   max: 530200,   base: 79998,   rate: 0.31 },
+                { min: 530200,   max: 695800,   base: 125599,  rate: 0.36 },
+                { min: 695800,   max: 887000,   base: 185215,  rate: 0.39 },
+                { min: 887000,   max: 1878600,  base: 259783,  rate: 0.41 },
+                { min: 1878600,  max: Infinity, base: 666339,  rate: 0.45 }
             ],
-            PRIMARY_REBATE: 17235, SECONDARY_REBATE: 9444, TERTIARY_REBATE: 3145,
+            PRIMARY_REBATE: 17820, SECONDARY_REBATE: 9765, TERTIARY_REBATE: 3249,
             UIF_RATE: 0.01, UIF_MONTHLY_CAP: 177.12, SDL_RATE: 0.01,
-            MEDICAL_CREDIT_MAIN: 364, MEDICAL_CREDIT_FIRST_DEP: 364, MEDICAL_CREDIT_ADDITIONAL: 246
+            MEDICAL_CREDIT_MAIN: 376, MEDICAL_CREDIT_FIRST_DEP: 376, MEDICAL_CREDIT_ADDITIONAL: 254
         }
     },
 
@@ -625,19 +627,21 @@ const PayrollEngine = {
     /**
      * Return the correct set of tax tables for a given pay period.
      * Looks up HISTORICAL_TABLES by the SA tax year derived from the period.
-     * If the period is in the CURRENT tax year, returns `this` (so that any
-     * Tax Config UI override stored in Supabase KV applies automatically).
+     * An override (taxOverride) is used only when it belongs to the period's own tax year.
      * Falls back gracefully to the most recent known table.
      * @param {string} periodStr - 'YYYY-MM'
      * @returns {Object} Tables object with BRACKETS, PRIMARY_REBATE, etc.
      */
     getTablesForPeriod: function(periodStr, taxOverride) {
-        // taxOverride (admin-configured KV tables) is the absolute single source of truth.
-        // When provided it takes precedence over ALL hardcoded defaults AND historical tables.
-        // Rule: "If taxConfig exists — NOTHING ELSE may influence tax calculation."
-        if (taxOverride) return taxOverride;
+        // taxOverride = the tables the backend loaded for this period (payroll_tax_tables,
+        // migration 027 — already per tax year) or, on the legacy path, the KV tax_config.
+        // Spec 02 / finding W3 (Fase 1): an override only applies to ITS OWN tax year.
+        // A legacy KV config labelled 2026/2027 must not tax a 2025/2026 period — that
+        // period uses its historical table. An override without a TAX_YEAR label is
+        // trusted as-is (old callers).
+        var taxYear = periodStr ? this.getTaxYearForPeriod(periodStr) : null;
+        if (taxOverride && (!taxYear || !taxOverride.TAX_YEAR || taxOverride.TAX_YEAR === taxYear)) return taxOverride;
         if (!periodStr) return this;
-        var taxYear = this.getTaxYearForPeriod(periodStr);
         if (taxYear === this.TAX_YEAR) return this;
         // Historical year → use hardcoded verified tables
         if (this.HISTORICAL_TABLES[taxYear]) return this.HISTORICAL_TABLES[taxYear];

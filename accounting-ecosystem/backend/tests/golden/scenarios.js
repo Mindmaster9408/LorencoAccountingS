@@ -12,7 +12,8 @@
  *
  * Defaults mirror PRODUCTION as found on 2026-10-12 (Fase 0.1):
  *   - PAYE_YTD_METHOD = cumulative        (was projection_type until 2026-10-12, step D.1)
- *   - tax_config      = the __global__ KV row, copied verbatim below
+ *   - tax tables      = payroll_tax_tables per period (migration 027, Fase 1); before
+ *                       2026-10-13 the __global__ KV row below was used for every period
  *
  * The baseline records CURRENT behaviour, including known defects. Each fix
  * phase must change only the scenarios it lists as expected changes.
@@ -153,7 +154,7 @@ const SCENARIOS = [
 
   // Tax table selection
   one('S70', 'Code default tables (no tax_config), R25 000', P, { employee: emp({ basic_salary: 25000 }), taxConfig: null }),
-  one('S71', 'Back period 2024-06 with global override — W3', '2024-06', { employee: emp({ basic_salary: 25000 }) }),
+  one('S71', 'Back period 2024-06 with the legacy 2026/2027 KV override — W3 (Fase 1: override only applies to its own year)', '2024-06', { employee: emp({ basic_salary: 25000 }), taxConfig: PROD_GLOBAL_TAX_CONFIG }),
   one('S72', 'Back period 2024-06 code tables only', '2024-06', { employee: emp({ basic_salary: 25000 }), taxConfig: null }),
 
   // ── Multi-period (each month locked before the next) ──

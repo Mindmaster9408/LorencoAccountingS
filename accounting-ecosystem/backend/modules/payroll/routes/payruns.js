@@ -49,6 +49,7 @@ const {
   loadEmployeesAndLocked,
   getCalculationBlocks
 } = require('../services/periodSequence');
+const { getTaxConfigForPeriod } = require('../services/taxTables');
 
 const router = express.Router();
 
@@ -203,51 +204,23 @@ router.post(
         }
       }
 
+      // ── Tax tables of this period's tax year (spec 02, Fase 1) ────────────
+      // Loaded BEFORE the run header is created, so a missing / unconfirmed year
+      // stops the run cleanly instead of leaving an empty run behind.
+      let batchTaxConfig;
+      try {
+        batchTaxConfig = await getTaxConfigForPeriod(supabase, req.companyId, period_key);
+      } catch (ttErr) {
+        if (ttErr.code === 'TAX_TABLES_MISSING') {
+          return res.status(422).json({ success: false, code: ttErr.code, error: ttErr.message });
+        }
+        throw ttErr;
+      }
+
       // ── Create payroll_run header ─────────────────────────────────────────
       const run = await PayrollHistoryService.createPayrollRun(
         supabase, req.companyId, period_key, visibleIds.length, req.user.userId
       );
-
-      // ── Load tax tables from KV (once, shared across all employees in this run) ──
-      // Resolution order:
-      //   1. Global record (__global__) — authoritative standard maintained by Infinite Legacy
-      //   2. Company-specific record    — transitional fallback only
-      //   3. null                       — engine uses hardcoded SA defaults
-      //
-      // Global is checked FIRST so that all companies automatically use the centrally
-      // governed current-year tax table without any per-company configuration required.
-      let batchTaxConfig = null;
-      try {
-        const { data: globalKv } = await supabase
-          .from('payroll_kv_store_eco')
-          .select('value')
-          .eq('company_id', '__global__')
-          .eq('key', 'tax_config')
-          .maybeSingle();
-
-        if (globalKv && globalKv.value) {
-          batchTaxConfig = typeof globalKv.value === 'string'
-            ? JSON.parse(globalKv.value) : globalKv.value;
-          console.log(`[payruns] tax_config source=global for company ${req.companyId}`);
-        } else {
-          // Transitional: company may have configured its own table before global was published
-          const { data: companyKv } = await supabase
-            .from('payroll_kv_store_eco')
-            .select('value')
-            .eq('company_id', req.companyId)
-            .eq('key', 'tax_config')
-            .maybeSingle();
-          if (companyKv && companyKv.value) {
-            batchTaxConfig = typeof companyKv.value === 'string'
-              ? JSON.parse(companyKv.value) : companyKv.value;
-            console.log(`[payruns] tax_config source=company-specific for company ${req.companyId} (no global found)`);
-          } else {
-            console.warn(`[payruns] No tax_config found (global or company) — engine will use hardcoded defaults for company ${req.companyId}`);
-          }
-        }
-      } catch (kvErr) {
-        console.warn('[payruns] Could not load tax_config from KV:', kvErr.message);
-      }
 
       // ── Month-order guard for strict companies (UF-04, migration 026) ─────
       // An employee whose previous month is not finalized cannot be calculated —

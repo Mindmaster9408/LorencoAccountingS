@@ -70,6 +70,10 @@ router.use('/voluntary-tax', voluntaryTaxRoutes);
 const globalAuthorityRoutes = require('./routes/global-authority');
 router.use('/global-authority', globalAuthorityRoutes);
 
+// Tax tables per tax year (spec 02, Fase 1) — replaces the KV "active year" model.
+const taxTablesRoutes = require('./routes/tax-tables');
+router.use('/tax-tables', taxTablesRoutes);
+
 // Health check for Payroll module
 router.get('/status', (req, res) => {
   res.json({ module: 'payroll', status: 'active', version: '1.0.0' });

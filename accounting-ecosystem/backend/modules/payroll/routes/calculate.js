@@ -31,6 +31,7 @@ const PayrollDataService        = require('../services/PayrollDataService');
 const PayrollCalculationService = require('../services/PayrollCalculationService');
 const PayrollHistoryService     = require('../services/PayrollHistoryService');
 const { getCalculationBlocks, describeCalculationBlocks } = require('../services/periodSequence');
+const { getTaxConfigForPeriod } = require('../services/taxTables');
 
 const { supabase } = require('../../../config/database');
 
@@ -196,43 +197,16 @@ router.post(
         throw err;
       }
 
-      // STEP 3: Fetch admin-configured tax tables from Supabase KV.
-      // The backend engine cannot use localStorage, so we load the tax_config
-      // stored by the Tax Configuration UI and pass it directly to the engine.
-      //
-      // Lookup order (matches payruns.js — global MUST win):
-      //   1. Global ecosystem standard (company_id = '__global__') — set by super admin
-      //      in Infinite Legacy / managing practice account.
-      //   2. Company-specific override (company_id = req.companyId) — only if no global set.
-      let taxConfig = null;
+      // STEP 3: Tax tables of THIS period's tax year (spec 02, Fase 1 — services/taxTables.js).
+      // A missing / unconfirmed year stops the calculation with a clear message.
+      let taxConfig;
       try {
-        // Global KV lookup FIRST (authoritative SA tax tables from super admin).
-        // Fallback: company-specific override if no global set.
-        const { data: globalKvRow } = await supabase
-          .from('payroll_kv_store_eco')
-          .select('value')
-          .eq('company_id', '__global__')
-          .eq('key', 'tax_config')
-          .maybeSingle();
-        if (globalKvRow && globalKvRow.value) {
-          taxConfig = typeof globalKvRow.value === 'string'
-            ? JSON.parse(globalKvRow.value)
-            : globalKvRow.value;
+        taxConfig = await getTaxConfigForPeriod(supabase, req.companyId, period_key);
+      } catch (ttErr) {
+        if (ttErr.code === 'TAX_TABLES_MISSING') {
+          return res.status(422).json({ success: false, code: ttErr.code, error: ttErr.message });
         }
-        if (!taxConfig) {
-          const { data: kvRow } = await supabase
-            .from('payroll_kv_store_eco')
-            .select('value')
-            .eq('company_id', req.companyId)
-            .eq('key', 'tax_config')
-            .maybeSingle();
-          if (kvRow && kvRow.value) {
-            taxConfig = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
-          }
-        }
-      } catch (kvErr) {
-        console.warn('[payroll/calculate] Could not load tax_config from KV:', kvErr.message);
-        // Non-fatal — engine falls back to hardcoded defaults
+        throw ttErr;
       }
 
       // STEP 4: Execute calculation

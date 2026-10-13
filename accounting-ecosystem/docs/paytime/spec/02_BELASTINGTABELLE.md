@@ -10,15 +10,15 @@ Die program moet vir elke betaalperiode outomaties die korrekte SARS-tabelle van
 
 | # | Reël | Status |
 |---|---|---|
-| BT-01 | Tabelle word per belastingjaar gestoor (skale, primêre/sekondêre/tersiêre korting, mediese krediete, UIF-koers en -plafon, SDL-koers), elk met 'n bronverwysing (SARS-URL/datum). | ❌ Een globale `tax_config` in KV + hardgekodeerde tabelle [W3] |
-| BT-02 | 'n Periode gebruik altyd die tabel van sy eie belastingjaar — ook by herberekening van 'n ou periode. | ❌ Globale tabel geld vir alle jare [W3] |
-| BT-03 | Die 2027-jaar (Mrt 2026 – Feb 2027): skale 245 100 / 383 100 / 530 200 / 695 800 / 887 000 / 1 878 600; kortings R17 820 / R9 765 / R3 249; mediese krediet R376 / R376 / R254. | ❌ Kode het nog 2026-syfers [K1] — verifieer of DB-oorskrywing reeds bestaan |
-| BT-04 | Historiese jare korrek: 2023-jaar kortings 16 425/9 000/2 997, medies 347/234; 2024-jaar kortings 17 235/9 444/3 145, medies 364/246. | ❌ Een jaar agter [W2] |
-| BT-05 | Skaalformule: basis + koers × (inkomste **bo** die vorige skaal se maksimum), presies soos SARS dit publiseer. | ⚠️ 1 rand verskuif — sente-verskil [B10] |
-| BT-06 | Nuwe jaar se tabelle kan vooraf gelaai word, maar word eers vanaf 1 Maart gebruik. | ❌ Tans geld 'n nuwe tabel onmiddellik vir alle periodes |
-| BT-07 | **BEVESTIG 2026-10-12:** slegs 'n **super user** (Infinite Legacy as die programmaker) kan belastingtabelle invoer of verander. Geen tweede goedkeuring nodig nie — solank dit korrek is. Kliëntmaatskappye kan dit sien maar nie verander nie. Elke verandering word geoudit (wie, wanneer, ou/nuwe waardes). | ⚠️ Super-admin-hek bestaan; volle ouditspoor ontbreek |
-| BT-08 | Gereedheidskontrole: vanaf 1 Februarie wys die stelsel 'n waarskuwing as die volgende jaar se tabelle nie bevestig is nie; Maart-payroll word geblokkeer tot dit bevestig is. | 🆕 |
-| BT-09 | Elke snapshot stoor die belastingjaar en 'n verwysing/hash van die presiese tabel wat gebruik is. | ❌ [B7] |
+| BT-01 | Tabelle word per belastingjaar gestoor (skale, primêre/sekondêre/tersiêre korting, mediese krediete, UIF-koers en -plafon, SDL-koers), elk met 'n bronverwysing (SARS-URL/datum). | ✅ Fase 1: tabel `payroll_tax_tables` (migrasie 027), een ry per jaar met `source` |
+| BT-02 | 'n Periode gebruik altyd die tabel van sy eie belastingjaar — ook by herberekening van 'n ou periode. | ✅ Fase 1: `getTaxConfigForPeriod` kies die periode se eie jaar; enjin ignoreer 'n oorskrywing van 'n ander jaar [W3 reg] |
+| BT-03 | Die 2027-jaar (Mrt 2026 – Feb 2027): skale 245 100 / 383 100 / 530 200 / 695 800 / 887 000 / 1 878 600; kortings R17 820 / R9 765 / R3 249; mediese krediet R376 / R376 / R254. | ✅ Fase 1: kode-verstek, migrasie 027 en KV (D.2) almal 2027 |
+| BT-04 | Historiese jare korrek: 2023-jaar kortings 16 425/9 000/2 997, medies 347/234; 2024-jaar kortings 17 235/9 444/3 145, medies 364/246. | ✅ Fase 1: reggestel in kode en migrasie 027 [W2 reg] |
+| BT-05 | Skaalformule: basis + koers × (inkomste **bo** die vorige skaal se maksimum), presies soos SARS dit publiseer. | ✅ Fase 1: min = vorige maks; validering weier die ou +1-konvensie [B10 reg] |
+| BT-06 | Nuwe jaar se tabelle kan vooraf gelaai word, maar word eers vanaf 1 Maart gebruik. | ✅ Fase 1: 'n nuwe jaar se ry geld net vir sy eie maande |
+| BT-07 | **BEVESTIG 2026-10-12:** slegs 'n **super user** (Infinite Legacy as die programmaker) kan belastingtabelle invoer of verander. Geen tweede goedkeuring nodig nie — solank dit korrek is. Kliëntmaatskappye kan dit sien maar nie verander nie. Elke verandering word geoudit (wie, wanneer, ou/nuwe waardes). | ✅ Fase 1: PUT slegs super_admin in die global-authority-maatskappy; oudit met ou/nuwe waardes; ander sien lees-alleen |
+| BT-08 | Gereedheidskontrole: vanaf 1 Februarie wys die stelsel 'n waarskuwing as die volgende jaar se tabelle nie bevestig is nie; Maart-payroll word geblokkeer tot dit bevestig is. | ⚠️ Maart word geblokkeer as die jaar ontbreek/onbevestig is (BT-15); die 1-Februarie-waarskuwing is nog nie gebou nie |
+| BT-09 | Elke snapshot stoor die belastingjaar en 'n verwysing/hash van die presiese tabel wat gebruik is. | ⚠️ Snapshot stoor `tax_year`; nog geen hash van die presiese tabel nie [B7] |
 | BT-10 | UIF: 1% werknemer + 1% werkgewer, plafon R17 712/maand (R177,12 elk). | ✅ |
 | BT-11 | SDL: 1% van leviable remuneration; 0 as maatskappy nie geregistreer is nie (onder R500k payroll per jaar). | ✅ (vlag-gebaseer) |
 
@@ -38,10 +38,10 @@ Ruan se vraag: *"Hoekom maak die program dit so moeilik om na die volgende belas
 
 | # | Reël (hoe dit MOET werk) | Status |
 |---|---|---|
-| BT-12 | Daar is **geen "aktiewe jaar"-knoppie** nie. Die stelsel kies outomaties die tabel volgens die periode se datum: Maart 2027 → 2027/28-tabel, Februarie 2027 → 2026/27-tabel. Ou en nuwe jaar kan in dieselfde week langs mekaar bereken word. | ❌ Een handmatige aktiewe jaar |
-| BT-13 | Al die jare se tabelle word in **een databasistabel** gestoor (nie KV nie, nie per maatskappy nie), elk met "geldig vanaf / tot". | ❌ |
-| BT-14 | Die enigste jaarlikse werk is om die nuwe jaar se syfers **een keer** in te voer nadat die begroting in Februarie aangekondig is (of dit kom saam met 'n kode-opdatering). Daarna gebeur alles vanself. | ❌ |
-| BT-15 | As 'n periode in 'n jaar val waarvoor daar nog geen bevestigde tabel is nie, waarsku die stelsel duidelik (sien BT-08) — dit gebruik nooit stilweg 'n ander jaar se tabel nie. | ❌ Stil terugval na die nuutste bekende jaar |
+| BT-12 | Daar is **geen "aktiewe jaar"-knoppie** nie. Die stelsel kies outomaties die tabel volgens die periode se datum: Maart 2027 → 2027/28-tabel, Februarie 2027 → 2026/27-tabel. Ou en nuwe jaar kan in dieselfde week langs mekaar bereken word. | ✅ Fase 1: "Set as Active Year" verwyder |
+| BT-13 | Al die jare se tabelle word in **een databasistabel** gestoor (nie KV nie, nie per maatskappy nie), elk met "geldig vanaf / tot". | ✅ Fase 1 (migrasie 027) — geldig vanaf/tot per jaar |
+| BT-14 | Die enigste jaarlikse werk is om die nuwe jaar se syfers **een keer** in te voer nadat die begroting in Februarie aangekondig is (of dit kom saam met 'n kode-opdatering). Daarna gebeur alles vanself. | ✅ Fase 1: "+ Add Year" → syfers invul → "Confirm" |
+| BT-15 | As 'n periode in 'n jaar val waarvoor daar nog geen bevestigde tabel is nie, waarsku die stelsel duidelik (sien BT-08) — dit gebruik nooit stilweg 'n ander jaar se tabel nie. | ✅ Fase 1: 422 `TAX_TABLES_MISSING` met duidelike boodskap; geen stil terugval nie |
 
 ## ❓ Vrae vir Ruan
 
