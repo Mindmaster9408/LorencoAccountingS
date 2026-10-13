@@ -30,6 +30,13 @@ Changed:
      employee-management.
   8. storageAvailable() probe key stays local (was written to the KV table 25×).
 
+Added later the same day:
+  9. Payslip item pickers read the company items from the DB (payroll_items_master) —
+     they read an old KV copy, so items created later never appeared (only 5 companies
+     had a copy, last updated June).
+  10. Hidden items → payroll_hidden_items (migration 032, needs "ja"); API GET/PUT
+      /api/payroll/items/hidden; until 032 runs, hiding shows "needs database update 032".
+
 Prepared, NOT run (data change — needs Ruan's "ja"):
   migration 031: copy the KV basic salary into employees.basic_salary for the 20
   employees (18 active, 11 companies) whose salary exists ONLY in KV today; audited.
@@ -39,7 +46,6 @@ Prepared, NOT run (data change — needs Ruan's "ja"):
 Not changed (tracked):
   - historical-import.html KV writes (emp_historical, payruns, import log) → with the
     import rebuild (roadmap).
-  - payroll-items "hidden items" list (company setting, not personal) → SQL later.
   - tax_config KV mirror (legacy frontend pages) — written by the tax-tables route.
   - Old KV rows are left in place (inert); deleting them is a separate data clean-up.
 

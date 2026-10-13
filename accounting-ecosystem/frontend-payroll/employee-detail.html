@@ -1210,6 +1210,7 @@
             // Use setTimeout to ensure DOM is fully ready (Edge compatibility)
             setTimeout(async function() {
                 await loadEmployee();
+                loadItemPickerData();
                 loadEmployeeNav();
                 // If coming via SSO, availableCompanies may be empty — fetch async then render
                 var cachedCos = AUTH.getCompaniesForUser();
@@ -2504,12 +2505,24 @@
             { category: 'Other',     type: 'other',      name: 'Termination Lump Sums' }
         ];
 
-        function getHiddenPayrollItems() {
-            try { return JSON.parse(safeLocalStorage.getItem('hidden_payroll_items_' + currentCompanyId) || '[]'); } catch(e) { return []; }
+        // Fase 11: the item pickers use the company's payroll items from the database
+        // (payroll_items_master — the same list Execute Payroll uses) and the hidden-items list
+        // (payroll_hidden_items). Both used to come from old browser/KV copies, so items created
+        // in Payroll Items after the copy was made never appeared here.
+        var _companyPayrollItems = [];
+        var _hiddenPayrollItems = [];
+        function loadItemPickerData() {
+            var headers = _authHeaders();
+            return Promise.all([
+                fetch('/api/payroll/items', { headers: headers }).then(function(r) { return r.ok ? r.json() : {}; }),
+                fetch('/api/payroll/items/hidden', { headers: headers }).then(function(r) { return r.ok ? r.json() : {}; })
+            ]).then(function(res) {
+                _companyPayrollItems = (res[0] && res[0].items) || [];
+                _hiddenPayrollItems = (res[1] && res[1].names) || [];
+            }).catch(function(e) { console.warn('[employee-detail] item lists not loaded:', e.message); });
         }
-        function getCustomPayrollItems() {
-            try { return JSON.parse(safeLocalStorage.getItem('payroll_items_' + currentCompanyId) || '[]'); } catch(e) { return []; }
-        }
+        function getHiddenPayrollItems() { return _hiddenPayrollItems.slice(); }
+        function getCustomPayrollItems() { return _companyPayrollItems.slice(); }
 
         function buildItemList(containerEl, items, selectFn, customFn) {
             var catBg = 'var(--surface, #f8f9fa)';

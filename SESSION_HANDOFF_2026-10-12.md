@@ -147,6 +147,7 @@
 9. Migrasie 031: sê "ja 031" — kopieer die salaris van 20 werknemers (18 aktief) wat tans net in die ou KV-stoor is, na die werknemertabel (geoudit).
 10. Fase 11-toets: maak 'n werknemer se payslip-blad oop, voeg 'n nota by en vee dit uit; voeg 'n gereelde item by.
 11. Ledger Leo-joernaal: in elke maatskappy wat Leo gebruik, voeg 2 rekeninge in die Chart of Accounts by: "Payroll Deductions Payable" (laste, bv. 2420) en "Salaries Payable" (laste, bv. 2430). Toets dan op TEST: finaliseer 'n run → Leo → Journals wys 'n konsep "PAYROLL YYYY-MM".
+12. Migrasie 032: sê "ja 032" — tabel vir versteekte payroll-items (was in KV; geen data om oor te skuif nie).
 
 ## Open risks / follow-ups
 

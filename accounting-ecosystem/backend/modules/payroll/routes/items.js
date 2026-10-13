@@ -17,6 +17,7 @@ const express = require('express');
 const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const IRP5Learning = require('../../../sean/irp5-learning');
+const { auditFromReq } = require('../../../middleware/audit');
 
 const router = express.Router();
 
@@ -110,6 +111,56 @@ router.get('/', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     }
 
     res.json({ items: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Hidden items (Fase 11 — was browser/KV, CLAUDE.md Part D) ────────────────
+// Item names a company hides from the payslip item pickers (own or standard items).
+// Table payroll_hidden_items (migration 032). Registered before '/:id'.
+const isMissingHiddenTable = (e) => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /payroll_hidden_items/.test(e.message || ''));
+
+/** GET /api/payroll/items/hidden → { names: [] } */
+router.get('/hidden', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('payroll_hidden_items')
+      .select('item_name').eq('company_id', req.companyId).order('item_name');
+    if (error) {
+      if (isMissingHiddenTable(error)) return res.json({ names: [], available: false });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ names: (data || []).map(r => r.item_name), available: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/** PUT /api/payroll/items/hidden  { names: [] } — replaces the company's list */
+router.put('/hidden', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const names = [...new Set((Array.isArray(req.body && req.body.names) ? req.body.names : [])
+      .map(n => String(n || '').trim().slice(0, 200)).filter(Boolean))];
+    const { data: before, error: readErr } = await supabase.from('payroll_hidden_items')
+      .select('item_name').eq('company_id', req.companyId);
+    if (readErr) {
+      if (isMissingHiddenTable(readErr)) return res.status(409).json({ error: 'Hiding items needs database update 032.' });
+      return res.status(500).json({ error: readErr.message });
+    }
+    const had = new Set((before || []).map(r => r.item_name));
+    const add = names.filter(n => !had.has(n));
+    const remove = [...had].filter(n => !names.includes(n));
+    if (remove.length) {
+      const { error } = await supabase.from('payroll_hidden_items').delete().eq('company_id', req.companyId).in('item_name', remove);
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    if (add.length) {
+      const { error } = await supabase.from('payroll_hidden_items')
+        .insert(add.map(n => ({ company_id: req.companyId, item_name: n, hidden_by: req.user.userId || null })));
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    await auditFromReq(req, 'UPDATE', 'payroll_hidden_items', req.companyId, { module: 'payroll', added: add, removed: remove });
+    res.json({ names });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

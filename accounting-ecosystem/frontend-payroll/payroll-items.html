@@ -1004,11 +1004,33 @@
             { type: 'other',      name: 'Termination Lump Sums' }
         ];
 
-        function getHiddenItemsKey() { return 'hidden_payroll_items_' + currentCompanyId; }
-        function getHiddenItems() {
-            try { return JSON.parse(safeLocalStorage.getItem(getHiddenItemsKey()) || '[]'); } catch(e) { return []; }
+        // Fase 11 (CLAUDE.md Part D): the hidden-items list lives in the database
+        // (payroll_hidden_items via /api/payroll/items/hidden) — it was kept in browser/KV storage.
+        var _hiddenItems = [];
+        function getHiddenItems() { return _hiddenItems.slice(); }
+        function _itemsApi(method, body) {
+            var token = safeLocalStorage.getItem('token') || '';
+            return fetch('/api/payroll/items/hidden', {
+                method: method,
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: body ? JSON.stringify(body) : undefined
+            }).then(function(r) {
+                return r.json().catch(function() { return {}; }).then(function(d) {
+                    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+                    return d;
+                });
+            });
         }
-        function saveHiddenItems(list) { safeLocalStorage.setItem(getHiddenItemsKey(), JSON.stringify(list)); }
+        function loadHiddenItems() {
+            return _itemsApi('GET').then(function(d) { _hiddenItems = d.names || []; })
+                .catch(function(e) { console.warn('[PayrollItems] hidden items not loaded:', e.message); })
+                .then(function() { renderStandardItems(); });
+        }
+        function saveHiddenItems(list) {
+            return _itemsApi('PUT', { names: list }).then(function(d) { _hiddenItems = d.names || list; })
+                .catch(function(e) { alert('Not saved: ' + e.message); })
+                .then(function() { renderStandardItems(); });
+        }
 
         var _sectionCollapseKey = 'payroll_items_sections_' + (AUTH && AUTH.getSession ? (AUTH.getSession().companyId || '') : '');
         function toggleSection(id) {
@@ -1041,11 +1063,9 @@
         function hideStandardItem(name) {
             var hidden = getHiddenItems();
             if (!hidden.includes(name)) { hidden.push(name); saveHiddenItems(hidden); }
-            renderStandardItems();
         }
         function restoreStandardItem(name) {
             saveHiddenItems(getHiddenItems().filter(function(n) { return n !== name; }));
-            renderStandardItems();
         }
         function renderStandardItems() {
             var container = document.getElementById('standardItemsList');
@@ -1106,7 +1126,7 @@
                 currentItems = [];
             }
             displayItemsByCategory();
-            renderStandardItems();
+            loadHiddenItems();   // renders the standard items once the list is loaded
             restoreSectionStates();
             seanSyncBackFromLibrary();
         }
