@@ -39,9 +39,11 @@ Expected changes (verified):
   none hired in November, none flagged active with an earlier termination — so no
   open payslip changes today.
 
-Not changed (open question for Ruan):
-  Overtime hourly rate in a pro-rata month is taken from the PRO-RATED basic salary
-  (lower rate). Should overtime use the full monthly hourly rate?
+Owner decision 2026-10-13 ("teen hulle normale oortyd tarief, nie verlaagte tarief nie"):
+  4. In a pro-rata month overtime is paid — and short time deducted — at the NORMAL
+     hourly rate from the full monthly salary (was the pro-rated salary → lower rate).
+     Golden S63 added: R20 000 from 10 Oct, 4h OT + 2h short time → hourly R115.47,
+     OT R692.82, short time −R230.94. Multi-rate unchanged (own rand rate).
 
 Rollback: git revert.
 ─────────────────────────────────────────────────────────────

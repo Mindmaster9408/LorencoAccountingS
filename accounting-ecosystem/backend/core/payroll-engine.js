@@ -777,7 +777,13 @@ const PayrollEngine = {
 
         // Overtime → once-off (always taxable, calculated independently)
         // Use schedule-based hourly rate when workSchedule is provided; fall back to HOURLY_DIVISOR (173.33)
-        var hourlyRate = PayrollEngine.calcHourlyRate(payrollData.basic_salary, payrollData.workSchedule, payrollData.hours_per_day);
+        // In a pro-rata month the hourly rate still comes from the FULL monthly salary
+        // (owner decision 2026-10-13, Fase 5): overtime is paid, and a missed hour (short time)
+        // deducted, at the normal rate — never at a reduced rate. hourly_basis_salary is set by
+        // calculateWithProRata; otherwise basic_salary is the full salary.
+        var hourlyRate = PayrollEngine.calcHourlyRate(
+            payrollData.hourly_basis_salary != null ? payrollData.hourly_basis_salary : payrollData.basic_salary,
+            payrollData.workSchedule, payrollData.hours_per_day);
         var overtimeAmount = 0;
         (overtime || []).forEach(function(ot) {
             var otAmt = (parseFloat(ot.hours) || 0) * hourlyRate * (parseFloat(ot.rate_multiplier) || 1.5);
@@ -1746,6 +1752,7 @@ const PayrollEngine = {
         var factor = prorataInfo.factor;
         var adjustedPayrollData = Object.assign({}, payrollData);
         adjustedPayrollData.basic_salary = PayrollEngine.r2((payrollData.basic_salary || 0) * factor);
+        adjustedPayrollData.hourly_basis_salary = payrollData.basic_salary || 0;   // overtime / short time at the normal rate
         adjustedPayrollData.regular_inputs = (payrollData.regular_inputs || []).map(function(ri) {
             if (ri.type === 'deduction' || ri.is_percentage) return ri;
             return Object.assign({}, ri, { amount: PayrollEngine.r2((parseFloat(ri.amount) || 0) * factor) });

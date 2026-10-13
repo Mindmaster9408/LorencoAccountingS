@@ -117,7 +117,7 @@ Resultate: [FASE0_RESULTATE_2026-10-12.md](FASE0_RESULTATE_2026-10-12.md). Nuwe 
 
 ### Fase 5 — Pro-rata en geskiktheid `[B8, V4]` → spec 06 D, 03, 07
 
-**✅ Gebou 2026-10-13** ([FASE5_CHANGE_IMPACT_NOTE.md](FASE5_CHANGE_IMPACT_NOTE.md)). Faktor onafgerond; basiese salaris + vaste toelaes pro-rata; een geskiktheidsreël (`services/payrollEligibility.js`) vir Execute Payroll en die enkel-payslip: aangestel ná die periode → geblokkeer met boodskap, beëindig vóór → uitgesluit. Toetse: `tests/payroll-fase5.test.js` (15). Oop: oortyd-uurtarief in 'n pro-rata maand (vraag aan Ruan).
+**✅ Gebou 2026-10-13** ([FASE5_CHANGE_IMPACT_NOTE.md](FASE5_CHANGE_IMPACT_NOTE.md)). Faktor onafgerond; basiese salaris + vaste toelaes pro-rata; een geskiktheidsreël (`services/payrollEligibility.js`) vir Execute Payroll en die enkel-payslip: aangestel ná die periode → geblokkeer met boodskap, beëindig vóór → uitgesluit. Toetse: `tests/payroll-fase5.test.js` (15). Oortyd en kort tyd in 'n pro-rata maand teen die normale uurtarief (Ruan 2026-10-13).
 | 5.1 | Pro-rata-faktor nie meer afgerond nie. |
 | 5.2 | Werknemer aangestel ná die periode: blokkeer/waarsku (vraag 03.4). |
 | 5.3 | Toelaes pro-rata of nie (vraag 06.3). |

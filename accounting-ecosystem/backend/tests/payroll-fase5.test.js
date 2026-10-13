@@ -68,6 +68,18 @@ describe('what is pro-rated (ENJ-21)', () => {
   });
 });
 
+describe('overtime and short time in a pro-rata month (owner decision 2026-10-13)', () => {
+  test('paid / deducted at the NORMAL hourly rate from the full monthly salary', () => {
+    const r = PayrollEngine.calculateWithProRata({ basic_salary: 20000, regular_inputs: [] }, '2026-10-10', null,
+      [], [{ hours: 4, rate_multiplier: 1.5 }], [], [{ hours_missed: 2 }], {}, '2026-10', null, null);
+    const full = PayrollEngine.calcHourlyRate(20000);
+    expect(r.payslip_lines.find(l => l.kind === 'overtime').rate).toBeCloseTo(full * 1.5, 2);
+    expect(r.payslip_lines.find(l => l.kind === 'short_time').rate).toBeCloseTo(full, 2);
+    expect(r.overtimeAmount).toBeCloseTo(4 * full * 1.5, 2);
+    expect(r.payslip_check.ok).toBe(true);
+  });
+});
+
 describe('payrollEligibility (WN-10, UF-02)', () => {
   const P = ['2026-10-01', '2026-10-31'];
   test('hired after the period → blocked with the agreed message', () => {

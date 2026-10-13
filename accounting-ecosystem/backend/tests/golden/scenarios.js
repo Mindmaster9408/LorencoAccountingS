@@ -99,6 +99,8 @@ const SCENARIOS = [
   // Regular items
   one('S12', 'Travel allowance R5 000 @ 80% taxable', P, { employee: emp(),
     items: [regular('Travel Allowance', 'allowance', 5000, { taxable_percentage: 80, proj: 'FIXED_RECURRING' })] }),
+  one('S63', 'Starts 10 Oct, 4h overtime + 2h short time at the FULL hourly rate (Fase 5)', P,
+    { employee: emp({ hire_date: '2026-10-10' }) }, { overtime: [ot(4, 1.5)], shortTime: [st(2)] }),
   // Ruan 2026-10-12: UIF on a travel allowance must be on the 80% taxable portion only.
   // Basic below the UIF ceiling so the 80% is visible: expected UIF base 10 000 + 4 000 = 14 000 → R140.
   one('S12a', 'Travel allowance R5 000 @ 80% — UIF on 80% only (regular)', P, { employee: emp({ basic_salary: 10000 }),

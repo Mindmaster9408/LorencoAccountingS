@@ -100,7 +100,7 @@
 - Pro-rata factor unrounded (B8); basic + fixed allowances pro-rated (ENJ-21); once-off/overtime/deductions not.
 - services/payrollEligibility.js: hired after period → blocked with message (WN-10); terminated before → excluded (UF-02). Used by Execute Payroll, single payslip and golden harness.
 - Golden: only S60/S62 changed as expected. No live employee affected in Oct 2026. Spec statuses for Fase 2–4 items brought up to date.
-- Open: overtime hourly rate in a pro-rata month (full vs pro-rated) — asked Ruan.
+- Ruan decided: overtime/short time in a pro-rata month at the NORMAL (full-salary) hourly rate — done, golden S63.
 
 ## Open risks / follow-ups
 

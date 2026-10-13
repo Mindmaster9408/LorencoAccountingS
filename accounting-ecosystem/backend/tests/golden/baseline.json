@@ -287,6 +287,30 @@
       }
     }
   },
+  "S63": {
+    "desc": "Starts 10 Oct, 4h overtime + 2h short time at the FULL hourly rate (Fase 5)",
+    "periods": {
+      "2026-10": {
+        "gross": 14098.24,
+        "taxableGross": 14098.24,
+        "paye": 1052.68,
+        "paye_base": 1052.68,
+        "voluntary_paye_adjustment": 0,
+        "uif": 140.98,
+        "uif_employer": 140.98,
+        "sdl": 140.98,
+        "deductions": 0,
+        "net": 12904.58,
+        "medicalCredit": 0,
+        "overtimeAmount": 692.82,
+        "shortTimeAmount": 230.94,
+        "periodicTaxableGross": 13405.42,
+        "onceOffTaxableGross": 692.82,
+        "prorataFactor": 0.6818181818181818,
+        "ytdMethod": "monthly_annualization"
+      }
+    }
+  },
   "S12a": {
     "desc": "Travel allowance R5 000 @ 80% — UIF on 80% only (regular)",
     "periods": {
