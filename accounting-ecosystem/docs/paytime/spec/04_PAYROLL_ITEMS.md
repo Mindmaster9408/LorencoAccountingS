@@ -23,7 +23,7 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 | # | Reël | Status |
 |---|---|---|
 | IT-01 | Al die eienskappe hierbo geld vir **herhalende** items én **eenmalige periode-insette** van dieselfde item. | ⚠️ Eenmalige insette verloor `is_taxable` en `tax_treatment` [B1, B2] |
-| IT-02 | Items word deur 'n vaste ID gekoppel, nie deur die naam nie (hernoem mag nie die koppeling breek nie). | ❌ Koppeling via kleinletter-naam |
+| IT-02 | Items word deur 'n vaste ID gekoppel, nie deur die naam nie (hernoem mag nie die koppeling breek nie). | ⚠️ 2026-10-13: kode koppel op ID → naam + kant; hernoem neem berekeningsrye saam (IT02_ITEM_LINK_CHANGE_IMPACT_NOTE.md). Vol ✅ ná migrasie 033; eenmalige insette nog op naam |
 | IT-03 | 'n Verandering aan 'n item se instellings geld vanaf die volgende ongeslote periode; geslote periodes bly onaangeraak. | ✅ (snapshots is bevries) |
 | IT-04 | IRP5-kode word gevalideer teen SARS se lys bronkodes en moet by die itemtipe pas (verdienste-kode vir verdienste, ens.). | ⚠️ Net formaat (4–6 syfers) |
 | IT-05 | Geen item kan in 'n payroll gebruik word sonder 'n IRP5-kode nie (waarskuwing in die run; blok by EMP501). | 🆕 |
@@ -43,7 +43,7 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 | IT-10 | Tipe **employer_contribution** word by toewysing as "earning" (verdienste) gestoor. Die enjin tel dit dus by bruto, belasbare inkomste **en netto** — die werknemer kry die werkgewer se bydrae as kontant uitbetaal. | ✅ Reggestel 2026-10-13 (IT10_EMPLOYER_CONTRIBUTIONS_CHANGE_IMPACT_NOTE.md): nooit in bruto/netto nie; belasbare deel by belasbare inkomste + SDL, nie UIF nie; lyn onder werkgewer. Geen lewendige items van hierdie tipe nie |
 | IT-11 | Kategorieë **lening gegee / lening terugbetaal** hou geen balans by nie; 'n leningterugbetaling stop nooit vanself wanneer die lening afbetaal is nie. | ❌ Nuut gevind |
 | IT-12 | Kategorie **uur-gebaseer** het geen ure × tarief-berekening nie; dit word as 'n gewone bedrag hanteer. | ❌ Nuut gevind |
-| IT-13 | Twee itemtabelle wat net deur die naam gekoppel is: hernoem 'n item, en die werknemers se bestaande toewysings verloor hul instellings (UIF, %, belasbaar) en IRP5-kode. | ❌ (sien IT-02) |
+| IT-13 | Twee itemtabelle wat net deur die naam gekoppel is: hernoem 'n item, en die werknemers se bestaande toewysings verloor hul instellings (UIF, %, belasbaar) en IRP5-kode. | ⚠️ Hernoem-fout reggestel 2026-10-13 (sien IT-02) |
 
 ## Beantwoord deur Ruan (2026-10-12)
 

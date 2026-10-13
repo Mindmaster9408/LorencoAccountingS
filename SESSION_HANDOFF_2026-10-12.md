@@ -150,6 +150,10 @@
 
 - A failed read of inputs/items/YTD/schedule/SDL flags no longer produces a quietly wrong payslip: the calculation stops with a clear message (pay run: per employee; Calculate: 503). Live check: 40 employees load fine.
 
+## IT-02 / IT-13 item link (2026-10-13) — docs/paytime/IT02_ITEM_LINK_CHANGE_IMPACT_NOTE.md
+
+- Renaming a Payroll Item no longer cuts employees' assignments loose from its settings; same-name items on two sides (company 7 "Savings") are no longer mixed. Migration 033 (payroll_items.master_item_id) prepared, NOT run — code works before and after.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -167,6 +171,7 @@
 13. Sean (SEVCO): wanneer 'n IRP5-voorstel verskyn, lees die "Will be filled"-lys (maatskappy + itemnaam) voor jy goedkeur — Sean pas nou op betekenis, so kyk dat elke naam regtig dieselfde item is.
 14. Leo-bankpassing (ná punt 11): op TEST, voer 'n banklyn in met presies die netto betaling van 'n werknemer van 'n gefinaliseerde maand (datum in daardie maand) → Leo → Bank wys "Payroll match" → "Allocate as payroll payment" → joernaal Dr Salaries Payable / Cr Bank. Probeer ook die EMP201-totaal.
 15. IT-10 (wanneer jy dit nodig het): maak op TEST 'n Payroll Item tipe "Employer Contribution" (bv. werkgewer-pensioen R1 000, belasbaar), ken dit aan 'n werknemer toe → payslip wys dit onder werkgewerbydraes, netto bly dieselfde, PAYE effens hoër.
+16. Migrasie 033: sê "ja 033" — vaste ID-koppeling tussen payroll-items en die Payroll Items-skerm (9 van 14 rye word gekoppel; die res werk soos voorheen). Toets daarna: hernoem 'n item op TEST → die werknemer se payslip hou die item se instellings.
 
 ## Open risks / follow-ups
 

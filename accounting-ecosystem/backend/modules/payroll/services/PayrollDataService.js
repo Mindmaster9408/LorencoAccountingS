@@ -25,6 +25,7 @@
  */
 
 const PayrollEngine = require('../../../core/payroll-engine');
+const ItemLink = require('./itemLink');
 
 /**
  * Fetch and normalize complete payroll calculation input for an employee/period.
@@ -572,11 +573,13 @@ async function fetchCompanyRegistrationFlags(companyId, supabase) {
 async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
   // employee_payroll_items and payroll_items are created by payroll-schema migration.
   // Gracefully return empty array if tables don't exist yet.
+  // master_item_id (migration 033, spec 04 IT-02) only once the column exists.
+  const linkCol = (await ItemLink.hasMasterLink(supabase)) ? ', master_item_id' : '';
   const { data, error } = await supabase
     .from('employee_payroll_items')
     .select(
       `id, payroll_item_id, amount, percentage, item_type,
-       payroll_items(code, name, item_category, is_taxable, tax_treatment, paye_projection_type, affects_uif)`
+       payroll_items(code, name, item_category, is_taxable, tax_treatment, paye_projection_type, affects_uif${linkCol})`
     )
     .eq('company_id', companyId)
     .eq('employee_id', employeeId)
@@ -594,21 +597,21 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
       // Primary: query payroll_items_master (authoritative after migration)
       const { data: masterItems, error: masterErr } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif, paye_projection_type, is_taxable, tax_treatment, taxable_percentage')
+        .select('id, item_name, item_type, affects_uif, paye_projection_type, is_taxable, tax_treatment, taxable_percentage')
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterErr) throw inputsUnavailable('the payroll item settings', employeeId, masterErr.message);
 
       if (masterItems && masterItems.length > 0) {
-        const masterMap = {};
-        masterItems.forEach(function(m) {
-          const k = (m.item_name || '').toLowerCase().trim();
-          if (k) masterMap[k] = m;
-        });
+        // Spec 04 IT-02: by the fixed link first, then name + side (never an earning's
+        // settings on a deduction with the same name) — services/itemLink.js.
         loadedItems.forEach(function(item) {
           if (!item.payroll_items) return;
-          const key = (item.payroll_items.name || '').toLowerCase().trim();
-          const m = masterMap[key];
+          const m = ItemLink.pickMaster(masterItems, {
+            master_item_id: item.payroll_items.master_item_id,
+            name: item.payroll_items.name,
+            type: item.item_type
+          });
           if (!m) return;
           if (m.affects_uif !== undefined && m.affects_uif !== null) {
             item.payroll_items.affects_uif = m.affects_uif === true;
@@ -751,20 +754,14 @@ async function fetchPeriodInputs(
       // Primary: payroll_items_master
       const { data: masterItems, error: masterErr } = await supabase
         .from('payroll_items_master')
-        .select('item_name, affects_uif, paye_projection_type, taxable_percentage, is_taxable, tax_treatment')
+        .select('id, item_name, item_type, affects_uif, paye_projection_type, taxable_percentage, is_taxable, tax_treatment')
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterErr) throw inputsUnavailable('the payroll item settings', employeeId, masterErr.message);
 
       if (masterItems && masterItems.length > 0) {
-        const masterMap = {};
-        masterItems.forEach(function(m) {
-          const k = (m.item_name || '').toLowerCase().trim();
-          if (k) masterMap[k] = m;
-        });
         loadedInputs.forEach(function(ci) {
-          const key = (ci.description || '').toLowerCase().trim();
-          const m = masterMap[key];
+          const m = ItemLink.pickMaster(masterItems, { name: ci.description, type: ci.item_type });   // IT-02
           if (!m) return;
           if (m.affects_uif !== undefined && m.affects_uif !== null) {
             ci.affects_uif = m.affects_uif === true;

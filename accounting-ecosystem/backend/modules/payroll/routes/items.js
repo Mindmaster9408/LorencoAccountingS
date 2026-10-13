@@ -18,6 +18,7 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const IRP5Learning = require('../../../sean/irp5-learning');
 const { auditFromReq } = require('../../../middleware/audit');
+const ItemLink = require('../services/itemLink');
 
 const router = express.Router();
 
@@ -374,22 +375,43 @@ router.put('/:id', requirePermission('PAYROLL.CREATE'), async (req, res) => {
     // live master-override at calculation time already covers for this in
     // practice, but the calc-table row itself should not silently disagree
     // with the master row it's supposed to mirror.
-    const itemName = updates.item_name || existing.item_name;
+    //
+    // Spec 04 IT-02/IT-13: the calculation rows are found by the fixed link
+    // (master_item_id, migration 033) and otherwise by the OLD name + same side — the
+    // sync used to look for the NEW name, so a rename matched nothing and every
+    // employee's assignment lost its settings. A rename now renames those rows too.
     const calcSync = {};
+    if (updates.item_name !== undefined && String(updates.item_name).trim() &&
+        String(updates.item_name).trim() !== existing.item_name) calcSync.name = String(updates.item_name).trim();
     if (updates.affects_uif          !== undefined) calcSync.affects_uif          = updates.affects_uif;
     if (updates.is_taxable            !== undefined) calcSync.is_taxable            = updates.is_taxable;
     if (updates.taxable_percentage    !== undefined) calcSync.taxable_percentage    = updates.taxable_percentage;
     if (updates.paye_projection_type !== undefined) calcSync.paye_projection_type = updates.paye_projection_type;
     if (Object.keys(calcSync).length > 0) {
-      supabase
-        .from('payroll_items')
-        .update(calcSync)
-        .eq('company_id', req.companyId)
-        .ilike('name', itemName)
-        .then(() => {})
-        .catch(syncErr => {
-          console.warn('[Paytime] affects_uif sync to payroll_items failed (non-fatal):', syncErr.message);
-        });
+      try {
+        const linked = await ItemLink.hasMasterLink(supabase);
+        let q = supabase.from('payroll_items')
+          .select('id, name, item_type' + (linked ? ', master_item_id' : ''))
+          .eq('company_id', req.companyId);
+        const { data: calcRows, error: calcErr } = await q;
+        if (calcErr) throw calcErr;
+        const side = ItemLink.sideOf(existing.item_type);
+        const ids = (calcRows || []).filter(r =>
+          (linked && String(r.master_item_id) === String(existing.id)) ||
+          ((!linked || r.master_item_id == null) &&
+            String(r.name || '').toLowerCase().trim() === String(existing.item_name || '').toLowerCase().trim() &&
+            ItemLink.sideOf(r.item_type) === side)
+        ).map(r => r.id);
+        if (ids.length) {
+          const patch = Object.assign({}, calcSync, linked ? { master_item_id: existing.id } : {});
+          const { error: upErr } = await supabase.from('payroll_items').update(patch)
+            .eq('company_id', req.companyId).in('id', ids);
+          if (upErr) throw upErr;
+        }
+      } catch (syncErr) {
+        // The master row is saved; the calculation still reads the master settings live.
+        console.warn('[Paytime] sync to payroll_items failed (non-fatal):', syncErr.message);
+      }
     }
 
     // Emit Sean learning event if irp5_code was added or changed (not cleared)
@@ -485,13 +507,17 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
     // item type set to 80% in the master must flow into every employee's
     // assignment, not just apply to newly-created ones. Defaults to 100.
     let resolvedTaxablePercentage = 100;
+    let masterId = null;
     try {
-      const { data: masterConfig } = await supabase
+      // Spec 04 IT-02: same name may exist on two sides (company 7 "Savings") — pick the
+      // row of this side; maybeSingle() used to fail on such a pair and drop the settings.
+      const { data: masterRows } = await supabase
         .from('payroll_items_master')
-        .select('affects_uif, taxable_percentage')
+        .select('id, item_name, item_type, affects_uif, taxable_percentage')
         .eq('company_id', req.companyId)
-        .ilike('item_name', description)  // payroll_items_master uses item_name not name
-        .maybeSingle();
+        .ilike('item_name', description);  // payroll_items_master uses item_name not name
+      const masterConfig = ItemLink.pickMaster(masterRows, { name: description, type: dbItemType });
+      if (masterConfig) masterId = masterConfig.id;
       if (masterConfig && masterConfig.affects_uif === false) {
         resolvedAffectsUif = false;
       }
@@ -502,18 +528,23 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
 
     // Find an existing payroll_items master record for this company + description
     let masterItemId = null;
-    const { data: existingMaster } = await supabase
+    const linked = await ItemLink.hasMasterLink(supabase);
+    const { data: calcRows } = await supabase
       .from('payroll_items')
-      .select('id')
+      .select('id, name, item_type' + (linked ? ', master_item_id' : ''))
       .eq('company_id', req.companyId)
-      .ilike('name', description)
-      .maybeSingle();
+      .ilike('name', description);
+    const existingMaster =
+      (linked && masterId != null && (calcRows || []).find(r => String(r.master_item_id) === String(masterId))) ||
+      (calcRows || []).find(r => ItemLink.sideOf(r.item_type) === ItemLink.sideOf(dbItemType)) ||
+      null;
 
     if (existingMaster) {
       masterItemId = existingMaster.id;
       // Sync affects_uif and paye_projection_type from the master config into the
       // calculation record — ensures future calculations use the correct flags.
       const syncUpdates = { affects_uif: resolvedAffectsUif, taxable_percentage: resolvedTaxablePercentage, item_type: dbItemType };
+      if (linked && masterId != null) syncUpdates.master_item_id = masterId;
       if (paye_projection_type && allowedProjectionTypes.includes(paye_projection_type)) {
         syncUpdates.paye_projection_type = resolvedProjectionType;
       }
@@ -542,7 +573,8 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
             is_recurring:         true,
             paye_projection_type: resolvedProjectionType,
             affects_uif:          resolvedAffectsUif,
-            taxable_percentage:   resolvedTaxablePercentage
+            taxable_percentage:   resolvedTaxablePercentage,
+            ...(linked && masterId != null ? { master_item_id: masterId } : {})
           })
           .select('id')
           .single();
