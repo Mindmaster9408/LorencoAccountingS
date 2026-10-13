@@ -40,7 +40,7 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 
 | # | Bevinding | Status |
 |---|---|---|
-| IT-10 | Tipe **employer_contribution** word by toewysing as "earning" (verdienste) gestoor. Die enjin tel dit dus by bruto, belasbare inkomste **en netto** — die werknemer kry die werkgewer se bydrae as kontant uitbetaal. | ❌ Nuut gevind |
+| IT-10 | Tipe **employer_contribution** word by toewysing as "earning" (verdienste) gestoor. Die enjin tel dit dus by bruto, belasbare inkomste **en netto** — die werknemer kry die werkgewer se bydrae as kontant uitbetaal. | ✅ Reggestel 2026-10-13 (IT10_EMPLOYER_CONTRIBUTIONS_CHANGE_IMPACT_NOTE.md): nooit in bruto/netto nie; belasbare deel by belasbare inkomste + SDL, nie UIF nie; lyn onder werkgewer. Geen lewendige items van hierdie tipe nie |
 | IT-11 | Kategorieë **lening gegee / lening terugbetaal** hou geen balans by nie; 'n leningterugbetaling stop nooit vanself wanneer die lening afbetaal is nie. | ❌ Nuut gevind |
 | IT-12 | Kategorie **uur-gebaseer** het geen ure × tarief-berekening nie; dit word as 'n gewone bedrag hanteer. | ❌ Nuut gevind |
 | IT-13 | Twee itemtabelle wat net deur die naam gekoppel is: hernoem 'n item, en die werknemers se bestaande toewysings verloor hul instellings (UIF, %, belasbaar) en IRP5-kode. | ❌ (sien IT-02) |

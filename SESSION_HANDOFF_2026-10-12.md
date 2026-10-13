@@ -142,6 +142,10 @@
 
 - Leo Bank page suggests which outgoing bank line is an employee's net pay, a whole run's net pay, or the month's EMP201 (exact amount + date window, finalized payslips only); "Allocate as payroll payment" uses the normal allocate flow (Salaries Payable / 2400 + 2410). Used matches are flagged against double payment. No DB change, nothing automatic.
 
+## IT-10 employer contributions (2026-10-13) — docs/paytime/IT10_EMPLOYER_CONTRIBUTIONS_CHANGE_IMPACT_NOTE.md
+
+- Employer contributions were stored as earnings and paid out in net. Now never in gross/net; a taxable one adds to taxable income (PAYE, SDL) but not UIF; payslip line under employer. Engine (CRITICAL) change, golden 0 diffs, core 15/15. No live items of this type. Follow-up: Leo journal accounts for employer contributions; s11F/s6A with IT-06/07.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -158,6 +162,7 @@
 12. Migrasie 032: sê "ja 032" — tabel vir versteekte payroll-items (was in KV; geen data om oor te skuif nie). Toets dan: Payroll Items → versteek 'n item → dit verdwyn uit die payslip se item-kieser; 'n nuwe maatskappy-item verskyn wel in die kieser.
 13. Sean (SEVCO): wanneer 'n IRP5-voorstel verskyn, lees die "Will be filled"-lys (maatskappy + itemnaam) voor jy goedkeur — Sean pas nou op betekenis, so kyk dat elke naam regtig dieselfde item is.
 14. Leo-bankpassing (ná punt 11): op TEST, voer 'n banklyn in met presies die netto betaling van 'n werknemer van 'n gefinaliseerde maand (datum in daardie maand) → Leo → Bank wys "Payroll match" → "Allocate as payroll payment" → joernaal Dr Salaries Payable / Cr Bank. Probeer ook die EMP201-totaal.
+15. IT-10 (wanneer jy dit nodig het): maak op TEST 'n Payroll Item tipe "Employer Contribution" (bv. werkgewer-pensioen R1 000, belasbaar), ken dit aan 'n werknemer toe → payslip wys dit onder werkgewerbydraes, netto bly dieselfde, PAYE effens hoër.
 
 ## Open risks / follow-ups
 

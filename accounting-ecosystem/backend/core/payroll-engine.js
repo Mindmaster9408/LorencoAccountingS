@@ -707,6 +707,41 @@ const PayrollEngine = {
             return ri;
         });
 
+        // Spec 04 IT-10 (owner decision a): employer contributions are NEVER paid to the
+        // employee — never in gross, net or deductions. A taxable one (fringe benefit, e.g.
+        // employer pension/medical contribution) adds its taxable portion to taxable income
+        // (PAYE, and so the SDL base) but never to the UIF base. Taken out of the input lists
+        // here so every existing earning/deduction path below stays exactly as it was.
+        var _isEmployerContribution = function(x) {
+            return x && (x.type === 'employer_contribution' || x.type === 'company_contribution');
+        };
+        var _allRegularInputs = resolvedRegularInputs;          // payslip lines show them all
+        var _allCurrentInputs = currentInputs || [];
+        var employerContributions = 0;
+        var fringeBenefitsTaxable = 0;
+        var _fringePeriodic = 0;     // taxable contributions in the periodic (projected) bucket
+        var _addContribution = function(x, recurring) {
+            var amt = parseFloat(x.amount) || 0;
+            employerContributions += amt;
+            if (x.is_taxable === false) return;
+            var pct = (x.taxable_percentage === null || x.taxable_percentage === undefined) ? 100 : parseFloat(x.taxable_percentage);
+            var portion = PayrollEngine.r2(amt * (pct / 100));
+            fringeBenefitsTaxable += portion;
+            var proj = x.paye_projection_type || (recurring ? 'FIXED_RECURRING' : 'ONCE_OFF');
+            if (proj === 'ONCE_OFF') { onceOffTaxable += portion; }
+            else { periodicTaxable += portion; _fringePeriodic += portion; }
+        };
+        resolvedRegularInputs = resolvedRegularInputs.filter(function(ri) {
+            if (!_isEmployerContribution(ri)) return true;
+            _addContribution(ri, true);
+            return false;
+        });
+        currentInputs = _allCurrentInputs.filter(function(ci) {
+            if (!_isEmployerContribution(ci)) return true;
+            _addContribution(ci, false);
+            return false;
+        });
+
         // Regular inputs → periodic (recurring each month)
         resolvedRegularInputs.forEach(function(ri) {
             if (ri.type !== 'deduction') {
@@ -818,7 +853,8 @@ const PayrollEngine = {
 
         // Total gross includes both taxable and non-taxable.
         // Captured BEFORE pre-tax deductions are applied so that SDL remain based on actual earnings.
-        var gross = taxableGross + nonTaxableIncome;
+        // IT-10: a taxable employer contribution is in taxable income, not in pay.
+        var gross = taxableGross + nonTaxableIncome - fringeBenefitsTaxable;
 
         // SDL leviable amount = remuneration, i.e. the TAXABLE earnings before pre-tax
         // deductions: non-taxable reimbursements and the non-taxable part of a partly
@@ -943,6 +979,7 @@ const PayrollEngine = {
 
                 // Overtime: always VARIABLE
                 _ptVariable += overtimeAmount;
+                _ptFixed    += _fringePeriodic;   // IT-10: recurring taxable employer contributions
 
                 // Current period inputs: classify by paye_projection_type.
                 // After the engine routing fix, FIXED_RECURRING and VARIABLE_AVERAGE current inputs
@@ -1306,6 +1343,9 @@ const PayrollEngine = {
             // === ADDITIVE FIELD (company contributions payslip display) ===
             // Employer-side UIF match — see comment at calculation site above.
             uif_employer: PayrollEngine.r2(uif_employer),
+            // === ADDITIVE FIELDS (spec 04 IT-10) — employer contributions, never in gross/net ===
+            employer_contributions: PayrollEngine.r2(employerContributions),
+            fringe_benefits_taxable: PayrollEngine.r2(fringeBenefitsTaxable),
             // === ADDITIVE FIELDS (SARS spec compliance — tax breakdown transparency) ===
             // taxBeforeRebate: monthly bracket tax before age rebates (annual ÷ 12)
             // rebate: monthly sum of applicable age rebates (primary + secondary + tertiary)
@@ -1350,8 +1390,8 @@ const PayrollEngine = {
             // never from the employee's current items.
             payslip_lines: PayrollEngine.buildPayslipLines({
                 basicSalary:    payrollData.basic_salary || 0,
-                regularInputs:  resolvedRegularInputs,
-                currentInputs:  currentInputs || [],
+                regularInputs:  _allRegularInputs,
+                currentInputs:  _allCurrentInputs,
                 overtime:       overtime || [],
                 multiRate:      multiRate || [],
                 shortTime:      shortTime || [],
@@ -1382,9 +1422,12 @@ const PayrollEngine = {
         var lines = [];
         var desc = function(x, fallback) { return (x && (x.description || x.name)) || fallback; };
         if (c.basicSalary) lines.push({ section: 'earning', kind: 'basic', description: 'Basic Salary', amount: r2(c.basicSalary) });
+        var _ec = function(x) { return x && (x.type === 'employer_contribution' || x.type === 'company_contribution'); };
+        var _ecLines = [];
         (c.regularInputs || []).forEach(function(ri) {
             var a = r2(parseFloat(ri.amount) || 0);
             if (!a) return;
+            if (_ec(ri)) { _ecLines.push({ section: 'employer', kind: 'employer_contribution', description: desc(ri, 'Employer contribution'), amount: a, taxable: ri.is_taxable !== false ? true : undefined }); return; }
             lines.push({ section: ri.type === 'deduction' ? 'deduction' : 'earning', kind: 'regular',
                 description: desc(ri, ri.type === 'deduction' ? 'Deduction' : 'Allowance'), amount: a,
                 pre_tax: ri.type === 'deduction' && ri.tax_treatment === 'pre_tax' ? true : undefined,
@@ -1394,6 +1437,7 @@ const PayrollEngine = {
         (c.currentInputs || []).forEach(function(ci) {
             var a = r2(parseFloat(ci.amount) || 0);
             if (!a) return;
+            if (_ec(ci)) { _ecLines.push({ section: 'employer', kind: 'employer_contribution', description: desc(ci, 'Employer contribution'), amount: a, taxable: ci.is_taxable !== false ? true : undefined }); return; }
             lines.push({ section: ci.type === 'deduction' ? 'deduction' : 'earning', kind: 'current',
                 description: desc(ci, ci.type === 'deduction' ? 'Deduction' : 'Earning'), amount: a,
                 pre_tax: ci.type === 'deduction' && ci.tax_treatment === 'pre_tax' ? true : undefined });
@@ -1431,6 +1475,7 @@ const PayrollEngine = {
         if (c.uif) lines.push({ section: 'tax', kind: 'uif', description: 'UIF', amount: r2(c.uif) });
         if (c.uifEmployer) lines.push({ section: 'employer', kind: 'uif_employer', description: 'UIF (employer)', amount: r2(c.uifEmployer) });
         if (c.sdl) lines.push({ section: 'employer', kind: 'sdl', description: 'SDL', amount: r2(c.sdl) });
+        _ecLines.forEach(function(l) { lines.push(l); });
         return lines;
     },
 

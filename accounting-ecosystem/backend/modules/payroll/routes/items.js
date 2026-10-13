@@ -468,9 +468,13 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
     const allowedProjectionTypes = ['FIXED_RECURRING', 'VARIABLE_AVERAGE', 'ONCE_OFF'];
     const resolvedProjectionType = allowedProjectionTypes.includes(paye_projection_type) ? paye_projection_type : 'VARIABLE_AVERAGE';
 
-    // Map frontend item_type ('allowance', 'income', 'benefit', 'other', 'deduction')
-    // to DB item_type ('earning', 'deduction', 'company_contribution')
-    const dbItemType = item_type === 'deduction' ? 'deduction' : 'earning';
+    // Map frontend item_type ('allowance', 'income', 'benefit', 'other', 'deduction',
+    // 'employer_contribution') to DB item_type ('earning', 'deduction', 'company_contribution').
+    // Spec 04 IT-10: an employer contribution used to become an 'earning' and was paid out
+    // in net pay; it is now 'company_contribution' (never in gross/net — see the engine).
+    const dbItemType = item_type === 'deduction' ? 'deduction'
+      : (item_type === 'employer_contribution' || item_type === 'company_contribution') ? 'company_contribution'
+      : 'earning';
 
     // Look up affects_uif from payroll_items_master (the config-side table managed by the UI).
     // This ensures the calculation-side payroll_items record inherits the correct UIF flag
@@ -509,7 +513,7 @@ router.post('/employee', requirePermission('PAYROLL.CREATE'), async (req, res) =
       masterItemId = existingMaster.id;
       // Sync affects_uif and paye_projection_type from the master config into the
       // calculation record — ensures future calculations use the correct flags.
-      const syncUpdates = { affects_uif: resolvedAffectsUif, taxable_percentage: resolvedTaxablePercentage };
+      const syncUpdates = { affects_uif: resolvedAffectsUif, taxable_percentage: resolvedTaxablePercentage, item_type: dbItemType };
       if (paye_projection_type && allowedProjectionTypes.includes(paye_projection_type)) {
         syncUpdates.paye_projection_type = resolvedProjectionType;
       }
