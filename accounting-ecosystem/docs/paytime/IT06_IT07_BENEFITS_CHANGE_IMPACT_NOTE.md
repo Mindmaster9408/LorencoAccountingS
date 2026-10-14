@@ -36,7 +36,7 @@ IT-07:
 Payroll risk: [x] CRITICAL; behaviour changes only for (a) pre-tax deductions above 27.5%
   of remuneration, (b) items coded 3817, (c) company cars after 035.
 Checks: golden 0 diffs, core 15/15, payroll gate pass, tests/payroll-it06-it07-benefits
-  (8), live read-only load of 40 employees: 0 errors; live cap check: see handoff.
+  (8), live read-only load of 40 employees: 0 errors; live cap check of all 298 active employees (2026-10): 0 errors, 0 above the limit → no live PAYE changes.
 
 FOLLOW-UP NOTE
 - Area: UIF on the company car benefit

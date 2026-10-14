@@ -176,7 +176,7 @@
 
 ## IT-06 / IT-07 benefits (2026-10-14) — docs/paytime/IT06_IT07_BENEFITS_CHANGE_IMPACT_NOTE.md
 
-- s11F limit (27.5% / R350 000) on retirement deductions incl. the employer contribution (3817, deemed); employer retirement contributions no longer over-taxed; company car calculator per employee (3.5%/2.5%, PAYE on 80%/20%, IRP5 3802). Migration 035 run 2026-10-14. Open: UIF on the car benefit (currently excluded) — Ruan to confirm.
+- s11F limit (27.5% / R350 000) on retirement deductions incl. the employer contribution (3817, deemed); employer retirement contributions no longer over-taxed; company car calculator per employee (3.5%/2.5%, PAYE on 80%/20%, IRP5 3802). Migration 035 run 2026-10-14. Live read-only check 2026-10-14 (all 298 active employees, 2026-10): 0 errors, 2 with retirement deductions, 0 above the 27.5% limit — no live PAYE changes. Open: UIF on the car benefit (currently excluded) — Ruan to confirm.
 
 ## Ruan se take (hou by — bygewerk na elke fase)
 
