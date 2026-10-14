@@ -158,6 +158,10 @@
 
 - Ruan chose option a: every pay run warns per employee ("Payroll item \"X\" has no IRP5 code"); EMP501 marks that employee's IRP5 blocked. Needed for earnings, employer contributions and pre-tax deductions; not for net-only deductions. services/irp5ItemCheck.js. Live check (tax year 2026/27): 0 employees affected today.
 
+## UF-03 review before finalizing (2026-10-14) — docs/paytime/UF03_REVIEW_CHANGE_IMPACT_NOTE.md
+
+- The Finalize dialog now lists employees to check: big net change vs last month, new, negative net, tax-number issues, items without IRP5 code, paid last month but missing from this run. Read-only; never blocks.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -176,6 +180,7 @@
 14. Leo-bankpassing (ná punt 11): op TEST, voer 'n banklyn in met presies die netto betaling van 'n werknemer van 'n gefinaliseerde maand (datum in daardie maand) → Leo → Bank wys "Payroll match" → "Allocate as payroll payment" → joernaal Dr Salaries Payable / Cr Bank. Probeer ook die EMP201-totaal.
 15. IT-10 (wanneer jy dit nodig het): maak op TEST 'n Payroll Item tipe "Employer Contribution" (bv. werkgewer-pensioen R1 000, belasbaar), ken dit aan 'n werknemer toe → payslip wys dit onder werkgewerbydraes, netto bly dieselfde, PAYE effens hoër.
 16. Migrasie 033 GELOOP 2026-10-14 (8/14 gekoppel). Toets: hernoem 'n item op TEST → die werknemer se payslip hou die item se instellings.
+17. UF-03: op TEST, Execute Payroll → Run → "Finalize Payroll" → die dialoog wys "Review before finalizing" met die werknemers om na te gaan (op TEST tans: Natasja +88%, ongeldige belastingnommer, 3 nie in die run nie). Kanselleer as jy nie wil finaliseer nie.
 
 ## Open risks / follow-ups
 

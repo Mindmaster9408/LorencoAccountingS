@@ -96,6 +96,12 @@ var PayrollAPI = (function () {
             return request('GET', BASE + '/history/run/' + encodeURIComponent(runId));
         },
 
+        // GET /api/payroll/history/run/:run_id/review — spec 07 UF-03 review before finalizing
+        // 200: { success, period_key, previous_period_key, rows[], not_in_run[], totals, flagged }
+        getRunReview: function (runId) {
+            return request('GET', BASE + '/history/run/' + encodeURIComponent(runId) + '/review');
+        },
+
         // GET /api/payroll/calculate/history/:employee_id/:period_key
         // 200: { success, employee_id, period_key, data: { gross, paye, uif, sdl, net, ... } }
         getEmployeePeriodHistory: function (employeeId, periodKey) {

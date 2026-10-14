@@ -12,7 +12,7 @@ Die maandelikse lewensiklus van 'n payroll is beheerd, in volgorde, en ouditeerb
 |---|---|---|
 | UF-01 | **Run** bereken alle gekose werknemers op die backend en stoor 'n draft-snapshot per werknemer. 'n Herhaalde run vervang die draft. | ✅ |
 | UF-02 | Werknemers wat nie in die periode aktief was nie (aangestel ná die periode / beëindig vóór die periode) word uitgesluit. | ✅ Fase 5: aangestel ná / beëindig vóór die periode word uitgesluit [V4 reg] |
-| UF-03 | **Voor finalisering** wys die stelsel 'n nagaan-verslag: verskil per werknemer teenoor verlede maand, ontbrekende belastingnommers, negatiewe netto, items sonder IRP5-kode. | 🆕 |
+| UF-03 | **Voor finalisering** wys die stelsel 'n nagaan-verslag: verskil per werknemer teenoor verlede maand, ontbrekende belastingnommers, negatiewe netto, items sonder IRP5-kode. | ✅ 2026-10-14 — Finalize-dialoog wys die nagaan-verslag (UF03_REVIEW_CHANGE_IMPACT_NOTE.md); blokkeer nie |
 | UF-04 | **Volgorde:** 'n maand kan net gefinaliseer word as die vorige maand in dieselfde belastingjaar gefinaliseer is (of die werknemer toe nie in diens was nie). | ✅ Fase 3b: per-maatskappy streng volgorde (migrasie 026); ander kry 'n bevestiging |
 | UF-05 | **Finaliseer** sluit al die run se snapshots (`is_locked = true`) — enigste finaliseringspad. | ✅ |
 | UF-06 | 'n Ou draft-run wat deur 'n nuwer run vervang is, word as "vervang" gemerk en kan nie meer gefinaliseer word nie. | ✅ Fase 6: ou draft-runs sonder oop payslips → "superseded", kan nie gefinaliseer word nie (migrasie 028) |
@@ -22,7 +22,7 @@ Die maandelikse lewensiklus van 'n payroll is beheerd, in volgorde, en ouditeerb
 | UF-10 | **Ontsluit van 'n individuele payslip** (buite 'n gefinaliseerde run): goedkeurder moet 'n bestuurder **in dieselfde maatskappy** wees, mag nie die versoeker self wees nie, pogings word beperk, en as enige kontrole faal, word ontsluiting geweier. | ✅ Fase 10: dieselfde maatskappy, geen self-goedkeuring, 5 pogings/15 min, faal-geslote, geoudit [B6 reg] |
 | UF-11 | Pligskeiding: die persoon wat die run voorberei, is nie die een wat finaliseer nie (opsioneel per maatskappy). | 🆕 |
 | UF-12 | Elke run, finalisering, omkeer en ontsluiting word geoudit. | ✅ |
-| UF-13 | 'n Run is "alles of niks" per werknemer: 'n fout by een werknemer word gerapporteer, nie stilweg met halwe data bereken nie. | ⚠️ Per-werknemer foute word gerapporteer; insetfoute word egter ingesluk [B4] |
+| UF-13 | 'n Run is "alles of niks" per werknemer: 'n fout by een werknemer word gerapporteer, nie stilweg met halwe data bereken nie. | ✅ Per-werknemer foute gerapporteer; insetfoute stop nou die berekening (PI-07, 2026-10-13) |
 
 ## Beantwoord deur Ruan (2026-10-12)
 

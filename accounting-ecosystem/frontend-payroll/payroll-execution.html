@@ -694,7 +694,8 @@
                 No further changes or re-runs will be allowed once finalized.
                 Corrections require a new payroll correction run.
             </div>
-            <div style="font-size:0.9rem; color:#555; margin-bottom:24px;" id="finalize-summary"></div>
+            <div style="font-size:0.9rem; color:#555; margin-bottom:12px;" id="finalize-summary"></div>
+            <div id="finalize-review" style="margin-bottom:20px; max-height:45vh; overflow:auto;"></div>
             <div class="modal-actions">
                 <button class="btn btn-outline" onclick="closeFinalizeModal()">Cancel</button>
                 <button class="btn btn-success" id="confirm-finalize-btn" onclick="confirmFinalize()">
@@ -1247,6 +1248,42 @@
             '  ·  Run ID: ' + state.currentRunId.slice(0, 8) + '…';
 
         document.getElementById('finalizeModal').classList.add('show');
+        loadFinalizeReview(state.currentRunId);
+    }
+
+    // Spec 07 UF-03: review before finalizing — this run vs last month, tax numbers,
+    // negative net, items without an IRP5 code, employees paid last month but not now.
+    // Shows only; the user still decides.
+    async function loadFinalizeReview(runId) {
+        var box = document.getElementById('finalize-review');
+        box.innerHTML = '<div style="color:#777;font-size:0.85rem;">Checking the run…</div>';
+        var res = await PayrollAPI.getRunReview(runId);
+        if (runId !== state.currentRunId) return;
+        if (!res.ok || !res.data || !res.data.success) {
+            box.innerHTML = '<div style="color:#b06000;font-size:0.85rem;">⚠ The review could not be loaded — check the payslips before finalizing.</div>';
+            return;
+        }
+        var d = res.data;
+        var money = function (n) { return n == null ? '—' : 'R ' + Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+        var flagged = d.rows.filter(function (r) { return r.flags.length; }).concat(d.not_in_run || []);
+        var head = '<div style="font-size:0.85rem;margin-bottom:8px;"><strong>Review before finalizing</strong> — net pay ' +
+            money(d.totals.net) + ' (last month ' + esc(d.previous_period_key) + ': ' + money(d.totals.prev_net) + ')</div>';
+        if (!flagged.length) {
+            box.innerHTML = head + '<div style="color:#155724;font-size:0.85rem;">✓ Nothing to check: no large changes, tax numbers complete, no negative net pay' +
+                (d.irp5_code_check ? ', all items have an IRP5 code' : '') + '.</div>';
+            return;
+        }
+        box.innerHTML = head +
+            '<div style="font-size:0.8rem;color:#8a6d00;margin-bottom:6px;">⚠ ' + flagged.length + ' employee(s) to check:</div>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;">' +
+            '<tr style="text-align:left;border-bottom:1px solid #ddd;"><th>Employee</th><th style="text-align:right;">Net</th><th style="text-align:right;">Last month</th><th>Check</th></tr>' +
+            flagged.map(function (r) {
+                return '<tr style="border-bottom:1px solid #eee;vertical-align:top;">' +
+                    '<td>' + esc(r.name) + '</td>' +
+                    '<td style="text-align:right;white-space:nowrap;">' + money(r.net) + '</td>' +
+                    '<td style="text-align:right;white-space:nowrap;">' + money(r.prev_net) + '</td>' +
+                    '<td>' + r.flags.map(function (f) { return esc(f.text); }).join('<br>') + '</td></tr>';
+            }).join('') + '</table>';
     }
 
     function closeFinalizeModal() {

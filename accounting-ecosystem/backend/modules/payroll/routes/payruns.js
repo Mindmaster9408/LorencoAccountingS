@@ -54,6 +54,7 @@ const { payrollEligibility } = require('../services/payrollEligibility');
 const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
 const payrollJournal = require('../services/payrollJournal');
 const Irp5ItemCheck = require('../services/irp5ItemCheck');
+const RunReview = require('../services/runReview');
 
 const router = express.Router();
 
@@ -973,6 +974,58 @@ router.get(
 
     } catch (err) {
       res.status(500).json({ success: false, error: 'Server error' });
+    }
+  }
+);
+
+/**
+ * GET /api/payroll/history/run/:run_id/review — spec 07 UF-03: review before finalizing.
+ * This run vs last month's finalized payslips + tax-number, negative-net and IRP5-code
+ * checks. Only employees the user may see (confidential filter, WN-15). Never blocks.
+ */
+router.get(
+  '/history/run/:run_id/review',
+  requirePermission('PAYROLL.VIEW'),
+  requirePaytimeModule('payroll'),
+  async (req, res) => {
+    try {
+      const { data: run, error: runErr } = await supabase.from('payroll_runs')
+        .select('id, period_key, status').eq('id', req.params.run_id).eq('company_id', req.companyId).maybeSingle();
+      if (runErr) throw runErr;
+      if (!run) return res.status(404).json({ success: false, error: 'Run not found' });
+
+      const prevKey = RunReview.previousMonth(run.period_key);
+      const [{ data: cur, error: cErr }, { data: prev, error: pErr }] = await Promise.all([
+        supabase.from('payroll_snapshots').select('employee_id, calculation_output, calculation_input')
+          .eq('company_id', req.companyId).eq('payroll_run_id', run.id).neq('status', 'reversed'),
+        supabase.from('payroll_snapshots').select('employee_id, calculation_output')
+          .eq('company_id', req.companyId).eq('period_key', prevKey).eq('is_locked', true).neq('status', 'reversed')
+      ]);
+      if (cErr || pErr) throw (cErr || pErr);
+
+      // Confidential employees the user may not see are left out entirely (spec 03 WN-15).
+      const filter = await getEmployeeFilter(req.user.role, req.user.userId, req.companyId);
+      const ids = [...new Set([...(cur || []), ...(prev || [])].map(s => s.employee_id))];
+      let empQ = supabase.from('employees').select('*').eq('company_id', req.companyId).in('id', ids.length ? ids : [0]);
+      if (filter.type === 'classification') empQ = empQ.eq('classification', 'public');
+      const { data: emps, error: eErr } = await empQ;
+      if (eErr) throw eErr;
+      const allowed = new Set((emps || []).filter(e => filter.type !== 'ids' || filter.ids.includes(e.id)).map(e => String(e.id)));
+      const vis = (list) => (list || []).filter(s => allowed.has(String(s.employee_id)));
+
+      let codeSource = null;
+      try { codeSource = await Irp5ItemCheck.loadCodeSource(supabase, req.companyId); } catch (_) { /* shown without the code check */ }
+
+      const review = RunReview.buildReview({
+        current: vis(cur), previous: vis(prev), employees: emps,
+        taxIssues: employeeTaxIssues,
+        missingCodes: (ci) => codeSource ? Irp5ItemCheck.issueText(Irp5ItemCheck.itemsMissingCode(ci, codeSource)) : []
+      });
+      res.json({ success: true, run_id: run.id, period_key: run.period_key, previous_period_key: prevKey,
+                 irp5_code_check: !!codeSource, ...review });
+    } catch (err) {
+      console.error('[payruns] review error:', err.message);
+      res.status(500).json({ success: false, error: 'Could not build the review' });
     }
   }
 );
