@@ -12,6 +12,7 @@ const { supabase } = require('../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { clean, idNumberError, taxNumberError } = require('../utils/saIdentity');
+const SalaryHistory = require('../../modules/payroll/services/salaryHistory');
 
 const router = express.Router();
 
@@ -280,6 +281,17 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
 
     await auditFromReq(req, 'UPDATE', 'employee', id, { oldValue: old, newValue: data });
+    // Paytime WN-11: a salary edited here is recorded in the salary history from the
+    // current month (best-effort — the employee is saved either way).
+    if (updates.basic_salary !== undefined && Number(updates.basic_salary) !== Number(old.basic_salary || 0) &&
+        await SalaryHistory.hasTable(supabase)) {
+      const { error: hErr } = await supabase.from('employee_salary_history').insert({
+        company_id: req.companyId, employee_id: old.id, effective_period: SalaryHistory.currentPeriod(),
+        basic_salary: Number(updates.basic_salary) || 0, previous_salary: Number(old.basic_salary) || 0,
+        reason: 'Salary edited (employee record)', created_by: (req.user && req.user.userId) || null
+      });
+      if (hErr) console.warn('[employees PUT] salary history row not written:', hErr.message);
+    }
     res.json({ employee: { ...data, employee_number: data.employee_number || data.employee_code || '' } });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

@@ -170,6 +170,10 @@
 
 - The reversal dialog now warns BEFORE confirming which later months (same tax year, same employees) are finalized on this month's figures; after the reversal it offers to reverse those too (latest first, same reason). New read-only GET /api/payroll/history/run/:run_id/later-locked. Tests: payroll-uf09-later-locked (2).
 
+## WN-11 salary history (2026-10-14) — docs/paytime/WN11_SALARY_HISTORY_CHANGE_IMPACT_NOTE.md
+
+- Salary changes get an effective month + reason; finalized month → back pay once-off in the first open month (preview + confirm); scheduled increases. Calculation uses the salary of each month. Migration 034 prepared, NOT run.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -191,6 +195,7 @@
 17. UF-03: op TEST, Execute Payroll → Run → "Finalize Payroll" → die dialoog wys "Review before finalizing" met die werknemers om na te gaan (op TEST tans: Natasja +88%, ongeldige belastingnommer, 3 nie in die run nie). Kanselleer as jy nie wil finaliseer nie.
 18. PS-05: maak 'n werknemer se payslip op TEST oop (bv. Augustus) → onderaan "Year to date (2026/2027, 6 months)"; laai ook die PDF af en kyk of die YTD-blok daar is.
 19. UF-09 (op TEST, net as jy wil): keer 'n ouer gefinaliseerde maand om terwyl 'n latere maand ook gefinaliseer is → die dialoog waarsku vooraf; ná die omkeer vra dit of die latere maand ook omgekeer moet word.
+20. Migrasie 034: sê "ja 034" (salarisgeskiedenis). Toets dan op TEST: payslip-blad → Basic Salary → Edit → nuwe bedrag, effektief 'n gefinaliseerde maand, rede → dit wys die agterstallige betaling vir bevestiging → die volgende oop maand kry "Back pay". Probeer ook 'n verhoging vir volgende Maart (geskeduleer). Skep 'n Payroll Item "Back pay" met 'n IRP5-kode sodat IT-05 nie waarsku nie.
 
 ## Open risks / follow-ups
 

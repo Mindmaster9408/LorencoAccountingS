@@ -925,7 +925,13 @@
         <div class="modal-content">
             <div class="modal-header"><h3>Edit Basic Salary</h3><button class="btn btn-danger btn-sm" onclick="closeModal('editBasicModal')">Close</button></div>
             <div class="form-group"><label>Basic Salary (per month)</label><input type="number" id="editBasicValue" step="0.01" min="0"></div>
+            <div id="salaryHistoryFields">
+                <div class="form-group"><label>Effective from (month)</label><input type="month" id="editBasicEffective"></div>
+                <div class="form-group"><label>Reason</label><input type="text" id="editBasicReason" placeholder="e.g. Annual increase"></div>
+                <div id="editBasicNote" style="font-size:12px; color:#8a6d00; margin-bottom:10px;"></div>
+            </div>
             <button class="btn btn-success" style="width:100%;" onclick="saveBasicSalary()">Save</button>
+            <div id="salaryHistoryList" style="margin-top:14px; font-size:12px;"></div>
         </div>
     </div>
 
@@ -2369,10 +2375,38 @@
         }
 
         // ========== BASIC SALARY ==========
+        // Spec 03 WN-11 (Ruan 2026-10-14): a salary change has an effective MONTH and a
+        // reason; a month that is already finalized gets the difference as one "Back pay"
+        // in the first open month (shown before saving); increases may be scheduled ahead.
+        var _salaryHistoryOn = false;
         function editBasicSalary() {
             if (!_requireNotLocked()) return;
             document.getElementById('editBasicValue').value = payrollData.basic_salary || '';
+            document.getElementById('editBasicEffective').value = currentPeriod || '';
+            document.getElementById('editBasicReason').value = '';
+            document.getElementById('editBasicNote').textContent = '';
             document.getElementById('editBasicModal').classList.add('show');
+            loadSalaryHistory();
+        }
+        async function loadSalaryHistory() {
+            var box = document.getElementById('salaryHistoryList');
+            box.innerHTML = '';
+            _salaryHistoryOn = false;
+            try {
+                var r = await fetch('/api/payroll/employees/' + (_supabaseEmpId || currentEmpId) + '/salary-history', { headers: _authHeaders() });
+                var d = await r.json();
+                _salaryHistoryOn = !!(r.ok && d.available);
+                document.getElementById('salaryHistoryFields').style.display = _salaryHistoryOn ? '' : 'none';
+                if (!_salaryHistoryOn || !d.history.length) return;
+                box.innerHTML = '<div style="font-weight:600; margin-bottom:4px;">Salary history</div>' +
+                    '<table style="width:100%; border-collapse:collapse;">' + d.history.map(function (h) {
+                        var future = d.current_period && h.effective_period > d.current_period;
+                        return '<tr style="border-top:1px solid #eee;"><td style="padding:3px 4px;">' + _noteEsc(h.effective_period) + (future ? ' <span style="color:#8a6d00;">(scheduled)</span>' : '') + '</td>' +
+                            '<td style="padding:3px 4px; text-align:right;">' + formatMoney(Number(h.basic_salary)) + '</td>' +
+                            '<td style="padding:3px 4px; color:#666;">' + _noteEsc(h.reason || '') +
+                            (h.backpay_amount ? ' · back pay ' + formatMoney(Number(h.backpay_amount)) + ' in ' + _noteEsc(h.backpay_period) : '') + '</td></tr>';
+                    }).join('') + '</table>';
+            } catch (e) { /* the old single-value save still works */ }
         }
         async function saveBasicSalary() {
             var val = parseFloat(document.getElementById('editBasicValue').value) || 0;
@@ -2381,6 +2415,7 @@
                 alert('Cannot save — employee ID not yet resolved. Please wait a moment and try again.');
                 return;
             }
+            if (_salaryHistoryOn) { await saveSalaryChange(empId, val); return; }
             // DB save FIRST — employees.basic_salary is the authoritative source for backend
             // calculations. Modal stays open on failure so user knows the save did not succeed.
             try {
@@ -2403,6 +2438,40 @@
             renderPayroll();
             closeModal('editBasicModal');
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + val.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
+        }
+
+        async function saveSalaryChange(empId, val) {
+            var eff = document.getElementById('editBasicEffective').value;
+            var reason = (document.getElementById('editBasicReason').value || '').trim();
+            var note = document.getElementById('editBasicNote');
+            if (!/^\d{4}-\d{2}$/.test(eff)) { note.textContent = 'Choose the month the new salary applies from.'; return; }
+            if (!reason) { note.textContent = 'Please give a reason (e.g. Annual increase).'; return; }
+            var url = '/api/payroll/employees/' + empId + '/salary-change';
+            var body = { effective_period: eff, basic_salary: val, reason: reason };
+            try {
+                var pr = await fetch(url, { method: 'POST', headers: _authHeaders(), body: JSON.stringify(Object.assign({ preview: true }, body)) });
+                var pd = await pr.json().catch(function () { return {}; });
+                if (!pr.ok) { note.textContent = pd.error || ('Not saved (HTTP ' + pr.status + ')'); return; }
+                var bp = pd.back_pay || {};
+                if (bp.amount > 0) {
+                    var ok = confirm('The new salary applies from ' + eff + ', but ' + bp.months.map(function (m) { return m.period_key; }).join(', ') +
+                        ' is already finalized.' + String.fromCharCode(10, 10) + 'Back pay of ' + formatMoney(bp.amount) +
+                        ' will be added as a once-off earning to ' + bp.target_period + ' (taxed as a once-off payment). Finalized payslips are not changed.' +
+                        String.fromCharCode(10, 10) + 'Continue?');
+                    if (!ok) return;
+                }
+                var r = await fetch(url, { method: 'POST', headers: _authHeaders(), body: JSON.stringify(body) });
+                var d = await r.json().catch(function () { return {}; });
+                if (!r.ok) { note.textContent = d.error || ('Not saved (HTTP ' + r.status + ')'); return; }
+            } catch (e) {
+                note.textContent = 'Network error — not saved: ' + e.message;
+                return;
+            }
+            // The payslip of THIS month uses the salary that applies to it.
+            if (eff <= currentPeriod) payrollData.basic_salary = val;
+            renderPayroll();
+            closeModal('editBasicModal');
+            showToast(eff > currentPeriod ? 'Salary of ' + formatMoney(val) + ' scheduled from ' + eff + '.' : 'Basic salary saved from ' + eff + '.', 'success');
         }
 
         function editVariableAmount(id) {

@@ -26,6 +26,7 @@
 
 const PayrollEngine = require('../../../core/payroll-engine');
 const ItemLink = require('./itemLink');
+const SalaryHistory = require('./salaryHistory');
 
 /**
  * Fetch and normalize complete payroll calculation input for an employee/period.
@@ -70,6 +71,19 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
   // KV row emp_payroll_<company>_<employee> when employees.basic_salary was empty.
   // Migration 031 copied those 20 salaries into employees (audited); the employees table
   // is now the only source (CLAUDE.md Part D).
+  //
+  // Spec 03 WN-11 (Ruan 2026-10-14): the salary of THIS month comes from the salary
+  // history (latest change effective on or before the month; scheduled increases apply
+  // from their month). No history rows → employees.basic_salary, exactly as before.
+  if (await SalaryHistory.hasTable(supabase)) {
+    const { data: hist, error: hErr } = await supabase.from('employee_salary_history')
+      .select('id, effective_period, basic_salary, previous_salary, created_at')
+      .eq('company_id', companyId).eq('employee_id', employeeId);
+    if (hErr) throw inputsUnavailable('the salary history', employeeId, hErr.message);
+    if ((hist || []).length) {
+      employee.basic_salary = SalaryHistory.salaryForPeriod(hist, periodKey, employee.basic_salary).salary;
+    }
+  }
 
   // Step 2c: Employee-level UIF exemption (employee_payroll_setup.uif_exempt, spec 03 WN-07).
   // A lookup failure keeps UIF applicable (the statutory default).

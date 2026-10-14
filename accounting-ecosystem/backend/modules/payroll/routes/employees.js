@@ -12,6 +12,9 @@ const { supabase } = require('../../../config/database');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 const { auditFromReq } = require('../../../middleware/audit');
 const { getEmployeeFilter, applyFilter, canViewEmployee, requirePaytimeModule } = require('../services/paytimeAccess');
+const SalaryHistory = require('../services/salaryHistory');
+const PayrollDataService = require('../services/PayrollDataService');
+const { replacePeriodRows, sendInputError } = require('../services/periodInputs');
 
 const router = express.Router();
 
@@ -99,6 +102,127 @@ router.get('/:id', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payr
  * PUT /api/payroll/employees/:id/salary
  * Update salary information
  */
+// ─── Spec 03 WN-11: salary history with an effective month (Ruan 2026-10-14) ───────
+
+async function _visibleEmployee(req, res) {
+  const { data: emp, error } = await supabase.from('employees').select('*')
+    .eq('id', req.params.id).eq('company_id', req.companyId).maybeSingle();
+  if (error) { res.status(500).json({ error: error.message }); return null; }
+  if (!emp) { res.status(404).json({ error: 'Employee not found' }); return null; }
+  if (!(await canViewEmployee(req.user.role, req.user.userId, req.companyId, emp))) {
+    res.status(403).json({ error: 'Access denied — employee not in your visible scope' }); return null;
+  }
+  return emp;
+}
+
+/** GET /api/payroll/employees/:id/salary-history — newest first. */
+router.get('/:id/salary-history', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const emp = await _visibleEmployee(req, res);
+    if (!emp) return;
+    if (!(await SalaryHistory.hasTable(supabase))) {
+      return res.json({ available: false, history: [], current_salary: Number(emp.basic_salary) || 0 });
+    }
+    const { data, error } = await supabase.from('employee_salary_history').select('*')
+      .eq('company_id', req.companyId).eq('employee_id', emp.id)
+      .order('effective_period', { ascending: false }).order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ available: true, history: data || [], current_salary: Number(emp.basic_salary) || 0,
+               current_period: SalaryHistory.currentPeriod() });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/payroll/employees/:id/salary-change
+ * Body: { effective_period: 'YYYY-MM', basic_salary, reason, preview? }
+ * preview: true → only the previous salary and the back pay (nothing saved).
+ * Effective month already finalized → back pay = sum of (new − paid salary) × pro-rata
+ * factor over the finalized months, added as ONE once-off "Back pay" input to the first
+ * open month. A retroactive DECREASE is refused (reverse those months instead).
+ */
+router.post('/:id/salary-change', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    if (!(await SalaryHistory.hasTable(supabase))) {
+      return res.status(409).json({ error: 'Salary history needs database update 034 first.' });
+    }
+    const emp = await _visibleEmployee(req, res);
+    if (!emp) return;
+    const effective = String(req.body.effective_period || '');
+    const salary = Number(req.body.basic_salary);
+    const reason = String(req.body.reason || '').trim();
+    if (!SalaryHistory.PERIOD_RE.test(effective)) return res.status(400).json({ error: 'effective_period must be YYYY-MM' });
+    if (req.body.basic_salary === '' || req.body.basic_salary == null || !(salary >= 0) || !isFinite(salary)) {
+      return res.status(400).json({ error: 'basic_salary must be zero or more' });
+    }
+    if (!reason) return res.status(400).json({ error: 'A reason is required for a salary change' });
+
+    const [{ data: hist, error: hErr }, { data: locked, error: lErr }] = await Promise.all([
+      supabase.from('employee_salary_history').select('id, effective_period, basic_salary, previous_salary, created_at')
+        .eq('company_id', req.companyId).eq('employee_id', emp.id),
+      supabase.from('payroll_snapshots').select('period_key, calculation_input, calculation_output')
+        .eq('company_id', req.companyId).eq('employee_id', emp.id).eq('is_locked', true).neq('status', 'reversed')
+    ]);
+    if (hErr || lErr) return res.status(500).json({ error: (hErr || lErr).message });
+
+    const previous = SalaryHistory.salaryForPeriod(hist, effective, emp.basic_salary).salary;
+    const bp = SalaryHistory.backPay(salary, effective, locked);
+    if (bp.amount < 0) {
+      return res.status(422).json({ code: 'RETRO_DECREASE',
+        error: 'A salary decrease cannot go back into finalized months (' + bp.months.map(m => m.period_key).join(', ') +
+               '). Reverse those months first, or choose a later effective month.', back_pay: bp });
+    }
+    if (req.body.preview) return res.json({ preview: true, previous_salary: previous, back_pay: bp });
+
+    // 1. Back pay first — if it cannot be added, nothing is saved.
+    if (bp.amount > 0 && bp.target_period) {
+      const period = await PayrollDataService.fetchPeriod(req.companyId, bp.target_period, supabase);
+      if (!period) return res.status(500).json({ error: 'Could not open ' + bp.target_period + ' for the back pay' });
+      const { data: cur, error: cErr } = await supabase.from('payroll_period_inputs')
+        .select('payroll_item_id, description, amount, item_type, affects_uif')
+        .eq('company_id', req.companyId).eq('employee_id', emp.id).eq('payroll_period_id', period.id).eq('is_deleted', false);
+      if (cErr) return res.status(500).json({ error: cErr.message });
+      await replacePeriodRows(supabase, {
+        table: 'payroll_period_inputs', companyId: req.companyId, employeeId: emp.id,
+        periodId: period.id, periodKey: bp.target_period,
+        rows: (cur || []).concat([{ payroll_item_id: null, description: 'Back pay — salary from ' + effective,
+                                    amount: bp.amount, item_type: 'earning', affects_uif: true }])
+      });
+    }
+
+    // 2. History row.
+    const { data: row, error: iErr } = await supabase.from('employee_salary_history').insert({
+      company_id: req.companyId, employee_id: emp.id, effective_period: effective, basic_salary: salary,
+      previous_salary: previous, reason, backpay_amount: bp.amount > 0 ? bp.amount : null,
+      backpay_period: bp.amount > 0 ? bp.target_period : null, created_by: req.user.userId || null
+    }).select().single();
+    if (iErr) {
+      return res.status(500).json({ error: 'Salary history not saved: ' + iErr.message +
+        (bp.amount > 0 ? ' — the back pay input was added to ' + bp.target_period + '; remove it there.' : '') });
+    }
+
+    // 3. The employee record shows the salary of the current month (a scheduled increase
+    //    is picked up by the calculation from its own month).
+    if (effective <= SalaryHistory.currentPeriod()) {
+      const { error: uErr } = await supabase.from('employees')
+        .update({ basic_salary: salary, updated_at: new Date().toISOString() })
+        .eq('id', emp.id).eq('company_id', req.companyId);
+      if (uErr) console.warn('[salary-change] employees.basic_salary not updated:', uErr.message);
+    }
+
+    await auditFromReq(req, 'UPDATE', 'employee_salary', emp.id, {
+      module: 'payroll', oldValue: { basic_salary: previous },
+      newValue: { basic_salary: salary, effective_period: effective, reason, back_pay: bp.amount, back_pay_period: bp.target_period }
+    });
+    res.status(201).json({ change: row, back_pay: bp });
+  } catch (err) {
+    if (err && (err.code === 'PERIOD_LOCKED' || err.status)) return sendInputError(res, err);
+    console.error('[salary-change]', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
   try {
     const { basic_salary, hourly_rate, payment_frequency } = req.body;
@@ -139,6 +263,18 @@ router.put('/:id/salary', requirePermission('PAYROLL.CREATE'), requirePaytimeMod
       oldValue: old,
       newValue: updates,
     });
+
+    // Spec 03 WN-11: keep the salary history complete — a direct edit counts from the
+    // current month. Best-effort: the salary itself is saved either way.
+    if (basic_salary !== undefined && Number(basic_salary) !== Number(old.basic_salary || 0) &&
+        await SalaryHistory.hasTable(supabase)) {
+      const { error: hErr } = await supabase.from('employee_salary_history').insert({
+        company_id: req.companyId, employee_id: old.id, effective_period: SalaryHistory.currentPeriod(),
+        basic_salary: Number(basic_salary) || 0, previous_salary: Number(old.basic_salary) || 0,
+        reason: 'Salary edited', created_by: req.user.userId || null
+      });
+      if (hErr) console.warn('[salary PUT] history row not written:', hErr.message);
+    }
 
     res.json({ employee: data });
   } catch (err) {
