@@ -724,7 +724,8 @@
                 <textarea id="reversal-reason-input" class="reversal-reason-input"
                     placeholder="e.g. Incorrect salary for employee X, bonus omitted, tax table applied incorrectly…"></textarea>
             </div>
-            <div style="font-size:0.85rem;color:#666;margin-bottom:20px;" id="reversal-summary"></div>
+            <div style="font-size:0.85rem;color:#666;margin-bottom:12px;" id="reversal-summary"></div>
+            <div id="reversal-later" style="display:none;margin-bottom:16px;padding:10px 12px;background:#fff8e1;border-radius:8px;font-size:0.85rem;color:#8a6d00;"></div>
             <div class="modal-actions">
                 <button class="btn btn-outline" onclick="closeReversalModal()">Cancel</button>
                 <button class="btn-reverse" id="confirm-reversal-btn" onclick="confirmReversal()">
@@ -1380,6 +1381,39 @@
         }
         document.getElementById('reversal-summary').textContent = summary;
         document.getElementById('reversalModal').classList.add('show');
+        if (state.currentRunId) checkLaterLocked(state.currentRunId);
+    }
+
+    // Spec 07 UF-09: before reversing, say which LATER finalized months were calculated on
+    // this month's figures (their PAYE uses them). After the reversal, offer to reverse them too.
+    var _laterRuns = [];
+    async function checkLaterLocked(runId) {
+        var box = document.getElementById('reversal-later');
+        _laterRuns = [];
+        box.style.display = 'none';
+        var res = await PayrollAPI.getLaterLockedRuns(runId);
+        if (!res.ok || !res.data || !res.data.success) return;
+        _laterRuns = res.data.later_runs || [];
+        if (!_laterRuns.length) return;
+        box.innerHTML = '⚠ ' + _laterRuns.map(function (r) { return esc(r.period_key); }).join(', ') +
+            ' is already finalized for some of these employees' +
+            '. Their PAYE was calculated on the figures you are reversing — after this reversal you will be offered to reverse ' +
+            (_laterRuns.length === 1 ? 'that month' : 'those months') + ' too.';
+        box.style.display = '';
+    }
+
+    // Reverse the later months, latest first, with the same reason (UF-09).
+    async function reverseLaterRuns(reason) {
+        var done = [], failed = [];
+        for (var i = 0; i < _laterRuns.length; i++) {
+            var r = _laterRuns[i];
+            var res = await PayrollAPI.reverse(r.run_id, r.period_key, reason + ' (follows reversal of an earlier month)');
+            if (res.ok && res.data && res.data.success) { done.push(r.period_key); showLedgerJournalResult(res.data.ledger_journal); }
+            else failed.push(r.period_key + ': ' + ((res.data && res.data.error) || ('HTTP ' + res.status)));
+        }
+        _laterRuns = [];
+        if (done.length) showToast('Also reversed: ' + done.join(', ') + '. Re-run those months after correcting this one.', 'success');
+        if (failed.length) showToast('Could not reverse: ' + failed.join('; '), 'error');
     }
 
     function closeReversalModal() {
@@ -1434,8 +1468,18 @@
         );
         showLedgerJournalResult(res.data.ledger_journal);
         // UF-09: later months already finalized were calculated on this month's old figures.
+        // Offer to reverse them too (checked before the reversal); otherwise the old note.
         var _later = res.data.later_periods_locked || [];
-        if (_later.length) {
+        if (_laterRuns.length) {
+            var _list = _laterRuns.map(function (r) { return r.period_key; }).join(', ');
+            if (confirm('Also reverse ' + _list + '?' + String.fromCharCode(10, 10) + 'Their PAYE was calculated on the figures you just reversed. ' +
+                        'They will be reversed latest month first, with the same reason, and you re-run them after correcting this month.')) {
+                await reverseLaterRuns(reason);
+            } else {
+                showToast('Not reversed: ' + _list + ' — they still use the old figures.', 'warning');
+                _laterRuns = [];
+            }
+        } else if (_later.length) {
             showToast(
                 'Note: ' + _later.join(', ') + ' is already finalized for some of these employees and was ' +
                 'calculated on the figures you just reversed. Reverse and re-run those month(s) too if the correction changes PAYE.',
@@ -1488,6 +1532,7 @@
         btn.dataset.histRunId    = runId;
         btn.dataset.histPeriodKey = periodKey;
         document.getElementById('reversalModal').classList.add('show');
+        checkLaterLocked(runId);
     }
 
     async function loadHistory() {

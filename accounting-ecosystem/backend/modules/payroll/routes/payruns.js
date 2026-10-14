@@ -1030,5 +1030,58 @@ router.get(
   }
 );
 
+/**
+ * GET /api/payroll/history/run/:run_id/later-locked — spec 07 UF-09, asked BEFORE a reversal.
+ * Finalized runs in LATER months of the same tax year that contain any employee of this
+ * run: their PAYE was calculated on this run's figures. Returned latest month first
+ * (the order to reverse them in). Read-only.
+ */
+router.get(
+  '/history/run/:run_id/later-locked',
+  requirePermission('PAYROLL.VIEW'),
+  requirePaytimeModule('payroll'),
+  async (req, res) => {
+    try {
+      const { data: run, error: runErr } = await supabase.from('payroll_runs')
+        .select('id, period_key').eq('id', req.params.run_id).eq('company_id', req.companyId).maybeSingle();
+      if (runErr) throw runErr;
+      if (!run) return res.status(404).json({ success: false, error: 'Run not found' });
+      const { data: own, error: oErr } = await supabase.from('payroll_snapshots').select('employee_id')
+        .eq('company_id', req.companyId).eq('payroll_run_id', run.id);
+      if (oErr) throw oErr;
+      const empIds = [...new Set((own || []).map(s => s.employee_id))];
+      const laterKeys = taxYearPeriodKeys(run.period_key).filter(p => p > run.period_key);
+      let runs = [];
+      if (empIds.length && laterKeys.length) {
+        const { data: later, error: lErr } = await supabase.from('payroll_snapshots')
+          .select('payroll_run_id, period_key, employee_id')
+          .eq('company_id', req.companyId).eq('is_locked', true)
+          .in('employee_id', empIds).in('period_key', laterKeys);
+        if (lErr) throw lErr;
+        const byRun = {};
+        (later || []).forEach(r => {
+          if (!r.payroll_run_id) return;
+          const x = byRun[r.payroll_run_id] || (byRun[r.payroll_run_id] = { run_id: r.payroll_run_id, period_key: r.period_key, employees: new Set() });
+          x.employees.add(r.employee_id);
+        });
+        const ids = Object.keys(byRun);
+        if (ids.length) {
+          const { data: hdr, error: hErr } = await supabase.from('payroll_runs').select('id, status')
+            .eq('company_id', req.companyId).in('id', ids);
+          if (hErr) throw hErr;
+          const fin = new Set((hdr || []).filter(h => h.status === 'finalized').map(h => String(h.id)));
+          runs = Object.values(byRun).filter(x => fin.has(String(x.run_id)))
+            .map(x => ({ run_id: x.run_id, period_key: x.period_key, employees: x.employees.size }))
+            .sort((a, b) => b.period_key.localeCompare(a.period_key));
+        }
+      }
+      res.json({ success: true, period_key: run.period_key, later_runs: runs });
+    } catch (err) {
+      console.error('[payruns] later-locked error:', err.message);
+      res.status(500).json({ success: false, error: 'Could not check later months' });
+    }
+  }
+);
+
 router.isEligibleForPayroll = isEligibleForPayroll;
 module.exports = router;
