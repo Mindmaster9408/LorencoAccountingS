@@ -27,6 +27,7 @@
 const PayrollEngine = require('../../../core/payroll-engine');
 const ItemLink = require('./itemLink');
 const SalaryHistory = require('./salaryHistory');
+const CompanyCar = require('./companyCar');
 
 /**
  * Fetch and normalize complete payroll calculation input for an employee/period.
@@ -152,6 +153,16 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
 
   // Attach YTD data (set after normalizeCalculationInput which defaults this to null)
   normalizedInput.ytdData = ytdData;
+
+  // Spec 04 IT-07: company car fringe benefit (calculator per employee, migration 035).
+  if (await CompanyCar.hasTable(supabase)) {
+    const { data: cars, error: carErr } = await supabase.from('employee_company_cars')
+      .select('id, description, determined_value, maintenance_plan, business_use_80, start_period, end_period')
+      .eq('company_id', companyId).eq('employee_id', employeeId);
+    if (carErr) throw inputsUnavailable('the company car', employeeId, carErr.message);
+    const carRows = CompanyCar.carInputs(cars, periodKey);
+    if (carRows.length) normalizedInput.regular_inputs = (normalizedInput.regular_inputs || []).concat(carRows);
+  }
 
   return normalizedInput;
 }
@@ -606,7 +617,7 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
       // Primary: query payroll_items_master (authoritative after migration)
       const { data: masterItems, error: masterErr } = await supabase
         .from('payroll_items_master')
-        .select('id, item_name, item_type, affects_uif, paye_projection_type, is_taxable, tax_treatment, taxable_percentage')
+        .select('id, item_name, item_type, irp5_code, affects_uif, paye_projection_type, is_taxable, tax_treatment, taxable_percentage')
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterErr) throw inputsUnavailable('the payroll item settings', employeeId, masterErr.message);
@@ -642,6 +653,10 @@ async function fetchRecurringPayrollItems(companyId, employeeId, supabase) {
           // Override ensures the engine receives the correct PAYE treatment for deductions.
           if (m.tax_treatment) {
             item.payroll_items.tax_treatment = m.tax_treatment;
+          }
+          // IT-06/07: the IRP5 code tells the engine e.g. an employer retirement contribution (3817).
+          if (m.irp5_code) {
+            item.payroll_items.irp5_code = m.irp5_code;
           }
         });
       } else {
@@ -763,7 +778,7 @@ async function fetchPeriodInputs(
       // Primary: payroll_items_master
       const { data: masterItems, error: masterErr } = await supabase
         .from('payroll_items_master')
-        .select('id, item_name, item_type, affects_uif, paye_projection_type, taxable_percentage, is_taxable, tax_treatment')
+        .select('id, item_name, item_type, irp5_code, affects_uif, paye_projection_type, taxable_percentage, is_taxable, tax_treatment')
         .eq('company_id', companyId)
         .eq('is_active', true);
       if (masterErr) throw inputsUnavailable('the payroll item settings', employeeId, masterErr.message);
@@ -795,6 +810,9 @@ async function fetchPeriodInputs(
           }
           if (m.tax_treatment) {
             ci.tax_treatment = m.tax_treatment;
+          }
+          if (m.irp5_code) {
+            ci.irp5_code = m.irp5_code;
           }
         });
       } else {
@@ -911,7 +929,9 @@ function normalizeCalculationInput(
     // applicable when is_taxable/affects_uif are not explicitly false (e.g. a
     // fixed travel allowance is typically 80, not 0 or 100). Default 100 —
     // identical to pre-existing behaviour for every item that never sets this.
-    taxable_percentage: item.payroll_items?.taxable_percentage != null ? item.payroll_items.taxable_percentage : 100
+    taxable_percentage: item.payroll_items?.taxable_percentage != null ? item.payroll_items.taxable_percentage : 100,
+    // IRP5 code from the Payroll Items screen (IT-06: 3817 = employer retirement contribution).
+    irp5_code: item.payroll_items?.irp5_code || null
   }));
 
   // Normalize period inputs (current-period items)
@@ -944,7 +964,8 @@ function normalizeCalculationInput(
     // taxable_percentage: live-overridden from payroll_items_master in fetchPeriodInputs
     // above (never read from payroll_period_inputs directly — see the caution comment
     // there about unconfirmed columns on that specific table). Default 100.
-    taxable_percentage: item.taxable_percentage != null ? item.taxable_percentage : 100
+    taxable_percentage: item.taxable_percentage != null ? item.taxable_percentage : 100,
+    irp5_code: item.irp5_code || null
   }));
 
   // Normalize overtime (preserve decimal hours)

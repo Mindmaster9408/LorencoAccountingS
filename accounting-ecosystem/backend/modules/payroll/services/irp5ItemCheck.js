@@ -35,6 +35,7 @@ function itemsMissingCode(calcInput, codeSource) {
     const amt = Number(x.amount) || 0;
     if (!amt && !x.is_percentage) return;
     if (!needsCode(x)) return;
+    if (String(x.irp5_code || '').trim()) return;   // carries its own code (e.g. company car 3802)
     const m = ItemLink.pickMaster(codeSource, { name: x.description, type: x.type });
     if (!m || !String(m.irp5_code || '').trim()) out.push({ description: x.description, type: x.type || 'earning' });
   });

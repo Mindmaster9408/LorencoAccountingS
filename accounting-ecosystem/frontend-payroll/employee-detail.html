@@ -370,6 +370,10 @@
                             <span style="font-size:12px; color:var(--text, #444); font-weight:600;" id="calculatedHourlyRate">—</span>
                         </div>
                         <div id="regularInputsList"></div>
+                        <div id="companyCarSection" style="display:none; margin-top:10px;">
+                            <div class="section-title" style="font-size:13px;"><span>🚗 Company car (taxable benefit)</span><button class="btn btn-sm btn-success" onclick="openCompanyCarModal()">+ Add</button></div>
+                            <div id="companyCarList" style="font-size:13px;"></div>
+                        </div>
                     </div>
                     <div class="section">
                         <div class="section-title"><span>📊 Current Inputs (This Month)</span><button class="btn btn-sm btn-success" onclick="openAddCurrentInput()">+ Add</button></div>
@@ -935,6 +939,21 @@
         </div>
     </div>
 
+    <!-- Company car fringe benefit (spec 04 IT-07) -->
+    <div id="companyCarModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Company car</h3><button class="btn btn-danger btn-sm" onclick="closeModal('companyCarModal')">Close</button></div>
+            <div class="form-group"><label>Vehicle (optional)</label><input type="text" id="carDescription" placeholder="e.g. Toyota Hilux CA 123-456"></div>
+            <div class="form-group"><label>Determined value (purchase price incl. VAT, excl. finance charges)</label><input type="number" id="carValue" step="0.01" min="0" oninput="updateCarPreview()"></div>
+            <div class="form-group"><label><input type="checkbox" id="carMaintenance" onchange="updateCarPreview()"> Maintenance plan included in the price</label></div>
+            <div class="form-group"><label><input type="checkbox" id="carBusiness80" onchange="updateCarPreview()"> Business use is at least 80% (employer satisfied)</label></div>
+            <div class="form-group"><label>From month</label><input type="month" id="carStart"></div>
+            <div id="carPreview" style="font-size:13px; padding:8px 10px; background:#f5f6ff; border-radius:6px; margin-bottom:10px;"></div>
+            <div id="carNote" style="font-size:12px; color:#b06000; margin-bottom:8px;"></div>
+            <button class="btn btn-success" style="width:100%;" onclick="saveCompanyCar()">Save</button>
+        </div>
+    </div>
+
     <!-- Edit Variable Item Amount -->
     <div id="editVariableModal" class="modal">
         <div class="modal-content">
@@ -1217,6 +1236,7 @@
             setTimeout(async function() {
                 await loadEmployee();
                 loadItemPickerData();
+                loadCompanyCars();
                 loadEmployeeNav();
                 // If coming via SSO, availableCompanies may be empty — fetch async then render
                 var cachedCos = AUTH.getCompaniesForUser();
@@ -2440,6 +2460,86 @@
             AuditTrail.logUpdate(currentCompanyId, 'payroll', 'Updated basic salary to R' + val.toFixed(2) + ' for ' + (currentEmployee ? currentEmployee.first_name + ' ' + currentEmployee.last_name : currentEmpId));
         }
 
+        // ── Spec 04 IT-07 (Ruan 2026-10-14): company car — calculator per employee ─────────
+        // Value per month = determined value × 3.5% (2.5% with a maintenance plan); PAYE on
+        // 80% of it (20% when business use is at least 80%). Never paid in cash.
+        function _carUrl(suffix) { return '/api/payroll/employees/' + (_supabaseEmpId || currentEmpId) + '/company-cars' + (suffix || ''); }
+        async function loadCompanyCars() {
+            var sec = document.getElementById('companyCarSection');
+            var list = document.getElementById('companyCarList');
+            try {
+                var r = await fetch(_carUrl(), { headers: _authHeaders() });
+                var d = await r.json();
+                if (!r.ok || !d.available) { sec.style.display = 'none'; return; }
+                sec.style.display = '';
+                if (!d.cars.length) { list.innerHTML = '<p style="color:#999; font-size:13px;">No company car</p>'; return; }
+                list.innerHTML = d.cars.map(function (c) {
+                    var active = c.start_period <= currentPeriod && (!c.end_period || c.end_period >= currentPeriod);
+                    return '<div class="salary-item" style="display:flex; justify-content:space-between; gap:8px;' + (active ? '' : ' opacity:0.6;') + '">' +
+                        '<span>' + _noteEsc(c.description || 'Company car') + ' · ' + _noteEsc(c.start_period) + ' – ' + _noteEsc(c.end_period || 'ongoing') +
+                        '<br><span style="font-size:11px; color:#666;">Value ' + formatMoney(c.determined_value) + (c.maintenance_plan ? ' · maintenance plan' : '') +
+                        ' · taxed on ' + c.taxable_percentage + '%</span></span>' +
+                        '<span style="text-align:right;">' + formatMoney(c.monthly_value) + '/month' +
+                        (c.end_period ? '' : '<br><a href="#" style="font-size:11px;" onclick="endCompanyCar(' + c.id + ');return false;">End</a>') +
+                        ' <a href="#" style="font-size:11px; color:#c00;" onclick="deleteCompanyCar(' + c.id + ');return false;">Delete</a></span></div>';
+                }).join('');
+            } catch (e) { sec.style.display = 'none'; }
+        }
+        function openCompanyCarModal() {
+            if (!_requireNotLocked()) return;
+            ['carDescription', 'carValue'].forEach(function (id) { document.getElementById(id).value = ''; });
+            document.getElementById('carMaintenance').checked = false;
+            document.getElementById('carBusiness80').checked = false;
+            document.getElementById('carStart').value = currentPeriod || '';
+            document.getElementById('carNote').textContent = '';
+            updateCarPreview();
+            document.getElementById('companyCarModal').classList.add('show');
+        }
+        function updateCarPreview() {
+            var v = parseFloat(document.getElementById('carValue').value) || 0;
+            var rate = document.getElementById('carMaintenance').checked ? 0.025 : 0.035;
+            var pct = document.getElementById('carBusiness80').checked ? 20 : 80;
+            var monthly = Math.round(v * rate * 100) / 100;
+            document.getElementById('carPreview').innerHTML = v > 0
+                ? 'Taxable benefit: <strong>' + formatMoney(monthly) + '</strong> per month (' + (rate * 100).toFixed(1) + '% of the value); PAYE on ' + pct + '% = ' + formatMoney(Math.round(monthly * pct) / 100) + '. Not paid in cash.'
+                : 'Enter the determined value.';
+        }
+        async function saveCompanyCar() {
+            var note = document.getElementById('carNote');
+            var body = {
+                description: document.getElementById('carDescription').value,
+                determined_value: parseFloat(document.getElementById('carValue').value) || 0,
+                maintenance_plan: document.getElementById('carMaintenance').checked,
+                business_use_80: document.getElementById('carBusiness80').checked,
+                start_period: document.getElementById('carStart').value
+            };
+            try {
+                var r = await fetch(_carUrl(), { method: 'POST', headers: _authHeaders(), body: JSON.stringify(body) });
+                var d = await r.json().catch(function () { return {}; });
+                if (!r.ok) { note.textContent = d.error || ('Not saved (HTTP ' + r.status + ')'); return; }
+            } catch (e) { note.textContent = 'Network error — not saved: ' + e.message; return; }
+            closeModal('companyCarModal');
+            await loadCompanyCars();
+            renderPayroll();
+        }
+        async function endCompanyCar(id) {
+            var last = prompt('Last month the employee has this car (YYYY-MM):', currentPeriod || '');
+            if (last === null) return;
+            var r = await fetch(_carUrl('/' + id), { method: 'PUT', headers: _authHeaders(), body: JSON.stringify({ end_period: last.trim() }) });
+            var d = await r.json().catch(function () { return {}; });
+            if (!r.ok) { alert(d.error || ('Not saved (HTTP ' + r.status + ')')); return; }
+            await loadCompanyCars();
+            renderPayroll();
+        }
+        async function deleteCompanyCar(id) {
+            if (!confirm('Delete this company car? (Only possible while it is in no finalized payslip.)')) return;
+            var r = await fetch(_carUrl('/' + id), { method: 'DELETE', headers: _authHeaders() });
+            var d = await r.json().catch(function () { return {}; });
+            if (!r.ok) { alert(d.error || ('Not deleted (HTTP ' + r.status + ')')); return; }
+            await loadCompanyCars();
+            renderPayroll();
+        }
+
         async function saveSalaryChange(empId, val) {
             var eff = document.getElementById('editBasicEffective').value;
             var reason = (document.getElementById('editBasicReason').value || '').trim();
@@ -3484,7 +3584,7 @@
             var previewSDL = parseFloat(calc.sdl || 0);
             var previewUifEmployer = parseFloat(calc.uif_employer || 0);
             // Spec 04 IT-10: employer contributions (never in net) — from the payslip lines.
-            var previewEc = (calc._payslipLines || calc.payslip_lines || []).filter(function(l) { return l.kind === 'employer_contribution'; });
+            var previewEc = (calc._payslipLines || calc.payslip_lines || []).filter(function(l) { return l.kind === 'employer_contribution' || l.kind === 'fringe_benefit'; });
             var previewEcTotal = previewEc.reduce(function(t, l) { return t + (Number(l.amount) || 0); }, 0);
             if (previewSDL > 0 || previewUifEmployer > 0 || previewEc.length) {
                 html += '<div style="margin-bottom: 15px;">';

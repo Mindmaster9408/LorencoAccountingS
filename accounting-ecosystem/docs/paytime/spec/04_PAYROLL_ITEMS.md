@@ -27,8 +27,8 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 | IT-03 | 'n Verandering aan 'n item se instellings geld vanaf die volgende ongeslote periode; geslote periodes bly onaangeraak. | ✅ (snapshots is bevries) |
 | IT-04 | IRP5-kode word gevalideer teen SARS se lys bronkodes en moet by die itemtipe pas (verdienste-kode vir verdienste, ens.). | ⚠️ Net formaat (4–6 syfers) |
 | IT-05 | Geen item kan in 'n payroll gebruik word sonder 'n IRP5-kode nie (waarskuwing in die run; blok by EMP501). | ✅ 2026-10-14 (Ruan: opsie a) — waarskuwing per werknemer in die run; IRP5 geblokkeer by EMP501. Net-only aftrekkings (lening, spaar, beslag) het nie 'n kode nodig nie; verdienste, werkgewerbydraes en pre-tax-aftrekkings wel |
-| IT-06 | Pre-tax aftrekkings vir aftreefondse word beperk tot 27.5% van remunerasie / R350 000 per jaar (art. 11F). | 🆕 |
-| IT-07 | Byvoordele (maatskappymotor, werkgewer se mediese bydrae, werkgewer se aftreefondsbydrae) word as belasbare nie-kontant inkomste hanteer (Sewende Bylae). | 🆕 |
+| IT-06 | Pre-tax aftrekkings vir aftreefondse word beperk tot 27.5% van remunerasie / R350 000 per jaar (art. 11F). | ✅ 2026-10-14 — maandelikse limiet 27.5% van vergoeding / R350 000÷12; sluit werkgewer se aftreebydrae (3817) in (IT06_IT07_BENEFITS_CHANGE_IMPACT_NOTE.md) |
+| IT-07 | Byvoordele (maatskappymotor, werkgewer se mediese bydrae, werkgewer se aftreefondsbydrae) word as belasbare nie-kontant inkomste hanteer (Sewende Bylae). | ⚠️ Gebou 2026-10-14: werkgewer-aftree (3817) belas + geag afgetrek; mediese (3810) belas; maatskappymotor-sakrekenaar per werknemer (aktief ná migrasie 035). UIF op die motor: Ruan om te bevestig |
 | IT-08 | Persentasie-items (bv. 10% van basies) word teen die (pro-rata) basiese salaris bereken. | ✅ |
 | IT-09 | Item-instellings word slegs in die DB gestoor (`payroll_items_master`), nie KV nie. | ⚠️ KV-terugval bestaan nog |
 
@@ -58,6 +58,6 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 
 ## ❓ Oop vrae
 
-1. Byvoordele (IT-07) en die 27.5%-limiet (IT-06): nou bou, of eers ná die foute reggemaak is?
+1. ~~Byvoordele en 27.5%-limiet~~ → **BEANTWOORD 2026-10-14:** nou bou, saam. Maatskappymotor met 'n **sakrekenaar per werknemer** (determined value, onderhoudsplan, ≥80% besigheidsgebruik); IT-06-limiet saam, sodat werkgewer se aftreebydrae (geag deur werknemer bygedra) nie oorbelas word nie.
 2. ~~Item sonder IRP5-kode~~ → **BEANTWOORD 2026-10-14 (opsie a):** waarsku in die run, blokkeer die IRP5 by EMP501 (IT-05).
 3. ~~Uur-gebaseerde tarief~~ → **BEANTWOORD 2026-10-12:** albei opsies — vermenigvuldiger van eie tarief, of 'n spesifieke rand-tarief (IT-12).

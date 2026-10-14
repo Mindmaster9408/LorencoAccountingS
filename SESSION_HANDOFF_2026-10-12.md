@@ -174,6 +174,10 @@
 
 - Salary changes get an effective month + reason; finalized month → back pay once-off in the first open month (preview + confirm); scheduled increases. Calculation uses the salary of each month. Migration 034 prepared, NOT run.
 
+## IT-06 / IT-07 benefits (2026-10-14) — docs/paytime/IT06_IT07_BENEFITS_CHANGE_IMPACT_NOTE.md
+
+- s11F limit (27.5% / R350 000) on retirement deductions incl. the employer contribution (3817, deemed); employer retirement contributions no longer over-taxed; company car calculator per employee (3.5%/2.5%, PAYE on 80%/20%, IRP5 3802). Migration 035 prepared, NOT run. Open: UIF on the car benefit (currently excluded) — Ruan to confirm.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -196,6 +200,9 @@
 18. PS-05: maak 'n werknemer se payslip op TEST oop (bv. Augustus) → onderaan "Year to date (2026/2027, 6 months)"; laai ook die PDF af en kyk of die YTD-blok daar is.
 19. UF-09 (op TEST, net as jy wil): keer 'n ouer gefinaliseerde maand om terwyl 'n latere maand ook gefinaliseer is → die dialoog waarsku vooraf; ná die omkeer vra dit of die latere maand ook omgekeer moet word.
 20. Migrasie 034: sê "ja 034" (salarisgeskiedenis). Toets dan op TEST: payslip-blad → Basic Salary → Edit → nuwe bedrag, effektief 'n gefinaliseerde maand, rede → dit wys die agterstallige betaling vir bevestiging → die volgende oop maand kry "Back pay". Probeer ook 'n verhoging vir volgende Maart (geskeduleer). Skep 'n Payroll Item "Back pay" met 'n IRP5-kode sodat IT-05 nie waarsku nie.
+21. Migrasie 035: sê "ja 035" (maatskappymotors). Toets dan op TEST: payslip-blad → "Company car" → + Add → bv. R400 000, geen onderhoudsplan → R14 000/maand belasbaar op 80% → payslip wys dit onder werkgewer, netto daal net met die ekstra PAYE.
+22. Bevestig asb.: moet UIF op die maatskappymotor-byvoordeel bereken word? (Tans nie.)
+23. Werkgewer se pensioen-/voorsorgbydrae: gee daardie Payroll Item IRP5-kode 3817, dan word dit korrek as byvoordeel belas en weer afgetrek (27.5%-limiet).
 
 ## Open risks / follow-ups
 

@@ -712,21 +712,26 @@ const PayrollEngine = {
         // employer pension/medical contribution) adds its taxable portion to taxable income
         // (PAYE, and so the SDL base) but never to the UIF base. Taken out of the input lists
         // here so every existing earning/deduction path below stays exactly as it was.
+        // Spec 04 IT-07 (2026-10-14): a 'fringe_benefit' (e.g. company car, Seventh Schedule)
+        // takes the same path — taxable non-cash income, never in gross or net.
         var _isEmployerContribution = function(x) {
-            return x && (x.type === 'employer_contribution' || x.type === 'company_contribution');
+            return x && (x.type === 'employer_contribution' || x.type === 'company_contribution' || x.type === 'fringe_benefit');
         };
         var _allRegularInputs = resolvedRegularInputs;          // payslip lines show them all
         var _allCurrentInputs = currentInputs || [];
         var employerContributions = 0;
         var fringeBenefitsTaxable = 0;
         var _fringePeriodic = 0;     // taxable contributions in the periodic (projected) bucket
+        var fringeBenefits = 0;      // IT-07: non-cash benefits (company car …), full value
+        var _employerRetirement = 0; // IT-06: employer retirement contribution (IRP5 3817) — deemed paid by the employee
         var _addContribution = function(x, recurring) {
             var amt = parseFloat(x.amount) || 0;
-            employerContributions += amt;
+            if (x.type === 'fringe_benefit') fringeBenefits += amt; else employerContributions += amt;
             if (x.is_taxable === false) return;
             var pct = (x.taxable_percentage === null || x.taxable_percentage === undefined) ? 100 : parseFloat(x.taxable_percentage);
             var portion = PayrollEngine.r2(amt * (pct / 100));
             fringeBenefitsTaxable += portion;
+            if (x.type !== 'fringe_benefit' && String(x.irp5_code || '') === '3817') _employerRetirement += portion;
             var proj = x.paye_projection_type || (recurring ? 'FIXED_RECURRING' : 'ONCE_OFF');
             if (proj === 'ONCE_OFF') { onceOffTaxable += portion; }
             else { periodicTaxable += portion; _fringePeriodic += portion; }
@@ -902,7 +907,17 @@ const PayrollEngine = {
 
         // Pre-tax deductions reduce periodic taxable income (pension deducted from salary, not bonus).
         // Never below zero — a pre-tax deduction cannot create a negative tax base.
-        periodicTaxable = Math.max(periodicTaxable - preTaxDeductions, 0);
+        // Spec 04 IT-06 (s11F): retirement contributions — the employee's pre-tax deductions plus
+        // the employer's retirement contribution (a taxable fringe benefit the employee is deemed
+        // to have contributed) — reduce taxable income up to 27.5% of remuneration and R350 000
+        // a year (monthly: 27.5% of this month's remuneration, max R350 000 / 12). Below the
+        // limit this is exactly the old "subtract all pre-tax deductions".
+        var retirementContributions = preTaxDeductions + _employerRetirement;
+        var _remunerationForCap = Math.max(periodicTaxable + onceOffTaxable, 0);
+        var retirementCapMonthly = PayrollEngine.r2(Math.min(0.275 * _remunerationForCap,
+            (tables.RETIREMENT_ANNUAL_CAP || 350000) / 12));
+        var retirementDeductionAllowed = PayrollEngine.r2(Math.min(retirementContributions, retirementCapMonthly));
+        periodicTaxable = Math.max(periodicTaxable - retirementDeductionAllowed, 0);
         taxableGross    = periodicTaxable + onceOffTaxable;
 
         // Total deductions = pre-tax + net-only (BOTH reduce net pay).
@@ -964,7 +979,7 @@ const PayrollEngine = {
 
                 // Basic salary: FIXED. Apply short-time and pre-tax deductions to the fixed base
                 // (pension/RA reduces salary, not variable items — this is the correct apportionment).
-                var _basicAfterAdj = Math.max((payrollData.basic_salary || 0) - shortTimeAmount - preTaxDeductions, 0);
+                var _basicAfterAdj = Math.max((payrollData.basic_salary || 0) - shortTimeAmount - retirementDeductionAllowed, 0);
                 _ptFixed += _basicAfterAdj;
 
                 // Classify taxable regular inputs by paye_projection_type
@@ -1346,6 +1361,11 @@ const PayrollEngine = {
             // === ADDITIVE FIELDS (spec 04 IT-10) — employer contributions, never in gross/net ===
             employer_contributions: PayrollEngine.r2(employerContributions),
             fringe_benefits_taxable: PayrollEngine.r2(fringeBenefitsTaxable),
+            // === ADDITIVE FIELDS (spec 04 IT-06 / IT-07) ===
+            fringe_benefits: PayrollEngine.r2(fringeBenefits),
+            retirement_contributions: PayrollEngine.r2(retirementContributions),
+            retirement_deduction_allowed: retirementDeductionAllowed,
+            retirement_cap_monthly: retirementCapMonthly,
             // === ADDITIVE FIELDS (SARS spec compliance — tax breakdown transparency) ===
             // taxBeforeRebate: monthly bracket tax before age rebates (annual ÷ 12)
             // rebate: monthly sum of applicable age rebates (primary + secondary + tertiary)
@@ -1422,12 +1442,14 @@ const PayrollEngine = {
         var lines = [];
         var desc = function(x, fallback) { return (x && (x.description || x.name)) || fallback; };
         if (c.basicSalary) lines.push({ section: 'earning', kind: 'basic', description: 'Basic Salary', amount: r2(c.basicSalary) });
-        var _ec = function(x) { return x && (x.type === 'employer_contribution' || x.type === 'company_contribution'); };
+        var _ec = function(x) { return x && (x.type === 'employer_contribution' || x.type === 'company_contribution' || x.type === 'fringe_benefit'); };
+        var _ecKind = function(x) { return x.type === 'fringe_benefit' ? 'fringe_benefit' : 'employer_contribution'; };
         var _ecLines = [];
         (c.regularInputs || []).forEach(function(ri) {
             var a = r2(parseFloat(ri.amount) || 0);
             if (!a) return;
-            if (_ec(ri)) { _ecLines.push({ section: 'employer', kind: 'employer_contribution', description: desc(ri, 'Employer contribution'), amount: a, taxable: ri.is_taxable !== false ? true : undefined }); return; }
+            if (_ec(ri)) { _ecLines.push({ section: 'employer', kind: _ecKind(ri), description: desc(ri, 'Employer contribution'), amount: a, taxable: ri.is_taxable !== false ? true : undefined,
+                taxable_percentage: ri.taxable_percentage != null && Number(ri.taxable_percentage) !== 100 ? Number(ri.taxable_percentage) : undefined }); return; }
             lines.push({ section: ri.type === 'deduction' ? 'deduction' : 'earning', kind: 'regular',
                 description: desc(ri, ri.type === 'deduction' ? 'Deduction' : 'Allowance'), amount: a,
                 pre_tax: ri.type === 'deduction' && ri.tax_treatment === 'pre_tax' ? true : undefined,
@@ -1437,7 +1459,7 @@ const PayrollEngine = {
         (c.currentInputs || []).forEach(function(ci) {
             var a = r2(parseFloat(ci.amount) || 0);
             if (!a) return;
-            if (_ec(ci)) { _ecLines.push({ section: 'employer', kind: 'employer_contribution', description: desc(ci, 'Employer contribution'), amount: a, taxable: ci.is_taxable !== false ? true : undefined }); return; }
+            if (_ec(ci)) { _ecLines.push({ section: 'employer', kind: _ecKind(ci), description: desc(ci, 'Employer contribution'), amount: a, taxable: ci.is_taxable !== false ? true : undefined }); return; }
             lines.push({ section: ci.type === 'deduction' ? 'deduction' : 'earning', kind: 'current',
                 description: desc(ci, ci.type === 'deduction' ? 'Deduction' : 'Earning'), amount: a,
                 pre_tax: ci.type === 'deduction' && ci.tax_treatment === 'pre_tax' ? true : undefined });

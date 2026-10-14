@@ -13,6 +13,7 @@ const { authenticateToken, requireCompany, requirePermission } = require('../../
 const { auditFromReq } = require('../../../middleware/audit');
 const { getEmployeeFilter, applyFilter, canViewEmployee, requirePaytimeModule } = require('../services/paytimeAccess');
 const SalaryHistory = require('../services/salaryHistory');
+const CompanyCar = require('../services/companyCar');
 const PayrollDataService = require('../services/PayrollDataService');
 const { replacePeriodRows, sendInputError } = require('../services/periodInputs');
 
@@ -219,6 +220,138 @@ router.post('/:id/salary-change', requirePermission('PAYROLL.CREATE'), requirePa
   } catch (err) {
     if (err && (err.code === 'PERIOD_LOCKED' || err.status)) return sendInputError(res, err);
     console.error('[salary-change]', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Spec 04 IT-07: company car fringe benefit (Ruan 2026-10-14 — calculator per employee) ──
+
+function _carView(c) {
+  return Object.assign({}, c, {
+    monthly_value: CompanyCar.monthlyValue(c),
+    taxable_percentage: CompanyCar.taxablePercentage(c)
+  });
+}
+
+async function _lastFinalizedPeriod(companyId, employeeId) {
+  const { data, error } = await supabase.from('payroll_snapshots').select('period_key')
+    .eq('company_id', companyId).eq('employee_id', employeeId).eq('is_locked', true).neq('status', 'reversed');
+  if (error) throw new Error(error.message);
+  return (data || []).map(r => r.period_key).sort().pop() || null;
+}
+
+/** GET /api/payroll/employees/:id/company-cars */
+router.get('/:id/company-cars', requirePermission('PAYROLL.VIEW'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    const emp = await _visibleEmployee(req, res);
+    if (!emp) return;
+    if (!(await CompanyCar.hasTable(supabase))) return res.json({ available: false, cars: [] });
+    const { data, error } = await supabase.from('employee_company_cars').select('*')
+      .eq('company_id', req.companyId).eq('employee_id', emp.id).order('start_period', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ available: true, cars: (data || []).map(_carView) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+function _carFields(body) {
+  const value = Number(body.determined_value);
+  const start = String(body.start_period || '');
+  const end = body.end_period ? String(body.end_period) : null;
+  if (!(value > 0) || !isFinite(value)) return { error: 'Determined value must be more than zero' };
+  if (!SalaryHistory.PERIOD_RE.test(start)) return { error: 'start_period must be YYYY-MM' };
+  if (end && (!SalaryHistory.PERIOD_RE.test(end) || end < start)) return { error: 'end_period must be YYYY-MM, not before the start' };
+  return { row: {
+    description: String(body.description || '').trim().slice(0, 120) || null,
+    determined_value: Math.round(value * 100) / 100,
+    maintenance_plan: body.maintenance_plan === true,
+    business_use_80: body.business_use_80 === true,
+    start_period: start, end_period: end
+  } };
+}
+
+/** POST /api/payroll/employees/:id/company-cars — a car from a month (not into finalized months). */
+router.post('/:id/company-cars', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    if (!(await CompanyCar.hasTable(supabase))) return res.status(409).json({ error: 'Company cars need database update 035 first.' });
+    const emp = await _visibleEmployee(req, res);
+    if (!emp) return;
+    const f = _carFields(req.body);
+    if (f.error) return res.status(400).json({ error: f.error });
+    const last = await _lastFinalizedPeriod(req.companyId, emp.id);
+    if (last && f.row.start_period <= last) {
+      return res.status(422).json({ code: 'PERIOD_LOCKED', error: 'The car cannot start in ' + f.row.start_period +
+        ' — payroll up to ' + last + ' is finalized. Start it in a later month (or reverse those months first).' });
+    }
+    const { data, error } = await supabase.from('employee_company_cars')
+      .insert(Object.assign({ company_id: req.companyId, employee_id: emp.id, created_by: req.user.userId || null }, f.row))
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    await auditFromReq(req, 'CREATE', 'employee_company_car', data.id, { module: 'payroll', newValue: data, employee_id: emp.id });
+    res.status(201).json({ car: _carView(data) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * PUT /api/payroll/employees/:id/company-cars/:carId — set the last month (end_period).
+ * Other details can only change while the car is not yet in a finalized month.
+ */
+router.put('/:id/company-cars/:carId', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    if (!(await CompanyCar.hasTable(supabase))) return res.status(409).json({ error: 'Company cars need database update 035 first.' });
+    const emp = await _visibleEmployee(req, res);
+    if (!emp) return;
+    const { data: car, error: cErr } = await supabase.from('employee_company_cars').select('*')
+      .eq('id', req.params.carId).eq('company_id', req.companyId).eq('employee_id', emp.id).maybeSingle();
+    if (cErr) return res.status(500).json({ error: cErr.message });
+    if (!car) return res.status(404).json({ error: 'Car not found' });
+    const last = await _lastFinalizedPeriod(req.companyId, emp.id);
+    const used = !!(last && car.start_period <= last);
+    let patch;
+    if (used) {
+      const end = req.body.end_period ? String(req.body.end_period) : null;
+      if (end && (!SalaryHistory.PERIOD_RE.test(end) || end < car.start_period)) return res.status(400).json({ error: 'end_period must be YYYY-MM, not before the start' });
+      if (end && end < last) return res.status(422).json({ code: 'PERIOD_LOCKED', error: 'Payroll up to ' + last + ' is finalized — the car can end in ' + last + ' at the earliest.' });
+      patch = { end_period: end };
+    } else {
+      const f = _carFields(Object.assign({}, car, req.body));
+      if (f.error) return res.status(400).json({ error: f.error });
+      if (last && f.row.start_period <= last) return res.status(422).json({ code: 'PERIOD_LOCKED', error: 'Payroll up to ' + last + ' is finalized.' });
+      patch = f.row;
+    }
+    patch.updated_at = new Date().toISOString();
+    const { data, error } = await supabase.from('employee_company_cars').update(patch)
+      .eq('id', car.id).eq('company_id', req.companyId).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    await auditFromReq(req, 'UPDATE', 'employee_company_car', car.id, { module: 'payroll', oldValue: car, newValue: data, employee_id: emp.id });
+    res.json({ car: _carView(data) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/** DELETE …/company-cars/:carId — only while the car is in no finalized month (else end it). */
+router.delete('/:id/company-cars/:carId', requirePermission('PAYROLL.CREATE'), requirePaytimeModule('payroll'), async (req, res) => {
+  try {
+    if (!(await CompanyCar.hasTable(supabase))) return res.status(409).json({ error: 'Company cars need database update 035 first.' });
+    const emp = await _visibleEmployee(req, res);
+    if (!emp) return;
+    const { data: car, error: cErr } = await supabase.from('employee_company_cars').select('*')
+      .eq('id', req.params.carId).eq('company_id', req.companyId).eq('employee_id', emp.id).maybeSingle();
+    if (cErr) return res.status(500).json({ error: cErr.message });
+    if (!car) return res.status(404).json({ error: 'Car not found' });
+    const last = await _lastFinalizedPeriod(req.companyId, emp.id);
+    if (last && car.start_period <= last) {
+      return res.status(422).json({ code: 'PERIOD_LOCKED', error: 'This car is in finalized payslips — set its last month instead of deleting it.' });
+    }
+    const { error } = await supabase.from('employee_company_cars').delete().eq('id', car.id).eq('company_id', req.companyId);
+    if (error) return res.status(500).json({ error: error.message });
+    await auditFromReq(req, 'DELETE', 'employee_company_car', car.id, { module: 'payroll', oldValue: car, employee_id: emp.id });
+    res.json({ deleted: true });
+  } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 });

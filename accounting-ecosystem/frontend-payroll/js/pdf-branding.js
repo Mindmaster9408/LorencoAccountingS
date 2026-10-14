@@ -336,7 +336,7 @@ const PDFBranding = {
         var companySDL = parseFloat(calc.sdl || 0);
         var companyUifEmployer = parseFloat(calc.uif_employer || 0);
         // Spec 04 IT-10: employer contributions (never in net pay) — from the payslip lines.
-        var companyEc = (calc._payslipLines || calc.payslip_lines || []).filter(function(l) { return l.kind === 'employer_contribution'; });
+        var companyEc = (calc._payslipLines || calc.payslip_lines || []).filter(function(l) { return l.kind === 'employer_contribution' || l.kind === 'fringe_benefit'; });
         var companyEcTotal = companyEc.reduce(function(t, l) { return t + (Number(l.amount) || 0); }, 0);
         if (companySDL > 0 || companyUifEmployer > 0 || companyEc.length) {
             y += 7;
