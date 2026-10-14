@@ -7,7 +7,7 @@
 CHANGE IMPACT NOTE — PAYROLL
 ─────────────────────────────────────────────────────────────
 Area: where the calculation gets the basic salary; how a salary change is saved.
-Files: migrations/034_employee_salary_history.sql (NOT RUN — needs "ja 034"),
+Files: migrations/034_employee_salary_history.sql (RUN 2026-10-14, Ruan: "ja"),
        services/salaryHistory.js (new), services/PayrollDataService.js (CRITICAL),
        routes/employees.js (payroll, CRITICAL), shared/routes/employees.js,
        frontend-payroll/employee-detail.html (HIGH)
@@ -30,7 +30,7 @@ Saving (payslip page → Edit Basic Salary): amount + effective month + reason.
   The old PUT …/salary and PUT /api/employees/:id also write a history row (effective
   current month) so the history stays complete.
 
-Until 034 runs: nothing changes (dialog saves the old way; calculation as before).
+034 run 2026-10-14; until the first history row exists for an employee, nothing changes.
 
 Payroll risk: [x] CRITICAL files; behaviour unchanged until history rows exist.
 Checks: golden 0 diffs, core 15/15, payroll gate pass, tests/payroll-wn11-salary-history

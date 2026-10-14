@@ -8,7 +8,7 @@ CHANGE IMPACT NOTE — PAYROLL
 ─────────────────────────────────────────────────────────────
 Files: core/payroll-engine.js (CRITICAL), services/PayrollDataService.js (CRITICAL),
        routes/employees.js (payroll, CRITICAL), services/companyCar.js (new),
-       services/irp5ItemCheck.js, migrations/035_employee_company_cars.sql (NOT RUN),
+       services/irp5ItemCheck.js, migrations/035_employee_company_cars.sql (RUN 2026-10-14, Ruan: "ja"),
        employee-detail.html (HIGH), js/pdf-branding.js
 
 IT-06 (s11F): retirement deduction = employee pre-tax deductions + employer retirement
