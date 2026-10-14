@@ -27,8 +27,8 @@ Changed:
     stores the link.
   - Works before and after migration 033 (column probe, cached once it exists).
 
-Migration 033 (needs "ja"): payroll_items.master_item_id + backfill by name + side.
-  Dry run: 14 rows; 9 linked (incl. company 7 Savings deduction → 38), 5 stay NULL
+Migration 033 — RUN 2026-10-14 (Ruan: "ja"): payroll_items.master_item_id + backfill by name + side.
+  Result: 14 rows; 8 linked (incl. company 7 Savings deduction → 38), 5 stay NULL
   (no screen row: company 7 Union Membership Fee, Garnishee; company 15 ×3; company 40
   Commission) and keep working by name as before.
 

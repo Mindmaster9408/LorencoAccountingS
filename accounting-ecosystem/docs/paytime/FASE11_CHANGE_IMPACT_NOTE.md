@@ -34,10 +34,11 @@ Added later the same day:
   9. Payslip item pickers read the company items from the DB (payroll_items_master) —
      they read an old KV copy, so items created later never appeared (only 5 companies
      had a copy, last updated June).
-  10. Hidden items → payroll_hidden_items (migration 032, needs "ja"); API GET/PUT
+  10. Hidden items → payroll_hidden_items (migration 032, run 2026-10-14); API GET/PUT
       /api/payroll/items/hidden; until 032 runs, hiding shows "needs database update 032".
 
-Prepared, NOT run (data change — needs Ruan's "ja"):
+RUN 2026-10-14 (Ruan: "ja"): 20 salaries copied, 0 remaining; KV salary fallback removed from
+PayrollDataService the same day. Original note:
   migration 031: copy the KV basic salary into employees.basic_salary for the 20
   employees (18 active, 11 companies) whose salary exists ONLY in KV today; audited.
   Dry run (rolled back): 20 rows. After it runs, the backend KV salary fallback in

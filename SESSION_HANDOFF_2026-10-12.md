@@ -152,7 +152,7 @@
 
 ## IT-02 / IT-13 item link (2026-10-13) — docs/paytime/IT02_ITEM_LINK_CHANGE_IMPACT_NOTE.md
 
-- Renaming a Payroll Item no longer cuts employees' assignments loose from its settings; same-name items on two sides (company 7 "Savings") are no longer mixed. Migration 033 (payroll_items.master_item_id) prepared, NOT run — code works before and after.
+- Renaming a Payroll Item no longer cuts employees' assignments loose from its settings; same-name items on two sides (company 7 "Savings") are no longer mixed. Migration 033 run 2026-10-14 (8/14 linked).
 
 ## IT-05 items without IRP5 code (2026-10-14)
 
@@ -168,14 +168,14 @@
 6. Fase 9-toets (Infinite Legacy — TEST): Bank File (CSV) + Bulk Print; Net-to-Gross met 'n toelae; Reports → Payroll Summary.
 7. Capitec Business: voorbeeld-betaallêer (vals name) stuur.
 8. Fase 10-toets: ontsluit met 'n ander bestuurder van dieselfde maatskappy (moet werk) en met jouself (moet geweier word); nuwe werknemer sonder belastingnommer (moet vra of die merkie wil hê).
-9. Migrasie 031: sê "ja 031" — kopieer die salaris van 20 werknemers (18 aktief) wat tans net in die ou KV-stoor is, na die werknemertabel (geoudit).
+9. ~~Migrasie 031~~ — GELOOP 2026-10-14 (20 salarisse, KV-terugval verwyder).
 10. Fase 11-toets: maak 'n werknemer se payslip-blad oop, voeg 'n nota by en vee dit uit; voeg 'n gereelde item by.
 11. Ledger Leo-joernaal: in elke maatskappy wat Leo gebruik, voeg 2 rekeninge in die Chart of Accounts by: "Payroll Deductions Payable" (laste, bv. 2420) en "Salaries Payable" (laste, bv. 2430). Toets dan op TEST: finaliseer 'n run → Leo → Journals wys 'n konsep "PAYROLL YYYY-MM".
-12. Migrasie 032: sê "ja 032" — tabel vir versteekte payroll-items (was in KV; geen data om oor te skuif nie). Toets dan: Payroll Items → versteek 'n item → dit verdwyn uit die payslip se item-kieser; 'n nuwe maatskappy-item verskyn wel in die kieser.
+12. Migrasie 032 GELOOP 2026-10-14. Toets: Payroll Items → versteek 'n item → dit verdwyn uit die payslip se item-kieser; 'n nuwe maatskappy-item verskyn wel in die kieser.
 13. Sean (SEVCO): wanneer 'n IRP5-voorstel verskyn, lees die "Will be filled"-lys (maatskappy + itemnaam) voor jy goedkeur — Sean pas nou op betekenis, so kyk dat elke naam regtig dieselfde item is.
 14. Leo-bankpassing (ná punt 11): op TEST, voer 'n banklyn in met presies die netto betaling van 'n werknemer van 'n gefinaliseerde maand (datum in daardie maand) → Leo → Bank wys "Payroll match" → "Allocate as payroll payment" → joernaal Dr Salaries Payable / Cr Bank. Probeer ook die EMP201-totaal.
 15. IT-10 (wanneer jy dit nodig het): maak op TEST 'n Payroll Item tipe "Employer Contribution" (bv. werkgewer-pensioen R1 000, belasbaar), ken dit aan 'n werknemer toe → payslip wys dit onder werkgewerbydraes, netto bly dieselfde, PAYE effens hoër.
-16. Migrasie 033: sê "ja 033" — vaste ID-koppeling tussen payroll-items en die Payroll Items-skerm (9 van 14 rye word gekoppel; die res werk soos voorheen). Toets daarna: hernoem 'n item op TEST → die werknemer se payslip hou die item se instellings.
+16. Migrasie 033 GELOOP 2026-10-14 (8/14 gekoppel). Toets: hernoem 'n item op TEST → die werknemer se payslip hou die item se instellings.
 
 ## Open risks / follow-ups
 

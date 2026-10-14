@@ -66,29 +66,10 @@ async function fetchCalculationInputs(companyId, employeeId, periodKey, supabase
   if (!employee) {
     throw new Error(`Employee not found: ${employeeId}`);
   }
-  // Step 2b: If basic_salary is missing from the employees table, fall back to the
-  // KV store (key: emp_payroll_{companyId}_{employeeId}). The frontend employee-detail
-  // page writes payroll setup (including basic_salary) there via polyfills.js.
-  if (!employee.basic_salary) {
-    try {
-      const kvKey = `emp_payroll_${companyId}_${employeeId}`;
-      const { data: kvRow } = await supabase
-        .from('payroll_kv_store_eco')
-        .select('value')
-        .eq('company_id', companyId)
-        .eq('key', kvKey)
-        .maybeSingle();
-      if (kvRow && kvRow.value) {
-        const kvVal = typeof kvRow.value === 'string' ? JSON.parse(kvRow.value) : kvRow.value;
-        if (kvVal && kvVal.basic_salary) {
-          employee.basic_salary = kvVal.basic_salary;
-        }
-      }
-    } catch (kvErr) {
-      // KV fallback is best-effort — a missing KV entry is not an error
-      console.warn(`[PayrollDataService] KV salary fallback failed for emp ${employeeId}:`, kvErr.message);
-    }
-  }
+  // Step 2b (removed 2026-10-14, Fase 11.3): the salary used to fall back to the legacy
+  // KV row emp_payroll_<company>_<employee> when employees.basic_salary was empty.
+  // Migration 031 copied those 20 salaries into employees (audited); the employees table
+  // is now the only source (CLAUDE.md Part D).
 
   // Step 2c: Employee-level UIF exemption (employee_payroll_setup.uif_exempt, spec 03 WN-07).
   // A lookup failure keeps UIF applicable (the statutory default).

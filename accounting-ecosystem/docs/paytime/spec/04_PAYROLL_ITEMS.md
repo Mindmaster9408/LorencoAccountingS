@@ -23,7 +23,7 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 | # | Reël | Status |
 |---|---|---|
 | IT-01 | Al die eienskappe hierbo geld vir **herhalende** items én **eenmalige periode-insette** van dieselfde item. | ⚠️ Eenmalige insette verloor `is_taxable` en `tax_treatment` [B1, B2] |
-| IT-02 | Items word deur 'n vaste ID gekoppel, nie deur die naam nie (hernoem mag nie die koppeling breek nie). | ⚠️ 2026-10-13: kode koppel op ID → naam + kant; hernoem neem berekeningsrye saam (IT02_ITEM_LINK_CHANGE_IMPACT_NOTE.md). Vol ✅ ná migrasie 033; eenmalige insette nog op naam |
+| IT-02 | Items word deur 'n vaste ID gekoppel, nie deur die naam nie (hernoem mag nie die koppeling breek nie). | ⚠️ 2026-10-13: kode koppel op ID → naam + kant; hernoem neem berekeningsrye saam (IT02_ITEM_LINK_CHANGE_IMPACT_NOTE.md). migrasie 033 geloop 2026-10-14 (8/14 gekoppel); eenmalige insette nog op naam + kant |
 | IT-03 | 'n Verandering aan 'n item se instellings geld vanaf die volgende ongeslote periode; geslote periodes bly onaangeraak. | ✅ (snapshots is bevries) |
 | IT-04 | IRP5-kode word gevalideer teen SARS se lys bronkodes en moet by die itemtipe pas (verdienste-kode vir verdienste, ens.). | ⚠️ Net formaat (4–6 syfers) |
 | IT-05 | Geen item kan in 'n payroll gebruik word sonder 'n IRP5-kode nie (waarskuwing in die run; blok by EMP501). | ✅ 2026-10-14 (Ruan: opsie a) — waarskuwing per werknemer in die run; IRP5 geblokkeer by EMP501. Net-only aftrekkings (lening, spaar, beslag) het nie 'n kode nodig nie; verdienste, werkgewerbydraes en pre-tax-aftrekkings wel |
