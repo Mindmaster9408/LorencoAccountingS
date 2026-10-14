@@ -14,7 +14,7 @@
 | PS-02 | 'n Gefinaliseerde payslip se lynitems (toelaes, aftrekkings, oortyd, ure, tariewe) kom uit die snapshot — nie uit die werknemer se huidige items nie. | ✅ Fase 6: lyne gevries in die snapshot (`payslip_lines`); ou snapshots herbou uit hul gevriesde insette |
 | PS-03 | Die som van die lynitems = bruto / aftrekkings / netto op dieselfde payslip. (Outomatiese kontrole; as dit nie klop nie, word die PDF nie gegenereer nie.) | ✅ Fase 6: `payslip_check`; PDF word nie gegenereer as lyne nie klop nie |
 | PS-04 | BCEA art. 33-velde: werkgewer naam en adres; werknemer naam, pos, ID/werknemernommer; periode; gewone ure, oortyd-ure en tariewe; elke verdienste en aftrekking met beskrywing; netto bedrag. | ✅ meestal (verifieer ure vir uurwerkers) |
-| PS-05 | Payslip wys ook: belasbare inkomste, PAYE, UIF, mediese krediet, werkgewerbydraes (UIF, SDL), YTD-totale. | ⚠️ YTD-totale ontbreek |
+| PS-05 | Payslip wys ook: belasbare inkomste, PAYE, UIF, mediese krediet, werkgewerbydraes (UIF, SDL), YTD-totale. | ✅ 2026-10-14 — YTD saam met die payslip gevries (skerm, Execute Payroll, PDF); PS05_YTD_CHANGE_IMPACT_NOTE.md |
 | PS-06 | Die "Payslips"-blad (grootmaat-PDF, betaalverdeling, EMP201-voorskou, bankuitvoer) lees uit die geslote snapshots. | ⚠️ Fase 9: ou blad afgeskakel; massa-payslips, banklêer en EMP201/UIF/EMP501-voorskou kom uit die gesluite snapshots op Execute Payroll. Xero/Sage-uitvoer volg met die Leo-joernaal (VU-04) |
 | PS-07 | Gegenereerde PDF word gestoor met 'n hash (bewys dat dit nie verander het nie). | 🆕 |
 | PS-08 | Werknemers kan hul payslips self (veilig) aflaai of per e-pos ontvang. | 🆕 (e-pos op roadmap) |

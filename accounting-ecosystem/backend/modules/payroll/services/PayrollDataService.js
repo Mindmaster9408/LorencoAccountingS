@@ -213,8 +213,21 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
     const priorVoluntaryByEntry = {};
     let priorVoluntaryUnattributed = 0;   // older snapshots without a per-entry breakdown
 
+    // Spec 08 PS-05: year-to-date totals for the payslip (display only — PAYE uses the
+    // fields above). Summed from the same finalized snapshots.
+    const priorTotals = { months: 0, gross: 0, taxable: 0, paye: 0, uif: 0, uif_employer: 0, sdl: 0, deductions: 0, net: 0, medical_credit: 0 };
     for (const snap of snapshots) {
         const out = snap.calculation_output || {};
+        priorTotals.months++;
+        priorTotals.gross          += Number(out.gross) || 0;
+        priorTotals.taxable        += Number(out.taxableGross) || 0;
+        priorTotals.paye           += Number(out.paye) || 0;
+        priorTotals.uif            += Number(out.uif) || 0;
+        priorTotals.uif_employer   += Number(out.uif_employer != null ? out.uif_employer : out.uif) || 0;
+        priorTotals.sdl            += Number(out.sdl) || 0;
+        priorTotals.deductions     += Number(out.deductions) || 0;
+        priorTotals.net            += Number(out.net) || 0;
+        priorTotals.medical_credit += Number(out.medicalCredit) || 0;
 
         // periodicTaxableGross was added as an engine output field alongside migration 018.
         // Fall back to taxableGross for older snapshots that predate that field — this
@@ -298,6 +311,7 @@ async function fetchYtdData(companyId, employeeId, periodKey, supabase) {
         prior_periodic_taxable_gross: ytdPeriodicTaxableGross,
         prior_once_off_taxable_gross: ytdOnceOffTaxableGross,
         source:                      'locked_snapshots',
+        prior_totals:                Object.fromEntries(Object.entries(priorTotals).map(([k, v]) => [k, k === 'months' ? v : PayrollEngine.r2(v)])),
         periods,
         prior_voluntary_by_entry:    priorVoluntaryByEntry,
         prior_voluntary_unattributed: PayrollEngine.r2(priorVoluntaryUnattributed)

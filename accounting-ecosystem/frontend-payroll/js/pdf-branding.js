@@ -335,7 +335,10 @@ const PDFBranding = {
         // ---- not part of the employee's earnings/deductions/net pay arithmetic)     ----
         var companySDL = parseFloat(calc.sdl || 0);
         var companyUifEmployer = parseFloat(calc.uif_employer || 0);
-        if (companySDL > 0 || companyUifEmployer > 0) {
+        // Spec 04 IT-10: employer contributions (never in net pay) — from the payslip lines.
+        var companyEc = (calc._payslipLines || calc.payslip_lines || []).filter(function(l) { return l.kind === 'employer_contribution'; });
+        var companyEcTotal = companyEc.reduce(function(t, l) { return t + (Number(l.amount) || 0); }, 0);
+        if (companySDL > 0 || companyUifEmployer > 0 || companyEc.length) {
             y += 7;
             doc.setFillColor(108, 117, 125);
             doc.rect(margin, y, contentWidth, 6, 'F');
@@ -359,12 +362,19 @@ const PDFBranding = {
                 doc.text(this.formatMoney(companySDL), pageWidth - margin - 3 - doc.getTextWidth(this.formatMoney(companySDL)), y);
                 y += 4.5;
             }
+            var self = this;
+            companyEc.forEach(function(l) {
+                var amt = self.formatMoney(Number(l.amount) || 0);
+                doc.text(String(l.description || 'Employer contribution'), margin + 3, y);
+                doc.text(amt, pageWidth - margin - 3 - doc.getTextWidth(amt), y);
+                y += 4.5;
+            });
 
             doc.line(margin + 3, y, pageWidth - margin - 3, y);
             y += 4;
             doc.setFont(undefined, 'bold');
             doc.text('TOTAL COMPANY CONTRIBUTIONS', margin + 3, y);
-            var totalContrib = this.formatMoney(companySDL + companyUifEmployer);
+            var totalContrib = this.formatMoney(companySDL + companyUifEmployer + companyEcTotal);
             doc.text(totalContrib, pageWidth - margin - 3 - doc.getTextWidth(totalContrib), y);
             doc.setFont(undefined, 'normal');
         }
@@ -411,6 +421,33 @@ const PDFBranding = {
                 doc.text(qStr, col2, y);
                 var rStr = 'R ' + re.rate.toFixed(2) + '/hr';
                 doc.text(rStr, col3 - doc.getTextWidth(rStr), y);
+                y += 4.5;
+            });
+        }
+
+        // ---- Year to date (spec 08 PS-05) — frozen with the payslip; none on payslips
+        // calculated before 2026-10-14. ----
+        if (calc.ytd) {
+            var yt = calc.ytd;
+            y += 7;
+            doc.setFillColor(73, 80, 87);
+            doc.rect(margin, y, contentWidth, 6, 'F');
+            doc.setFontSize(8);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text('YEAR TO DATE (' + (yt.tax_year || '') + ', ' + yt.months + ' MONTH' + (yt.months === 1 ? '' : 'S') + ')', margin + 3, y + 4.5);
+            y += 9;
+            doc.setTextColor(60, 60, 60);
+            doc.setFont(undefined, 'normal');
+            var half = contentWidth / 2;
+            var pairs = [['Gross', yt.gross, 'Taxable income', yt.taxable], ['PAYE', yt.paye, 'UIF', yt.uif], ['Deductions', yt.deductions, 'Net pay', yt.net]];
+            var fm = this;
+            pairs.forEach(function(p) {
+                var a = fm.formatMoney(p[1]), b = fm.formatMoney(p[3]);
+                doc.text(p[0], margin + 3, y);
+                doc.text(a, margin + half - 6 - doc.getTextWidth(a), y);
+                doc.text(p[2], margin + half + 3, y);
+                doc.text(b, pageWidth - margin - 3 - doc.getTextWidth(b), y);
                 y += 4.5;
             });
         }

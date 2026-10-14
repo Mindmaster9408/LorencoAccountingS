@@ -1708,7 +1708,8 @@
                   dedTotal: Number(out.paye || 0) + Number(out.uif || 0) + Number(out.deductions || 0),
                   medCredit: Number(out.medicalCredit || 0), check: snap.payslip_check || null,
                   rebuilt: snap.payslip_lines_source === 'rebuilt_from_frozen_inputs',
-                  prorata: out.prorataFactor != null && out.prorataFactor < 1 ? out.prorataFactor : null };
+                  prorata: out.prorataFactor != null && out.prorataFactor < 1 ? out.prorataFactor : null,
+                  ytd: out.ytd || null };
         lines.forEach(function(l) {
             var label = esc(l.description || '');
             if (l.hours && (l.kind === 'overtime' || l.kind === 'multi_rate' || l.kind === 'short_time')) {
@@ -1735,6 +1736,15 @@
         if (s.prorata != null) n += '<div style="margin-top:8px;padding:8px 12px;background:#fff3cd;border-radius:8px;font-size:0.8rem;color:#856404;">⚠ Pro-rata applied: ' + (s.prorata * 100).toFixed(2) + '% of the month</div>';
         if (s.check && s.check.ok === false) n += '<div style="margin-top:8px;padding:8px 12px;background:#fdecea;border-radius:8px;font-size:0.8rem;color:#b71c1c;">The lines above differ from the totals by ' + fmt(s.check.net_diff) + ' — please report this.</div>';
         if (s.rebuilt) n += '<div style="font-size:0.75rem;color:#888;margin-top:6px;">Lines rebuilt from this payslip\'s frozen inputs (finalized before line storage). Totals are the finalized figures.</div>';
+        // Spec 08 PS-05: year-to-date totals, frozen with the payslip (payslips calculated
+        // before 2026-10-14 have none).
+        if (s.ytd) {
+            var y = s.ytd, cell = function (l, v) { return '<td style="padding:2px 8px 2px 0;color:#555;">' + l + '</td><td style="padding:2px 12px 2px 0;text-align:right;">' + fmt(v) + '</td>'; };
+            n += '<div style="margin-top:10px;font-size:0.8rem;"><div style="font-weight:600;margin-bottom:4px;">Year to date (' + esc(y.tax_year || '') + ', ' + y.months + ' month' + (y.months === 1 ? '' : 's') + ')</div>' +
+                '<table style="border-collapse:collapse;"><tr>' + cell('Gross', y.gross) + cell('Taxable', y.taxable) + '</tr>' +
+                '<tr>' + cell('PAYE', y.paye) + cell('UIF', y.uif) + '</tr>' +
+                '<tr>' + cell('Deductions', y.deductions) + cell('Net pay', y.net) + '</tr></table></div>';
+        }
         return n;
     }
 

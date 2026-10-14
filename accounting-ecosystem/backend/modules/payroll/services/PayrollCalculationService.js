@@ -97,6 +97,24 @@ function buildEffectiveTables(cfg) {
  * @param {object} [options.taxConfig] - Admin-configured tax tables from Supabase KV (backend use only)
  * @returns {Promise<object>} Engine output + service metadata
  */
+function buildYtd(prior, c, period) {
+  const p = prior || {};
+  const add = (a, b) => PayrollEngine.r2((Number(a) || 0) + (Number(b) || 0));
+  return {
+    tax_year:       period ? PayrollEngine.getTaxYearForPeriod(period) : null,
+    months:         (Number(p.months) || 0) + 1,
+    gross:          add(p.gross, c.gross),
+    taxable:        add(p.taxable, c.taxableGross),
+    paye:           add(p.paye, c.paye),
+    uif:            add(p.uif, c.uif),
+    uif_employer:   add(p.uif_employer, c.uif_employer != null ? c.uif_employer : c.uif),
+    sdl:            add(p.sdl, c.sdl),
+    deductions:     add(p.deductions, c.deductions),
+    net:            add(p.net, c.net),
+    medical_credit: add(p.medical_credit, c.medicalCredit)
+  };
+}
+
 async function calculate(normalizedInputs, options = {}) {
   if (!normalizedInputs) {
     throw new Error('normalizedInputs required');
@@ -244,6 +262,11 @@ async function calculate(normalizedInputs, options = {}) {
       sdl_rate:         usedTables.SDL_RATE
     };
     result._meta.taxTableHash = crypto.createHash('sha256').update(JSON.stringify(result._meta.taxTable)).digest('hex');
+
+    // Spec 08 PS-05: year-to-date totals (finalized prior months of this tax year + this
+    // payslip), frozen with the snapshot so a finalized payslip always shows the same YTD.
+    // Additive field — no existing output changes.
+    result.ytd = buildYtd(_ytd && _ytd.prior_totals, result, normalizedInputs.period);
 
     return result;
   } catch (err) {

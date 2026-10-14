@@ -3414,7 +3414,10 @@
             // not part of the employee's earnings/deductions/net pay arithmetic above.
             var previewSDL = parseFloat(calc.sdl || 0);
             var previewUifEmployer = parseFloat(calc.uif_employer || 0);
-            if (previewSDL > 0 || previewUifEmployer > 0) {
+            // Spec 04 IT-10: employer contributions (never in net) — from the payslip lines.
+            var previewEc = (calc._payslipLines || calc.payslip_lines || []).filter(function(l) { return l.kind === 'employer_contribution'; });
+            var previewEcTotal = previewEc.reduce(function(t, l) { return t + (Number(l.amount) || 0); }, 0);
+            if (previewSDL > 0 || previewUifEmployer > 0 || previewEc.length) {
                 html += '<div style="margin-bottom: 15px;">';
                 html += '<div style="background: #6c757d; color: white; padding: 6px 15px; border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; font-weight: 700; font-size: 12px;">';
                 html += '<span>COMPANY CONTRIBUTIONS</span><span>Amount</span></div>';
@@ -3427,8 +3430,25 @@
                     html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
                     html += '<span>SDL (Skills Development Levy)</span><span>' + formatMoney(previewSDL) + '</span></div>';
                 }
+                previewEc.forEach(function(l) {
+                    html += '<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;">';
+                    html += '<span>' + _noteEsc(l.description || 'Employer contribution') + '</span><span>' + formatMoney(Number(l.amount) || 0) + '</span></div>';
+                });
                 html += '<div style="border-top: 2px solid #333; margin-top: 6px; padding-top: 6px; display: flex; justify-content: space-between; font-weight: 700; font-size: 13px;">';
-                html += '<span>TOTAL COMPANY CONTRIBUTIONS</span><span>' + formatMoney(previewSDL + previewUifEmployer) + '</span></div>';
+                html += '<span>TOTAL COMPANY CONTRIBUTIONS</span><span>' + formatMoney(previewSDL + previewUifEmployer + previewEcTotal) + '</span></div>';
+                html += '</div></div>';
+            }
+
+            // Spec 08 PS-05: year-to-date totals, frozen with the payslip (none on payslips
+            // calculated before 2026-10-14).
+            if (calc.ytd) {
+                var yt = calc.ytd;
+                var ytCell = function(l, v) { return '<div style="display:flex; justify-content:space-between; padding:2px 0; font-size:12px;"><span style="color:#555;">' + l + '</span><span>' + formatMoney(v) + '</span></div>'; };
+                html += '<div style="margin-bottom: 15px;">';
+                html += '<div style="background: #495057; color: white; padding: 6px 15px; border-radius: 6px 6px 0 0; font-weight: 700; font-size: 12px;">YEAR TO DATE (' + (yt.tax_year || '') + ', ' + yt.months + ' MONTH' + (yt.months === 1 ? '' : 'S') + ')</div>';
+                html += '<div style="border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 6px 6px; padding: 8px 15px; display:grid; grid-template-columns: 1fr 1fr; column-gap: 24px;">';
+                html += ytCell('Gross', yt.gross) + ytCell('Taxable income', yt.taxable) + ytCell('PAYE', yt.paye) + ytCell('UIF', yt.uif) +
+                        ytCell('Deductions', yt.deductions) + ytCell('Net pay', yt.net);
                 html += '</div></div>';
             }
 

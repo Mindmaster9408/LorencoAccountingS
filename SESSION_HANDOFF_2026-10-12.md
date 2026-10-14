@@ -162,6 +162,10 @@
 
 - The Finalize dialog now lists employees to check: big net change vs last month, new, negative net, tax-number issues, items without IRP5 code, paid last month but missing from this run. Read-only; never blocks.
 
+## PS-05 YTD on the payslip (2026-10-14) — docs/paytime/PS05_YTD_CHANGE_IMPACT_NOTE.md
+
+- Payslip (screen, Execute Payroll preview/bulk print, PDF) shows year-to-date totals, frozen with the snapshot. Older payslips show none. Employer contributions (IT-10) now also on the employee payslip screen and PDF.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
@@ -181,6 +185,7 @@
 15. IT-10 (wanneer jy dit nodig het): maak op TEST 'n Payroll Item tipe "Employer Contribution" (bv. werkgewer-pensioen R1 000, belasbaar), ken dit aan 'n werknemer toe → payslip wys dit onder werkgewerbydraes, netto bly dieselfde, PAYE effens hoër.
 16. Migrasie 033 GELOOP 2026-10-14 (8/14 gekoppel). Toets: hernoem 'n item op TEST → die werknemer se payslip hou die item se instellings.
 17. UF-03: op TEST, Execute Payroll → Run → "Finalize Payroll" → die dialoog wys "Review before finalizing" met die werknemers om na te gaan (op TEST tans: Natasja +88%, ongeldige belastingnommer, 3 nie in die run nie). Kanselleer as jy nie wil finaliseer nie.
+18. PS-05: maak 'n werknemer se payslip op TEST oop (bv. Augustus) → onderaan "Year to date (2026/2027, 6 months)"; laai ook die PDF af en kyk of die YTD-blok daar is.
 
 ## Open risks / follow-ups
 
