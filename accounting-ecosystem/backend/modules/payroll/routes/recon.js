@@ -17,6 +17,7 @@
 const express = require('express');
 const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
 const { supabase } = require('../../../config/database');
+const Irp5ItemCheck = require('../services/irp5ItemCheck');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 
 const router = express.Router();
@@ -406,6 +407,11 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
       }
     }
 
+    // Spec 04 IT-05 (Ruan 2026-10-14): an IRP5 is blocked while an item used in the tax
+    // year has no IRP5 code (earnings, employer contributions, pre-tax deductions).
+    const codeSource501 = await Irp5ItemCheck.loadCodeSource(supabase, companyId);
+    const missing501 = {};
+
     // Aggregate per employee across all periods
     const empAgg = {};
     for (const snap of Object.values(snapDedup501)) {
@@ -424,6 +430,8 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
         };
       }
       const agg = empAgg[eid];
+      Irp5ItemCheck.itemsMissingCode(snap.calculation_input, codeSource501)
+        .forEach(m => { (missing501[eid] = missing501[eid] || []).push(m); });
       agg.gross_income   += parseFloat(out.gross)                    || 0;
       agg.taxable_income += parseFloat(out.taxableGross)             || 0;
       agg.paye           += parseFloat(out.paye)                     || 0;
@@ -457,8 +465,8 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
         net_pay:        r2(agg.net_pay),
         irp5_codes:     Object.values(agg.irp5_codes),
         // Fase 10 / spec 03 WN-02: no IRP5 for an employee without a valid tax / ID number.
-        irp5_blocked:   employeeTaxIssues(emp).length > 0,
-        irp5_issues:    employeeTaxIssues(emp)
+        irp5_blocked:   employeeTaxIssues(emp).length > 0 || !!(missing501[agg.employee_id] || []).length,
+        irp5_issues:    employeeTaxIssues(emp).concat(Irp5ItemCheck.issueText(missing501[agg.employee_id] || []))
       };
     });
 

@@ -53,6 +53,7 @@ const { getTaxConfigForPeriod } = require('../services/taxTables');
 const { payrollEligibility } = require('../services/payrollEligibility');
 const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
 const payrollJournal = require('../services/payrollJournal');
+const Irp5ItemCheck = require('../services/irp5ItemCheck');
 
 const router = express.Router();
 
@@ -237,6 +238,12 @@ router.post(
 
       // ── Process each employee ─────────────────────────────────────────────
       const processed = [];
+      // Spec 04 IT-05 (Ruan 2026-10-14, option a): items without an IRP5 code → a warning
+      // per employee; never blocks the run (EMP501 blocks the IRP5 at year end).
+      const missingCodes = {};
+      let codeSource = null;
+      try { codeSource = await Irp5ItemCheck.loadCodeSource(supabase, req.companyId); }
+      catch (csErr) { console.warn('[payruns] IRP5 code check skipped:', csErr.message); }
       const errors    = [];
 
       for (const b of calcBlocks) {
@@ -284,6 +291,10 @@ router.post(
           const normalizedInputs = await PayrollDataService.fetchCalculationInputs(
             req.companyId, empId, period_key, supabase
           );
+          if (codeSource) {
+            const miss = Irp5ItemCheck.itemsMissingCode(normalizedInputs, codeSource);
+            if (miss.length) missingCodes[empId] = Irp5ItemCheck.issueText(miss);
+          }
 
           // Inject voluntary tax config if provided in the request payload.
           // Accepts array (multi-entry) or legacy single object — both handled by the engine.
@@ -408,7 +419,7 @@ router.post(
           .eq('company_id', req.companyId).in('id', processed.map(p => p.employee_id));
         warnings = (taxRows || []).map(e => ({
           employee_id: e.id, name: ((e.first_name || '') + ' ' + (e.last_name || '')).trim(),
-          issues: employeeTaxIssues(e)
+          issues: employeeTaxIssues(e).concat(missingCodes[e.id] || [])
         })).filter(w => w.issues.length);
       }
 

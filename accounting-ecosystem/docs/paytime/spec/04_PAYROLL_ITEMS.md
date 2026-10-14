@@ -26,7 +26,7 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 | IT-02 | Items word deur 'n vaste ID gekoppel, nie deur die naam nie (hernoem mag nie die koppeling breek nie). | ⚠️ 2026-10-13: kode koppel op ID → naam + kant; hernoem neem berekeningsrye saam (IT02_ITEM_LINK_CHANGE_IMPACT_NOTE.md). Vol ✅ ná migrasie 033; eenmalige insette nog op naam |
 | IT-03 | 'n Verandering aan 'n item se instellings geld vanaf die volgende ongeslote periode; geslote periodes bly onaangeraak. | ✅ (snapshots is bevries) |
 | IT-04 | IRP5-kode word gevalideer teen SARS se lys bronkodes en moet by die itemtipe pas (verdienste-kode vir verdienste, ens.). | ⚠️ Net formaat (4–6 syfers) |
-| IT-05 | Geen item kan in 'n payroll gebruik word sonder 'n IRP5-kode nie (waarskuwing in die run; blok by EMP501). | 🆕 |
+| IT-05 | Geen item kan in 'n payroll gebruik word sonder 'n IRP5-kode nie (waarskuwing in die run; blok by EMP501). | ✅ 2026-10-14 (Ruan: opsie a) — waarskuwing per werknemer in die run; IRP5 geblokkeer by EMP501. Net-only aftrekkings (lening, spaar, beslag) het nie 'n kode nodig nie; verdienste, werkgewerbydraes en pre-tax-aftrekkings wel |
 | IT-06 | Pre-tax aftrekkings vir aftreefondse word beperk tot 27.5% van remunerasie / R350 000 per jaar (art. 11F). | 🆕 |
 | IT-07 | Byvoordele (maatskappymotor, werkgewer se mediese bydrae, werkgewer se aftreefondsbydrae) word as belasbare nie-kontant inkomste hanteer (Sewende Bylae). | 🆕 |
 | IT-08 | Persentasie-items (bv. 10% van basies) word teen die (pro-rata) basiese salaris bereken. | ✅ |
@@ -59,5 +59,5 @@ Elke item (salaris, toelae, bonus, kommissie, pensioen, mediese fonds, ens.) dra
 ## ❓ Oop vrae
 
 1. Byvoordele (IT-07) en die 27.5%-limiet (IT-06): nou bou, of eers ná die foute reggemaak is?
-2. Item **sonder** IRP5-kode: blokkeer die payroll, of net waarsku tot by jaareinde?
+2. ~~Item sonder IRP5-kode~~ → **BEANTWOORD 2026-10-14 (opsie a):** waarsku in die run, blokkeer die IRP5 by EMP501 (IT-05).
 3. ~~Uur-gebaseerde tarief~~ → **BEANTWOORD 2026-10-12:** albei opsies — vermenigvuldiger van eie tarief, of 'n spesifieke rand-tarief (IT-12).

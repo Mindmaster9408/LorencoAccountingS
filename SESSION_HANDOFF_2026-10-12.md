@@ -154,6 +154,10 @@
 
 - Renaming a Payroll Item no longer cuts employees' assignments loose from its settings; same-name items on two sides (company 7 "Savings") are no longer mixed. Migration 033 (payroll_items.master_item_id) prepared, NOT run — code works before and after.
 
+## IT-05 items without IRP5 code (2026-10-14)
+
+- Ruan chose option a: every pay run warns per employee ("Payroll item \"X\" has no IRP5 code"); EMP501 marks that employee's IRP5 blocked. Needed for earnings, employer contributions and pre-tax deductions; not for net-only deductions. services/irp5ItemCheck.js. Live check (tax year 2026/27): 0 employees affected today.
+
 ## Ruan se take (hou by — bygewerk na elke fase)
 
 1. Bakmeester: bonusmaand op die 3 Bonus Spread-inskrywings ("Set bonus month").
