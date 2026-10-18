@@ -672,6 +672,118 @@ describe('StandardBankParser \u2014 production concat format (date+desc no space
   });
 });
 
+// ─── Standard Bank — official monthly "BANK STATEMENT / TAX INVOICE" ─────────
+// Real pdf-parse output (MyMoBiz, 2026-10-18, client name replaced). Columns
+// run together: "amount[-]MM DDbalance[-]"; no year on the date; a detail line
+// can land on the next page below the repeated page header.
+const SB_MONTHLY_HEADER = `MOOIRIVIER
+PO BOX 62325 MARSHALLTOWN 2107
+Business Banking: 0860 109 075
+18 January 2025
+Statement No: 1
+Statement Frequency: Monthly
+Statement from 18 December 2024 to 18 January 2025
+BANK STATEMENT / TAX INVOICE
+MYMOBIZ CURRENT ACCOUNT
+Account Number1023 658 206 0
+Page PAGE of 2
+TEST CLIENT (PTY) LTD
+Please verify all transactions reflected on this statement and notify any discrepancies to the Bank as soon as possible.
+Please visit our website at www.standardbank.co.za to view the terms and conditions that apply to your card and account.
+The Standard Bank of South Africa Limited (Reg. No.  1962/000738/06) Authorised financial services provider
+VAT Reg No. 4100105461  Registered credit provider (NCRCP15).
+DetailsService
+Fee
+DebitsCredits
+DateBalance
+BALANCE BROUGHT FORWARD`;
+
+const SB_MONTHLY_SAMPLE = `${SB_MONTHLY_HEADER.replace('PAGE', '1')}
+12 18691.80
+MONTHLY MANAGEMENT FEE
+##
+4.29-12 31687.51
+FEE: MYUPDATES FOR BUSINESS
+##
+1.00-12 31686.51
+0000010236582060 00002 R1.00
+IB PAYMENT TO
+298.00-01 06388.51
+DIAMATRIX CC DRONDOG DOMA
+AUTOBANK CASH WITHDRAWAL AT
+450.00-01 0661.49-
+
+${SB_MONTHLY_HEADER.replace('PAGE', '2')}
+61.49-
+00006497 2025-01-06T10:08:09 42
+REAL TIME TRANSFER FROM
+2,250.0001 102,188.51
+AMANDA COCKCROF62055305819
+CHEQUE CARD PURCHASE
+129.99-01 142,058.52
+GOOGLE PHOTOD 4278*6153 12 JAN
+##These fees include VAT at 14% up to 31 March 2018 and at 15% from 1 April 2018.
+VAT Summary
+Total charge amount (excluding VAT)23.38-
+Total VAT3.51-
+Account Summary
+Balance at date of statement  2,058.52`;
+
+describe('StandardBankParser — official monthly statement (BANK STATEMENT / TAX INVOICE)', () => {
+  let result;
+  beforeAll(() => { result = StandardBankParser.parse(SB_MONTHLY_SAMPLE, 'Bank Staat 1 18-12-2024 18-01-2025.pdf'); });
+
+  test('1. detected as Standard Bank from content alone', () => {
+    expect(StandardBankParser.canParse(SB_MONTHLY_SAMPLE, 'Bank Staat 1.pdf').confidence).toBeGreaterThanOrEqual(0.7);
+    expect(ParserRegistry.selectParser(SB_MONTHLY_SAMPLE, 'Bank Staat 1.pdf').parser).toBe(StandardBankParser);
+  });
+
+  test('2. reads account number and statement period', () => {
+    expect(result.accountNumber).toBe('10236582060');
+    expect(result.statementPeriod).toEqual({ from: '2024-12-18', to: '2025-01-18' });
+  });
+
+  test('3. extracts every transaction, none from header/footer', () => {
+    expect(result.transactions).toHaveLength(6);
+    expect(result.skippedLines).toBe(0);
+  });
+
+  test('4. December lines get the previous year, January lines the end year', () => {
+    expect(result.transactions[0].date).toBe('2024-12-31');
+    expect(result.transactions[2].date).toBe('2025-01-06');
+  });
+
+  test('5. debit "-" suffix is negative, credit has no suffix and is positive', () => {
+    expect(result.transactions[0].amount).toBe(-4.29);
+    expect(result.transactions[4].amount).toBe(2250);
+    expect(result.transactions[4].balance).toBe(2188.51);
+  });
+
+  test('6. overdrawn balance with trailing "-" is negative', () => {
+    expect(result.transactions[3].balance).toBe(-61.49);
+  });
+
+  test('7. description = title + detail lines, incl. a detail that lands on the next page', () => {
+    expect(result.transactions[1].description).toBe('FEE: MYUPDATES FOR BUSINESS 0000010236582060 00002 R1.00');
+    expect(result.transactions[3].description).toBe('AUTOBANK CASH WITHDRAWAL AT 00006497 2025-01-06T10:08:09 42');
+    expect(result.transactions[5].description).toBe('CHEQUE CARD PURCHASE GOOGLE PHOTOD 4278*6153 12 JAN');
+  });
+
+  test('8. balance chain and closing balance reconcile — no warnings', () => {
+    expect(result.warnings).toEqual([]);
+  });
+
+  test('9. a missing line is flagged by the balance check', () => {
+    const broken = SB_MONTHLY_SAMPLE.replace('IB PAYMENT TO\n298.00-01 06388.51\nDIAMATRIX CC DRONDOG DOMA\n', '');
+    const r = StandardBankParser.parse(broken, 'x.pdf');
+    expect(r.warnings.some(w => /Balance check failed/.test(w))).toBe(true);
+  });
+
+  test('10. 3-month statement layout still goes through the original parser', () => {
+    expect(StandardBankParser._isMonthlyLayout(STDBANK_REAL_SAMPLE)).toBe(false);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const NEDBANK_SAMPLE = `

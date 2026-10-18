@@ -2,14 +2,25 @@
  * ============================================================================
  * Standard Bank PDF Statement Parser
  * ============================================================================
- * Supports two date formats:
- *   - DD Mon YY / DD Mon YYYY  (e.g. "27 Nov 24" or "27 Nov 2024")  — primary for 3-month statements
- *   - YYYY/MM/DD                                                     — legacy format
+ * Supports two statement layouts:
  *
- * Column layout: Payments | Deposits | Balance  (NOT Debit/Credit)
+ * 1. Internet-banking "3 Month Statement" (date at the start of each line)
+ *      - DD Mon YY / DD Mon YYYY  (e.g. "27 Nov 24" or "27 Nov 2024")
+ *      - YYYY/MM/DD                                                 — legacy
+ *    Column layout: Payments | Deposits | Balance  (NOT Debit/Credit)
+ *    Parsing strategy: block-based — date line starts a block, following lines
+ *    are collected until the next date line. Amounts extracted from combined text.
  *
- * Parsing strategy: block-based — date line starts a block, following lines
- * are collected until the next date line. Amounts extracted from combined text.
+ * 2. Official monthly "BANK STATEMENT / TAX INVOICE" (e.g. MyMoBiz)
+ *    Columns: Details | Service Fee | Debits | Credits | Date | Balance.
+ *    pdf-parse emits each transaction as:
+ *      CHEQUE CARD PURCHASE                 ← title (first Details line)
+ *      ##                                   ← optional service-fee marker
+ *      129.99-01 14236.92                   ← amount[-] MM DD balance[-]
+ *      GOOGLE PHOTOD 4278*6153 12 JAN       ← optional detail line(s)
+ *    The date has no year — it is resolved from "Statement from … to …".
+ *    A detail line can land on the next page (after the page header).
+ *    See _parseMonthly().
  * ============================================================================
  */
 
@@ -67,6 +78,24 @@ const SECTION_END_RE = /^statement\s+summary/i;
 const CREDIT_RE = /\b(?:payment\s+received|deposit|salary|credit|transfer\s+in|proceeds|refund|reversal|magtape\s+credit)\b/i;
 const DEBIT_RE  = /\b(?:debit\s+order|purchase|withdrawal|payment\s+to|transfer\s+to|atm|fee|charge|levy|authorisation)\b/i;
 
+// ─── Monthly "BANK STATEMENT / TAX INVOICE" layout ──────────────────────────
+// Amount line: amount, "-" when it is a debit, MM DD, balance, "-" when overdrawn.
+//   "4.29-12 31687.51"      → -4.29     on 12-31, balance 687.51
+//   "2,250.0009 252,233.16" → +2250.00  on 09-25, balance 2233.16
+//   "5.00-09 221.84-"       → -5.00     on 09-22, balance -1.84
+// Unambiguous because both amounts always carry exactly two decimals and the
+// date is always two digits, a space, two digits.
+const MONTHLY_AMT_RE    = /^(\d[\d,]*\.\d{2})(-?)(\d{2}) (\d{2})(\d[\d,]*\.\d{2})(-?)$/;
+const MONTHLY_PERIOD_RE = /statement\s+from\s+(\d{1,2})\s+([a-z]+)\s+(\d{4})\s+to\s+(\d{1,2})\s+([a-z]+)\s+(\d{4})/i;
+// Last line of the column header that repeats at the top of every page
+const MONTHLY_TABLE_START_RE = /^date\s*balance$/i;
+const MONTHLY_BBF_RE    = /^balance\s+brought\s+forward$/i;
+// Brought-forward value: "12 18691.80" on page 1 (with date), "2,945.91" on later pages
+const MONTHLY_BBF_VAL_RE = /^(?:\d{2} \d{2})?(\d[\d,]*\.\d{2})(-?)$/;
+const MONTHLY_FEE_MARK_RE = /^#+$/;
+// Footer after the last transaction
+const MONTHLY_END_RE    = /^(?:##\s*these\s+fees|vat\s+summary|account\s+summary)/i;
+
 class StandardBankParser extends BaseParser {
 
   static get PARSER_ID() { return 'standardbank-v1'; }
@@ -88,11 +117,16 @@ class StandardBankParser extends BaseParser {
     const ddMonCount = (text.match(/\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}\b/gi) || []).length;
     if (yyyyCount > 3 || ddMonCount > 3) { score += 0.1; details.dateFormat = yyyyCount > 3 ? 'YYYY/MM/DD' : 'DD Mon YY(YY)'; }
     if (/payments\s+deposits\s+balance/i.test(text)) { score += 0.15; details.columnHeader = true; }
+    if (this._isMonthlyLayout(text) && /standardbank\.co\.za/i.test(text)) {
+      score += 0.15; details.monthlyLayout = true;
+    }
     return { confidence: Math.min(score, 1.0), details };
   }
 
   // ─── Entry point ────────────────────────────────────────────────────────────
   static parse(text, filename = '') {
+    if (this._isMonthlyLayout(text)) return this._parseMonthly(text);
+
     const result = this.emptyResult(this.BANK_NAME, this.PARSER_ID);
     result.accountNumber   = this.extractAccountNumber(text);
     result.statementPeriod = this._extractPeriodSB(text);
@@ -214,6 +248,130 @@ class StandardBankParser extends BaseParser {
     }
 
     return { date, description, reference: null, amount, balance, rawLine: block.join(' | ') };
+  }
+
+  // ─── Monthly "BANK STATEMENT / TAX INVOICE" layout ──────────────────────────
+
+  static _isMonthlyLayout(text) {
+    if (!MONTHLY_PERIOD_RE.test(text)) return false;
+    return text.split(/\r?\n/).some(l => MONTHLY_AMT_RE.test(l.trim()));
+  }
+
+  static _parseMonthly(text) {
+    const result = this.emptyResult(this.BANK_NAME, this.PARSER_ID);
+
+    // "Account Number1023 658 206 0" — label and digits run together, digits spaced
+    const acct = text.match(/account\s*number\s*:?\s*(\d[\d ]{5,}\d)/i);
+    result.accountNumber = acct ? acct[1].replace(/\s+/g, '') : this.extractAccountNumber(text);
+
+    const pm = text.match(MONTHLY_PERIOD_RE);
+    const toIso = (d, mon, y) => {
+      const mo = MONTH_MAP[mon.slice(0, 3).toLowerCase()];
+      return mo ? `${y}-${mo}-${d.padStart(2, '0')}` : null;
+    };
+    result.statementPeriod = { from: toIso(pm[1], pm[2], pm[3]), to: toIso(pm[4], pm[5], pm[6]) };
+    if (!result.statementPeriod.to) {
+      result.warnings.push('Standard Bank monthly statement: could not read the statement period, so transaction years are unknown.');
+      return result;
+    }
+    const [toY, toM, toD] = result.statementPeriod.to.split('-').map(Number);
+
+    // Walk the transaction table. The title of a transaction is the line just
+    // before its amount line; any other lines since the previous amount line
+    // are detail lines of the previous transaction (they can sit on the next
+    // page, below the repeated page header).
+    const rows = [];
+    let pending = [];
+    let inTable = false;
+    let expectBbfValue = false;
+    let opening = null;
+
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!inTable) {
+        if (MONTHLY_TABLE_START_RE.test(line)) inTable = true;
+        continue;
+      }
+      if (!line) { inTable = false; continue; }   // page break — page header follows
+      if (MONTHLY_END_RE.test(line)) break;
+      if (MONTHLY_BBF_RE.test(line)) { expectBbfValue = true; continue; }
+      if (expectBbfValue) {
+        expectBbfValue = false;
+        const b = line.match(MONTHLY_BBF_VAL_RE);
+        if (b) {
+          if (opening === null && rows.length === 0) opening = this._monthlyNum(b[1], b[2]);
+          continue;
+        }
+      }
+      if (MONTHLY_FEE_MARK_RE.test(line)) continue;
+
+      const m = line.match(MONTHLY_AMT_RE);
+      if (!m) { pending.push(line); continue; }
+
+      if (pending.length > 1) {
+        if (rows.length) rows[rows.length - 1].details.push(...pending.slice(0, -1));
+        else result.skippedLines += pending.length - 1;
+      }
+      rows.push({ m, line, title: pending.length ? pending[pending.length - 1] : '', details: [] });
+      pending = [];
+    }
+    if (rows.length && pending.length) rows[rows.length - 1].details.push(...pending);
+
+    let prevBalance = opening;
+    for (const row of rows) {
+      const { m } = row;
+      const mm = parseInt(m[3], 10);
+      const dd = parseInt(m[4], 10);
+      if (mm < 1 || mm > 12 || dd < 1 || dd > 31) {
+        result.skippedLines++;
+        result.warnings.push(`[skip] Invalid date ${m[3]} ${m[4]}: ${row.line}`);
+        continue;
+      }
+      // No year on the line: it is the statement's end year, unless the date
+      // falls after the end date (December lines on a Dec–Jan statement).
+      const year = (mm > toM || (mm === toM && dd > toD)) ? toY - 1 : toY;
+      const date = `${year}-${m[3]}-${m[4]}`;
+
+      const amount  = this._monthlyNum(m[1], m[2]);
+      const balance = this._monthlyNum(m[5], m[6]);
+      const description = [row.title, ...row.details].join(' ').replace(/\s+/g, ' ').trim()
+        || 'Standard Bank transaction';
+
+      if (prevBalance !== null && Math.abs(prevBalance + amount - balance) > 0.005) {
+        result.warnings.push(
+          `Balance check failed on ${date} "${description.slice(0, 60)}": ` +
+          `${prevBalance.toFixed(2)} + ${amount.toFixed(2)} ≠ ${balance.toFixed(2)} — a line may have been missed.`
+        );
+      }
+      prevBalance = balance;
+
+      const txn = { date, description, reference: null, amount, balance, rawLine: [row.title, row.line, ...row.details].join(' | ') };
+      const warns = this.validateTransaction(txn);
+      if (warns.length === 0) {
+        result.transactions.push(txn);
+      } else {
+        result.skippedLines++;
+        result.warnings.push(`Skipped (${warns.join(', ')}): ${row.line}`);
+      }
+    }
+
+    const closing = text.match(/balance\s+at\s+date\s+of\s+statement\s*(\d[\d,]*\.\d{2})(-?)/i);
+    if (closing && prevBalance !== null) {
+      const closingBal = this._monthlyNum(closing[1], closing[2]);
+      if (Math.abs(closingBal - prevBalance) > 0.005) {
+        result.warnings.push(
+          `Closing balance on statement is ${closingBal.toFixed(2)} but the last imported line shows ${prevBalance.toFixed(2)}.`
+        );
+      }
+    }
+
+    return result;
+  }
+
+  // "1,234.56" + "-" → -1234.56
+  static _monthlyNum(digits, minus) {
+    const v = Number(digits.replace(/,/g, ''));
+    return minus === '-' ? -v : v;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
