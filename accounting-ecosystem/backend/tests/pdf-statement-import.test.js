@@ -132,6 +132,23 @@ describe('BaseParser.isPageNoise', () => {
   test('does not flag normal transaction line', () => {
     expect(BaseParser.isPageNoise('01/01/2026 PAYMENT RECEIVED 5000.00 10000.00')).toBe(false);
   });
+
+  test('flags an undated VAT footer line', () => {
+    expect(BaseParser.isPageNoise('VAT on Bank Charges 10.94')).toBe(true);
+    expect(BaseParser.isPageNoise('Client VAT Registration Number 4123456789')).toBe(true);
+  });
+
+  test('never flags a dated transaction that mentions VAT', () => {
+    expect(BaseParser.isPageNoise('15/08/2026 VAT on service fee 10.94 1234.56')).toBe(false);
+    expect(BaseParser.isPageNoise('15/08/2026 SERVICE FEE 70.00 1234.56 VAT on fees')).toBe(false);
+  });
+});
+
+describe('BaseParser.extractPeriod', () => {
+  test('a 4-digit year at the end of the period is not cut to 2 digits', () => {
+    expect(BaseParser.extractPeriod('Period: 01/01/2026 to 31/01/2026'))
+      .toEqual({ from: '2026-01-01', to: '2026-01-31' });
+  });
 });
 
 describe('BaseParser.startsWithDate', () => {
@@ -230,6 +247,84 @@ describe('FNBParser.parse', () => {
   test('balance extracted correctly', () => {
     const salary = result.transactions.find(t => t.description.includes('SALARY'));
     expect(salary.balance).toBe(24765);
+  });
+});
+
+// ─── FNB business statement "Transactions in RAND (ZAR)" — real pdf-parse ────
+// output (Gold Business, 2026-10-19, client name replaced). Debit has no
+// suffix, credit "Cr"; balance "Cr" = in credit, none = overdrawn; an accrued
+// charge can follow the balance; a row can be split over three lines.
+const FNB_BUSINESS_REAL = `Gold Business Account : 63127729771
+Statement Period : 31 December 2024 to 31 January 2025
+Statement Date : 31 January 2025
+Statement Balances
+Opening Balance48.61Dr
+Closing Balance283.79 Dr
+Transactions in RAND (ZAR)
+Date
+DescriptionAmountBalance
+Accrued
+Bank
+Charges
+31 DecDr.Int.Rate 7,000000.0048.61
+14 JanInt On Debit Balance0.1348.74
+14 JanPenalty Interest0.0548.79
+30 JanFNB OB Pmt Intfin8,330.00Cr8,281.21Cr
+31 JanRtc Express Pmt To Adriana SalarisTest8,000.00281.21Cr15.00
+31 JanChq Card ATM Local Cash Advanc Geld Spar74552166046000075742550.00268.79
+31 Jan
+Fees
+15.00283.79
+Closing Balance283.79Dr
+Turnover for Statement Period
+First National Bank - a division of FirstRand Bank Limited. Registration Number 1929/001225/06.`;
+
+describe('FNBParser — business statement (Transactions in RAND)', () => {
+  const text = FNB_BUSINESS_REAL;
+  let result;
+  beforeAll(() => { result = FNBParser.parse(text, 'Bank Staat 19 2026.pdf'); });
+
+  test('1. recognised as FNB from the footer when the filename has no bank name', () => {
+    expect(FNBParser.canParse(text, 'Bank Staat 19 2026.pdf').confidence).toBeGreaterThanOrEqual(0.6);
+    expect(ParserRegistry.selectParser(text, 'Bank Staat 19 2026.pdf').parser).toBe(FNBParser);
+  });
+
+  test('2. account number and period', () => {
+    expect(result.accountNumber).toBe('63127729771');
+    expect(result.statementPeriod).toEqual({ from: '2024-12-31', to: '2025-01-31' });
+  });
+
+  test('3. zero-amount information line is not imported', () => {
+    expect(result.transactions.some(t => /Int\.Rate/.test(t.description))).toBe(false);
+  });
+
+  test('4. debit without suffix is negative, "Cr" amount is positive, overdrawn balance is negative', () => {
+    const int = result.transactions.find(t => /Int On Debit/.test(t.description));
+    expect(int).toMatchObject({ date: '2025-01-14', amount: -0.13, balance: -48.74 });
+    const credit = result.transactions.find(t => /FNB OB Pmt/.test(t.description));
+    expect(credit).toMatchObject({ amount: 8330, balance: 8281.21 });
+  });
+
+  test('5. accrued charge after the balance is not the amount', () => {
+    const sal = result.transactions.find(t => /Salaris/.test(t.description));
+    expect(sal).toMatchObject({ amount: -8000, balance: 281.21 });
+  });
+
+  test('6. card number glued to the amount is recovered from the balance', () => {
+    const atm = result.transactions.find(t => /Cash Advanc/.test(t.description));
+    expect(atm.amount).toBe(-550);
+    expect(atm.balance).toBe(-268.79);
+    expect(atm.description).toMatch(/75742$/);
+  });
+
+  test('7. row split over three lines ("31 Jan" / "Fees" / amounts)', () => {
+    const fee = result.transactions[result.transactions.length - 1];
+    expect(fee).toMatchObject({ date: '2025-01-31', description: 'Fees', amount: -15, balance: -283.79 });
+  });
+
+  test('8. opening → closing reconciles: no balance warnings', () => {
+    expect(result.transactions).toHaveLength(6);
+    expect(result.warnings.filter(w => /Balance check|Closing balance/.test(w))).toEqual([]);
   });
 });
 

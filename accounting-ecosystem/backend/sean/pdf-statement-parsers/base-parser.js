@@ -254,16 +254,17 @@ class BaseParser {
       // (2026-09-02, WJM Beleggings): a VAT-summary figure got merged into
       // the LAST transaction line on a statement via joinContinuationLines
       // (nothing here previously recognised it as noise), corrupting that
-      // transaction's extracted balance with the VAT total instead. Safe to
-      // match broadly — a real dated transaction line is already captured
-      // by the `isDateLine(line)` check earlier in joinContinuationLines'
-      // `||` chain before isPageNoise() is ever consulted, so this can never
-      // misfire against a genuine transaction whose description happens to
-      // mention VAT.
-      /^\s*vat\b/i.test(line) ||
-      /\bvat\s+(?:on|reg(?:istration)?|no\.?|number|charged|payable)\b/i.test(line) ||
-      /\byour\s+pricing\s+plan\b/i.test(line) ||
-      /\bcredit\s+interest\s+rate\b/i.test(line)
+      // transaction's extracted balance with the VAT total instead.
+      // Only for lines that do NOT start with a date: most parsers also call
+      // isPageNoise() on the joined, dated transaction line, and a genuine
+      // transaction whose description mentions "VAT on …" must never be
+      // dropped (fixed 2026-10-19).
+      (!this.startsWithDate(line) && (
+        /^\s*vat\b/i.test(line) ||
+        /\bvat\s+(?:on|reg(?:istration)?|no\.?|number|charged|payable)\b/i.test(line) ||
+        /\byour\s+pricing\s+plan\b/i.test(line) ||
+        /\bcredit\s+interest\s+rate\b/i.test(line)
+      ))
     );
   }
 
@@ -297,7 +298,9 @@ class BaseParser {
    */
   static extractPeriod(text) {
     // "Period: 01/01/2026 to 31/01/2026" or "From: ... To: ..."
-    const DATE_PAT = /\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{2}|\d{4})|\d{4}[\/\-]\d{2}[\/\-]\d{2}/;
+    // 4-digit year first: with \d{2} first, a date at the end of the match
+    // ("… to 31/01/2026") stops at "31/01/20" and parses as the year 2020.
+    const DATE_PAT = /\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{4}|\d{2})|\d{4}[\/\-]\d{2}[\/\-]\d{2}/;
     const m = text.match(
       new RegExp(`(?:period|from)[:\\s]+(${DATE_PAT.source})\\s*(?:to|-|–)\\s*(${DATE_PAT.source})`, 'i')
     );
