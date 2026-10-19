@@ -75,13 +75,18 @@ class NedbankParser extends BaseParser {
 
   // Nedbank eConfirm format has optional "Tran list no" column before the date:
   // e.g.  "000091 12/02/2025 Notification Fee: E-mail 0.50 8,439.77"
-  static _TRAN_NO_RE = /^\d{4,6}\s+(?=\d{1,2}\/\d{1,2}\/)/;
+  // pdf-parse can also glue the 6-digit number to the date with no space:
+  //       "00021808/04/2026CAPITEC   0804PosSettle 260407 16,502.6060,533.09"
+  // Unrecognised, that line was appended to the PREVIOUS transaction, merging
+  // two transactions into one with the wrong amount (Pennygrow, 2024–2026).
+  // (static getters, not class fields: the backend ESLint config is ES2021)
+  static get _TRAN_NO_RE() { return /^\d{4,6}\s+(?=\d{1,2}\/\d{1,2}\/)|^\d{6}(?=\d{2}\/\d{2}\/\d{4})/; }
 
   // Afrikaans balance lines — used in isStart to prevent them from being appended
   // to the preceding dated transaction line by joinContinuationLines.
   // "Eindsaldo 214,602.17" has NO date prefix, so without this it would be
   // concatenated onto the last real transaction and corrupt its amount parsing.
-  static _AFRIKAANS_BAL_RE = /\b(?:beginsaldo|eindsaldo)\b/i;
+  static get _AFRIKAANS_BAL_RE() { return /\b(?:beginsaldo|eindsaldo)\b/i; }
 
   // ── Afrikaans extraction helpers ──────────────────────────────────────────
 
@@ -106,6 +111,9 @@ class NedbankParser extends BaseParser {
   static _extractClosingBalanceAF(text) {
     const m = text.match(/Eindsaldo\s+(R?\s*[\d,]+\.\d{2})/i);
     if (m) return this.parseAmount(m[1]);
+    // English business statements: "Closing balance 27,135.11" (often glued)
+    const e = text.match(/Closing\s+balance\s*(R?\s*-?[\d,]+\.\d{2})/i);
+    if (e) return this.parseAmount(e[1]);
     return null;
   }
 
@@ -270,7 +278,20 @@ class NedbankParser extends BaseParser {
       if (lastBalance !== null && Math.abs(lastBalance - statedClosing) > 0.02) {
         result.warnings.push(
           `Closing balance mismatch: last parsed balance ${lastBalance.toFixed(2)}, ` +
-          `stated Eindsaldo ${statedClosing.toFixed(2)}`
+          `stated closing balance ${statedClosing.toFixed(2)} — a line may have been missed.`
+        );
+      }
+    }
+
+    // ── Running-balance check: every row must continue the previous balance ──
+    const txns = result.transactions;
+    for (let i = 1; i < txns.length; i++) {
+      const a = txns[i - 1], b = txns[i];
+      if (a.balance === null || b.balance === null) continue;
+      if (Math.abs(a.balance + b.amount - b.balance) > 0.005) {
+        result.warnings.push(
+          `Balance check failed on ${b.date} "${b.description.slice(0, 60)}": ` +
+          `${a.balance.toFixed(2)} + ${b.amount.toFixed(2)} ≠ ${b.balance.toFixed(2)} — a line may have been misread.`
         );
       }
     }

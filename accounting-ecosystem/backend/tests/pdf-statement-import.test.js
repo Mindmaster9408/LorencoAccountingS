@@ -1634,6 +1634,166 @@ describe('CapitecParser.parse — Business Account real statement', () => {
   });
 });
 
+// ─── Capitec Business — real pdf-parse output (2026-10-19) ───────────────────
+// PDF statement ("Money in / Money out / Fees") and "Transaction History"
+// export ("Amount / Fees"); reference digits glued to the amount; amount, fee
+// and balance on separate lines; page furniture between rows.
+const CAPITEC_BIZ_STATEMENT = `24hr Business Banking Client Care Centre 0860 30 92 50  capitecbank.co.za
+Capitec Bank is an authorised financial services (FSP46669) and registered credit provider (NCRCP13).
+Unique Document No.:  /  / V -  0db40c3e Page 1 of 2
+Business Account Statement
+Account number1054196842
+Statement period - 01 September 202521 November 2025Opening balanceR2 652.22
+Statement date21 November 2025Closing balanceR6 780.16
+Transaction history
+DateDescriptionReferenceMoney inMoney outFees*Balance
+30/09/2025Month S/FeeMonth S/Fee0.00-50.002 602.22
+25/10/2025Inward EFT CreditCAPITEC 2510PosSettle 25102448.942 651.16
+03/11/2025ATM Cash Deposit (own ATM)
+Cash Dep DNRPotch Ikageng
+1 500.00-21.004 130.16
+05/11/2025Fuel Purchase
+PURCH.DATE 051125 *****
+EMSLIES Potchefstroo
+-1 000.003 130.16
+
+24hr Business Banking Client Care Centre 0860 30 92 50  capitecbank.co.za
+Capitec Bank is an authorised financial services (FSP46669) and registered credit provider (NCRCP13).
+Unique Document No.:  /  / V -  0db40c3e Page 2 of 2
+07/11/2025Retail Cr TransferQuote13431 499.004 629.16
+07/11/2025Retail Cr TransferQuote13432 300.006 929.16
+14/11/2025RTC Debit
+Test Person Plumbing
+-143.00-6.006 780.16`;
+
+describe('CapitecParser — Business statement (Money in / Money out / Fees)', () => {
+  let result;
+  beforeAll(() => { result = CapitecParser.parse(CAPITEC_BIZ_STATEMENT, 'Capitec - 6842.pdf'); });
+
+  test('1. account and period', () => {
+    expect(result.accountNumber).toBe('1054196842');
+    expect(result.statementPeriod).toEqual({ from: '2025-09-01', to: '2025-11-21' });
+  });
+
+  test('2. fee-only row becomes one fee transaction', () => {
+    expect(result.transactions[0]).toMatchObject({ date: '2025-09-30', amount: -50, balance: 2602.22 });
+  });
+
+  test('3. reference digits glued to the amount are recovered from the balance', () => {
+    const t = result.transactions.find(x => x.balance === 2651.16);
+    expect(t.amount).toBe(48.94);
+    expect(t.description).toMatch(/PosSettle 251024$/);
+    const q = result.transactions.find(x => x.balance === 4629.16);
+    expect(q.amount).toBe(1499);
+  });
+
+  test('4. amount + fee on one row become two transactions', () => {
+    const dep = result.transactions.find(x => x.amount === 1500);
+    expect(dep).toMatchObject({ date: '2025-11-03', balance: 4151.16 });
+    expect(dep.description).toBe('ATM Cash Deposit (own ATM) Cash Dep DNRPotch Ikageng');
+    expect(result.transactions.find(x => x.amount === -21)).toMatchObject({ balance: 4130.16 });
+  });
+
+  test('5. page furniture is not part of any description', () => {
+    expect(result.transactions.some(t => /24hr|authorised|Unique Document/.test(t.description))).toBe(false);
+  });
+
+  test('6. everything reconciles to the closing balance — no warnings', () => {
+    expect(result.transactions).toHaveLength(9);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+const CAPITEC_TXN_HISTORY = `Transaction History
+TEST CLIENT (PTY)LTD
+Transaction From  01/09/2024 To 31/01/2025
+Account Number: 1052534830 FPBS Capitec Business Account
+DateDescriptionReferenceAmountFeesBalance
+01/09/2024Outward EFTThe Go To Guy 0002067
+To 63025163948
+-499.00-2.00112,924.19
+21/09/2024ATM Cash
+Deposit (ow
+2,200.00115,124.19
+21/09/2024***** 4016000011497835
+DNR Potch Mooirivier
+Balance brought forward :113,425.19
+Page 1
+Capitec Business Bank is an authorised financial services provider (FSP46669)
+03/02/2025 12:46 PMBaNCS Digital
+1
+
+Transaction History
+TEST CLIENT (PTY)LTD
+DateDescriptionReferenceAmountFeesBalance
+07/10/2024
+Debit transaction
+Stefan mechanic
+-300.00
+-1.00
+114,823.19
+07/10/2024POS Local
+Purchase
+-221.00
+114,602.19
+Total-1,020.00-3.00114,602.19
+Page 2`;
+
+describe('CapitecParser — Business "Transaction History" export (Amount / Fees)', () => {
+  let result;
+  beforeAll(() => { result = CapitecParser.parse(CAPITEC_TXN_HISTORY, 'Bank Statements Capitec.pdf'); });
+
+  test('1. opening from "Balance brought forward" and period from "Transaction From … To …"', () => {
+    expect(result.statementPeriod).toEqual({ from: '2024-09-01', to: '2025-01-31' });
+    expect(result.transactions[0]).toMatchObject({ amount: -499, balance: 112926.19 });
+  });
+
+  test('2. a dated row without amounts is the previous transaction\'s second description line', () => {
+    const dep = result.transactions.find(x => x.amount === 2200);
+    expect(dep.description).toMatch(/Deposit \(ow \*\*\*\*\* 4016000011497835 DNR Potch Mooirivier$/);
+  });
+
+  test('3. amount, fee and balance on three separate lines', () => {
+    expect(result.transactions.find(x => x.amount === -300)).toMatchObject({ balance: 114824.19 });
+    expect(result.transactions.find(x => x.amount === -1)).toMatchObject({ balance: 114823.19 });
+  });
+
+  test('4. reconciles to the "Total" closing balance with no warnings, footer date line ignored', () => {
+    expect(result.transactions).toHaveLength(6);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+// ─── Nedbank — tran-list number glued to the date (real Pennygrow output) ─────
+const NEDBANK_GLUED_TRAN_NO = `Nedbank Ltd Reg No 1951/000009/06.
+Tran list noDateDescriptionFees (R)Debits (R)Credits (R)Balance (R)
+31/03/2026Opening balance41,408.65
+00021731/03/2026CAPITEC   3103PosSettle 260330       15,388.6056,797.25
+31/03/2026Turkstra Bakkery       30,000.0026,797.25
+31/03/2026Instant payment fee           50.00*26,747.25
+00021808/04/2026CAPITEC   0804PosSettle 260407       16,502.6043,249.85
+00021916/04/2026Bakmeester       30,000.0013,249.85
+Closing balance13,249.85`;
+
+describe('NedbankParser — tran-list number glued to the date', () => {
+  let result;
+  beforeAll(() => { result = NedbankParser.parse(NEDBANK_GLUED_TRAN_NO, 'Nedbank 6123.pdf'); });
+
+  test('1. every glued line is its own transaction (was merged into the previous one)', () => {
+    expect(result.transactions).toHaveLength(5);
+    expect(result.transactions.map(t => t.amount)).toEqual([15388.6, -30000, -50, 16502.6, -30000]);
+  });
+
+  test('2. running balance and closing balance reconcile — no balance warnings', () => {
+    expect(result.warnings.filter(w => /Balance check|Closing balance/.test(w))).toEqual([]);
+  });
+
+  test('3. a dropped line is now flagged against the closing balance', () => {
+    const r = NedbankParser.parse(NEDBANK_GLUED_TRAN_NO.replace('Closing balance13,249.85', 'Closing balance99.00'), 'x.pdf');
+    expect(r.warnings.some(w => /Closing balance mismatch/.test(w))).toBe(true);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // G. Generic Parser
 // ─────────────────────────────────────────────────────────────────────────────
