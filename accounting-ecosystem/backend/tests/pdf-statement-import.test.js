@@ -279,6 +279,163 @@ describe('ABSAParser.parse', () => {
   });
 });
 
+// ─── ABSA business cheque statement — real pdf-parse output (2026-10-19) ─────
+// Charge column ("1.25A", "10.00T") sits before Debit/Credit and does NOT move
+// the balance; the pricing footer follows the last transaction directly.
+const ABSA_CHEQUE_REAL = `Growing Business Acc30 Jun 2026
+Balance Brought Forward3 605,32
+1/06/2026Bal Brought Forward3 605.32
+1/06/2026Monthly Acc FeeHeadoffice*165.003 440.32
+1/06/2026Npf CreditPotch.Stro35 000.0038 440.32
+Eftbbfclfptdq002/Test Client
+1/06/2026Digital Payment DtSettlement10.00T1 000.0037 440.32
+Absa Bank Undercover630
+1/06/2026Proof Of Pmt EmailSettlement1.25A37 440.32
+1/06/2026Proof Of Paymt SmsSettlement1.25A37 440.32
+2/06/2026Acb Debit:ExternalSettlement19.75T150.0037 290.32
+Vat On Charges Ref 12
+30/06/2026Acb CreditSettlement21 748.0059 038.32
+Capitec   2903possettle 260328
+SERVICE FEE: 200.00/0.00/200.00                      MNTHLY ACCT FEE : R165.00
+CREDIT  INTEREST RATE AS AT 01/06/2026 STANDARD - REFER TO BRANCH
+DEBIT   INTEREST RATE AS AT 01/06/2026               0.00 - 999999999999999.99  14.0000%
+* = VAT R549.52- INCLUDED
+CHARGE:   A = ADMINISTRATION  C = CASH DEPOSIT  M = MIXED  S = SERVICE  T = TRANSACTION
+TEST CLIENT (PTY) LTD
+Cheque account statement
+Balance59 038,32
+DateTransaction DescriptionChargeDebit AmountCredit AmountBalance
+ABSA Bank Limited`;
+
+describe('ABSAParser — business cheque statement (real layout)', () => {
+  let result;
+  beforeAll(() => { result = ABSAParser.parse(ABSA_CHEQUE_REAL, 'Cheque Statement - 30_06_2026.pdf'); });
+
+  test('1. charge-only lines are not imported (they do not move the balance)', () => {
+    expect(result.transactions.some(t => /Proof Of/.test(t.description))).toBe(false);
+    expect(result.warnings.some(w => /2 charge-only line/.test(w))).toBe(true);
+  });
+
+  test('2. the charge is not mistaken for the amount', () => {
+    const pay = result.transactions.find(t => /Digital Payment/.test(t.description));
+    expect(pay.amount).toBe(-1000);
+    expect(pay.balance).toBe(37440.32);
+  });
+
+  test('3. last transaction survives the pricing footer (was silently dropped)', () => {
+    const last = result.transactions[result.transactions.length - 1];
+    expect(last.date).toBe('2026-06-30');
+    expect(last.amount).toBe(21748);
+    expect(last.balance).toBe(59038.32);
+    expect(last.description).not.toMatch(/SERVICE FEE|INTEREST RATE|CHARGE:/);
+  });
+
+  test('4. a continuation line mentioning "Vat On" does not drop the transaction', () => {
+    const acb = result.transactions.find(t => /Acb Debit/.test(t.description));
+    expect(acb).toBeDefined();
+    expect(acb.amount).toBe(-150);
+  });
+
+  test('5. every row reconciles and the closing balance matches — no balance warnings', () => {
+    expect(result.transactions).toHaveLength(5);
+    expect(result.warnings.some(w => /Closing balance/.test(w))).toBe(false);
+  });
+
+  test('6. a missed last line is flagged against the closing balance', () => {
+    const r = ABSAParser.parse(ABSA_CHEQUE_REAL.replace('Balance59 038,32', 'Balance60 000,00'), 'x.pdf');
+    expect(r.warnings.some(w => /Closing balance on statement is 60000.00/.test(w))).toBe(true);
+  });
+});
+
+// ─── ABSA "Transaction history" layout (savings / investment) ────────────────
+// Decimal comma, space thousands, debits with trailing "-"; a cash deposit and
+// its fee come as one dated line (no balance) + one undated fee line.
+const ABSA_SAVINGS_REAL = `PO Box X13, Johannesburg, 2000
+Absa Bank
+Balance brought forward356,07
+Total credits220 165,08
+Total debits216 000,00-
+Balance on30 Jun 20262 112,52
+1 Jun 2026Balance Brought Forward356,07
+1 Jun 2026Cardless Cash Deposit3 100,00
+Cash Deposit Fee48,30-3 407,77
+Ref:  Berni
+Card No.   1125
+1 Jun 2026Direct Credit972,004 379,77
+Potchefstroom Gimnas
+2 Jun 2026Direct Credit1 520,005 899,77
+BizStart statement
+TEST CLIENT (PTY) LTD
+Please turn over
+datedescriptiontransaction amount Rbalance R
+Transaction history
+1 Jun 2026 to30 Jun 2026
+This statement is a tax invoicePage 1 of2
+
+TEST CLIENT (PTY) LTD
+Account number91 1680 7658
+Statement number0
+1 Jun 2026 to30 Jun 2026
+Boys High Hs Inv1889
+3 Jun 2026Administration Fee
+Administration Fee115,00-5 784,77
+3 Jun 2026Digital Transfer Debit5 000,00-784,77
+Absa Bank Tjekrek
+8 Jun 2026Credit Interest0,42785,19
+30 Jun 2026Payshap Ext Credit1 327,332 112,52
+Melanie Test
+Please turn over
+datedescriptiontransaction amount Rbalance R`;
+
+describe('ABSAParser — Transaction history layout (savings / investment)', () => {
+  let result;
+  beforeAll(() => { result = ABSAParser.parse(ABSA_SAVINGS_REAL, 'Savings Statement - 01_07_2026.pdf'); });
+
+  test('1. reads account number and period', () => {
+    expect(result.accountNumber).toBe('9116807658');
+    expect(result.statementPeriod).toEqual({ from: '2026-06-01', to: '2026-06-30' });
+  });
+
+  test('2. deposit and its fee become two transactions with correct balances', () => {
+    const [dep, fee] = result.transactions;
+    expect(dep).toMatchObject({ date: '2026-06-01', amount: 3100, balance: 3456.07 });
+    expect(dep.description).toBe('Cardless Cash Deposit Ref: Berni Card No. 1125');
+    expect(fee).toMatchObject({ amount: -48.3, balance: 3407.77, description: 'Cash Deposit Fee' });
+  });
+
+  test('3. dated header without amount takes its amount from the fee line', () => {
+    const adm = result.transactions.find(t => t.description === 'Administration Fee');
+    expect(adm).toMatchObject({ date: '2026-06-03', amount: -115, balance: 5784.77 });
+  });
+
+  test('4. decimal comma + trailing minus: debit is negative', () => {
+    const d = result.transactions.find(t => /Digital Transfer Debit/.test(t.description));
+    expect(d.amount).toBe(-5000);
+    expect(result.transactions.find(t => /Credit Interest/.test(t.description)).amount).toBe(0.42);
+  });
+
+  test('5. detail spilling onto the next page attaches to the right transaction; page footer does not', () => {
+    const boys = result.transactions.find(t => t.amount === 1520);
+    expect(boys.description).toBe('Direct Credit Boys High Hs Inv1889');
+    expect(result.transactions.some(t => /BizStart|Please turn over|Page 1/.test(t.description))).toBe(false);
+  });
+
+  test('6. all rows reconcile and closing balance matches — no warnings', () => {
+    expect(result.transactions).toHaveLength(8);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test('7. description digits glued to the amount are recovered from the balance', () => {
+    const r = ABSAParser.parse(
+      ABSA_SAVINGS_REAL.replace('1 Jun 2026Direct Credit972,004 379,77', '1 Jun 2026Direct Credit Inv 12972,004 379,77'),
+      'x.pdf'
+    );
+    const t = r.transactions.find(x => x.balance === 4379.77);
+    expect(t.amount).toBe(972);
+    expect(t.description).toMatch(/^Direct Credit Inv 12/);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // D. Standard Bank Parser
 // ─────────────────────────────────────────────────────────────────────────────
