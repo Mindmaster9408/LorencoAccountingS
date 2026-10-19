@@ -1,0 +1,17 @@
+{
+  "name": "Slip Capture",
+  "short_name": "Slips",
+  "description": "Photograph slips and invoices and keep the originals safely online.",
+  "start_url": "/slips/",
+  "scope": "/slips/",
+  "display": "standalone",
+  "background_color": "#0b0814",
+  "theme_color": "#0b0814",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/slips/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/slips/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["business", "finance", "productivity"],
+  "prefer_related_applications": false
+}

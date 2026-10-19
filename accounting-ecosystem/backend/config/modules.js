@@ -93,6 +93,19 @@ const modules = {
     routePrefix: '/api/collector',
     requiredTables: ['collector_clients', 'collector_periods', 'collector_period_items', 'collector_documents', 'collector_upload_tokens'],
   },
+  slips: {
+    name: 'Slip Capture',
+    key: 'slips',
+    // On unless explicitly switched off (MODULE_SLIPS_ENABLED=false), so it
+    // works without a Zeabur env round-trip. Real clients only get it once
+    // 'slips' is in their companies.modules_enabled; super admins bypass that
+    // company check (Rule F1).
+    active: (process.env.MODULE_SLIPS_ENABLED || 'true').toLowerCase() === 'true',
+    version: '0.1.0',
+    description: 'Photograph slips and invoices on any phone and keep the originals online for 7 years.',
+    routePrefix: '/api/slips',
+    requiredTables: ['slips'],
+  },
 };
 
 /**

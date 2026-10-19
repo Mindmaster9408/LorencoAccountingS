@@ -67,7 +67,7 @@ const paytimeChatRoutes  = require('./modules/paytime-chat/routes');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
-let inventoryRoutes, practiceRoutes, commanderRoutes, collectorRoutes, collectorPublicRoutes;
+let inventoryRoutes, practiceRoutes, commanderRoutes, collectorRoutes, collectorPublicRoutes, slipsRoutes;
 
 if (isModuleEnabled('pos')) {
   posRoutes = require('./modules/pos');
@@ -86,6 +86,7 @@ if (isModuleEnabled('collector')) {
   collectorRoutes = require('./modules/collector');
   collectorPublicRoutes = require('./modules/collector/routes/public-portal');
 }
+if (isModuleEnabled('slips'))      slipsRoutes = require('./modules/slips');
 
 // Coaching module — always load routes (routing is separate from DB connection).
 // DB connection is lazy: coaching module only connects to Postgres when first route is called.
@@ -458,6 +459,19 @@ if (collectorPublicRoutes) {
   console.log('  ✅ Collector public upload portal — ACTIVE (no authentication, token-gated)');
 }
 
+// Slip Capture (2026-10-19) — phone-first slip/invoice photo archive.
+if (slipsRoutes) {
+  app.use('/api/slips',
+    authenticateToken,
+    requireModule('slips'),
+    auditMiddleware,
+    slipsRoutes
+  );
+  console.log('  ✅ Slips module (Slip Capture) — ACTIVE');
+} else {
+  console.log('  ⬜ Slips module (Slip Capture) — disabled');
+}
+
 // ─── Static File Serving ─────────────────────────────────────────────────────
 
 const ecosystemFrontendPath = path.join(__dirname, '..', 'frontend-ecosystem');
@@ -471,6 +485,7 @@ const practiceFrontendPath  = path.join(__dirname, 'frontend-practice');  // ins
 const commanderFrontendPath = path.join(__dirname, 'frontend-commander'); // inside backend/ — guaranteed copy by any Node.js Dockerfile
 const collectorFrontendPath       = path.join(__dirname, 'frontend-collector');        // staff-facing, authenticated
 const collectorPublicFrontendPath = path.join(__dirname, 'frontend-collector-public'); // client-facing, NO authentication
+const slipsFrontendPath           = path.join(__dirname, 'frontend-slips');            // phone-first PWA, own login
 
 // ── Cache-Control helper ──────────────────────────────────────────────────────
 // HTML files: never cache — browser must always revalidate on navigation.
@@ -535,6 +550,7 @@ function serveSW(res, swPath) {
 }
 app.get('/pos/service-worker.js',     (req, res) => serveSW(res, path.join(posFrontendPath,     'service-worker.js')));
 app.get('/payroll/service-worker.js', (req, res) => serveSW(res, path.join(payrollFrontendPath, 'service-worker.js')));
+app.get('/slips/service-worker.js',   (req, res) => serveSW(res, path.join(slipsFrontendPath,   'service-worker.js')));
 
 // ── Ecosystem frontend (dashboard, admin, login) ──────────────────────────────
 app.use('/dashboard',    express.static(ecosystemFrontendPath, staticOptions));
@@ -749,6 +765,12 @@ app.get('/collect/:token', (req, res) => {
     }
   });
 });
+
+// Slip Capture — single-page, installable PWA. Auth lives at the API layer
+// (/api/slips); the page has its own login so it also works when opened
+// from a phone's home screen, where the dashboard's SSO token isn't present.
+app.use('/slips', express.static(slipsFrontendPath, staticOptions));
+app.get(['/slips', '/slips/*'], (req, res) => sendHtml(res, path.join(slipsFrontendPath, 'index.html')));
 
 // Accounting: multi-page frontend (30+ HTML pages)
 app.get('/accounting', (req, res) => {

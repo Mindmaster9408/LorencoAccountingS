@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0814">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Slips">
+<title>Slip Capture</title>
+<link rel="manifest" href="/slips/manifest.json">
+<link rel="icon" href="/slips/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/slips/icons/icon-192.png">
+<link rel="stylesheet" href="/slips/css/slips.css">
+</head>
+<body>
+    <!-- ── Login ─────────────────────────────────────────────────────────── -->
+    <section id="loginView" class="view" hidden>
+        <div class="login-box">
+            <div class="brand"><span class="brand-icon">&#129534;</span> Slip Capture</div>
+            <p class="muted">Sign in with your Lorenco ecosystem account.</p>
+
+            <form id="loginForm" autocomplete="on">
+                <label>Email or username
+                    <input name="username" type="text" autocomplete="username" required>
+                </label>
+                <label>Password
+                    <input name="password" type="password" autocomplete="current-password" required>
+                </label>
+                <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+            </form>
+
+            <form id="twoFactorForm" hidden>
+                <p>Enter the 6-digit code from your authenticator app (or a backup code).</p>
+                <label>Code
+                    <input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required>
+                </label>
+                <button class="btn btn-primary btn-block" type="submit">Verify</button>
+            </form>
+
+            <div id="companyPicker" hidden>
+                <p>Choose a company:</p>
+                <div id="companyList" class="company-list"></div>
+            </div>
+
+            <div id="loginError" class="error-text" hidden></div>
+        </div>
+    </section>
+
+    <!-- ── Main app ──────────────────────────────────────────────────────── -->
+    <section id="appView" class="view" hidden>
+        <header class="app-header">
+            <div>
+                <div class="app-title">&#129534; Slip Capture</div>
+                <div class="app-subtitle" id="companyName">&nbsp;</div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-sm" id="switchCompanyBtn" type="button">Switch</button>
+                <button class="btn btn-sm" id="logoutBtn" type="button">Sign out</button>
+            </div>
+        </header>
+
+        <main class="content">
+            <div class="capture-row">
+                <label class="capture-btn primary">
+                    <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+                    <span class="capture-icon">&#128247;</span>
+                    <span>Take photo</span>
+                </label>
+                <label class="capture-btn">
+                    <input id="fileInput" type="file" accept="image/*,application/pdf" multiple hidden>
+                    <span class="capture-icon">&#128193;</span>
+                    <span>Upload file</span>
+                </label>
+            </div>
+            <p class="muted small center">Slips go straight to secure online storage. Nothing is kept on this phone.</p>
+
+            <div id="uploadQueue" class="upload-queue"></div>
+
+            <div class="list-tools">
+                <input id="searchInput" type="search" placeholder="Search supplier, note, category…">
+                <select id="statusFilter">
+                    <option value="active">Active</option>
+                    <option value="hidden">Hidden</option>
+                    <option value="all">All</option>
+                </select>
+            </div>
+
+            <div id="slipList" class="slip-list"></div>
+            <button id="loadMoreBtn" class="btn btn-block" type="button" hidden>Load more</button>
+        </main>
+    </section>
+
+    <!-- ── Slip detail sheet ─────────────────────────────────────────────── -->
+    <div id="sheet" class="sheet-backdrop" hidden>
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+            <div class="sheet-head">
+                <strong id="sheetTitle">Slip</strong>
+                <button class="btn btn-sm" id="sheetClose" type="button">Close</button>
+            </div>
+            <div id="sheetPreview" class="preview"></div>
+            <form id="detailForm">
+                <div class="grid-2">
+                    <label>Date on slip
+                        <input name="slip_date" type="date">
+                    </label>
+                    <label>Amount
+                        <input name="amount" type="text" inputmode="decimal" placeholder="0.00">
+                    </label>
+                </div>
+                <label>Supplier
+                    <input name="supplier_name" type="text" maxlength="200" list="supplierSuggestions">
+                </label>
+                <label>Category
+                    <input name="category" type="text" maxlength="100" list="categorySuggestions">
+                </label>
+                <label>Note
+                    <textarea name="note" rows="2" maxlength="2000"></textarea>
+                </label>
+                <div class="sheet-actions">
+                    <button class="btn btn-primary" type="submit">Save details</button>
+                    <button class="btn btn-danger" id="hideBtn" type="button">Hide</button>
+                </div>
+            </form>
+            <div id="sheetMeta" class="meta"></div>
+        </div>
+    </div>
+
+    <datalist id="categorySuggestions">
+        <option value="Fuel"><option value="Meals"><option value="Groceries">
+        <option value="Stationery"><option value="Travel"><option value="Parking & tolls">
+        <option value="Repairs & maintenance"><option value="Cleaning"><option value="Telephone & data">
+        <option value="Other">
+    </datalist>
+    <datalist id="supplierSuggestions"></datalist>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/slips/js/app.js"></script>
+</body>
+</html>
