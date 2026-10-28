@@ -327,6 +327,8 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
       'xero_bank_account',
       // Banking export codes
       'absa_user_code', 'fnb_originator_code',
+      // SARS SIC7 industry code for the e@syFile IRP5 export (Paytime RS-07, migration 036)
+      'sic7_code',
     ];
     const updates = {};
     // Which apps a company has, and whether it is active at all, are platform
@@ -339,6 +341,14 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
         return res.status(403).json({ error: `Only a super admin can change ${key}` });
       }
       updates[key] = req.body[key];
+    }
+    // sic7_code: 5 digits or empty; left out until migration 036 has added the column
+    // (old is select('*'), so a missing key means the column is not there yet).
+    if (updates.sic7_code !== undefined) {
+      const sic = String(updates.sic7_code || '').trim();
+      if (!old || !('sic7_code' in old)) delete updates.sic7_code;
+      else if (sic && !/^\d{5}$/.test(sic)) return res.status(400).json({ error: 'SIC7 code must be 5 digits' });
+      else updates.sic7_code = sic || null;
     }
     // Super admins may also update the account_holder_type classification
     if (req.user.isSuperAdmin && req.body.account_holder_type !== undefined) {

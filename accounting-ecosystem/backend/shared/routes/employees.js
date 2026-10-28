@@ -27,6 +27,43 @@ async function hasPendingColumn() {
 }
 const NEEDS_030 = '"Not yet registered with SARS" needs database update 030 — fill in the tax number for now.';
 
+/** Employee fields the e@syFile IRP5 export needs (Paytime RS-07, migration 036). */
+const EASYFILE_FIELDS = [
+  'res_unit_number', 'res_complex', 'res_street_number', 'res_street_name', 'res_suburb', 'res_city',
+  'res_postal_code', 'res_country_code', 'passport_country', 'date_of_birth', 'nature_of_person',
+  'bank_account_type', 'bank_account_relationship'
+];
+
+/**
+ * Tidy + check the e@syFile fields in an update (in place). Fields are dropped while
+ * migration 036 has not run yet (old is select('*'), so the key is missing), so saving
+ * the rest of the employee never breaks. Empty → null. @returns problems
+ */
+function normaliseEasyfileFields(updates, old) {
+  const problems = [];
+  EASYFILE_FIELDS.forEach(k => {
+    if (updates[k] === undefined) return;
+    if (!(k in old)) { delete updates[k]; return; }
+    const v = typeof updates[k] === 'string' ? updates[k].trim() : updates[k];
+    updates[k] = v === '' || v == null ? null : v;
+  });
+  const u = updates;
+  if (u.res_postal_code && !/^\d{4}$/.test(u.res_postal_code) && (u.res_country_code || 'ZA').toUpperCase() === 'ZA') {
+    problems.push('Residential postal code must be 4 digits');
+  }
+  if (u.res_country_code) { u.res_country_code = String(u.res_country_code).toUpperCase(); if (!/^[A-Z]{2}$/.test(u.res_country_code)) problems.push('Residential country must be a 2-letter code (ZA)'); }
+  if (u.passport_country) { u.passport_country = String(u.passport_country).toUpperCase(); if (!/^[A-Z]{3}$/.test(u.passport_country)) problems.push('Passport country must be a 3-letter code (e.g. ZWE)'); }
+  if (u.nature_of_person) { u.nature_of_person = String(u.nature_of_person).toUpperCase(); if (!['A', 'B', 'M', 'N', 'R'].includes(u.nature_of_person)) problems.push('Nature of person must be A, B, M, N or R'); }
+  if (u.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(String(u.date_of_birth))) problems.push('Date of birth must be a date');
+  [['bank_account_type', 1, 7], ['bank_account_relationship', 1, 3]].forEach(([k, lo, hi]) => {
+    if (u[k] == null) return;
+    const n = parseInt(u[k], 10);
+    if (!(n >= lo && n <= hi)) problems.push(`${k.replace(/_/g, ' ')} must be ${lo}–${hi}`);
+    else u[k] = n;
+  });
+  return problems;
+}
+
 /** Name of another ACTIVE employee in this company with the same ID number, or null (WN-04). */
 async function findDuplicateId(companyId, idNumber, excludeId) {
   const v = clean(idNumber);
@@ -223,12 +260,16 @@ router.put('/:id', requirePermission('EMPLOYEES.EDIT'), async (req, res) => {
       // Voluntary PAYE over-deduction config (migration 012)
       'voluntary_tax_config',
       // "not yet registered with SARS" (migration 030, spec 03 WN-02)
-      'tax_number_pending'
+      'tax_number_pending',
+      // IRP5 / e@syFile fields (Paytime RS-07, migration 036)
+      ...EASYFILE_FIELDS
     ];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
+    const easyfileProblems = normaliseEasyfileFields(updates, old);
+    if (easyfileProblems.length) return res.status(400).json({ error: easyfileProblems.join('; '), problems: easyfileProblems });
     // Map employee_number → employee_code (DB column name)
     if (req.body.employee_number !== undefined) updates.employee_code = req.body.employee_number;
     // Frontend uses date_appointed; DB column is hire_date — always map when present

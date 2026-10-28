@@ -627,6 +627,7 @@
                             <div class="info-item"><div class="info-label">Tax Number</div><div class="info-value" id="editTaxNumber">-</div></div>
                             <div class="info-item"><div class="info-label">Email</div><div class="info-value" id="editEmail">-</div></div>
                             <div class="info-item"><div class="info-label">Phone</div><div class="info-value" id="editPhone">-</div></div>
+                            <div class="info-item"><div class="info-label">Residential Address</div><div class="info-value" id="editResAddress">-</div></div>
                         </div>
                         <div>
                             <h4 style="color: #667eea; margin-bottom: 10px;">Work Information</h4>
@@ -1109,6 +1110,28 @@
                 <div class="form-group"><label>Medical Aid Members</label><input type="number" id="editMedicalMembersInput" min="0" max="20" step="1" placeholder="0 = none"></div>
                 <div class="form-group"><label>Tax Directive (%)</label><input type="number" id="editTaxDirectiveInput" min="0" max="100" step="0.01" placeholder="0 = standard PAYE"></div>
             </div>
+            <!-- Paytime RS-07: SARS needs these on every IRP5 / IT3(a) (e@syFile export) -->
+            <h4 style="color: #667eea; margin: 15px 0 10px;">Residential Address <span style="font-weight:400;color:#888;font-size:0.8em;">(required on the IRP5)</span></h4>
+            <div class="form-row">
+                <div class="form-group"><label>Unit No.</label><input type="text" id="editResUnit" maxlength="8"></div>
+                <div class="form-group"><label>Complex</label><input type="text" id="editResComplex" maxlength="26"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Street No.</label><input type="text" id="editResStreetNo" maxlength="8"></div>
+                <div class="form-group"><label>Street / Farm Name</label><input type="text" id="editResStreet" maxlength="26"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Suburb</label><input type="text" id="editResSuburb" maxlength="33"></div>
+                <div class="form-group"><label>City / Town</label><input type="text" id="editResCity" maxlength="21"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Postal Code</label><input type="text" id="editResPostal" maxlength="10" placeholder="4 digits"></div>
+                <div class="form-group"><label>Country Code</label><input type="text" id="editResCountry" maxlength="2" placeholder="ZA"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Passport Country <span style="font-weight:400;color:#888;font-size:0.85em;">(no SA ID only, e.g. ZWE)</span></label><input type="text" id="editPassportCountry" maxlength="3"></div>
+                <div class="form-group"><label>Date of Birth <span style="font-weight:400;color:#888;font-size:0.85em;">(no SA ID only)</span></label><input type="date" id="editDateOfBirth"></div>
+            </div>
             <h4 style="color: #667eea; margin: 15px 0 10px;">Bank Details</h4>
             <div class="form-row">
                 <div class="form-group"><label>Bank Name</label><input type="text" id="editBankName"></div>
@@ -1117,6 +1140,23 @@
             <div class="form-row">
                 <div class="form-group"><label>Account Number</label><input type="text" id="editAccountNumber"></div>
                 <div class="form-group"><label>Branch Code</label><input type="text" id="editBranchCode"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Account Type</label><select id="editBankAccountType">
+                    <option value="">Select type</option>
+                    <option value="1">Current / Cheque</option>
+                    <option value="2">Savings</option>
+                    <option value="3">Transmission</option>
+                    <option value="4">Bond</option>
+                    <option value="5">Credit Card</option>
+                    <option value="6">Subscription Share</option>
+                    <option value="7">Foreign Bank Account</option>
+                </select></div>
+                <div class="form-group"><label>Account Holder Is</label><select id="editBankRelationship">
+                    <option value="1">The employee (own account)</option>
+                    <option value="2">Joint account</option>
+                    <option value="3">Third party</option>
+                </select></div>
             </div>
             <button class="btn btn-success" style="margin-top: 15px; width: 100%;" onclick="saveEmployeeInfo()">Save Changes</button>
         </div>
@@ -1376,6 +1416,10 @@
             document.getElementById('editTaxNumber').textContent = currentEmployee.tax_number || '⚠ Missing';
             document.getElementById('editEmail').textContent = currentEmployee.email || '-';
             document.getElementById('editPhone').textContent = currentEmployee.phone || '-';
+            var _res = [[currentEmployee.res_unit_number, currentEmployee.res_complex].filter(Boolean).join(' '),
+                [currentEmployee.res_street_number, currentEmployee.res_street_name].filter(Boolean).join(' '),
+                currentEmployee.res_suburb, currentEmployee.res_city, currentEmployee.res_postal_code].filter(Boolean).join(', ');
+            document.getElementById('editResAddress').textContent = _res || '⚠ Missing (needed for IRP5)';
             document.getElementById('editEmpNumber').textContent = currentEmployee.employee_number || '-';
             document.getElementById('editJobTitle').textContent = currentEmployee.job_title || '-';
             document.getElementById('editDepartment').textContent = currentEmployee.department || '-';
@@ -4185,6 +4229,18 @@
             document.getElementById('editAccountHolder').value = e.account_holder || '';
             document.getElementById('editAccountNumber').value = e.account_number || '';
             document.getElementById('editBranchCode').value = e.branch_code || '';
+            document.getElementById('editBankAccountType').value = e.bank_account_type || '';
+            document.getElementById('editBankRelationship').value = e.bank_account_relationship || '1';
+            document.getElementById('editResUnit').value = e.res_unit_number || '';
+            document.getElementById('editResComplex').value = e.res_complex || '';
+            document.getElementById('editResStreetNo').value = e.res_street_number || '';
+            document.getElementById('editResStreet').value = e.res_street_name || '';
+            document.getElementById('editResSuburb').value = e.res_suburb || '';
+            document.getElementById('editResCity').value = e.res_city || '';
+            document.getElementById('editResPostal').value = e.res_postal_code || '';
+            document.getElementById('editResCountry').value = e.res_country_code || 'ZA';
+            document.getElementById('editPassportCountry').value = e.passport_country || '';
+            document.getElementById('editDateOfBirth').value = (e.date_of_birth || '').slice(0, 10);
             document.getElementById('editEmployeeModal').classList.add('show');
         }
         async function saveEmployeeInfo() {
@@ -4243,7 +4299,20 @@
                         bank_name:           currentEmployee.bank_name,
                         account_holder:      currentEmployee.account_holder,
                         account_number:      currentEmployee.account_number,
-                        branch_code:         currentEmployee.branch_code
+                        branch_code:         currentEmployee.branch_code,
+                        // RS-07 IRP5 fields (ignored by the server until migration 036 has run)
+                        bank_account_type:         document.getElementById('editBankAccountType').value || null,
+                        bank_account_relationship: document.getElementById('editBankRelationship').value || null,
+                        res_unit_number:   document.getElementById('editResUnit').value.trim(),
+                        res_complex:       document.getElementById('editResComplex').value.trim(),
+                        res_street_number: document.getElementById('editResStreetNo').value.trim(),
+                        res_street_name:   document.getElementById('editResStreet').value.trim(),
+                        res_suburb:        document.getElementById('editResSuburb').value.trim(),
+                        res_city:          document.getElementById('editResCity').value.trim(),
+                        res_postal_code:   document.getElementById('editResPostal').value.trim(),
+                        res_country_code:  document.getElementById('editResCountry').value.trim() || 'ZA',
+                        passport_country:  document.getElementById('editPassportCountry').value.trim(),
+                        date_of_birth:     document.getElementById('editDateOfBirth').value || null
                     })
                 });
                 if (!coreResp.ok) {

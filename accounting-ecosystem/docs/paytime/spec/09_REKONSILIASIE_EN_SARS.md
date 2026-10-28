@@ -17,7 +17,7 @@ Die syfers wat aan SARS verklaar en betaal word, kom presies uit die geslote pay
 | RS-04 | **EMP501** per werknemer: belasbare inkomste per IRP5-bronkode, PAYE, UIF (werknemer + werkgewer), SDL, mediese krediet, ETI. | ⚠️ Werkgewer-UIF ✅ (Fase 7); geen bronkode-verdeling of ETI nog nie |
 | RS-05 | SDL vir ingevoerde historiese maande word ingesluit (of bereken uit bruto as dit nie ingevoer is nie). | ✅ Ingesluit wanneer dit ingevoer is (Fase 7). Alle huidige ingevoerde data is gesluite snapshots met eie SDL. |
 | RS-06 | SARS- en bankwaardes wat die gebruiker insleutel, en die "afgehandel"-status per jaar, word net in die DB gestoor. | ✅ Fase 7 — KV verwyder, stoorfoute word gewys |
-| RS-07 | IRP5/IT3(a)-sertifikate en die e@syFile-lêer (EMP501) word gegenereer uit die snapshots. | 🆕 roadmap P2 |
+| RS-07 | IRP5/IT3(a)-sertifikate en die e@syFile-lêer (EMP501) word gegenereer uit die snapshots. | ✅ e@syFile-lêer gebou 2026-10-28 (SARS BRS V25.3.0, nagegaan teen SimplePay-lêers): PAYE Reconciliation → "e@syFile Export", jaarliks + interim, voorskou wys wat per werknemer ontbreek; sertifikaatnommers in `payroll_tax_certificates` (migrasie 036). Kode: `services/easyfileExport.js`. Nie gedoen nie: ETI (RS-09, kode 3026 = N), PDF-sertifikate, direktiefnommers (in e@syFile insleutel). |
 | RS-08 | UIF-19 / uFiling-lêer per maand. | 🆕 roadmap P2 |
 | RS-09 | ETI word per werknemer per maand bereken en van PAYE in die EMP201 afgetrek. | 🆕 roadmap P5 (tabel bestaan, nie gekoppel nie) |
 

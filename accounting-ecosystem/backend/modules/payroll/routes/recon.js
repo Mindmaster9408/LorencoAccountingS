@@ -18,6 +18,7 @@ const express = require('express');
 const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
 const { supabase } = require('../../../config/database');
 const Irp5ItemCheck = require('../services/irp5ItemCheck');
+const Easyfile = require('../services/easyfileExport');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 
 const router = express.Router();
@@ -515,6 +516,136 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   } catch (err) {
     console.error('EMP501 reconciliation error:', err);
     res.status(500).json({ error: 'Failed to generate EMP501 data' });
+  }
+});
+
+// ─── e@syFile import file (spec 09 RS-07) ──────────────────────────────────
+
+const NEEDS_036 = 'Run migration 036_easyfile_tax_certificates.sql in Supabase first (SQL Editor).';
+
+/** Company, employees, locked snapshots (latest per employee + month) and item codes for one window. */
+async function loadEasyfileData(companyId, taxYear, period) {
+  const win = Easyfile.reconWindow(taxYear, period);   // throws on a bad tax year
+  const [{ data: company, error: cErr }, { data: employees, error: eErr }, { data: snaps, error: sErr }] = await Promise.all([
+    supabase.from('companies').select('*').eq('id', companyId).maybeSingle(),
+    supabase.from('employees').select('*').eq('company_id', companyId),
+    supabase.from('payroll_snapshots')
+      .select('employee_id, period_key, calculation_input, calculation_output, created_at')
+      .eq('company_id', companyId).eq('is_locked', true).in('period_key', win.periods)
+  ]);
+  if (cErr || eErr || sErr) throw new Error((cErr || eErr || sErr).message);
+  if (!company) throw new Error('Company not found');
+  const latest = {};
+  (snaps || []).forEach(sn => {
+    const k = `${sn.employee_id}_${sn.period_key}`;
+    if (!latest[k] || sn.created_at > latest[k].created_at) latest[k] = sn;
+  });
+  const codeSource = await Irp5ItemCheck.loadCodeSource(supabase, companyId);
+  return { company, employees: employees || [], snapshots: Object.values(latest), codeSource };
+}
+
+const easyfileParams = (src) => ({
+  taxYear: String(src.taxYear || ''),
+  period: src.period === 'interim' ? 'interim' : 'annual',
+  mode: String(src.mode || '').toUpperCase() === 'TEST' ? 'TEST' : 'LIVE'
+});
+
+/**
+ * GET /api/payroll/recon/easyfile?taxYear=YYYY/YYYY&period=annual|interim
+ * Preview: per employee the certificate type, totals, and what still blocks it.
+ * Nothing is written.
+ */
+router.get('/easyfile', requirePermission('PAYROLL.VIEW'), async (req, res) => {
+  const p = easyfileParams(req.query);
+  try {
+    const data = await loadEasyfileData(req.companyId, p.taxYear, p.period);
+    const result = Easyfile.build({ ...data, ...p });
+    res.json({
+      window: result.window,
+      companyIssues: result.employer.issues,
+      summary: result.summary,
+      certificates: result.certificates.map(c => ({
+        employee_id: c.employee_id, name: c.name, employee_number: c.employee_number,
+        type: c.type, final: c.finalCert, ready: c.ready, issues: c.issues, warnings: c.warnings, totals: c.totals
+      }))
+    });
+  } catch (err) {
+    if (/taxYear/.test(err.message)) return res.status(400).json({ error: err.message });
+    console.error('e@syFile preview error:', err);
+    res.status(500).json({ error: 'Failed to prepare the e@syFile preview: ' + err.message });
+  }
+});
+
+/**
+ * POST /api/payroll/recon/easyfile  { taxYear, period: annual|interim, mode: LIVE|TEST, includeReadyOnly }
+ * Builds the import file for e@syFile Employer. Certificate numbers are issued here and kept in
+ * payroll_tax_certificates — the same employee + year + period always gets the same number back
+ * (re-exports, and an interim final certificate at year end), and a number is never reused.
+ * Company problems always block; blocked employees block unless includeReadyOnly is true.
+ */
+router.post('/easyfile', requirePermission('PAYROLL.PROCESS'), async (req, res) => {
+  const p = easyfileParams(req.body || {});
+  try {
+    const probe = await supabase.from('payroll_tax_certificates').select('id').limit(1);
+    if (probe.error) return res.status(409).json({ error: NEEDS_036 });
+
+    const data = await loadEasyfileData(req.companyId, p.taxYear, p.period);
+    const result = Easyfile.build({ ...data, ...p });
+    if (result.employer.issues.length) {
+      return res.status(422).json({ error: 'Fix the company details first', companyIssues: result.employer.issues });
+    }
+    const ready = result.certificates.filter(c => c.ready);
+    if (!ready.length) return res.status(422).json({ error: 'No certificate is ready to export', summary: result.summary });
+    if (result.summary.blocked && req.body.includeReadyOnly !== true) {
+      return res.status(422).json({ error: `${result.summary.blocked} employee(s) still have problems`, summary: result.summary });
+    }
+
+    const paye = result.employer.refs.paye;
+    const year = result.window.transactionYear;
+    const { data: existing, error: exErr } = await supabase.from('payroll_tax_certificates')
+      .select('id, employee_id, cert_period, certificate_number, status')
+      .eq('company_id', req.companyId).eq('transaction_year', year).eq('status', 'issued')
+      .in('employee_id', ready.map(c => c.employee_id));
+    if (exErr) throw new Error(exErr.message);
+
+    const numbers = {};
+    for (const c of ready) {
+      const prefix = `${paye}${year}${c.certPeriod}`;
+      const row = {
+        recon_period: result.window.reconPeriod, certificate_type: c.type,
+        totals: c.totals, generated_by: (req.user && req.user.userId) || null, updated_at: new Date().toISOString()
+      };
+      let cert = (existing || []).find(x => x.employee_id === c.employee_id && x.cert_period === c.certPeriod);
+      if (cert && cert.certificate_number && !cert.certificate_number.startsWith(prefix)) {
+        // PAYE reference changed since this number was issued — retire it, issue a new one.
+        await supabase.from('payroll_tax_certificates').update({ status: 'cancelled', updated_at: row.updated_at }).eq('id', cert.id);
+        cert = null;
+      }
+      if (!cert) {
+        const ins = await supabase.from('payroll_tax_certificates').insert({
+          company_id: req.companyId, employee_id: c.employee_id, transaction_year: year, cert_period: c.certPeriod,
+          status: 'issued', ...row
+        }).select('id, certificate_number').single();
+        if (ins.error) throw new Error('Could not issue a certificate number: ' + ins.error.message);
+        cert = ins.data;
+      }
+      const number = cert.certificate_number || Easyfile.certificateNumber(paye, year, c.certPeriod, cert.id);
+      const upd = await supabase.from('payroll_tax_certificates').update({ ...row, certificate_number: number }).eq('id', cert.id);
+      if (upd.error) throw new Error('Could not save certificate number: ' + upd.error.message);
+      numbers[c.employee_id] = number;
+    }
+
+    const text = Easyfile.fileFor(result, numbers);
+    const safeName = String(result.employer.fields[0][1]).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    res.setHeader('Content-Type', 'text/csv; charset=ISO-8859-1');
+    res.setHeader('Content-Disposition', `attachment; filename="EasyFile_${safeName}_${result.window.reconPeriod}${p.mode === 'TEST' ? '_TEST' : ''}.csv"`);
+    res.setHeader('X-Certificates', String(ready.length));
+    res.setHeader('X-Excluded', String(result.summary.blocked));
+    res.send(Buffer.from(text, 'latin1'));
+  } catch (err) {
+    if (/taxYear/.test(err.message)) return res.status(400).json({ error: err.message });
+    console.error('e@syFile export error:', err);
+    res.status(500).json({ error: 'Failed to build the e@syFile file: ' + err.message });
   }
 });
 
