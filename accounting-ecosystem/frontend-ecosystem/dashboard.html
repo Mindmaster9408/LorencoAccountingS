@@ -2345,6 +2345,11 @@
                 // completely absent from the DOM for everyone else — not just greyed out.
                 if (app.key === 'sevco' && !isSuperAdmin) return '';
 
+                // Coaching HARD LOCK (CLAUDE.md Rule F2): must be completely absent from
+                // the DOM for anyone except the user with hasCoachingAccess === true —
+                // not greyed out, not "Not Activated". No role or super-admin bypass.
+                if (app.key === 'coaching' && currentUser?.hasCoachingAccess !== true) return '';
+
                 // Check per-app access: if user has a restriction, enforce it.
                 // Coaching HARD LOCK: tile only ever shows when the authenticated user
                 // has hasCoachingAccess = true (sourced from login response / DB flag).

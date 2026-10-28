@@ -1428,11 +1428,15 @@
             if (regState.accountType === 'accountant') {
                 if (!document.getElementById('regPracticeName').value.trim())
                     return toast('Please enter your practice name.', 'error');
+                goToStep(4);
             } else {
                 if (!document.getElementById('regCompanyName').value.trim())
                     return toast('Please enter your company name.', 'error');
+                // Business/individual signups get no auto-provisioned demo or app
+                // access (2026-10-28) — every app is activated by Ruan afterwards,
+                // so there is nothing to show or choose on the demo step. Skip it.
+                goToStep(5);
             }
-            goToStep(4);
         }
 
         let selectedDemos = new Set();
@@ -1598,8 +1602,9 @@
                     ? payload.practice.name
                     : payload.business.name;
 
-                document.getElementById('regSuccessMsg').textContent =
-                    `Your ${regState.accountType === 'accountant' ? 'practice' : 'business'} "${entityName}" has been created. Your 30-day Paytime demo company is ready — you can now sign in.`;
+                document.getElementById('regSuccessMsg').textContent = regState.accountType === 'accountant'
+                    ? `Your practice "${entityName}" has been created. Your 30-day Paytime demo company is ready — you can now sign in.`
+                    : `Your business "${entityName}" has been created. An administrator will activate your apps shortly — you can sign in now.`;
                 goToStep(6);
 
             } catch (err) {

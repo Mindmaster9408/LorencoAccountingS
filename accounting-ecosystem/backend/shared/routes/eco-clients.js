@@ -1092,6 +1092,39 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    // 4b. Sync core app toggles (pos/payroll/accounting/inventory) → the
+    //     CLIENT'S OWN companies.modules_enabled — not just the eco_clients.apps
+    //     list. Without this, checking a core app in the "+Add" modal never
+    //     actually unlocked the tile on that client's own dashboard (it only
+    //     created a stub customer/employee record via syncToApps) — found
+    //     2026-10-28 while onboarding the first direct (non-practice) paying
+    //     client, who correctly should see nothing until Ruan checks a box here.
+    const CORE_APP_KEYS = ['pos', 'payroll', 'accounting', 'inventory'];
+    if (changedFields.includes('apps') && updated.client_company_id) {
+      try {
+        const coreAdded   = CORE_APP_KEYS.filter(a => newApps.includes(a) && !oldApps.includes(a));
+        const coreRemoved = CORE_APP_KEYS.filter(a => !newApps.includes(a) && oldApps.includes(a));
+        if (coreAdded.length > 0 || coreRemoved.length > 0) {
+          const { data: coData } = await supabase
+            .from('companies')
+            .select('modules_enabled')
+            .eq('id', updated.client_company_id)
+            .single();
+          if (coData) {
+            let mods = coData.modules_enabled || [];
+            coreAdded.forEach(a => { if (!mods.includes(a)) mods = [...mods, a]; });
+            mods = mods.filter(m => !coreRemoved.includes(m));
+            await supabase
+              .from('companies')
+              .update({ modules_enabled: mods })
+              .eq('id', updated.client_company_id);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[eco-clients] Core app sync to companies failed:', syncErr.message);
+      }
+    }
+
     // 5. Sync Serial Number Tracking addon toggle → companies.modules_enabled
     //    (POS add-on — see Control Panel APP_REGISTRY 'pos' entry's seanAddonKey)
     if (changedFields.includes('addons') && updated.client_company_id) {

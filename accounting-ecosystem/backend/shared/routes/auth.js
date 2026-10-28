@@ -480,15 +480,21 @@ router.post('/register', async (req, res) => {
       };
       const holderType = accountTypeMap[account_type] || null;
 
-      // Full-access trial (2026-08-29, Ruan's explicit call): every new signup
-      // gets everything they're eligible for immediately — including Firmflow
-      // for an accounting practice, which previously wasn't granted at all
-      // (BASE_MODULES never included 'practice', and nothing else added it at
-      // registration time) — for 30 days, then automatically reverts to
-      // BASE_MODULES via expireTrialIfNeeded() on their first login/company
-      // fetch after that. A business owner is never eligible for 'practice'
-      // even during the trial — trialModulesFor() enforces that ceiling.
-      const trialExpiresAt = new Date(Date.now() + TRIAL_PERIOD_MS).toISOString();
+      // Full-access trial (2026-08-29, Ruan's explicit call): practices still get
+      // everything they're eligible for immediately — including Firmflow — for
+      // 30 days, then automatically revert to BASE_MODULES via
+      // expireTrialIfNeeded() on their first login/company fetch after that.
+      //
+      // 2026-10-28, Ruan's explicit call: a direct business/individual signup
+      // (the ecosystem's first-ever paying, non-accountant client) must NOT get
+      // any app auto-granted — Ruan approves every app himself before the
+      // client can use it, so there is never a window where an unpaid client
+      // can already be running live payroll/POS. No trial, no auto-demo. He
+      // activates apps afterwards the same way he already does for any other
+      // managed client (eco-clients apps list → synced into modules_enabled,
+      // see shared/routes/eco-clients.js).
+      const isDirectClient = holderType === 'business_owner' || holderType === 'individual';
+      const trialExpiresAt = isDirectClient ? null : new Date(Date.now() + TRIAL_PERIOD_MS).toISOString();
 
       const { data: newCompany, error: compError } = await supabase
         .from('companies')
@@ -496,11 +502,11 @@ router.post('/register', async (req, res) => {
           company_name: companyName,
           trading_name: companyTradingName,
           is_active: true,
-          modules_enabled: trialModulesFor(holderType),
-          subscription_status: 'active',
+          modules_enabled: isDirectClient ? [] : trialModulesFor(holderType),
+          subscription_status: isDirectClient ? 'pending_activation' : 'active',
           account_holder_type: holderType,
           trial_expires_at: trialExpiresAt,
-          trial_base_modules: BASE_MODULES,
+          trial_base_modules: isDirectClient ? null : BASE_MODULES,
         })
         .select()
         .single();
@@ -536,7 +542,9 @@ router.post('/register', async (req, res) => {
       });
 
       // ── Provision Paytime 30-day demo company (idempotent — one per practice) ──
-      try {
+      // Practices only (2026-10-28) — a direct business/individual client gets no
+      // auto-provisioned anything; see isDirectClient note above.
+      if (!isDirectClient) try {
         const { data: existingDemo } = await supabase
           .from('eco_clients')
           .select('id')
