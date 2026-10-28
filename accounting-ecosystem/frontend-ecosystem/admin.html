@@ -944,8 +944,13 @@
             // Default: expand all real account holder groups.
             // A company is a real account holder if it is NOT a client_company_id data silo
             // AND either manages eco-clients OR has modules enabled.
+            // Excludes self-referencing rows (company_id === client_company_id) from counting
+            // as "data silo evidence" — those are standalone companies' own billable client
+            // row (see auth.js /register), and must still render as their own holder group.
             const clientCompanyIdSet = new Set(
-                allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
+                allClients
+                    .filter(c => c.client_company_id && Number(c.client_company_id) !== Number(c.company_id))
+                    .map(c => Number(c.client_company_id))
             );
             Object.keys(companyMap).forEach(id => {
                 const numId  = Number(id);
@@ -1030,8 +1035,12 @@
             // AND that either manage eco-clients OR have modules enabled.
             // This prevents orphan/legacy company records from appearing as fake account holders
             // while still showing real practices that have zero clients (if modules_enabled is set).
+            // Self-referencing rows (standalone companies' own billable client row) do not
+            // count as data-silo evidence — see matching note in init().
             const clientCompanyIdSet = new Set(
-                allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
+                allClients
+                    .filter(c => c.client_company_id && Number(c.client_company_id) !== Number(c.company_id))
+                    .map(c => Number(c.client_company_id))
             );
             const accountHolderIds = Object.keys(companyMap)
                 .map(Number)
@@ -1488,8 +1497,11 @@
         function populateParentDropdown(selectId, currentParentId) {
             const sel = document.getElementById(selectId);
             if (!sel) return;
+            // Self-referencing rows do not count as data-silo evidence — see init().
             const clientCompanyIdSet = new Set(
-                allClients.filter(c => c.client_company_id).map(c => Number(c.client_company_id))
+                allClients
+                    .filter(c => c.client_company_id && Number(c.client_company_id) !== Number(c.company_id))
+                    .map(c => Number(c.client_company_id))
             );
             const accountHolders = Object.values(companyMap).filter(co => {
                 if (clientCompanyIdSet.has(Number(co.id))) return false;

@@ -587,6 +587,32 @@ router.post('/register', async (req, res) => {
         console.error('[register] Demo provisioning error:', demoErr.message);
       }
 
+      // ── Give a standalone (non-practice) company its own billable eco_clients
+      // row — self-referencing (company_id AND client_company_id both point at
+      // `company`) — so it flows through the same billing/admin-panel display
+      // used for every other managed client, instead of being invisible there.
+      // Without this, only the separate "Demo Company" sandbox above ever
+      // showed up in the super-admin billing panel; the client's REAL company
+      // never did, because that panel is built entirely from eco_clients rows.
+      // Accounting practices are excluded — they manage real clients of their
+      // own and should not also appear as their own billable "client".
+      if (holderType === 'business_owner' || holderType === 'individual') {
+        try {
+          const { error: selfClientErr } = await supabase.from('eco_clients').insert({
+            company_id:        company.id,
+            name:              companyTradingName || companyName,
+            apps:              company.modules_enabled || [],
+            client_company_id: company.id,
+            is_active:         true,
+          });
+          if (selfClientErr) {
+            console.error('[register] Self-client provisioning error:', selfClientErr.message);
+          }
+        } catch (selfClientErr) {
+          console.error('[register] Self-client provisioning error:', selfClientErr.message);
+        }
+      }
+
       // Create team members if provided
       if (Array.isArray(users) && users.length > 0) {
         for (const member of users) {
