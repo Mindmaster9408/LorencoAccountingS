@@ -381,14 +381,40 @@
         </div><!-- /main-content -->
     </div><!-- /wrapper -->
 
-    <!-- ═══ e@syFile EXPORT (spec 09 RS-07) ═══ -->
-    <div id="ef-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 12px;">
-        <div style="background:#fff;color:#333;border-radius:14px;max-width:960px;width:100%;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px;">
-                <h2 style="margin:0;font-size:1.3rem;">🧾 e@syFile Export — IRP5 / IT3(a)</h2>
+    <!-- ═══ e@syFile EXPORT (spec 09 RS-07) ═══
+         Own classes, not inline backgrounds: dark-theme.css turns every inline
+         background:#fff into a see-through surface, which made this dialog unreadable. -->
+    <style>
+        #ef-modal { display:none; position:fixed; inset:0; z-index:10000; background:rgba(8,6,24,0.92);
+            align-items:flex-start; justify-content:center; overflow-y:auto; padding:30px 12px; }
+        #ef-modal .ef-box { background:#1e1b3a; color:#fff; border:1px solid rgba(255,255,255,0.12); border-radius:14px;
+            max-width:980px; width:100%; padding:26px; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
+        #ef-modal h2 { margin:0; font-size:1.3rem; color:#fff; }
+        #ef-modal .ef-sub { color:rgba(255,255,255,0.7); font-size:0.88rem; margin:6px 0 16px; }
+        #ef-modal .ef-company { background:rgba(220,53,69,0.12); border:1px solid rgba(220,53,69,0.5); border-radius:8px;
+            padding:12px 16px; margin-bottom:14px; }
+        #ef-modal .ef-company strong { color:#ff8a95; }
+        #ef-modal .ef-company a { color:#6ee7b7; }
+        #ef-modal .ef-tiles { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+        #ef-modal .ef-tile { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 14px; }
+        #ef-modal .ef-tile-label { font-size:0.72rem; color:rgba(255,255,255,0.55); text-transform:uppercase; }
+        #ef-modal .ef-tile-value { font-weight:700; color:#fff; }
+        #ef-modal .ef-issue { color:#ff8a95; }
+        #ef-modal .ef-warn { color:#fbbf24; }
+        #ef-modal .ef-ok { color:#6ee7b7; font-weight:700; }
+        #ef-modal .ef-final { font-size:0.75rem; color:rgba(255,255,255,0.55); }
+        #ef-modal .ef-msg { padding:30px; text-align:center; color:rgba(255,255,255,0.6); }
+        #ef-modal .ef-error { color:#ff8a95; padding:16px; }
+        #ef-modal table.recon-table td { vertical-align:top; }
+        #ef-modal table.recon-table a { color:#6ee7b7; font-weight:600; }
+    </style>
+    <div id="ef-modal">
+        <div class="ef-box">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <h2>🧾 e@syFile Export — IRP5 / IT3(a)</h2>
                 <button class="btn btn-secondary btn-sm" onclick="closeEasyfile()">Close</button>
             </div>
-            <p style="color:#666;font-size:0.88rem;margin:0 0 16px;">Built only from <strong>finalized</strong> payslips. In e@syFile Employer choose <em>Import</em> and select the downloaded file, then capture the EMP501 payments there.</p>
+            <p class="ef-sub">Built only from <strong>finalized</strong> payslips. In e@syFile Employer choose <em>Import</em> and select the downloaded file, then capture the EMP501 payments there.</p>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;">
                 <div class="filter-group"><label>Tax Year</label><div id="ef-taxyear" style="padding:9px 0;font-weight:700;">—</div></div>
                 <div class="filter-group"><label>Reconciliation</label>
@@ -403,7 +429,7 @@
                     </select></div>
                 <button class="btn btn-primary btn-sm" onclick="loadEasyfilePreview()">🔄 Check again</button>
             </div>
-            <div id="ef-body"><div style="padding:30px;text-align:center;color:#888;">Loading…</div></div>
+            <div id="ef-body"><div class="ef-msg">Loading…</div></div>
             <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap;">
                 <button id="ef-download" class="btn btn-success" onclick="downloadEasyfile()" disabled>📥 Download e@syFile file</button>
             </div>
@@ -1318,40 +1344,39 @@
             var btn = document.getElementById('ef-download');
             btn.disabled = true;
             _efPreview = null;
-            body.innerHTML = '<div style="padding:30px;text-align:center;color:#888;">Checking every finalized payslip…</div>';
+            body.innerHTML = '<div class="ef-msg">Checking every finalized payslip…</div>';
             var period = document.getElementById('ef-period').value;
             apiGet('/payroll/recon/easyfile?taxYear=' + encodeURIComponent(currentTaxYear) + '&period=' + period).then(function(d) {
-                if (d.error) { body.innerHTML = '<div style="color:#dc3545;padding:16px;">' + _esc(d.error) + '</div>'; return; }
+                if (d.error) { body.innerHTML = '<div class="ef-error">' + _esc(d.error) + '</div>'; return; }
                 _efPreview = d;
                 var s = d.summary, html = '';
                 if (d.companyIssues.length) {
-                    html += '<div style="background:#fff5f5;border:1px solid #f5c2c7;border-radius:8px;padding:12px 16px;margin-bottom:14px;">'
-                        + '<strong style="color:#dc3545;">Company details to fix first</strong> <a href="company-details.html" style="font-size:0.85rem;">→ Company Details</a><ul style="margin:6px 0 0 18px;">'
+                    html += '<div class="ef-company">'
+                        + '<strong>Company details to fix first</strong> <a href="company-details.html" style="font-size:0.85rem;">→ Company Details</a><ul style="margin:6px 0 0 18px;">'
                         + d.companyIssues.map(function(i) { return '<li>' + _esc(i) + '</li>'; }).join('') + '</ul></div>';
                 }
-                html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">'
+                html += '<div class="ef-tiles">'
                     + [['Certificates', s.certificates], ['Ready', s.ready], ['Need attention', s.blocked], ['IRP5', s.irp5], ['IT3(a)', s.it3a],
                        ['PAYE', fmt(s.paye)], ['UIF (2%)', fmt(s.uif)], ['SDL', fmt(s.sdl)]].map(function(x) {
-                        return '<div style="background:#f8f9fa;border-radius:8px;padding:8px 14px;"><div style="font-size:0.72rem;color:#888;text-transform:uppercase;">' + x[0]
-                            + '</div><div style="font-weight:700;">' + x[1] + '</div></div>';
+                        return '<div class="ef-tile"><div class="ef-tile-label">' + x[0] + '</div><div class="ef-tile-value">' + x[1] + '</div></div>';
                     }).join('') + '</div>';
                 if (!d.certificates.length) {
                     html += emptyHtml('No finalized payslips in this ' + (period === 'interim' ? 'interim period' : 'tax year') + '.');
                 } else {
                     html += '<table class="recon-table"><thead><tr><th>Employee</th><th>Type</th><th class="num">Gross</th><th class="num">PAYE</th><th>Status</th></tr></thead><tbody>'
                         + d.certificates.map(function(c) {
-                            var notes = c.issues.map(function(i) { return '<div style="color:#dc3545;">⛔ ' + _esc(i) + '</div>'; }).join('')
-                                + c.warnings.map(function(w) { return '<div style="color:#b26a00;">⚠ ' + _esc(w) + '</div>'; }).join('');
+                            var notes = c.issues.map(function(i) { return '<div class="ef-issue">⛔ ' + _esc(i) + '</div>'; }).join('')
+                                + c.warnings.map(function(w) { return '<div class="ef-warn">⚠ ' + _esc(w) + '</div>'; }).join('');
                             return '<tr><td><a href="employee-detail.html?id=' + encodeURIComponent(c.employee_id) + '">' + _esc(c.name || ('#' + c.employee_id)) + '</a>'
-                                + (c.final ? ' <span style="font-size:0.75rem;color:#888;">(final)</span>' : '') + '</td>'
+                                + (c.final ? ' <span class="ef-final">(final)</span>' : '') + '</td>'
                                 + '<td>' + _esc(c.type) + '</td>' + numTd(c.totals.gross) + numTd(c.totals.paye)
-                                + '<td style="font-size:0.82rem;">' + (c.ready ? '<span style="color:#28a745;font-weight:700;">✓ Ready</span>' : '') + notes + '</td></tr>';
+                                + '<td style="font-size:0.82rem;">' + (c.ready ? '<span class="ef-ok">✓ Ready</span>' : '') + notes + '</td></tr>';
                         }).join('') + '</tbody></table>';
                 }
                 body.innerHTML = html;
                 btn.disabled = !(d.companyIssues.length === 0 && s.ready > 0);
             }).catch(function(e) {
-                body.innerHTML = '<div style="color:#dc3545;padding:16px;">Could not check the payslips: ' + _esc(e.message) + '</div>';
+                body.innerHTML = '<div class="ef-error">Could not check the payslips: ' + _esc(e.message) + '</div>';
             });
         };
 
