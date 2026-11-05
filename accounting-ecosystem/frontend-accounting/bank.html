@@ -1016,6 +1016,15 @@
             color: #9aa0a6;
             font-style: italic;
         }
+        .rule-suggestion-banner.sean {
+            color: #8b7cf6;
+        }
+        .rule-suggestion-banner .sean-confidence {
+            padding: 1px 7px;
+            border-radius: 10px;
+            background: rgba(139, 124, 246, 0.15);
+            font-weight: 600;
+        }
         
         .ai-suggestion-content {
             padding: 20px;
@@ -1795,17 +1804,18 @@
                 <button class="action-btn" onclick="bulkDelete()">Delete Selected</button>
             </div>
 
-            <!-- Mass-Accept: always visible (selects its own rows by Sean confidence,
-                 independent of manual checkbox selection above) — "active" forces
-                 display since .bulk-actions is display:none by default -->
+            <!-- Sean: selects the lines Sean filled at/above a confidence (independent
+                 of the manual checkbox selection above); the user then posts with
+                 "Allocate Selected". "active" forces display since .bulk-actions is
+                 display:none by default -->
             <div class="bulk-actions active" style="background:#f0fdf4;border-color:#bbf7d0;">
-                <span>🤖 Sean:</span>
+                <span>🤖 Sean fills in the lines he recognises from this client's history.</span>
                 <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-                    Accept suggestions ≥
+                    Select Sean's lines ≥
                     <input type="number" id="seanMassAcceptThreshold" value="90" min="0" max="100" style="width:56px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;">
                     % confidence
                 </label>
-                <button class="action-btn" onclick="massAcceptSeanSuggestions()">Mass-Accept Sean Suggestions</button>
+                <button class="action-btn" onclick="massAcceptSeanSuggestions()">Select Sean's Lines</button>
             </div>
             
             <div class="section-header">
@@ -2357,6 +2367,7 @@ Click OK to simulate uploading a file.`;
                 <td colspan="13">
                     <div class="rule-suggestion-banner" id="ruleBanner_${txn.id}"></div>
                     <div class="rule-suggestion-banner" id="payrollBanner_${txn.id}" style="display:none;"></div>
+                    <div class="rule-suggestion-banner sean" id="seanBanner_${txn.id}" style="display:none;"></div>
                 </td>
             </tr>` : ''}`;
         }
@@ -2378,9 +2389,10 @@ Click OK to simulate uploading a file.`;
             } else {
                 tbody.insertAdjacentHTML('beforeend', slice.map(txnRowHtml).join(''));
                 restoreAllocationsToUI();
-                prefillRuleSuggestions(slice); // non-blocking
-                prefillSeanSuggestions(slice); // non-blocking
-                prefillPayrollMatches(slice); // non-blocking
+                // Non-blocking. Order matters: bank rules and payroll matches
+                // first — Sean only fills the rows they left empty.
+                Promise.allSettled([prefillRuleSuggestions(slice), prefillPayrollMatches(slice)])
+                    .then(() => prefillSeanSuggestions(slice));
             }
 
             renderPaginationBar(_allTxnData.length, page);
@@ -3783,6 +3795,10 @@ Click OK to simulate uploading a file.`;
                 transactionAllocations[id]._fromRule = false;
                 updateRuleSuggestionBanner(id, 'overridden');
             }
+            if (transactionAllocations[id]._fromSean) {
+                transactionAllocations[id]._fromSean = false;
+                updateSeanBanner(id, 'overridden');
+            }
             transactionAllocations[id].type = type;
             // Clear any previously chosen VAT setting when type changes
             transactionAllocations[id].vatSettingId = null;
@@ -3882,6 +3898,10 @@ Click OK to simulate uploading a file.`;
                 transactionAllocations[id]._fromRule = false;
                 updateRuleSuggestionBanner(id, 'overridden');
             }
+            if (transactionAllocations[id]._fromSean) {
+                transactionAllocations[id]._fromSean = false;
+                updateSeanBanner(id, 'overridden');
+            }
             transactionAllocations[id].accountCode = accountCode;
             transactionAllocations[id].accountName = accountText;
             // Store real account ID for API allocation
@@ -3937,12 +3957,7 @@ Click OK to simulate uploading a file.`;
                     }
 
                     // Resolve VAT setting for this allocation (only applies when type = \'account\')
-                    let vatSettingId = null;
-                    if (allocation.type === 'account' && window._companyIsVatRegistered) {
-                        const vatSel = document.getElementById('vatSelect_' + id);
-                        const selectedVal = vatSel ? vatSel.value : '';
-                        vatSettingId = selectedVal ? parseInt(selectedVal, 10) : null;
-                    }
+                    const vatSettingId = resolveAllocationVatSettingId(id, allocation);
 
                     // Build allocation line — include vatSettingId when applicable
                     const allocationLine = { accountId: allocation.accountId, amount: Math.abs(txnData.amount) };
@@ -4227,47 +4242,126 @@ Click OK to simulate uploading a file.`;
             }));
         }
 
-        // Prefetch a Sean suggestion + confidence for every unmatched row on
-        // the current page, without opening the AI panel or touching the
-        // row's allocation selects. Mirrors prefillRuleSuggestions above
-        // (which DOES auto-fill, since bank rules are deterministic) but only
-        // caches for later use by the AI panel (instant render, no re-fetch)
-        // and the Mass-Accept action below. Non-blocking, never fails the
-        // page render.
+        // ── Sean (Phase 1) ─────────────────────────────────────────────────
+        // Sean suggests an account + VAT per unmatched line from THIS company's
+        // own posted allocations (plus approved / starter knowledge) — server
+        // side, no external AI. Runs after bank rules and payroll matches so it
+        // never overwrites them; fills only rows nobody has touched, and only
+        // when confident enough. Nothing posts until the user allocates, and
+        // every posted line is what Sean learns from next time.
+        const SEAN_PREFILL_MIN_DEFAULT = 70;
+        window._seanActiveSuggestion = window._seanActiveSuggestion || {};
+
         async function prefillSeanSuggestions(slice) {
-            const unmatched = (slice || []).filter(t => t.status === 'unmatched');
-            if (!unmatched.length) return;
+            const unmatched = (slice || []).filter(t => t.status === 'unmatched').map(t => String(t.id));
 
-            window._seanActiveSuggestion = window._seanActiveSuggestion || {};
+            // Page re-render: show the banner again on rows Sean already filled
+            unmatched.forEach(id => {
+                const a = transactionAllocations[id];
+                if (a && a._fromSean && window._seanActiveSuggestion[id]) updateSeanBanner(id, 'suggested', window._seanActiveSuggestion[id]);
+            });
 
-            await Promise.allSettled(unmatched.map(async txn => {
-                try {
-                    // Don't touch rows a rule, a manual selection, or an
-                    // earlier prefetch already handled.
-                    if (window._seanActiveSuggestion[txn.id]) return;
-                    const existing = transactionAllocations[txn.id];
-                    if (existing && existing.type) return;
+            const ids = unmatched
+                .filter(id => !(transactionAllocations[id] && transactionAllocations[id].type))
+                .filter(id => !(_payrollMatches[id] && _payrollMatches[id].length))
+                .filter(id => !(id in window._seanActiveSuggestion));
+            if (!ids.length) return;
+            try {
+                const res = await fetch('/api/accounting/bank/sean-suggestions', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ ids })
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                const min = data.prefillMinConfidence || SEAN_PREFILL_MIN_DEFAULT;
+                ids.forEach(id => {
+                    const s = (data.suggestions || {})[id] || null;
+                    window._seanActiveSuggestion[id] = s;
+                    if (!s || s.confidence < min) return;
+                    // Re-check: the user may have picked something while we waited
+                    if (transactionAllocations[id] && transactionAllocations[id].type) return;
+                    applySeanSuggestionToRow(id, s);
+                });
+            } catch (err) {
+                // Non-blocking — Sean must never break the bank page
+            }
+        }
 
-                    const txnData = getTransactionData(txn.id);
-                    if (!txnData) return;
+        // Fill a row's Type / Account / VAT from a Sean suggestion (memory + UI).
+        function applySeanSuggestionToRow(id, s) {
+            const row = document.querySelector('tr[data-txn-id="' + id + '"]');
+            if (!row || !s || !s.accountCode) return false;
+            // AR/AP control accounts are Record Payment only — the engine never
+            // suggests them either; this is the second line of defence.
+            if (s.accountCode === '1100' || s.accountCode === '2000') return false;
+            const selects = row.querySelectorAll('.allocation-select');
+            const typeSelect = selects[0], acctSelect = selects[1];
+            if (!typeSelect || typeSelect.disabled || !acctSelect) return false;
 
-                    const localSuggestion  = seanAnalyzeTransaction(txnData);
-                    const globalSuggestion = await fetchGlobalSeanSuggestion(txnData);
-
-                    const activeSuggestion = (globalSuggestion && globalSuggestion.confidence >= localSuggestion.confidence)
-                        ? { ...localSuggestion,
-                            accountCode: globalSuggestion.accountCode,
-                            accountName: globalSuggestion.accountName,
-                            reason: globalSuggestion.reason,
-                            confidence: globalSuggestion.confidence,
-                            source: globalSuggestion.source }
-                        : localSuggestion;
-
-                    window._seanActiveSuggestion[txn.id] = activeSuggestion;
-                } catch (err) {
-                    // Non-blocking — suggestion fetch errors must never break page render
+            const type = s.allocationType === 'vat' ? 'vat' : 'account';
+            transactionAllocations[id] = {
+                type,
+                accountId: s.accountId,
+                accountCode: s.accountCode,
+                accountName: s.accountCode + ' - ' + s.accountName,
+                vatSettingId: type === 'account' ? (s.vatSettingId || null) : null,
+                _fromSean: true,
+                seanConfidence: s.confidence
+            };
+            typeSelect.value = type;
+            updateAccountOptions(row, type, id);
+            acctSelect.value = s.accountCode;
+            if (acctSelect.value !== s.accountCode) {
+                const opt = document.createElement('option');
+                opt.value = s.accountCode;
+                opt.textContent = s.accountCode + ' - ' + s.accountName;
+                acctSelect.appendChild(opt);
+                acctSelect.value = s.accountCode;
+            }
+            const vatSel = document.getElementById('vatSelect_' + id);
+            const vatNoApply = document.getElementById('vatNoApply_' + id);
+            const showVat = type === 'account' && window._companyIsVatRegistered;
+            if (vatSel) {
+                vatSel.style.display = showVat ? '' : 'none';
+                if (vatNoApply) vatNoApply.style.display = showVat ? 'none' : '';
+                if (showVat) {
+                    populateVatSelect(id);
+                    vatSel.value = s.vatSettingId ? String(s.vatSettingId) : '';
                 }
-            }));
+            }
+            updateSeanBanner(id, 'suggested', s);
+            return true;
+        }
+
+        function seanSourceLabel(source) {
+            return source === 'client_history' ? 'from this client\'s history'
+                : source === 'global_pattern' ? 'approved Sean knowledge'
+                : source === 'starter' ? 'general guess — check it' : 'Sean';
+        }
+
+        // state: 'suggested' | 'overridden' | 'hidden'
+        function updateSeanBanner(id, state, s) {
+            const bannerRow = document.getElementById('ruleBannerRow_' + id);
+            const banner = document.getElementById('seanBanner_' + id);
+            if (!bannerRow || !banner) return;
+            if (state === 'suggested' && s) {
+                banner.className = 'rule-suggestion-banner sean';
+                banner.innerHTML = '&#129302; Sean: <strong>' + escapeHtml(s.accountCode + ' ' + s.accountName) + '</strong>'
+                    + (s.vatSettingName ? ' &middot; VAT: ' + escapeHtml(s.vatSettingName) : '')
+                    + ' &mdash; ' + escapeHtml(s.reason)
+                    + ' <span class="sean-confidence">' + Number(s.confidence) + '%</span>';
+                banner.style.display = '';
+                bannerRow.classList.add('show');
+            } else if (state === 'overridden') {
+                banner.className = 'rule-suggestion-banner overridden';
+                banner.innerHTML = 'You changed Sean\'s suggestion — Sean learns from what you post.';
+                banner.style.display = '';
+                bannerRow.classList.add('show');
+            } else {
+                banner.style.display = 'none';
+                banner.innerHTML = '';
+            }
         }
 
         // Flip: correct import direction error (money in ↔ money out)
@@ -4524,391 +4618,113 @@ Click OK to simulate uploading a file.`;
         });
         
         // ===================================
-        // SEAN AI FUNCTIONS
+        // SEAN AI PANEL (per-row "AI" button)
         // ===================================
-        
-        // Sean AI learning data (persisted in Supabase via safeLocalStorage)
-        let seanLearning = JSON.parse(safeLocalStorage.getItem(storageKey('sean_learning')) || '{}');
+        // Shows Sean's suggestion for one line, why, and the alternatives.
+        // Sean learns from what is POSTED (server-side, from this company's own
+        // allocations), so there is no separate "teach" step and nothing is
+        // kept in browser storage (CLAUDE.md Part D).
 
-        function saveSeanLearning() {
-            safeLocalStorage.setItem(storageKey('sean_learning'), JSON.stringify(seanLearning));
-        }
-        
-        // Sean AI pattern matching rules for bank transaction classification
-        function seanAnalyzeTransaction(txnData) {
-            const desc = (txnData.description || '').toLowerCase();
-            const amount = txnData.amount || 0;
-            const accounts = window._allLedgerAccounts || [];
-            
-            // Check Sean's learned overrides first
-            for (const [key, learning] of Object.entries(seanLearning)) {
-                if (desc.includes(key.toLowerCase())) {
-                    const matchedAccount = accounts.find(a => a.code === learning.accountCode);
-                    return {
-                        type: learning.type,
-                        accountCode: learning.accountCode,
-                        accountName: matchedAccount ? `${matchedAccount.code} - ${matchedAccount.name}` : learning.accountCode,
-                        reason: `Learned from your previous override: "${learning.explanation}"`,
-                        confidence: 92,
-                        source: 'learned'
-                    };
-                }
-            }
-            
-            // Pattern matching rules
-            const patterns = [
-                // Customer payments (money in)
-                { match: /inv[- ]|invoice|payment.*rec|receipt|customer|client/i, type: 'customer', code: '4000', name: '4000 - Sales Revenue', reason: 'Pattern matched: customer payment reference', confidence: 88 },
-                { match: /service.*rev|consulting|professional/i, type: 'customer', code: '4100', name: '4100 - Service Revenue', reason: 'Pattern matched: service revenue', confidence: 85 },
-                // Supplier payments (money out)
-                { match: /supplier|vendor|purchase|po[- ]\d|p\/o/i, type: 'supplier', code: '2000', name: '2000 - Accounts Payable', reason: 'Pattern matched: supplier payment', confidence: 87 },
-                { match: /office.*suppl|stationery|paper/i, type: 'supplier', code: '6200', name: '6200 - Office Supplies', reason: 'Pattern matched: office supplies expense', confidence: 90 },
-                // Utilities
-                { match: /electric|water|municipal|eskom|city.*power/i, type: 'supplier', code: '6100', name: '6100 - Utilities', reason: 'Pattern matched: utility payment', confidence: 91 },
-                // Rent
-                { match: /rent|lease|landlord|property/i, type: 'supplier', code: '6300', name: '6300 - Rent', reason: 'Pattern matched: rent payment', confidence: 93 },
-                // Salaries
-                { match: /salary|salaries|wage|payroll|nett.*pay/i, type: 'supplier', code: '6400', name: '6400 - Salaries', reason: 'Pattern matched: salary/payroll payment', confidence: 94 },
-                // VAT
-                { match: /sars|vat.*pay|tax.*pay/i, type: 'vat', code: '2100', name: '2100 - VAT Payable', reason: 'Pattern matched: SARS / VAT payment', confidence: 95 },
-                // Bank charges
-                { match: /bank.*charge|service.*fee|monthly.*fee|transaction.*fee/i, type: 'account', code: '6500', name: '6500 - Bank Charges', reason: 'Pattern matched: bank charges', confidence: 96 },
-                // Insurance
-                { match: /insurance|premium|cover/i, type: 'supplier', code: '6600', name: '6600 - Insurance', reason: 'Pattern matched: insurance payment', confidence: 89 },
-                // Transfers
-                { match: /transfer|tfr|interaccount|own.*account/i, type: 'transfer', code: '1000', name: '1000 - Bank Current', reason: 'Pattern matched: inter-account transfer', confidence: 82 },
-                // Cost of sales
-                { match: /stock|inventory|goods|merchandise|product/i, type: 'supplier', code: '5000', name: '5000 - Cost of Sales', reason: 'Pattern matched: inventory/stock purchase', confidence: 84 },
-            ];
-            
-            for (const pattern of patterns) {
-                if (pattern.match.test(desc)) {
-                    // Adjust confidence based on amount direction matching
-                    let conf = pattern.confidence;
-                    if (amount > 0 && pattern.type === 'customer') conf = Math.min(conf + 5, 99);
-                    if (amount < 0 && pattern.type === 'supplier') conf = Math.min(conf + 3, 99);
-                    
-                    return {
-                        type: pattern.type,
-                        accountCode: pattern.code,
-                        accountName: pattern.name,
-                        reason: pattern.reason,
-                        confidence: conf,
-                        source: 'pattern'
-                    };
-                }
-            }
-            
-            // Default fallback based on money direction
-            if (amount > 0) {
-                return {
-                    type: 'customer',
-                    accountCode: '4000',
-                    accountName: '4000 - Sales Revenue',
-                    reason: 'Default suggestion: money received — likely customer payment',
-                    confidence: 45,
-                    source: 'default'
-                };
-            } else {
-                return {
-                    type: 'account',
-                    accountCode: '6000',
-                    accountName: '6000 - Operating Expenses',
-                    reason: 'Default suggestion: money paid out — likely operating expense',
-                    confidence: 40,
-                    source: 'default'
-                };
-            }
-        }
-        
-        // Fetch SEAN's global/learned-pattern suggestion for a transaction
-        // description. Shared by the per-row AI panel (toggleAISuggestion) and
-        // the Mass-Accept prefetch pass (prefillSeanSuggestions) so neither
-        // fetches twice for the same row. Returns null on any failure —
-        // callers already treat that as "no global suggestion available".
-        async function fetchGlobalSeanSuggestion(txnData) {
-            const bankName = txnData.bankName || null;
-            const qs = `?description=${encodeURIComponent(txnData.description)}${bankName ? '&bankName=' + encodeURIComponent(bankName) : ''}`;
+        async function getSeanSuggestion(id) {
+            if (id in window._seanActiveSuggestion) return window._seanActiveSuggestion[id];
             try {
-                const seanToken = localStorage.getItem('token') || localStorage.getItem('eco_token');
-                const resp = await fetch(`/api/sean/bank-learning/suggest${qs}`, {
-                    headers: seanToken ? { 'Authorization': 'Bearer ' + seanToken } : {}
+                const res = await fetch('/api/accounting/bank/sean-suggestions', {
+                    method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ ids: [String(id)] })
                 });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.suggestion) return data.suggestion;
-                }
-            } catch (_) { /* non-blocking */ }
-            return null;
+                if (!res.ok) return null;
+                const data = await res.json();
+                const s = (data.suggestions || {})[id] || null;
+                window._seanActiveSuggestion[id] = s;
+                return s;
+            } catch (_) { return null; }
         }
 
         async function toggleAISuggestion(id, button) {
+            id = String(id);
             const row = document.getElementById('aiRow' + id);
-
-            if (!row) {
-                alert('Error: AI suggestion row not found. Please refresh the page.');
-                return;
-            }
-
+            if (!row) return;
             const isVisible = row.classList.contains('show');
-
-            // Close all other AI rows
             document.querySelectorAll('.ai-suggestion-row').forEach(r => r.classList.remove('show'));
             document.querySelectorAll('.ai-btn').forEach(btn => btn.classList.remove('active'));
+            if (isVisible) return;
 
-            if (!isVisible) {
-                const txnData = getTransactionData(id);
-                if (txnData) {
-                    // Show local suggestion immediately (instant)
-                    const localSuggestion = seanAnalyzeTransaction(txnData);
-                    updateAISuggestionPanel(id, row, txnData, localSuggestion, null);
+            const content = row.querySelector('.ai-suggestion-content');
+            if (content) content.innerHTML = '<div class="ai-suggestion-header">&#129302; Sean AI Analysis</div><div class="ai-decision"><em>Sean is looking at this line…</em></div>';
+            row.classList.add('show');
+            if (button) button.classList.add('active');
 
-                    // Async: fetch global pattern + Codex from SEAN learning API
-                    const globalSuggestion = await fetchGlobalSeanSuggestion(txnData);
-                    if (globalSuggestion) {
-                        // Re-render panel with SEAN global pattern data, keeping local as fallback
-                        updateAISuggestionPanel(id, row, txnData, localSuggestion, globalSuggestion);
-                    }
-                }
-
-                row.classList.add('show');
-                button.classList.add('active');
-            }
+            const txnData = getTransactionData(id);
+            const s = await getSeanSuggestion(id);
+            renderSeanPanel(id, row, txnData, s);
         }
-        
-        function updateAISuggestionPanel(id, row, txnData, suggestion, globalSuggestion) {
+
+        function renderSeanPanel(id, row, txnData, s) {
             const content = row.querySelector('.ai-suggestion-content');
             if (!content) return;
-
-            // If a high-confidence global SEAN pattern exists, prefer it
-            const activeSuggestion = (globalSuggestion && globalSuggestion.confidence >= suggestion.confidence)
-                ? { ...suggestion, accountCode: globalSuggestion.accountCode, accountName: globalSuggestion.accountName,
-                    reason: globalSuggestion.reason, confidence: globalSuggestion.confidence, source: globalSuggestion.source }
-                : suggestion;
-
-            // Store globally so acceptAISuggestion can use it
-            window._seanActiveSuggestion = window._seanActiveSuggestion || {};
-            window._seanActiveSuggestion[id] = activeSuggestion;
-
-            const confClass = activeSuggestion.confidence >= 80 ? 'high' : activeSuggestion.confidence >= 60 ? 'medium' : 'low';
-            const confColor = confClass === 'high' ? '#27ae60' : confClass === 'medium' ? '#f39c12' : '#e74c3c';
-            const sourceBadge = activeSuggestion.source === 'learned' ? ' <span style="background:#9b59b6;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">Learned</span>'
-                : activeSuggestion.source === 'sean_global_pattern' ? ' <span style="background:#10b981;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">SEAN Global</span>'
-                : activeSuggestion.source === 'sean_merchant_pattern' ? ' <span style="background:#6366f1;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">SEAN Merchant</span>'
-                : '';
-
-            // Codex articles from global suggestion
-            let codexHtml = '';
-            if (globalSuggestion && globalSuggestion.codexArticles && globalSuggestion.codexArticles.length) {
-                codexHtml = `<div style="margin-top:12px;border-top:1px solid var(--border-color,#e5e7eb);padding-top:10px;">
-                    <div style="font-weight:600;font-size:0.82rem;margin-bottom:8px;color:#10b981;">📚 SEAN Codex — Relevant Tax Rules</div>
-                    ${globalSuggestion.codexArticles.map(a => `
-                        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px;margin-bottom:8px;font-size:0.82rem;">
-                            <div style="font-weight:600;margin-bottom:3px;">${a.title}${a.law_reference ? ` <span style="color:#6b7280;font-weight:400;">(${a.law_reference})</span>` : ''}</div>
-                            <div style="color:#374151;margin-bottom:4px;">${a.explanation}</div>
-                            ${a.example ? `<div style="color:#6b7280;font-style:italic;">Example: ${a.example}</div>` : ''}
-                        </div>`).join('')}
-                </div>`;
-            }
-
-            // Get all accounts for the override dropdowns
-            const accounts = window._allLedgerAccounts || [];
-            const accountsByCategory = {};
-            accounts.forEach(a => {
-                const cat = a.category || a.type || 'Other';
-                if (!accountsByCategory[cat]) accountsByCategory[cat] = [];
-                accountsByCategory[cat].push(a);
-            });
-
-            let accountOptions = '';
-            for (const [cat, accts] of Object.entries(accountsByCategory)) {
-                accountOptions += `<optgroup label="${cat.charAt(0).toUpperCase() + cat.slice(1)}">`;
-                accts.forEach(a => {
-                    const selected = a.code === activeSuggestion.accountCode ? ' selected' : '';
-                    accountOptions += `<option value="${a.code}"${selected}>${a.code} - ${a.name}</option>`;
-                });
-                accountOptions += '</optgroup>';
-            }
-
-            content.innerHTML = `
-                <div class="ai-suggestion-header">🤖 SEAN AI Analysis</div>
-
-                <div class="ai-decision">
-                    <div class="ai-decision-title">SEAN's Decision${sourceBadge}</div>
-                    <div class="ai-decision-value">
-                        <strong>Transaction:</strong> ${txnData.description}<br>
-                        <strong>Amount:</strong> R ${Math.abs(txnData.amount).toLocaleString('en-ZA', {minimumFractionDigits: 2})}<br>
-                        <strong>Transaction Type:</strong> ${(activeSuggestion.type || 'account').charAt(0).toUpperCase() + (activeSuggestion.type || 'account').slice(1)} Payment<br>
-                        <strong>Account:</strong> ${activeSuggestion.accountName}<br>
-                        <strong>Reason:</strong> ${activeSuggestion.reason}
-                    </div>
-                    <div style="margin-top: 8px;">
-                        <span class="ai-confidence" style="background:${confColor};">${activeSuggestion.confidence}% Confidence</span>
-                    </div>
-                    ${codexHtml}
-                </div>
-                
-                <div style="margin: 12px 0; display: flex; gap: 8px;">
-                    <button class="btn-primary" style="background:#27ae60;border-color:#27ae60;" onclick="acceptAISuggestion(${id})">
-                        ✓ Accept Sean's Suggestion
-                    </button>
-                </div>
-                
-                <div class="ai-override">
-                    <div class="ai-override-title">Override Sean's Decision</div>
-                    <div class="override-form">
-                        <div class="form-group">
-                            <label>Transaction Type</label>
-                            <select class="allocation-select override-type" id="overrideType${id}">
-                                <option value="transfer" ${suggestion.type === 'transfer' ? 'selected' : ''}>Transfer</option>
-                                <option value="vat" ${suggestion.type === 'vat' ? 'selected' : ''}>VAT Payment</option>
-                                <option value="account" ${suggestion.type === 'account' ? 'selected' : ''}>Account</option>
-                            </select>
-                            <div style="font-size:11px;color:#9aa0a6;margin-top:2px;">Customer/supplier invoice payment? Use Record Payment on the Customers/Suppliers page.</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Account</label>
-                            <select class="allocation-select override-account" id="overrideAccount${id}">
-                                ${accountOptions}
-                            </select>
-                        </div>
-                        <div class="form-group" style="grid-column: 1 / -1;">
-                            <label>Tell Sean why this is different</label>
-                            <textarea id="overrideExplanation${id}" placeholder="Explain to Sean AI why the classification should be different..."></textarea>
-                        </div>
-                        <div class="override-actions">
-                            <button class="btn-secondary" onclick="cancelOverride(${id})">Cancel</button>
-                            <button class="btn-primary" onclick="saveOverride(${id})">Save & Teach Sean</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-        
-        function acceptAISuggestion(id) {
-            const txnData = getTransactionData(id);
-            if (!txnData) return;
-
-            // Use SEAN global suggestion if available, fall back to local
-            const suggestion = (window._seanActiveSuggestion && window._seanActiveSuggestion[id])
-                ? window._seanActiveSuggestion[id]
-                : seanAnalyzeTransaction(txnData);
-            
-            // Apply the suggestion to the transaction's allocation dropdowns
-            applyAllocationToRow(id, suggestion.type, suggestion.accountCode);
-            
-            // Close the AI panel
-            cancelOverride(id);
-            
-            // Show success feedback
-            const btn = document.querySelector(`button[onclick="toggleAISuggestion(${id}, this)"]`);
-            if (btn) {
-                btn.innerHTML = '<span>✓</span> AI';
-                btn.style.background = '#27ae60';
-                btn.style.borderColor = '#27ae60';
-                setTimeout(() => {
-                    btn.innerHTML = '<span>🤖</span> AI';
-                    btn.style.background = '';
-                    btn.style.borderColor = '';
-                }, 2000);
-            }
-        }
-        
-        function applyAllocationToRow(id, type, accountCode) {
-            const txnData = getTransactionData(id);
-            if (!txnData || !txnData.row) return;
-
-            // Never allow ANY path (AI suggestion, learned override, manual) to
-            // post a bank allocation straight to the AR (1100) / AP (2000)
-            // control account — that posts a balanced journal but never touches
-            // the specific customer/supplier invoice, desyncing the sub-ledger
-            // from the control account and risking a duplicate posting against
-            // an invoice already paid correctly via Record Payment. Single
-            // choke point: every allocation path funnels through this function.
-            if (accountCode === '1100' || accountCode === '2000') {
-                showBankPageAlert('This looks like a customer or supplier invoice payment. Please use "Record Payment" on the Customers/Suppliers page instead — allocating it here would post to the control account without linking the specific invoice.', 'error');
+            const desc = escapeHtml(txnData ? txnData.description : '');
+            const amount = txnData ? 'R ' + Math.abs(txnData.amount).toLocaleString('en-ZA', { minimumFractionDigits: 2 }) : '';
+            if (!s) {
+                content.innerHTML = '<div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>'
+                    + '<div class="ai-decision"><div class="ai-decision-value">'
+                    + '<strong>Transaction:</strong> ' + desc + ' &middot; ' + amount + '<br>'
+                    + 'Sean has not seen a line like this for this client yet. Allocate it yourself — next time Sean will suggest it.'
+                    + '</div></div>';
                 return;
             }
-
-            // Set the type dropdown
-            const selects = txnData.row.querySelectorAll('.allocation-select');
-            if (selects[0]) {
-                selects[0].value = type;
-                // Trigger the update
-                updateAllocation(selects[0], id);
-            }
-            
-            // After updateAllocation rebuilds the account options, set the account
-            setTimeout(() => {
-                const accountSelects = txnData.row.querySelectorAll('.allocation-select');
-                if (accountSelects[1]) {
-                    accountSelects[1].value = accountCode;
-                    updateAccount(accountSelects[1], id);
-                }
-            }, 50);
+            const confColor = s.confidence >= 80 ? '#27ae60' : s.confidence >= 60 ? '#f39c12' : '#e74c3c';
+            const alts = (s.alternatives || []).map(a =>
+                '<button class="btn-secondary" style="padding:2px 10px;font-size:12px;margin:2px 4px 0 0;" onclick="useSeanAlternative(\'' + id + '\', ' + Number(a.accountId) + ')">'
+                + escapeHtml(a.accountCode + ' ' + a.accountName) + ' (' + Number(a.count) + '&times;)</button>').join('');
+            content.innerHTML = '<div class="ai-suggestion-header">&#129302; Sean AI Analysis</div>'
+                + '<div class="ai-decision">'
+                + '<div class="ai-decision-title">Sean suggests <span style="font-weight:400;font-size:12px;color:#9aa0a6;">(' + escapeHtml(seanSourceLabel(s.source)) + ')</span></div>'
+                + '<div class="ai-decision-value">'
+                + '<strong>Transaction:</strong> ' + desc + ' &middot; ' + amount + '<br>'
+                + '<strong>Account:</strong> ' + escapeHtml(s.accountCode + ' - ' + s.accountName) + '<br>'
+                + (s.vatSettingName ? '<strong>VAT:</strong> ' + escapeHtml(s.vatSettingName) + '<br>' : '')
+                + '<strong>Why:</strong> ' + escapeHtml(s.reason)
+                + '</div>'
+                + '<div style="margin-top:8px;"><span class="ai-confidence" style="background:' + confColor + ';">' + Number(s.confidence) + '% Confidence</span></div>'
+                + (alts ? '<div style="margin-top:10px;font-size:12px;">Also used for this line before: ' + alts + '</div>' : '')
+                + '</div>'
+                + '<div style="margin:12px 0;display:flex;gap:8px;">'
+                + '<button class="btn-primary" style="background:#27ae60;border-color:#27ae60;" onclick="acceptAISuggestion(\'' + id + '\')">&#10003; Use Sean\'s suggestion</button>'
+                + '<button class="btn-secondary" onclick="cancelOverride(\'' + id + '\')">Close</button>'
+                + '</div>'
+                + '<div style="font-size:11px;color:#9aa0a6;">Not right? Pick the correct account in the row and allocate — Sean learns from every line you post.</div>';
         }
-        
+
+        function acceptAISuggestion(id) {
+            id = String(id);
+            const s = window._seanActiveSuggestion[id];
+            if (s && applySeanSuggestionToRow(id, s)) cancelOverride(id);
+        }
+
+        function useSeanAlternative(id, accountId) {
+            id = String(id);
+            const s = window._seanActiveSuggestion[id];
+            const alt = s && (s.alternatives || []).find(a => a.accountId === accountId);
+            if (!alt) return;
+            const chosen = { ...s, accountId: alt.accountId, accountCode: alt.accountCode, accountName: alt.accountName,
+                vatSettingId: null, vatSettingName: null, reason: 'an alternative this client used for this line before' };
+            if (applySeanSuggestionToRow(id, chosen)) cancelOverride(id);
+        }
+
         function cancelOverride(id) {
             const row = document.getElementById('aiRow' + id);
             if (row) row.classList.remove('show');
             document.querySelectorAll('.ai-btn').forEach(btn => btn.classList.remove('active'));
         }
-        
-        function saveOverride(id) {
-            const overrideType = document.getElementById('overrideType' + id);
-            const overrideAccount = document.getElementById('overrideAccount' + id);
-            const overrideExplanation = document.getElementById('overrideExplanation' + id);
-            
-            if (!overrideExplanation || !overrideExplanation.value.trim()) {
-                showBankPageAlert('Please explain to Sean why this classification is different so he can learn.', 'error');
-                return;
-            }
-            
-            const type = overrideType ? overrideType.value : '';
-            const accountCode = overrideAccount ? overrideAccount.value : '';
-            const accountText = overrideAccount ? overrideAccount.options[overrideAccount.selectedIndex].text : '';
-            const explanation = overrideExplanation.value.trim();
-            
-            // Get the transaction description as the learning key
-            const txnData = getTransactionData(id);
-            if (txnData) {
-                // Extract a meaningful keyword from the description for learning
-                const descWords = txnData.description.toLowerCase().split(/\s+/);
-                const meaningfulWords = descWords.filter(w => w.length > 3 && !['the', 'and', 'for', 'from', 'this', 'that', 'with'].includes(w));
-                const learningKey = meaningfulWords.slice(0, 3).join(' ') || txnData.description.substring(0, 20);
-                
-                // Save Sean's learning
-                seanLearning[learningKey] = {
-                    type: type,
-                    accountCode: accountCode,
-                    accountName: accountText,
-                    explanation: explanation,
-                    learnedAt: new Date().toISOString(),
-                    fromTransaction: txnData.description
-                };
-                saveSeanLearning();
-                
-                // Apply the override to the actual allocation
-                applyAllocationToRow(id, type, accountCode);
-            }
-            
-            // Close the panel
-            cancelOverride(id);
-            
-            // Visual feedback
-            const btn = document.querySelector(`button[onclick="toggleAISuggestion(${id}, this)"]`);
-            if (btn) {
-                btn.innerHTML = '<span>📚</span> Learned';
-                btn.style.background = '#9b59b6';
-                btn.style.borderColor = '#9b59b6';
-                setTimeout(() => {
-                    btn.innerHTML = '<span>🤖</span> AI';
-                    btn.style.background = '';
-                    btn.style.borderColor = '';
-                }, 3000);
-            }
-            
-            showBankPageAlert(`Sean AI has learned from your correction! Type: ${type}. Account: ${accountText}. Reason: ${escapeHtml(explanation)}. Sean will use this knowledge for similar transactions in the future.`, 'warning');
+
+        // VAT setting for an allocation line — one rule for single AND bulk
+        // allocate (bulk used to drop VAT entirely): only for type 'account' on
+        // a VAT-registered company; the row's VAT select wins, else the value
+        // remembered from a bank rule / Sean prefill (row not on this page).
+        function resolveAllocationVatSettingId(id, allocation) {
+            if (!allocation || allocation.type !== 'account' || !window._companyIsVatRegistered) return null;
+            const vatSel = document.getElementById('vatSelect_' + id);
+            if (vatSel) return vatSel.value ? parseInt(vatSel.value, 10) : null;
+            return allocation.vatSettingId ? parseInt(allocation.vatSettingId, 10) : null;
         }
 
         async function bulkAllocate() {
@@ -4997,6 +4813,11 @@ Click OK to simulate uploading a file.`;
                                 accountId: allocation.accountId,
                                 amount:    Math.abs(txnData.amount)
                             };
+                            const bulkVatSettingId = resolveAllocationVatSettingId(id, allocation);
+                            if (bulkVatSettingId) {
+                                allocationLine.vatSettingId = bulkVatSettingId;
+                                allocationLine.vatInclusive = true; // bank statement amounts are always gross (VAT inclusive)
+                            }
 
                             const bulkPayload = { lines: [allocationLine], description: txnData.description, allocationType: allocation.type || null };
                             if (allocation.appliedRuleId != null) bulkPayload.appliedRuleId = allocation.appliedRuleId;
@@ -5037,68 +4858,24 @@ Click OK to simulate uploading a file.`;
             return;
         }
 
-        // Mass-Accept: pre-fill every unmatched row whose cached Sean
-        // suggestion meets the confidence threshold, then leave it to the
-        // user to click the existing "Allocate Selected" button — two
-        // separate, deliberate confirmations (this modal, then
-        // bulkAllocate()'s own aggregate confirmation) rather than chaining
-        // straight into bulkAllocate(), which would reuse and immediately
-        // close the same shared #bankActionModal element mid-flow.
+        // Select the lines Sean filled at/above a confidence so the user can
+        // check them and post with the existing "Allocate Selected" button.
+        // Sean never posts by itself (Phase 1).
         function massAcceptSeanSuggestions() {
             const thresholdInput = document.getElementById('seanMassAcceptThreshold');
             const threshold = Math.min(100, Math.max(0, parseInt(thresholdInput && thresholdInput.value, 10) || 90));
-
-            const rows = document.querySelectorAll('.transactions-table tbody tr[data-txn-id]');
-            const candidates = [];
-
-            for (const row of rows) {
+            let n = 0;
+            document.querySelectorAll('.transactions-table tbody tr[data-txn-id]').forEach(row => {
                 const id = row.getAttribute('data-txn-id');
-                if (!id) continue;
-
-                const suggestion = window._seanActiveSuggestion && window._seanActiveSuggestion[id];
-                if (!suggestion || suggestion.confidence < threshold) continue;
-
-                // Don't clobber a row the user or a bank rule already handled
-                const existing = transactionAllocations[id];
-                if (existing && existing.type) continue;
-
-                const txnData = getTransactionData(id);
-                if (!txnData) continue;
-
-                candidates.push({ id, txnData, suggestion });
-            }
-
-            if (!candidates.length) {
-                showBankPageAlert(`No unallocated transactions currently have a Sean suggestion at ≥${threshold}% confidence.`, 'warning');
-                return;
-            }
-
-            const previewRows = candidates.slice(0, 15).map(c =>
-                '<tr><td>' + escapeHtml(c.txnData.description) + '</td><td>' + escapeHtml(c.suggestion.accountName || c.suggestion.accountCode) + '</td><td>' + c.suggestion.confidence + '%</td></tr>'
-            ).join('');
-            const moreNote = candidates.length > 15 ? '<p><em>…and ' + (candidates.length - 15) + ' more.</em></p>' : '';
-
-            openBankActionModal({
-                title: 'Mass-Accept Sean Suggestions',
-                detailsHtml: [
-                    '<p>Sean will pre-fill <strong>' + candidates.length + '</strong> transaction(s) at ≥' + threshold + '% confidence — nothing posts yet:</p>',
-                    '<table style="width:100%;font-size:12px;border-collapse:collapse;margin:8px 0;"><thead><tr><th style="text-align:left;">Description</th><th style="text-align:left;">Account</th><th style="text-align:left;">Confidence</th></tr></thead><tbody>' + previewRows + '</tbody></table>',
-                    moreNote,
-                    '<p>After this, review the checked rows and click <strong>Allocate Selected</strong> to actually post.</p>'
-                ].join(''),
-                confirmText: 'Pre-fill ' + candidates.length + ' transaction(s)',
-                loadingText: 'Applying…',
-                actionKey: 'massAcceptSean:' + candidates.map(c => c.id).join(','),
-                onConfirm: async () => {
-                    for (const { id, suggestion } of candidates) {
-                        applyAllocationToRow(id, suggestion.type, suggestion.accountCode);
-                        const cb = document.querySelector('tr[data-txn-id="' + id + '"] .checkbox');
-                        if (cb) cb.checked = true;
-                    }
-                    updateBulkActions();
-                    showBankPageAlert(`Pre-filled ${candidates.length} transaction(s) from Sean. Review, then click "Allocate Selected" to post.`, 'warning');
-                }
+                const a = transactionAllocations[id];
+                if (!a || !a._fromSean || !(a.seanConfidence >= threshold)) return;
+                const cb = row.querySelector('.checkbox');
+                if (cb && !cb.checked) { cb.checked = true; n++; }
             });
+            updateBulkActions();
+            showBankPageAlert(n
+                ? `Selected ${n} line(s) Sean filled at ≥${threshold}% confidence. Check them, then click "Allocate Selected" to post.`
+                : `No lines on this page are filled by Sean at ≥${threshold}% confidence.`, 'warning');
         }
 
         async function bulkReconcile() {

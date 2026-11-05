@@ -12,6 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 const PdfStatementImportService = require('../../../sean/pdf-statement-import-service');
 const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
+const SeanBankAllocation = require('../../../sean/bank-allocation-engine');
 const OFXParserService = require('../services/ofxParserService');
 const PayrollBankMatching = require('../services/payrollBankMatching');
 
@@ -1294,6 +1295,23 @@ router.get('/payroll-matches', authenticate, hasPermission('bank.view'), async (
   }
 });
 
+// Sean allocation suggestions (Phase 1): account + VAT per unmatched line from
+// this company's own posted history, approved global knowledge, then starter
+// knowledge. Read-only — the user reviews and posts via /allocate.
+router.post('/sean-suggestions', authenticate, hasPermission('bank.view'), async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids : [];
+    const suggestions = await SeanBankAllocation.suggestForTransactions(supabase, req.user.companyId, ids, {
+      getApprovedGlobalPatterns: () => bankLearning.getPatterns({ status: 'approved' }),
+      normalizeForGlobal: bankLearning.normalizeDescription
+    });
+    res.json({ success: true, prefillMinConfidence: SeanBankAllocation.PREFILL_MIN_CONFIDENCE, suggestions });
+  } catch (err) {
+    console.error('[bank.sean-suggestions]', err.message);
+    res.status(500).json({ success: false, error: 'Sean could not prepare suggestions' });
+  }
+});
+
 router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
   try {
     const { lines, description, allocationType, appliedRuleId, payrollMatchKey } = req.body;
@@ -1329,7 +1347,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     // Get bank transaction with linked bank account ledger_account_id
     const { data: bankTxn, error: txnErr } = await supabase
       .from('bank_transactions')
-      .select('*, bank_accounts!bank_account_id(ledger_account_id, name)')
+      .select('*, bank_accounts!bank_account_id(ledger_account_id, name, bank_name)')
       .eq('id', req.params.id)
       .eq('company_id', req.user.companyId)
       .single();
@@ -1700,7 +1718,10 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
             companyId:            req.user.companyId,
             bankTransactionId:    bankTxn.id,
             importSource:         bankTxn.import_source || 'manual',
-            bankName:             bankTxn.bank_accounts?.name || null,
+            // The BANK's name (e.g. "ABSA") — never the bank account's own name,
+            // which is usually the client's company name and must not end up
+            // in the cross-client pattern table (bank-learning privacy rule).
+            bankName:             bankTxn.bank_accounts?.bank_name || null,
             rawDescription:       bankTxn.description,
             allocatedAccountId:   primaryLine.accountId,
             allocatedAccountCode: acct?.code || null,
