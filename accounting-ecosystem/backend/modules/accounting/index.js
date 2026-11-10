@@ -124,4 +124,7 @@ router.use('/pilot', require('./routes/pilotControls'));
 // Dashboard — Pilot Action Queue
 router.use('/dashboard', require('./routes/dashboard'));
 
+// Sean AI Chat widget — proxies to sean-webapp, super-admins only for now
+router.use('/sean-chat', require('./routes/sean-chat'));
+
 module.exports = router;
