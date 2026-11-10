@@ -81,6 +81,8 @@
             transition: all 0.2s; margin-bottom: -1px;
         }
         .tab-btn:hover { color: var(--text); }
+        .h-in { display:block; width:100%; margin-top:4px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font-family:inherit; font-size:0.85rem; }
+        #tabHelp label { font-size:0.78rem; color:var(--text-muted); }
         .tab-btn.active {
             color: #67e8f9; background: var(--surface);
             border-color: var(--border); border-bottom-color: var(--bg);
@@ -140,6 +142,7 @@
         td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
         tr:last-child td { border-bottom: none; }
         .empty-row td { text-align: center; color: var(--text-muted); padding: 24px; }
+        .empty-state { text-align: center; color: var(--text-muted); padding: 24px; font-size: 0.82rem; }
 
         .badge {
             display: inline-block; padding: 2px 8px; border-radius: 20px;
@@ -195,6 +198,45 @@
         <div class="tab-bar">
             <button class="tab-btn active" id="tabBtnIrp5" onclick="switchTab('irp5')">Paytime IRP5 Learning</button>
             <button class="tab-btn" id="tabBtnBank" onclick="switchTab('bank')">Bank Allocation Learning</button>
+            <button class="tab-btn" id="tabBtnHelp" onclick="switchTab('help')">Paytime Help (chatbot knowledge)</button>
+        </div>
+
+        <!-- SEVCO help knowledge (2026-11-10): what every app's chatbot answers from -->
+        <div id="tabHelp" class="tab-panel">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Questions to deal with</h2>
+                    <button class="btn" onclick="loadHelpQuestions()">Refresh</button>
+                </div>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">Questions the assistant had no article for, or that got a thumbs-down. Write an article, then mark it reviewed.</p>
+                <div id="helpQuestions">Loading…</div>
+            </div>
+            <div class="section">
+                <div class="section-header">
+                    <h2>Help articles</h2>
+                    <button class="btn btn-primary" onclick="editHelpArticle(null)">+ New article</button>
+                </div>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">Only <b>approved</b> articles answer questions. An edit of an approved article is a new draft until a super user approves it.</p>
+                <div id="helpArticles">Loading…</div>
+            </div>
+            <div class="section" id="helpEditor" style="display:none;">
+                <div class="section-header"><h2 id="helpEditorTitle">Article</h2></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <label>Slug (e.g. payslip/oortyd)<input id="hSlug" class="h-in"></label>
+                    <label>Search words (comma separated)<input id="hTags" class="h-in"></label>
+                    <label>Screen link (e.g. /payroll/employee-detail.html)<input id="hUrl" class="h-in"></label>
+                    <label>Screen name (e.g. Payslip page)<input id="hScreen" class="h-in"></label>
+                    <label>Afrikaans title<input id="hAfTitle" class="h-in"></label>
+                    <label>English title<input id="hEnTitle" class="h-in"></label>
+                    <label>Afrikaans — steps<textarea id="hAfBody" class="h-in" rows="9"></textarea></label>
+                    <label>English — steps<textarea id="hEnBody" class="h-in" rows="9"></textarea></label>
+                </div>
+                <div class="action-row" style="margin-top:10px;">
+                    <button class="btn btn-primary" onclick="saveHelpArticle()">Save as draft</button>
+                    <button class="btn" onclick="document.getElementById('helpEditor').style.display='none'">Cancel</button>
+                    <span id="helpEditorMsg" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                </div>
+            </div>
         </div>
 
         <div id="tabIrp5" class="tab-panel active">
@@ -530,10 +572,84 @@
 
         // ── Tabs ──
         function switchTab(name) {
-            document.getElementById('tabIrp5').classList.toggle('active', name === 'irp5');
-            document.getElementById('tabBank').classList.toggle('active', name === 'bank');
-            document.getElementById('tabBtnIrp5').classList.toggle('active', name === 'irp5');
-            document.getElementById('tabBtnBank').classList.toggle('active', name === 'bank');
+            ['irp5', 'bank', 'help'].forEach(t => {
+                const cap = t.charAt(0).toUpperCase() + t.slice(1);
+                document.getElementById('tab' + cap).classList.toggle('active', name === t);
+                document.getElementById('tabBtn' + cap).classList.toggle('active', name === t);
+            });
+            if (name === 'help') { loadHelpArticles(); loadHelpQuestions(); }
+        }
+
+        // ── Paytime Help — the chatbot's knowledge (SEVCO = the brain) ──
+        let helpArticles = [];
+        async function apiPut(path, body) {
+            const res = await fetch(`${API_BASE}${path}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body || {}) });
+            if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `Request failed (${res.status})`); }
+            return res.json();
+        }
+        async function loadHelpArticles() {
+            const box = document.getElementById('helpArticles');
+            try {
+                const data = await apiGet('/api/sevco/help/articles?app=paytime');
+                helpArticles = data.articles || [];
+                if (!helpArticles.length) { box.innerHTML = '<div class="empty-state">No articles yet.</div>'; return; }
+                box.innerHTML = '<table class="data-table"><thead><tr><th>Article</th><th>Screen</th><th>Status</th><th></th></tr></thead><tbody>' +
+                    helpArticles.map(a => `<tr>
+                        <td><b>${esc((a.af && a.af.title) || (a.en && a.en.title) || a.slug)}</b><br><span style="font-size:0.75rem;color:var(--text-muted);">${esc(a.slug)} · v${esc(a.version)} · ${a.af ? 'AF' : '—'} / ${a.en ? 'EN' : '—'}</span></td>
+                        <td style="font-size:0.8rem;">${esc(a.screen_name || '')}</td>
+                        <td><span class="badge ${a.status === 'APPROVED' ? 'badge-correct' : a.status === 'DRAFT' ? 'badge-missing' : 'badge-conflict'}">${esc(a.status)}</span></td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn" onclick="editHelpArticle('${esc(a.slug)}')">Edit</button>
+                            ${a.status === 'DRAFT' ? `<button class="btn btn-success" onclick="helpArticleAction('approve','${esc(a.slug)}')">Approve</button>` : ''}
+                            ${a.status !== 'ARCHIVED' ? `<button class="btn btn-danger" onclick="helpArticleAction('archive','${esc(a.slug)}')">Archive</button>` : ''}
+                        </td></tr>`).join('') + '</tbody></table>';
+            } catch (e) { box.innerHTML = `<div class="empty-state">Could not load: ${esc(e.message)}</div>`; }
+        }
+        function editHelpArticle(slug, fromQuestion) {
+            const a = slug ? helpArticles.find(x => x.slug === slug) : null;
+            const set = (id, v) => { document.getElementById(id).value = v || ''; };
+            set('hSlug', a ? a.slug : ''); set('hTags', a ? (a.tags || []).join(', ') : '');
+            set('hUrl', a ? a.screen_url : ''); set('hScreen', a ? a.screen_name : '');
+            set('hAfTitle', a && a.af ? a.af.title : (fromQuestion || '')); set('hAfBody', a && a.af ? a.af.body : '');
+            set('hEnTitle', a && a.en ? a.en.title : ''); set('hEnBody', a && a.en ? a.en.body : '');
+            document.getElementById('hSlug').disabled = !!a;
+            document.getElementById('helpEditorTitle').textContent = a ? 'Edit article' : 'New article';
+            document.getElementById('helpEditorMsg').textContent = '';
+            const ed = document.getElementById('helpEditor'); ed.style.display = ''; ed.scrollIntoView({ behavior: 'smooth' });
+        }
+        async function saveHelpArticle() {
+            const v = id => document.getElementById(id).value.trim();
+            const body = { app: 'paytime', slug: v('hSlug'), tags: v('hTags'), screen_url: v('hUrl'), screen_name: v('hScreen') };
+            if (v('hAfTitle') || v('hAfBody')) body.af = { title: v('hAfTitle'), body: v('hAfBody') };
+            if (v('hEnTitle') || v('hEnBody')) body.en = { title: v('hEnTitle'), body: v('hEnBody') };
+            try {
+                await apiPut('/api/sevco/help/articles', body);
+                document.getElementById('helpEditorMsg').textContent = 'Saved as draft — approve it to make it live.';
+                loadHelpArticles();
+            } catch (e) { document.getElementById('helpEditorMsg').textContent = 'Not saved: ' + e.message; }
+        }
+        async function helpArticleAction(action, slug) {
+            if (action === 'archive' && !confirm('Archive this article? The assistant will stop using it.')) return;
+            try { await apiPost('/api/sevco/help/articles/' + action, { app: 'paytime', slug }); loadHelpArticles(); }
+            catch (e) { alert(e.message); }
+        }
+        async function loadHelpQuestions() {
+            const box = document.getElementById('helpQuestions');
+            try {
+                const data = await apiGet('/api/sevco/help/questions?app=paytime&open=1');
+                const qs = data.questions || [];
+                if (!qs.length) { box.innerHTML = '<div class="empty-state">Nothing to deal with.</div>'; return; }
+                box.innerHTML = qs.map(q => `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:0.85rem;">
+                    <b>${esc(q.question)}</b> <span style="color:var(--text-muted);font-size:0.75rem;">${esc(q.language)} · ${esc(new Date(q.created_at).toLocaleString())} ·
+                    ${q.status === 'unmatched' ? 'no article' : '👎 ' + esc(q.feedback_note || '')}</span>
+                    <div class="action-row" style="margin-top:4px;">
+                        <button class="btn" onclick="editHelpArticle(null, ${JSON.stringify(q.question).replace(/"/g, '&quot;')})">Write article</button>
+                        <button class="btn" onclick="markHelpReviewed(${q.id})">Mark reviewed</button>
+                    </div></div>`).join('');
+            } catch (e) { box.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+        }
+        async function markHelpReviewed(id) {
+            try { await apiPost('/api/sevco/help/questions/' + id + '/reviewed'); loadHelpQuestions(); } catch (e) { alert(e.message); }
         }
 
         // ── Bank Allocation Learning ──

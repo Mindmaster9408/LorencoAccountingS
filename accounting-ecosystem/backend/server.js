@@ -237,6 +237,13 @@ app.get('/api/admin/reset-master', async (req, res) => {
 
 // ─── Shared Routes (always active) ──────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+// Local AI worker on Ruan's computer (Ollama) asks for work here — own token, no JWT;
+// answers 404 unless LOCAL_AI_WORKER_TOKEN is set. Slip Capture layer 3 (2026-11-10).
+app.use('/api/local-ai', require('./shared/routes/localAiWorker'));
+// SEVCO help chatbot (2026-11-10): /api/help for every app user, /api/sevco/help for super users.
+const sevcoHelp = require('./sean/help/routes');
+app.use('/api/help', authenticateToken, requireCompany, sevcoHelp.userRouter);
+app.use('/api/sevco/help', authenticateToken, sevcoHelp.adminRouter);
 // 2FA endpoints — dormant; no login flow change until TWO_FACTOR_AUTH_ENABLED=true
 app.use('/api/auth', twoFactorRoutes);
 app.use('/api/companies', authenticateToken, companiesRoutes);

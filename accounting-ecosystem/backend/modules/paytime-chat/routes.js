@@ -196,7 +196,7 @@ router.post('/parse', async (req, res) => {
       warnings.push('Kon nie \'n werknemer met daardie naam vind nie.');
     }
     if (recipe === 'ADJUST_SALARY' && employee) {
-      warnings.push(`Let wel: dit verander ${employee.first_name} se lopende salaris (nie net hierdie periode nie) — dieselfde gedrag as die normale Paytime-skerm.`);
+      warnings.push(`Let wel: dit verander ${employee.first_name} se salaris vanaf hierdie maand (ook die maande daarna) en word in die salarisgeskiedenis aangeteken.`);
     }
     if ((recipe === 'ADD_OVERTIME' || recipe === 'ADD_SHORT_TIME') && slots.hours === undefined) {
       warnings.push('Geen ure-getal in die versoek gevind nie.');
@@ -306,7 +306,21 @@ router.post('/execute', async (req, res) => {
       }];
       result = await callInternal(req, 'POST', '/api/payroll/transactions/inputs', { employee_id: employeeId, period_key: periodKey, inputs });
     } else if (recipe === 'ADJUST_SALARY') {
-      result = await callInternal(req, 'PUT', `/api/payroll/employees/${employeeId}/salary`, { basic_salary: slots.amount });
+      // Spec 03 WN-11: salary changes have an effective month + history. The chat uses the
+      // month being worked on; if that month is already finalized (= back pay), it refuses
+      // and sends the user to the salary screen, where the back pay is shown and confirmed.
+      const change = { effective_period: periodKey, basic_salary: slots.amount, reason: 'Sean chat (Paytime)' };
+      const preview = await callInternal(req, 'POST', `/api/payroll/employees/${employeeId}/salary-change`, Object.assign({ preview: true }, change));
+      if (preview.status === 409) {
+        // Salary history not set up yet — the old single-value save.
+        result = await callInternal(req, 'PUT', `/api/payroll/employees/${employeeId}/salary`, { basic_salary: slots.amount });
+      } else if (!preview.ok) {
+        result = preview;
+      } else if (preview.data.back_pay && preview.data.back_pay.amount !== 0) {
+        result = { ok: false, status: 422, data: { error: periodKey + ' is reeds gefinaliseer — gebruik die salaris-skerm op die werknemer se payslip-blad sodat jy die agterstallige betaling kan sien en bevestig.' } };
+      } else {
+        result = await callInternal(req, 'POST', `/api/payroll/employees/${employeeId}/salary-change`, change);
+      }
     }
 
     logRow.execution_result = { success: result.ok, status: result.status, response: result.data };
