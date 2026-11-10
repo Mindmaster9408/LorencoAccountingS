@@ -18,7 +18,7 @@
     // Images larger than this are downscaled before upload (phone photos are
     // often 3–8 MB). The longest edge stays large enough to read a till slip.
     var COMPRESS_OVER_BYTES = 1.5 * 1024 * 1024;
-    var MAX_EDGE_PX = 2400;
+    var MAX_EDGE_PX = 3000; // keeps small slip print readable for OCR
     var JPEG_QUALITY = 0.85;
 
     var state = {
@@ -257,9 +257,18 @@
                 subParts.push(s.slip_date ? fmtDate(s.slip_date) : 'Uploaded ' + fmtDate(s.created_at));
                 if (s.category) subParts.push(s.category);
                 if (s.uploaded_by_name) subParts.push(s.uploaded_by_name);
-                var amount = s.amount !== null && s.amount !== undefined
-                    ? '<div class="slip-amount">' + esc(fmtAmount(s.amount)) + '</div>'
-                    : '<div class="slip-amount missing">add details</div>';
+                var sugg = s.reading && s.reading.status === 'done' ? (s.reading.suggestion || {}) : {};
+                if (!s.supplier_name && sugg.supplier_name) title = sugg.supplier_name.value;
+                var amount;
+                if (s.amount !== null && s.amount !== undefined) {
+                    amount = '<div class="slip-amount">' + esc(fmtAmount(s.amount)) + '</div>';
+                } else if (sugg.amount) {
+                    amount = '<div class="slip-amount suggested">' + esc(fmtAmount(sugg.amount.value)) + '<small>tap to confirm</small></div>';
+                } else if (s.reading_status === 'pending') {
+                    amount = '<div class="slip-amount missing">reading…</div>';
+                } else {
+                    amount = '<div class="slip-amount missing">add details</div>';
+                }
                 return '<button type="button" class="slip-card' + (s.status === 'hidden' ? ' hidden-slip' : '') + '" data-id="' + s.id + '">' +
                     '<div class="slip-type">' + (isPdf ? '&#128196;' : '&#129534;') + '</div>' +
                     '<div class="slip-main"><div class="slip-title">' + esc(title) + '</div>' +
@@ -332,6 +341,38 @@
             return new File([blob], base + '.jpg', { type: 'image/jpeg', lastModified: Date.now() });
         } catch (e) {
             return file;
+        }
+    }
+
+    // Quick look at a fresh camera photo: too dark, or too blurry to read?
+    // Returns a message, or null when the photo looks fine (or can't be checked).
+    async function photoProblem(file) {
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return null;
+        try {
+            var img = await loadImage(file);
+            var w = 320, h = Math.max(1, Math.round(img.naturalHeight * (320 / img.naturalWidth)));
+            var c = document.createElement('canvas'); c.width = w; c.height = h;
+            var ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            var px = ctx.getImageData(0, 0, w, h).data;
+            var grey = new Float32Array(w * h);
+            for (var i = 0; i < w * h; i++) grey[i] = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+            // Judge the paper, not the table: a slip on a dark desk is fine as long
+            // as its brightest 3% (the paper, even when small in the photo) is bright.
+            var sorted = Array.prototype.slice.call(grey).sort(function (p, q) { return p - q; });
+            if (sorted[Math.floor(sorted.length * 0.97)] < 90) return 'This photo looks very dark.';
+            // Sharpness: variance of the Laplacian (low = blurry).
+            var lsum = 0, lsq = 0, n = 0;
+            for (var y = 1; y < h - 1; y++) for (var x = 1; x < w - 1; x++) {
+                var k = y * w + x;
+                var lap = grey[k - w] + grey[k + w] + grey[k - 1] + grey[k + 1] - 4 * grey[k];
+                lsum += lap; lsq += lap * lap; n++;
+            }
+            var variance = lsq / n - Math.pow(lsum / n, 2);
+            if (variance < 25) return 'This photo looks blurry.';
+            return null;
+        } catch (e) {
+            return null;
         }
     }
 
@@ -421,16 +462,22 @@
         state.current = slip;
         $('sheetTitle').textContent = slip.supplier_name || ('Slip #' + slip.id);
         var f = $('detailForm');
+        var money = function (v) { return v !== null && v !== undefined ? Number(v).toFixed(2) : ''; };
         f.slip_date.value = slip.slip_date || '';
-        f.amount.value = slip.amount !== null && slip.amount !== undefined ? Number(slip.amount).toFixed(2) : '';
+        f.amount.value = money(slip.amount);
+        f.vat_amount.value = money(slip.vat_amount);
+        f.supplier_vat_number.value = slip.supplier_vat_number || '';
         f.supplier_name.value = slip.supplier_name || '';
         f.category.value = slip.category || '';
         f.note.value = slip.note || '';
+        clearSuggestionMarks();
         $('hideBtn').textContent = slip.status === 'hidden' ? 'Restore' : 'Hide';
         $('hideBtn').className = slip.status === 'hidden' ? 'btn' : 'btn btn-danger';
         renderMeta(slip);
         $('sheetPreview').innerHTML = '<div class="muted small">Loading preview…</div>';
         $('sheet').hidden = false;
+
+        loadReading(slip, false);
 
         try {
             var data = await request(API + '/' + slip.id + '/file');
@@ -448,6 +495,118 @@
         } catch (e) {
             if (e.status !== 401) $('sheetPreview').innerHTML = '<div class="error-text">Could not load the file: ' + esc(e.message) + '</div>';
         }
+    }
+
+    // ── Reading suggestions ────────────────────────────────────────────────
+    // A reading is only a suggestion: it fills EMPTY fields the person hasn't
+    // typed in, marks how sure it is, and nothing is stored until Save.
+    var SUGGEST_FIELDS = ['slip_date', 'amount', 'vat_amount', 'supplier_name', 'supplier_vat_number', 'category'];
+
+    function clearSuggestionMarks() {
+        var f = $('detailForm');
+        SUGGEST_FIELDS.forEach(function (k) {
+            f[k].classList.remove('sugg-high', 'sugg-check');
+            delete f[k].dataset.touched;
+            delete f[k].dataset.suggested;
+            var hint = document.querySelector('[data-hint-for="' + k + '"]');
+            hint.textContent = ''; hint.className = 'field-hint';
+        });
+        $('readingBox').hidden = true;
+        $('readingBox').innerHTML = '';
+    }
+
+    async function loadReading(slip, force) {
+        var box = $('readingBox');
+        if (slip.reading_status === 'unsupported') return;
+        box.hidden = false;
+        box.innerHTML = '&#128269; Reading the slip…';
+        try {
+            var data = await request(API + '/' + slip.id + '/read' + (force ? '?force=1' : ''), { method: 'POST' });
+            if (state.current !== slip) return;
+            applyReading(slip, data.reading);
+        } catch (e) {
+            if (state.current !== slip || e.status === 401) return;
+            box.innerHTML = 'Could not read this slip: ' + esc(e.message);
+        }
+    }
+
+    function applyReading(slip, reading) {
+        var box = $('readingBox');
+        if (!reading || reading.status !== 'done') {
+            var why = { unavailable: 'Reading is not available on the server right now.', unsupported: 'This file type cannot be read yet.', failed: 'The slip could not be read.' };
+            box.innerHTML = esc(why[reading && reading.status] || 'The slip could not be read.') + ' Please type the details. ' +
+                '<button type="button" class="link-btn" id="rereadBtn">Try again</button>';
+            wireReread(slip);
+            return;
+        }
+        var f = $('detailForm');
+        var sugg = reading.suggestion || {};
+        var filled = 0;
+        SUGGEST_FIELDS.forEach(function (k) {
+            var s = sugg[k];
+            if (!s || f[k].dataset.touched || f[k].value) return;
+            f[k].value = (k === 'amount' || k === 'vat_amount') ? Number(s.value).toFixed(2) : s.value;
+            f[k].dataset.suggested = '1';
+            var sure = s.confidence === 'high';
+            f[k].classList.add(sure ? 'sugg-high' : 'sugg-check');
+            var hint = document.querySelector('[data-hint-for="' + k + '"]');
+            hint.textContent = (sure ? '✓ ' : '⚠ ') + s.reason + (/check/i.test(s.reason) ? '' : ' — check');
+            hint.className = 'field-hint ' + (sure ? 'high' : 'check');
+            filled++;
+        });
+        var checks = (reading.checks || []).map(function (c) {
+            return '<li class="' + (c.ok ? 'ok' : 'bad') + '">' + (c.ok ? '✓ ' : '⚠ ') + esc(c.message) + '</li>';
+        }).join('');
+        box.innerHTML = (filled
+            ? '&#128269; Read from the slip — <strong>please check</strong> and press Save.'
+            : (slip.amount !== null && slip.amount !== undefined ? '&#128269; Slip was read; your saved details are kept.' : '&#128269; Could not read much from this photo — please type the details.')) +
+            (checks ? '<ul class="checks">' + checks + '</ul>' : '') +
+            ' <button type="button" class="link-btn" id="rereadBtn">Read again</button>';
+        wireReread(slip);
+        watchAiReader(slip, reading);
+    }
+
+    // Layer 3 (2026-11-10): slips the server could not read with confidence go to the
+    // AI reader on the office computer (local model, nothing leaves our systems).
+    // While this sheet is open and that computer is online, pick up its answer.
+    var AI_POLL_MS = 15000, AI_POLL_MAX = 24;
+    async function watchAiReader(slip, reading, tries) {
+        tries = tries || 0;
+        if (!reading || reading.engine === 'local-ai' || !reading.needs_review) return;
+        var info;
+        try { info = await request(API + '/' + slip.id + '/reading'); } catch (e) { return; }
+        if (state.current !== slip || !info || !info.ai_reader) return;
+        if (info.reading && info.reading.engine === 'local-ai') {
+            var f = $('detailForm');
+            SUGGEST_FIELDS.forEach(function (k) { if (f[k].dataset.suggested && !f[k].dataset.touched) f[k].value = ''; });
+            clearSuggestionMarks();
+            applyReading(slip, info.reading);
+            return;
+        }
+        var job = info.ai_reader.job;
+        if (!job || (job.status !== 'queued' && job.status !== 'claimed')) return;
+        var box = $('readingBox');
+        var note = box.querySelector('.ai-note') || box.appendChild(document.createElement('div'));
+        note.className = 'ai-note field-hint check';
+        note.textContent = info.ai_reader.online
+            ? '🤖 The AI reader is also reading this slip — this can take a minute or two.'
+            : '🤖 Waiting for the AI reader (the office computer is offline) — it will read this slip when it is back.';
+        if (info.ai_reader.online && tries < AI_POLL_MAX) {
+            setTimeout(function () { if (state.current === slip) watchAiReader(slip, reading, tries + 1); }, AI_POLL_MS);
+        }
+    }
+
+    function wireReread(slip) {
+        var b = $('rereadBtn');
+        if (b) b.addEventListener('click', function () {
+            // Only replace values that came from a reading, never typed ones.
+            var f = $('detailForm');
+            SUGGEST_FIELDS.forEach(function (k) {
+                if (f[k].dataset.suggested && !f[k].dataset.touched) { f[k].value = ''; }
+            });
+            clearSuggestionMarks();
+            loadReading(slip, true);
+        });
     }
 
     function renderMeta(slip) {
@@ -477,6 +636,8 @@
                 json: {
                     slip_date: f.slip_date.value,
                     amount: f.amount.value,
+                    vat_amount: f.vat_amount.value,
+                    supplier_vat_number: f.supplier_vat_number.value,
                     supplier_name: f.supplier_name.value,
                     category: f.category.value,
                     note: f.note.value
@@ -553,7 +714,27 @@
             }
         });
 
-        $('cameraInput').addEventListener('change', function (ev) { queueFiles(ev.target.files); ev.target.value = ''; });
+        $('cameraInput').addEventListener('change', async function (ev) {
+            var files = Array.prototype.slice.call(ev.target.files || []);
+            ev.target.value = '';
+            if (!files.length) return;
+            // Always upload straight away — even a photo nobody can read is kept
+            // (Ruan, 2026-11-10). The quality check only adds a gentle note.
+            queueFiles(files);
+            var problem = await photoProblem(files[0]);
+            if (problem) toast(problem + ' It is saved — another photo may read better.');
+        });
+
+        // A field the person types in is theirs: drop the "suggested" marking.
+        SUGGEST_FIELDS.forEach(function (k) {
+            $('detailForm')[k].addEventListener('input', function (ev) {
+                var el = ev.target;
+                el.dataset.touched = '1';
+                el.classList.remove('sugg-high', 'sugg-check');
+                var hint = document.querySelector('[data-hint-for="' + k + '"]');
+                hint.textContent = ''; hint.className = 'field-hint';
+            });
+        });
         $('fileInput').addEventListener('change', function (ev) { queueFiles(ev.target.files); ev.target.value = ''; });
 
         $('searchInput').addEventListener('input', debounce(function () {

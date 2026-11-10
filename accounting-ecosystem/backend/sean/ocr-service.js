@@ -213,6 +213,69 @@ async function extractTextFromScannedPdf(pdfBuffer, options = {}) {
 }
 
 /**
+ * Like extractTextFromImage, but caller-controlled page segmentation and
+ * extra tesseract options, and it also returns tesseract's own mean word
+ * confidence (0–100) so callers can compare several OCR passes.
+ * Additive (2026-11-05, Slip Capture) — existing functions are unchanged.
+ *
+ * @param {Buffer}   imageBuffer
+ * @param {object}   [options]
+ * @param {string[]} [options.langs]      - default ['eng']
+ * @param {number}   [options.psm]        - default 4 (single column — receipts)
+ * @param {string}   [options.ext]        - temp file extension, default '.png'
+ * @param {Object<string,string>} [options.config] - extra `-c key=value` settings
+ * @returns {Promise<{ text: string, confidence: number|null, wordCount: number, method: string, success: true }>}
+ */
+async function extractTextFromImageDetailed(imageBuffer, options = {}) {
+  if (!HAS_TESSERACT) {
+    throw new Error('OCR unavailable: tesseract is not installed on this server.');
+  }
+  const langs = options.langs || ['eng'];
+  const psm   = options.psm ?? 4;
+  const tmp   = _writeTmp(options.ext || '.png', imageBuffer);
+  const outBase = path.join(os.tmpdir(), `ocr-out-${crypto.randomUUID()}`);
+  const cfgArgs = [];
+  for (const [k, v] of Object.entries(options.config || {})) cfgArgs.push('-c', `${k}=${v}`);
+  try {
+    // "txt tsv" config files: one run writes both the text and per-word confidences.
+    try {
+      await execFileAsync('tesseract', [
+        tmp, outBase, '-l', langs.join('+'), '--oem', '3', '--psm', String(psm), ...cfgArgs, 'txt', 'tsv',
+      ], { timeout: 60000 });
+    } catch (err) {
+      // Some installs lack the tsv config: fall back to plain text, confidence unknown.
+      const text = await _tesseract(tmp, langs, psm);
+      return { text, confidence: null, wordCount: 0, method: 'ocr-image', success: true };
+    }
+    const text = fs.readFileSync(outBase + '.txt', 'utf8').trim();
+    let sum = 0;
+    let wordCount = 0;
+    try {
+      const rows = fs.readFileSync(outBase + '.tsv', 'utf8').split('\n').slice(1);
+      for (const row of rows) {
+        const cols = row.split('\t');
+        // level 5 = word; col 10 = conf; col 11 = text
+        if (cols[0] === '5' && (cols[11] || '').trim()) {
+          const conf = parseFloat(cols[10]);
+          if (conf >= 0) { sum += conf; wordCount++; }
+        }
+      }
+    } catch (_) { /* tsv missing → confidence unknown */ }
+    return {
+      text,
+      confidence: wordCount ? Math.round((sum / wordCount) * 100) / 100 : null,
+      wordCount,
+      method: 'ocr-image',
+      success: true,
+    };
+  } finally {
+    for (const f of [tmp, outBase + '.txt', outBase + '.tsv']) {
+      try { fs.unlinkSync(f); } catch (_) { /* ignore */ }
+    }
+  }
+}
+
+/**
  * Auto-detect file type and extract text.
  * Routes image MIME types to extractTextFromImage,
  * PDFs to extractTextFromScannedPdf.
@@ -256,6 +319,7 @@ function isAvailable() {
 module.exports = {
   extractText,
   extractTextFromImage,
+  extractTextFromImageDetailed,
   extractTextFromScannedPdf,
   isAvailable,
   SUPPORTED_IMAGE_MIMES: [...IMAGE_MIMES],

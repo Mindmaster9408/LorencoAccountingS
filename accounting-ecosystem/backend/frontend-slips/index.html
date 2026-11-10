@@ -73,7 +73,8 @@
                     <span>Upload file</span>
                 </label>
             </div>
-            <p class="muted small center">Slips go straight to secure online storage. Nothing is kept on this phone.</p>
+            <p class="muted small center">Tip: lay the slip flat, in good light, and fill the photo with it — then it can be read for you.<br>
+                Slips go straight to secure online storage. Nothing is kept on this phone.</p>
 
             <div id="uploadQueue" class="upload-queue"></div>
 
@@ -99,20 +100,35 @@
                 <button class="btn btn-sm" id="sheetClose" type="button">Close</button>
             </div>
             <div id="sheetPreview" class="preview"></div>
+            <div id="readingBox" class="reading-box" hidden></div>
             <form id="detailForm">
                 <div class="grid-2">
                     <label>Date on slip
                         <input name="slip_date" type="date">
+                        <span class="field-hint" data-hint-for="slip_date"></span>
                     </label>
-                    <label>Amount
+                    <label>Total amount
                         <input name="amount" type="text" inputmode="decimal" placeholder="0.00">
+                        <span class="field-hint" data-hint-for="amount"></span>
                     </label>
                 </div>
                 <label>Supplier
                     <input name="supplier_name" type="text" maxlength="200" list="supplierSuggestions">
+                    <span class="field-hint" data-hint-for="supplier_name"></span>
                 </label>
+                <div class="grid-2">
+                    <label>VAT amount
+                        <input name="vat_amount" type="text" inputmode="decimal" placeholder="0.00">
+                        <span class="field-hint" data-hint-for="vat_amount"></span>
+                    </label>
+                    <label>Supplier VAT no.
+                        <input name="supplier_vat_number" type="text" maxlength="30" autocapitalize="characters">
+                        <span class="field-hint" data-hint-for="supplier_vat_number"></span>
+                    </label>
+                </div>
                 <label>Category
                     <input name="category" type="text" maxlength="100" list="categorySuggestions">
+                    <span class="field-hint" data-hint-for="category"></span>
                 </label>
                 <label>Note
                     <textarea name="note" rows="2" maxlength="2000"></textarea>

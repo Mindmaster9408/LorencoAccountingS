@@ -30,6 +30,8 @@ const multer = require('multer');
 const { supabase } = require('../../../config/database');
 const { auditFromReq } = require('../../../middleware/audit');
 const { sha256Hex, uploadSlipFile, getSignedDownloadUrl } = require('../services/storageService');
+const readings = require('../services/readingService');
+const supplierMemory = require('../services/supplierMemory');
 
 const router = express.Router();
 
@@ -103,19 +105,27 @@ function parseDetails(body) {
     }
   }
 
-  if (b.amount !== undefined) {
-    if (b.amount === '' || b.amount === null) {
-      values.amount = null;
-    } else {
-      // Accepts "1234.50", "1 234,50", "1,234.50" and "R 1 234.50".
-      let s = String(b.amount).replace(/[\s ]/g, '').replace(/^[^\d\-.,]+/, '');
-      s = s.includes('.') ? s.replace(/,/g, '') : s.replace(',', '.');
-      const n = /^-?(\d+\.?\d*|\.\d+)$/.test(s) ? Number(s) : NaN;
-      if (!Number.isFinite(n) || Math.abs(n) >= 1e12) {
-        return { error: 'amount must be a number.' };
-      }
-      values.amount = Math.round(n * 100) / 100;
+  for (const key of ['amount', 'vat_amount']) {
+    if (b[key] === undefined) continue;
+    if (b[key] === '' || b[key] === null) {
+      values[key] = null;
+      continue;
     }
+    // Accepts "1234.50", "1 234,50", "1,234.50" and "R 1 234.50".
+    let s = String(b[key]).replace(/[\s\u00a0]/g, '').replace(/^[^\d\-.,]+/, '');
+    s = s.includes('.') ? s.replace(/,/g, '') : s.replace(',', '.');
+    const n = /^-?(\d+\.?\d*|\.\d+)$/.test(s) ? Number(s) : NaN;
+    if (!Number.isFinite(n) || Math.abs(n) >= 1e12) {
+      return { error: `${key} must be a number.` };
+    }
+    values[key] = Math.round(n * 100) / 100;
+  }
+
+  if (b.supplier_vat_number !== undefined) {
+    // Free format (separable/international app); ZA numbers are 10 digits starting with 4.
+    const v = b.supplier_vat_number === null ? '' : String(b.supplier_vat_number).toUpperCase().replace(/\s/g, '');
+    if (v && !/^[A-Z0-9-]{4,30}$/.test(v)) return { error: 'supplier_vat_number may only contain letters, digits and dashes (4–30).' };
+    values.supplier_vat_number = v || null;
   }
 
   const textFields = { supplier_name: 200, category: 100, note: 2000 };
@@ -187,7 +197,14 @@ router.get('/', async (req, res) => {
   const { data, error, count } = await q;
   if (error) return res.status(500).json({ error: error.message });
 
-  res.json({ slips: await attachUploaderNames(data || []), total: count || 0, limit, offset });
+  // Latest machine reading per slip, so the list can show "suggested" values.
+  const latest = await readings.latestReadingsFor(req.companyId, (data || []).map(s => s.id));
+  const withReadings = (data || []).map(s => {
+    const r = latest.get(s.id);
+    return r ? { ...s, reading: { status: r.status, needs_review: r.needs_review, suggestion: r.suggestion } } : s;
+  });
+
+  res.json({ slips: await attachUploaderNames(withReadings), total: count || 0, limit, offset });
 });
 
 router.post('/upload', (req, res, next) => {
@@ -248,6 +265,7 @@ router.post('/upload', (req, res, next) => {
     storage_path: stored.storagePath,
     ...parsed.values,
     retain_until: computeRetainUntil(today, parsed.values.slip_date || null),
+    reading_status: readings.isReadable(file.mimetype) ? 'pending' : 'unsupported',
   };
 
   const { data: slip, error } = await supabase.from('slips').insert(row).select().single();
@@ -265,6 +283,46 @@ router.post('/upload', (req, res, next) => {
 
   const [withName] = await attachUploaderNames([slip]);
   res.status(201).json({ slip: withName });
+
+  // Read the slip in the background (the phone doesn't wait for OCR).
+  // The buffer is already in memory, so no download is needed.
+  if (slip.reading_status === 'pending') {
+    readings.scheduleRead(slip, file.buffer).catch(() => { /* logged + status=failed inside */ });
+  }
+});
+
+// Latest machine reading for a slip (null if none yet).
+router.get('/:id/reading', async (req, res) => {
+  const slip = await loadSlip(req, res);
+  if (!slip) return;
+  const localAi = require('../../../shared/services/localAiQueue');
+  const [reading, aiJob, ai] = await Promise.all([
+    readings.latestReading(req.companyId, slip.id), localAi.latestJob('slip_read', slip.id), localAi.status()
+  ]);
+  res.json({ reading, reading_status: slip.reading_status,
+             ai_reader: ai.enabled ? { online: ai.online, job: aiJob ? { status: aiJob.status } : null } : null });
+});
+
+// Read the slip now — or join a read already running, or return the latest
+// reading. ?force=1 reads again (e.g. after the reader was improved).
+router.post('/:id/read', async (req, res) => {
+  const slip = await loadSlip(req, res);
+  if (!slip) return;
+  if (!readings.isReadable(slip.content_type)) {
+    return res.json({ reading: null, reading_status: 'unsupported' });
+  }
+  try {
+    const force = req.query.force === '1';
+    if (!force && !readings.isInflight(slip.id)) {
+      const existing = await readings.latestReading(req.companyId, slip.id);
+      if (existing) return res.json({ reading: existing, reading_status: existing.status });
+    }
+    const reading = await readings.scheduleRead(slip);
+    if (force) await auditFromReq(req, 'READ', 'slip', slip.id, { module: 'slips', metadata: { reading_id: reading.id } });
+    res.json({ reading, reading_status: reading.status });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not read the slip: ' + err.message });
+  }
 });
 
 router.get('/:id', async (req, res) => {
@@ -285,7 +343,7 @@ router.patch('/:id', async (req, res) => {
 
   const changes = {};
   for (const [k, v] of Object.entries(values)) {
-    const old = slip[k] === null || slip[k] === undefined ? null : (k === 'amount' ? Number(slip[k]) : slip[k]);
+    const old = slip[k] === null || slip[k] === undefined ? null : (k === 'amount' || k === 'vat_amount' ? Number(slip[k]) : slip[k]);
     if (old !== v) changes[k] = { old, new: v };
   }
   if (!Object.keys(changes).length) {
@@ -306,6 +364,18 @@ router.patch('/:id', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   await auditFromReq(req, 'UPDATE', 'slip', slip.id, { module: 'slips', metadata: { changes } });
+
+  // Layer 1 learns ONLY from what a person saved. Also remember the name as
+  // the slip printed it, so the same slip is recognised next time.
+  if (updated.supplier_name) {
+    await supplierMemory.learn(req.companyId, updated);
+    const reading = await readings.latestReading(req.companyId, slip.id);
+    const printed = reading && reading.suggestion && reading.suggestion.supplier_name;
+    if (printed && printed.source === 'ocr'
+      && supplierMemory.nameKey(printed.value) !== supplierMemory.nameKey(updated.supplier_name)) {
+      await supplierMemory.learn(req.companyId, updated, printed.value);
+    }
+  }
 
   const [withName] = await attachUploaderNames([updated]);
   res.json({ slip: withName });

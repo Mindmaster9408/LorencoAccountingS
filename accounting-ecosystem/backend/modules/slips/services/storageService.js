@@ -52,9 +52,18 @@ async function getSignedDownloadUrl(storagePath, expiresInSeconds = 600) {
   return result.url;
 }
 
+// Server-side read of the stored original (e.g. to re-read a slip later).
+async function downloadSlipFile(storagePath) {
+  const { supabase } = require('../../../config/database');
+  const { data, error } = await supabase.storage.from(BUCKET_NAME).download(storagePath);
+  if (error || !data) throw new Error((error && error.message) || 'Download failed');
+  return Buffer.from(await data.arrayBuffer());
+}
+
 module.exports = {
   BUCKET_NAME,
   sha256Hex,
   uploadSlipFile,
   getSignedDownloadUrl,
+  downloadSlipFile,
 };

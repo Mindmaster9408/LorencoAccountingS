@@ -1,6 +1,6 @@
 # Slip Capture App — Concept (Dext/Hubdoc-style)
 
-> Status: **Phase 1 built 2026-10-19 (not yet live)** — see SESSION_HANDOFF_2026-10-19.md.
+> Status: **Phase 1 live since 2026-10-19.** Phase 3 layers 1+2 (supplier memory + Tesseract) built 2026-11-05; layer 3 (external AI) deliberately blocked. See SESSION_HANDOFF_2026-10-19.md and SESSION_HANDOFF_2026-11-05.md.
 > Working name: TBD (follows the Leo / Charlie / Stockton naming style). Internal key: `slips` (proposed).
 > Reference products: Dext (formerly Receipt Bank) and Hubdoc (part of Xero).
 
@@ -67,9 +67,28 @@ Data extraction by OCR or AI, and integrations with other accounting systems, co
 - Attach a slip to a bank transaction or supplier invoice in Leo.
 - In Leo, show "proof attached / proof missing" on transactions.
 
-### Phase 3 — Extraction (optional, needs a decision)
-- Read date, amount, VAT and supplier off the slip, **as a draft only**, which the user confirms.
-- **Open decision:** external AI or cloud OCR (accurate) vs Tesseract (free, but weak on till slips). Conflicts with the "Sean uses no external LLM" intent. Ruan's call.
+### Phase 3 — Extraction (reading the slip), in layers
+A reading is always a **suggestion only**: it fills empty fields, marks how sure it is, and the person confirms and saves. What the machine proposed is kept append-only in `slip_readings`.
+
+| Layer | What | Status |
+|---|---|---|
+| 1. Supplier memory | Per company. Learned only from details a person saved. Recognises a supplier by VAT number (high confidence) or by the name printed on the slip (medium). Fills supplier and category. Never shared across companies (that would need Sean's Part B approval flow). | **Built 2026-11-05** |
+| 2. Tesseract (own server) | The photo is cleaned first (EXIF rotate, greyscale, crop to the slip, scale, contrast). Several OCR passes run, and the best scoring one wins. A slip-specific parser reads TOTAL, payment (cash/card/change), VAT, VAT number, date (SA order, Afrikaans months) and supplier, with self-checks (does VAT = 15% of total? does the payment match?). | **Built 2026-11-05** |
+| 3. External AI (e.g. Claude) | Only for readings where `needs_review` is true; per-company opt-in; monthly cap; audit of which layer read what. | **Blocked.** Ruan's decision on 2026-11-05: not until there is a key and approval. Not built, not stubbed. |
+
+Measured on 20 fictional slip photos (good / skewed / dim / far), field accuracy compared with the old approach (raw photo straight into Tesseract):
+
+| Field | Old | New |
+|---|---|---|
+| Total | 17/20 | 20/20 |
+| VAT | 6/20 | 17/20 |
+| Date | 8/20 | 19/20 |
+| VAT number | 12/20 | 17/20 |
+| Supplier | 20/20 | 20/20 |
+
+Fictional, computer-generated photos are easier than real crumpled thermal slips. **The real-slip accuracy still has to be measured on 20–30 of Ruan's own slips.**
+
+The app also checks a camera photo before upload: a photo that is too dark or blurry gets an "upload anyway / take it again" prompt.
 
 ### Phase 4 — Standalone + external integrations
 - Its own sign-up for users who are not Eco clients (ties into the user profile/invite model idea of 2026-10-01).

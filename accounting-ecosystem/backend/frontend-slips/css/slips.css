@@ -150,6 +150,24 @@ input[type="date"] { color-scheme: dark; }
 .sheet-actions { display: flex; gap: 8px; justify-content: space-between; margin-top: 4px; }
 .meta { margin-top: 16px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.7; word-break: break-all; }
 
+/* Reading suggestions */
+.reading-box {
+    margin: -4px 0 14px; padding: 10px 12px; border-radius: 10px;
+    background: rgba(45,212,191,0.08); border: 1px solid rgba(45,212,191,0.3); font-size: 0.82rem;
+}
+.reading-box .checks { margin: 6px 0 0; padding: 0; list-style: none; }
+.reading-box .checks li { margin: 2px 0; }
+.reading-box .ok { color: var(--success); }
+.reading-box .bad { color: var(--warn); }
+.reading-box .link-btn { background: none; border: none; color: var(--accent); padding: 0; font: inherit; text-decoration: underline; cursor: pointer; }
+.field-hint { display: block; min-height: 0; font-size: 0.72rem; margin-top: 3px; }
+input.sugg-high { border-color: rgba(74,222,128,0.7); }
+input.sugg-check { border-color: rgba(250,204,21,0.8); }
+.field-hint.high { color: var(--success); }
+.field-hint.check { color: var(--warn); }
+.slip-amount.suggested { color: var(--text-muted); font-weight: 600; }
+.slip-amount.suggested small { display: block; font-size: 0.68rem; color: var(--warn); font-weight: 500; text-align: right; }
+
 /* Toast */
 .toast {
     position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(150%);
