@@ -34,3 +34,12 @@ uploads/
 
 # Coverage
 coverage/
+
+# Local AI worker secrets/logs (2026-11-10)
+local-ai-worker/config.env
+local-ai-worker/worker.log*
+# Never commit real client exports / local OCR data / scratch (2026-11-10)
+accounting-ecosystem/backend/scripts/data/
+accounting-ecosystem/backend/eng.traineddata
+accounting-ecosystem/backend/accounting-ecosystem/
+_temp_fix.txt
