@@ -1008,7 +1008,7 @@
     }
 
     function formatCurrency(amount) {
-      return 'R ' + (parseFloat(amount) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return (window.CURRENCY_SYMBOL || 'R') + ' ' + (parseFloat(amount) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
     function formatDate(dateStr) {

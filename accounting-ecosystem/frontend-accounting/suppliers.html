@@ -1994,7 +1994,7 @@ function closeModal(id) {
 
 function fmtR(n) {
   const v = parseFloat(n) || 0;
-  return 'R\u00a0' + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (window.CURRENCY_SYMBOL || 'R') + '\u00a0' + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 function fmtDate(d) {

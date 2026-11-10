@@ -173,10 +173,20 @@ function createNavigation() {
       <div class="nav-item ${currentPage.includes('paye') || currentPage.includes('vat') ? 'active' : ''}">
         <a href="#">Tax</a>
         <div class="dropdown">
-          <div class="dropdown-header">PAYE</div>
-          <a href="/accounting/paye.html">PAYE Overview</a>
-          <a href="/accounting/paye-reconciliation.html">PAYE Reconciliation</a>
-          <a href="/accounting/paye-config.html">PAYE Configuration</a>
+          <!-- payeNavGroup: hidden for UK companies (applyJurisdictionToNav
+               below) — PAYE Reconciliation specifically is built around SA's
+               EMP201/EMP501 SARS forms (payeReconciliationService.js), which
+               have no UK equivalent; PAYE Overview/Configuration hidden
+               alongside it rather than left as two orphaned, SA-shaped links
+               with no way to reconcile them. UK's own PAYE/NI reconciliation
+               (HMRC RTI/FPS-based) is a real, separate feature to build
+               later — not represented by hiding this, just not built yet. -->
+          <span id="payeNavGroup">
+            <div class="dropdown-header">PAYE</div>
+            <a href="/accounting/paye.html">PAYE Overview</a>
+            <a href="/accounting/paye-reconciliation.html">PAYE Reconciliation</a>
+            <a href="/accounting/paye-config.html">PAYE Configuration</a>
+          </span>
           <div class="dropdown-header">VAT</div>
           <a href="/accounting/vat.html">VAT Reports</a>
         </div>
@@ -721,6 +731,29 @@ function addNavigationStyles() {
   document.head.insertAdjacentHTML('beforeend', styles);
 }
 
+// International rollout (2026-09-13) — set before the async company fetch
+// below even starts, so any page's own currency-formatting function that
+// runs before that fetch resolves still gets today's exact South African
+// behaviour instead of `undefined`. Overwritten with the real per-company
+// values once GET /api/accounting/company/:id resolves (see the fetch
+// inside initializeNavigation() below).
+window.CURRENCY_SYMBOL = window.CURRENCY_SYMBOL || 'R';
+window.CURRENCY_CODE   = window.CURRENCY_CODE   || 'ZAR';
+window.TAX_LABEL       = window.TAX_LABEL       || 'VAT';
+window.TAX_AUTHORITY   = window.TAX_AUTHORITY   || 'SARS';
+window.JURISDICTION    = window.JURISDICTION    || 'ZA';
+window.APP_LOCALE      = window.APP_LOCALE      || 'en-ZA';
+
+// Hides the PAYE nav group (Overview/Reconciliation/Configuration) for a UK
+// company — see the payeNavGroup comment above in createNavigation() for
+// why. Called once the real jurisdiction is known; does nothing (leaves
+// PAYE visible) for every jurisdiction except UK, so this is a no-op for
+// every existing South African company regardless of when/whether it runs.
+function applyJurisdictionToNav(jurisdiction) {
+  const payeGroup = document.getElementById('payeNavGroup');
+  if (payeGroup) payeGroup.style.display = jurisdiction === 'UK' ? 'none' : '';
+}
+
 function initializeNavigation() {
   // Get user info from localStorage — try ECO SSO user first, then Lorenco user
   let user = {};
@@ -786,6 +819,26 @@ function initializeNavigation() {
             if (d && d.name) {
               companyNameEl.textContent = d.name;
               localStorage.setItem('accounting_company_name', d.name);
+            }
+            // International rollout (2026-09-13) — same response already
+            // carries currency_symbol/tax_label/tax_authority/jurisdiction
+            // (see company.js's buildDisplayConfig() merge). Exposed as
+            // globals here, once, since navigation.js already runs on every
+            // accounting page — each page's own currency-formatting
+            // function reads these instead of hardcoding 'R'/'VAT'/'SARS'.
+            // Defaults below (set before this fetch even starts, further
+            // down in this file) match today's exact South African
+            // behaviour, so a slow/failed fetch changes nothing for any
+            // existing company.
+            if (d) {
+              if (d.currency_symbol) window.CURRENCY_SYMBOL = d.currency_symbol;
+              if (d.currency_code)   window.CURRENCY_CODE   = d.currency_code;
+              if (d.tax_label)       window.TAX_LABEL       = d.tax_label;
+              if (d.tax_authority)   window.TAX_AUTHORITY   = d.tax_authority;
+              if (d.jurisdiction)    window.JURISDICTION    = d.jurisdiction;
+              if (d.locale)          window.APP_LOCALE      = d.locale;
+              document.dispatchEvent(new CustomEvent('eco:display-config-ready', { detail: d }));
+              applyJurisdictionToNav(d.jurisdiction);
             }
           }).catch(() => {});
         }

@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../../../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
+const { buildDisplayConfig } = require('../../../shared/services/jurisdiction');
 
 // ── field mapping helpers ─────────────────────────────────────────────────────
 
@@ -39,6 +40,15 @@ function mapCompanyRow(row) {
     coidNumber:      row.coid_reference_number,
     yearEnd:         row.financial_year_end,
     vatPeriod:       row.vat_period,
+    // International rollout (2026-09-13) — jurisdiction/currency_code live on
+    // this same companies row since migration 167 (shared with POS/Inventory).
+    // Raw values here for anything that wants them directly; GET /:id below
+    // also merges the full buildDisplayConfig() bundle (symbol/tax label/tax
+    // authority/locale) since navigation.js already fetches this route on
+    // every accounting page — one shared place to derive currency/tax display
+    // from, not a second per-page fetch.
+    jurisdiction:    row.jurisdiction,
+    currencyCode:    row.currency_code,
     physicalAddress: row.physical_address,
     city:            row.city,
     postalCode:      row.postal_code,
@@ -139,7 +149,11 @@ router.get('/:id', authenticate, async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Company not found' });
 
-    res.json(mapCompanyRow(data));
+    // Top-level merge (not nested) — navigation.js's existing fetch already
+    // reads d.name directly off this response; every accounting page can now
+    // also read d.currency_symbol/d.tax_label/d.tax_authority/d.jurisdiction
+    // from the exact same call, no second round-trip.
+    res.json({ ...mapCompanyRow(data), ...buildDisplayConfig(data) });
   } catch (err) {
     console.error('[Accounting] Get company details error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company details', detail: err.message });

@@ -1,5 +1,6 @@
 const { supabase } = require('../../../config/database');
 const { generatePeriods, derivePeriodForDate } = require('./vatPeriodUtils');
+const { getDefaultVatFrequency } = require('../../../shared/services/jurisdiction');
 
 /**
  * VAT Reconciliation Service
@@ -664,14 +665,16 @@ class VATReconciliationService {
         // Fetch company VAT settings
         const { data: company, error: coErr } = await supabase
             .from('companies')
-            .select('vat_period, vat_cycle_type, is_vat_registered, vat_registered_date')
+            .select('vat_period, vat_cycle_type, is_vat_registered, vat_registered_date, jurisdiction')
             .eq('id', companyId)
             .single();
 
         if (coErr || !company) throw new Error('Company not found');
         if (!company.is_vat_registered) throw new Error('Company is not VAT registered');
 
-        const filingFrequency = company.vat_period       || 'bi-monthly';
+        // 2026-09-13 UK rollout — see the identical fallback fix in
+        // journalService.js for why this can no longer just be 'bi-monthly'.
+        const filingFrequency = company.vat_period       || getDefaultVatFrequency(company.jurisdiction);
         const vatCycleType    = company.vat_cycle_type    || 'even';
         const effectiveFrom   = fromDateStr || company.vat_registered_date || '2020-01-01';
         const effectiveTo     = toDateStr   || new Date().toISOString().split('T')[0];
@@ -774,13 +777,15 @@ class VATReconciliationService {
     async getCurrentOpenPeriod(companyId) {
         const { data: company } = await supabase
             .from('companies')
-            .select('vat_period, vat_cycle_type, is_vat_registered')
+            .select('vat_period, vat_cycle_type, is_vat_registered, jurisdiction')
             .eq('id', companyId)
             .single();
 
         if (!company || !company.is_vat_registered) return null;
 
-        const filingFrequency = company.vat_period    || 'bi-monthly';
+        // 2026-09-13 UK rollout — see the identical fallback fix in
+        // journalService.js for why this can no longer just be 'bi-monthly'.
+        const filingFrequency = company.vat_period    || getDefaultVatFrequency(company.jurisdiction);
         const vatCycleType    = company.vat_cycle_type || 'even';
 
         // Find most recent open period

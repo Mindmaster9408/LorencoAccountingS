@@ -1,6 +1,7 @@
 const { supabase } = require('../../../config/database');
 const db = require('../config/database'); // direct pg Pool — used for atomic write transactions
 const { derivePeriodForDate, isVatJournal, getVatAmountsFromLines } = require('./vatPeriodUtils');
+const { getDefaultVatFrequency } = require('../../../shared/services/jurisdiction');
 
 /**
  * Journal Service
@@ -449,7 +450,7 @@ class JournalService {
     // Load company VAT settings — error out explicitly rather than defaulting silently
     const { data: company, error: companyErr } = await supabase
       .from('companies')
-      .select('vat_period, vat_cycle_type, is_vat_registered')
+      .select('vat_period, vat_cycle_type, is_vat_registered, jurisdiction')
       .eq('id', companyId)
       .single();
 
@@ -461,7 +462,11 @@ class JournalService {
     }
     if (!company.is_vat_registered) return null; // Not VAT-registered — skip
 
-    const filingFrequency = company.vat_period    || 'bi-monthly';
+    // 2026-09-13 UK rollout: fallback was always 'bi-monthly' (SA's
+    // convention) regardless of the company's actual jurisdiction — a UK
+    // company that had never explicitly set vat_period would silently get
+    // South Africa's filing cycle instead of UK's quarterly default.
+    const filingFrequency = company.vat_period    || getDefaultVatFrequency(company.jurisdiction);
     const vatCycleType    = company.vat_cycle_type || 'even';
 
     // Derive the correct period using the existing pure-function utilities (unchanged)

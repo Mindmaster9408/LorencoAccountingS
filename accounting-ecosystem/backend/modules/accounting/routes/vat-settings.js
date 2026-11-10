@@ -36,6 +36,28 @@ const SA_DEFAULT_VAT_CATEGORIES = [
   { code: 'old_rate_capital', name: 'Old Rate — Capital (14%)',      rate: 14, is_capital: true,  is_active: false, effective_from: '1990-01-01', sort_order: 60 },
 ];
 
+// ── UK default VAT categories (2026-09-13, UK rollout) ───────────────────────
+// No "_capital" split like SA's — that pair exists purely to feed the
+// SARS-VAT201-field-code report (vatCategoryReportService.js), which is
+// deliberately not being built/shown for UK companies (see
+// applyJurisdictionToNav in frontend-accounting/js/navigation.js and its
+// own comment for why PAYE was hidden the same way — same reasoning here:
+// don't half-build a compliance report shaped around a form that doesn't
+// apply). Real HMRC current rates: 20% standard, 5% reduced (domestic fuel,
+// some health/energy-saving goods), 0% zero-rated (most food, books,
+// children's clothes), exempt (insurance, education, some financial
+// services, postage).
+const UK_DEFAULT_VAT_CATEGORIES = [
+  { code: 'standard', name: 'Standard Rate (20%)', rate: 20, is_capital: false, is_active: true, effective_from: '2011-01-04', sort_order: 10 },
+  { code: 'reduced',  name: 'Reduced Rate (5%)',   rate: 5,  is_capital: false, is_active: true, effective_from: '1997-09-01', sort_order: 20 },
+  { code: 'zero',     name: 'Zero Rated (0%)',     rate: 0,  is_capital: false, is_active: true, effective_from: '1990-01-01', sort_order: 30 },
+  { code: 'exempt',   name: 'Exempt',              rate: 0,  is_capital: false, is_active: true, effective_from: '1990-01-01', sort_order: 40 },
+];
+
+function getDefaultVatCategories(jurisdiction) {
+  return jurisdiction === 'UK' ? UK_DEFAULT_VAT_CATEGORIES : SA_DEFAULT_VAT_CATEGORIES;
+}
+
 // ── GET /api/accounting/vat-settings — list all settings for company ─────────
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -88,25 +110,29 @@ router.get('/active', authenticate, async (req, res) => {
     // Isolated in its own try/catch — a failure here must never 500 the endpoint.
     // Fallback: treat as registered if settings already exist (backward compat).
     let isVatRegistered = active.length > 0;
+    let jurisdiction = 'ZA';
     try {
       if (companyId) {
         const { data: company, error: companyErr } = await supabase
           .from('companies')
-          .select('is_vat_registered')
+          .select('is_vat_registered, jurisdiction')
           .eq('id', companyId)
           .maybeSingle();
         if (!companyErr && company !== null && company !== undefined) {
           isVatRegistered = !!company.is_vat_registered;
+          jurisdiction = company.jurisdiction || 'ZA';
         }
       }
     } catch (compErr) {
       console.warn('[vat-settings] Could not read is_vat_registered for company', companyId, '—', compErr.message);
     }
 
-    // Auto-seed SA defaults on first access for any VAT-registered company
+    // Auto-seed jurisdiction-appropriate defaults on first access for any
+    // VAT-registered company (was always SA defaults regardless of company —
+    // 2026-09-13 UK rollout — see getDefaultVatCategories() above).
     if (active.length === 0 && isVatRegistered) {
-      console.log(`[vat-settings] Auto-seeding SA VAT defaults for company ${companyId}`);
-      for (const cat of SA_DEFAULT_VAT_CATEGORIES) {
+      console.log(`[vat-settings] Auto-seeding ${jurisdiction} VAT defaults for company ${companyId}`);
+      for (const cat of getDefaultVatCategories(jurisdiction)) {
         try {
           const { data: existing } = await supabase
             .from('vat_settings')
@@ -133,15 +159,24 @@ router.get('/active', authenticate, async (req, res) => {
   }
 });
 
-// ── POST /api/accounting/vat-settings/seed-defaults — seed SA defaults ───────
+// ── POST /api/accounting/vat-settings/seed-defaults — seed jurisdiction defaults ─
 // Idempotent: skips codes that already exist for the company (per effective_from).
+// 2026-09-13: was unconditionally SA defaults regardless of company jurisdiction.
 router.post('/seed-defaults', authenticate, authorize('admin', 'accountant'), async (req, res) => {
   try {
     const companyId = req.user.companyId;
     const inserted = [];
     const skipped = [];
 
-    for (const cat of SA_DEFAULT_VAT_CATEGORIES) {
+    let jurisdiction = 'ZA';
+    try {
+      const { data: company } = await supabase.from('companies').select('jurisdiction').eq('id', companyId).maybeSingle();
+      jurisdiction = company?.jurisdiction || 'ZA';
+    } catch (jErr) {
+      console.warn('[vat-settings] Could not read jurisdiction for company', companyId, '— defaulting to ZA:', jErr.message);
+    }
+
+    for (const cat of getDefaultVatCategories(jurisdiction)) {
       const { data: existing } = await supabase
         .from('vat_settings')
         .select('id')

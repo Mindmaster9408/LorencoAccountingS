@@ -508,7 +508,7 @@
         })();
 
         function fmtR(n) {
-            return 'R ' + (parseFloat(n) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return (window.CURRENCY_SYMBOL || 'R') + ' ' + (parseFloat(n) || 0).toLocaleString(window.APP_LOCALE || 'en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         function escHtml(s) {

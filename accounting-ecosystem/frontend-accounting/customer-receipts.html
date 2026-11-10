@@ -1183,7 +1183,7 @@
 
         function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
         function escAttr(s) { return String(s || '').replace(/'/g,"\\'").replace(/</g,'&lt;'); }
-        function fmtR(v)    { return 'R ' + parseFloat(v || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        function fmtR(v)    { return (window.CURRENCY_SYMBOL || 'R') + ' ' + parseFloat(v || 0).toLocaleString(window.APP_LOCALE || 'en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
         function fmtDate(d) { if (!d) return '—'; const p = d.split('T')[0].split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
         function genUUID()  { return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now().toString(36)); }
 

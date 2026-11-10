@@ -597,7 +597,7 @@ async function apiPut(url, body) {
   return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
 }
 
-function fmtR(v) { return 'R ' + parseFloat(v || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtR(v) { return (window.CURRENCY_SYMBOL || 'R') + ' ' + parseFloat(v || 0).toLocaleString(window.APP_LOCALE || 'en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtDate(d) { if (!d) return '—'; const p = d.split('T')[0].split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
 // Adds N days to a 'YYYY-MM-DD' string, returning a new 'YYYY-MM-DD' string.
 // Used to default a new invoice's due date to invoice date + standard terms.

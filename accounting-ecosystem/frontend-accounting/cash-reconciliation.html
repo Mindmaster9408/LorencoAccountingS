@@ -665,7 +665,7 @@
     }
 
     function formatCurrency(amount) {
-      return 'R ' + Math.abs(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return (window.CURRENCY_SYMBOL || 'R') + ' ' + Math.abs(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
     function formatDate(dateStr) {

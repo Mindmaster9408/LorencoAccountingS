@@ -541,7 +541,11 @@
 
         <div class="vat-tab-bar" style="display:flex; gap:4px; margin:22px 0 0; border-bottom:2px solid #e8eaed;">
             <button type="button" class="vat-tab-btn" data-tab="vatReportTab" onclick="switchVatTab('vatReportTab')">VAT Report</button>
-            <button type="button" class="vat-tab-btn" data-tab="vat201Tab" onclick="switchVatTab('vat201Tab')">VAT201 Calculation</button>
+            <!-- Hidden for UK companies (see eco:display-config-ready listener below) —
+                 this report mirrors SARS's exact VAT201 form field codes, which have
+                 no UK equivalent; a real UK VAT-return-shaped report is a separate
+                 feature to build later, not represented by hiding this tab. -->
+            <button type="button" id="vat201TabBtn" class="vat-tab-btn" data-tab="vat201Tab" onclick="switchVatTab('vat201Tab')">VAT201 Calculation</button>
             <button type="button" class="vat-tab-btn" data-tab="reconciliationTab" onclick="switchVatTab('reconciliationTab')">Reconciliation</button>
         </div>
 
@@ -988,6 +992,23 @@
             selectVATPeriod();       // auto-load current period — no click required
             loadVATSubmissionHistory();
         });
+
+        // 2026-09-13 UK rollout — hide the VAT201 Calculation tab for a UK
+        // company (see the button's own comment above for why). navigation.js
+        // dispatches this event once GET /api/accounting/company/:id resolves;
+        // listening for it (rather than a fixed timeout) means this works
+        // regardless of how fast/slow that fetch is. window.JURISDICTION may
+        // already be set by the time this listener is attached (unlikely
+        // given fetch timing, but harmless either way) — check it directly
+        // too so a slow page load never misses the event.
+        function hideVat201TabForUK() {
+            if (window.JURISDICTION === 'UK') {
+                const btn = document.getElementById('vat201TabBtn');
+                if (btn) btn.style.display = 'none';
+            }
+        }
+        document.addEventListener('eco:display-config-ready', hideVat201TabForUK);
+        hideVat201TabForUK();
 
         // ========================================================
         // VAT RECONCILIATION API INTEGRATION
