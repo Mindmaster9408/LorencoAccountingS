@@ -13,6 +13,7 @@ const PdfStatementImportService = require('../../../sean/pdf-statement-import-se
 const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
 const SeanBankAllocation = require('../../../sean/bank-allocation-engine');
+const SeanBankReview = require('../../../sean/bank-review');
 const { matchBankRule } = require('../services/bankRuleMatcher');
 const { normalizeBankDescription } = require('../services/bankDescriptionNormalizer');
 const OFXParserService = require('../services/ofxParserService');
@@ -1445,6 +1446,40 @@ router.post('/sean-auto-allocate', authenticate, hasPermission('bank.allocate'),
   } catch (err) {
     console.error('[bank.sean-auto-allocate]', err.message);
     res.status(500).json({ success: false, error: 'Sean could not allocate: ' + err.message });
+  }
+});
+
+// Sean's month-end review of one bank account (read-only): balance breaks,
+// missing statements, likely duplicates, mis-posts against the client's own
+// habit, stale unallocated lines, and what Sean posted himself.
+router.get('/sean-review', authenticate, hasPermission('bank.view'), async (req, res) => {
+  try {
+    const companyId = req.user.companyId;
+    const bankAccountId = parseInt(req.query.bankAccountId, 10);
+    if (!(bankAccountId > 0)) return res.status(400).json({ success: false, error: 'bankAccountId is required' });
+
+    const { data: acct } = await supabase.from('bank_accounts').select('id, name')
+      .eq('id', bankAccountId).eq('company_id', companyId).maybeSingle();
+    if (!acct) return res.status(404).json({ success: false, error: 'Bank account not found' });
+
+    const rows = [];
+    for (let from = 0; from < 10000; from += 1000) {
+      const { data, error } = await supabase.from('bank_transactions')
+        .select('id, date, description, amount, balance, status, allocated_account_id, allocation_type, allocation_source')
+        .eq('company_id', companyId).eq('bank_account_id', bankAccountId)
+        .order('date', { ascending: true }).order('id', { ascending: true })
+        .range(from, from + 999);
+      if (error) throw new Error(error.message);
+      rows.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    const { data: accounts } = await supabase.from('accounts').select('id, code, name').eq('company_id', companyId);
+
+    const review = SeanBankReview.reviewBankAccount({ rows, accounts: accounts || [] });
+    res.json({ success: true, bankAccount: acct.name, lines: rows.length, ...review });
+  } catch (err) {
+    console.error('[bank.sean-review]', err.message);
+    res.status(500).json({ success: false, error: 'Sean could not review this account' });
   }
 });
 

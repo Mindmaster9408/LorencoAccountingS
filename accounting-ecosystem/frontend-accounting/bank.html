@@ -1830,6 +1830,7 @@
                     Sean posts the lines he is sure of after import
                 </label>
                 <button class="action-btn" id="seanAutoNowBtn" onclick="seanAllocateNow()" style="display:none;">Let Sean Allocate Now</button>
+                <button class="action-btn" onclick="openSeanReview()" title="Sean checks this bank account like an accountant before month-end: missing statements, balance breaks, likely duplicates, mis-posts, old unallocated lines">&#129302; Sean's Review</button>
             </div>
             
             <div class="section-header">
@@ -4953,6 +4954,63 @@ Click OK to simulate uploading a file.`;
                     showBankPageAlert(msg, data.failed && data.failed.length ? 'error' : 'warning');
                 }
             });
+        }
+
+        // ── Sean's month-end review (read-only) ────────────────────────────
+        let _seanReviewFindings = [];
+
+        async function openSeanReview() {
+            if (!selectedBankAccountId) {
+                showBankPageAlert('Select a bank account first (click one of the account cards above) — Sean reviews one account at a time.', 'warning');
+                return;
+            }
+            let data;
+            try {
+                const res = await fetch('/api/accounting/bank/sean-review?bankAccountId=' + encodeURIComponent(selectedBankAccountId), { headers: getAuthHeaders() });
+                data = await res.json();
+                if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+            } catch (err) {
+                showBankPageAlert('Sean could not review this account: ' + err.message, 'error');
+                return;
+            }
+            _seanReviewFindings = data.findings || [];
+            const icon = { problem: '&#9940;', check: '&#9888;&#65039;', info: '&#8505;&#65039;' };
+            const label = { problem: 'Problem', check: 'Check', info: 'Info' };
+            const items = _seanReviewFindings.map((f, i) =>
+                '<li style="margin:6px 0;line-height:1.4;">' + icon[f.severity] + ' <strong>' + label[f.severity] + '</strong> &middot; ' + escapeHtml(f.date) + ' &middot; '
+                + escapeHtml(f.message)
+                + (f.showFrom ? ' <a href="#" onclick="showSeanReviewFinding(' + i + ');return false;">Show</a>' : '')
+                + '</li>').join('');
+            const summary = data.counts
+                ? `${data.counts.problem} problem(s), ${data.counts.check} to check, ${data.counts.info} info — ${data.lines} line(s) on ${escapeHtml(data.bankAccount || 'this account')}`
+                : '';
+            openBankActionModal({
+                title: "🤖 Sean's Review",
+                detailsHtml: _seanReviewFindings.length
+                    ? '<p>' + summary + '</p><ul style="padding-left:18px;max-height:55vh;overflow:auto;margin:0;">' + items + '</ul>'
+                      + '<p style="font-size:11px;color:#9aa0a6;margin-top:10px;">Sean only points things out — nothing is changed. "Problem" usually means a statement or line is missing or doubled.</p>'
+                    : '<p>&#9989; Sean found nothing to look at on ' + escapeHtml(data.bankAccount || 'this account') + ' (' + data.lines + ' lines): no missing statements, balance breaks, likely duplicates, mis-posts or old unallocated lines.</p>',
+                confirmText: 'Close',
+                loadingText: 'Closing…',
+                actionKey: null,
+                onConfirm: async () => {}
+            });
+        }
+
+        async function showSeanReviewFinding(i) {
+            const f = _seanReviewFindings[i];
+            if (!f) return;
+            closeBankActionModal();
+            const from = document.getElementById('dateFrom');
+            const to = document.getElementById('dateTo');
+            const status = document.getElementById('statusFilter');
+            if (from) from.value = f.showFrom || '';
+            if (to) to.value = f.showTo || '';
+            if (status) status.value = '';
+            await loadTransactions();
+            switchTab(f.tab === 'new' ? 'new' : 'reviewed', null);
+            // showBankPageAlert sets textContent — no HTML escaping needed
+            showBankPageAlert('Showing ' + (f.showTo ? f.showFrom : 'from ' + f.showFrom) + ' for: ' + f.message + ' — clear the date filter to see everything again.', 'warning');
         }
 
         // Select the lines Sean filled at/above a confidence so the user can
