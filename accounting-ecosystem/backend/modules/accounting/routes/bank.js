@@ -13,6 +13,8 @@ const PdfStatementImportService = require('../../../sean/pdf-statement-import-se
 const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
 const SeanBankAllocation = require('../../../sean/bank-allocation-engine');
+const { matchBankRule } = require('../services/bankRuleMatcher');
+const { normalizeBankDescription } = require('../services/bankDescriptionNormalizer');
 const OFXParserService = require('../services/ofxParserService');
 const PayrollBankMatching = require('../services/payrollBankMatching');
 
@@ -1312,9 +1314,165 @@ router.post('/sean-suggestions', authenticate, hasPermission('bank.view'), async
   }
 });
 
-router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
+// ─── Sean auto-allocation (Phase 2 — opt-in per company) ────────────────────
+// Sean POSTS a line himself only when the company switched it on and the line
+// is one the client itself allocated the same way 5+ times (same account,
+// same VAT), it is ≤ R5 000, type 'account', and no bank rule or payroll match
+// claims it (those stay with the human). Posting goes through the one shared
+// allocateBankTransaction() path; the line is marked allocation_source =
+// 'sean_auto' and can be undone like any other allocation.
+
+async function seanCompanySettings(companyId) {
+  const { data, error } = await supabase
+    .from('companies')
+    .select('sean_auto_allocate, is_vat_registered')
+    .eq('id', companyId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return { autoAllocate: data?.sean_auto_allocate === true, vatRegistered: data?.is_vat_registered === true };
+}
+
+/**
+ * @param {object} req  request of the acting user (import / button) — company scope + audit
+ * @param {Array<number|string>} transactionIds  unmatched bank lines to consider
+ * @returns {Promise<{enabled, considered, allocated, failed}>}
+ */
+async function seanAutoAllocate(req, transactionIds) {
+  const companyId = req.user.companyId;
+  const settings = await seanCompanySettings(companyId);
+  const summary = { enabled: settings.autoAllocate, considered: 0, allocated: 0, failed: [] };
+  if (!settings.autoAllocate) return summary;
+
+  const ids = [...new Set((transactionIds || []).map(n => parseInt(n, 10)).filter(n => n > 0))].slice(0, 1000);
+  if (!ids.length) return summary;
+
+  // Lines a company rule or a payroll payment claims are never auto-posted
+  const { data: rules } = await supabase
+    .from('bank_allocation_rules')
+    .select('id, match_type, normalized_pattern')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .order('priority', { ascending: true })
+    .order('updated_at', { ascending: false });
+
+  const seanReq = Object.create(req);
+  seanReq._seanAutoAllocate = true;
+
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const [suggestions, payrollMatches, { data: txns }] = await Promise.all([
+      SeanBankAllocation.suggestForTransactions(supabase, companyId, chunk),
+      PayrollBankMatching.suggestForTransactions(supabase, companyId, chunk).catch(() => ({})),
+      supabase.from('bank_transactions').select('id, description, amount, status')
+        .eq('company_id', companyId).in('id', chunk)
+    ]);
+
+    for (const txn of txns || []) {
+      if (txn.status !== 'unmatched') continue;
+      summary.considered++;
+      const s = suggestions[txn.id];
+      if (!s || !s.autoEligible) continue;
+      if ((payrollMatches[txn.id] || []).length) continue;
+      if (rules && rules.length && matchBankRule(rules, normalizeBankDescription(txn.description || ''))) continue;
+      if (s.vatSettingId && !settings.vatRegistered) continue;
+
+      const line = { accountId: s.accountId, amount: Math.abs(Number(txn.amount)) };
+      if (s.vatSettingId) { line.vatSettingId = s.vatSettingId; line.vatInclusive = true; }
+
+      const result = await allocateBankTransaction(seanReq, txn.id, {
+        lines: [line],
+        description: txn.description,
+        allocationType: 'account',
+        seanAuto: true
+      });
+      if (result.status === 201) summary.allocated++;
+      else summary.failed.push({ id: txn.id, error: (result.body && result.body.error) || ('HTTP ' + result.status) });
+    }
+  }
+  return summary;
+}
+
+router.get('/sean-settings', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
-    const { lines, description, allocationType, appliedRuleId, payrollMatchKey } = req.body;
+    const s = await seanCompanySettings(req.user.companyId);
+    res.json({
+      success: true,
+      autoAllocate: s.autoAllocate,
+      autoMinCount: SeanBankAllocation.AUTO_MIN_COUNT,
+      autoMaxAmount: SeanBankAllocation.AUTO_MAX_AMOUNT
+    });
+  } catch (err) {
+    console.error('[bank.sean-settings]', err.message);
+    res.status(500).json({ success: false, error: 'Could not load Sean settings' });
+  }
+});
+
+router.put('/sean-settings', authenticate, hasPermission('bank.manage'), async (req, res) => {
+  try {
+    const autoAllocate = req.body && req.body.autoAllocate === true;
+    const before = await seanCompanySettings(req.user.companyId);
+    const { error } = await supabase
+      .from('companies')
+      .update({ sean_auto_allocate: autoAllocate })
+      .eq('id', req.user.companyId);
+    if (error) throw new Error(error.message);
+    await AuditLogger.logUserAction(req, 'UPDATE', 'SEAN_AUTO_ALLOCATE_SETTING', req.user.companyId,
+      { autoAllocate: before.autoAllocate }, { autoAllocate },
+      autoAllocate ? 'Sean auto-allocation switched ON for this company' : 'Sean auto-allocation switched OFF for this company');
+    res.json({ success: true, autoAllocate });
+  } catch (err) {
+    console.error('[bank.sean-settings PUT]', err.message);
+    res.status(500).json({ success: false, error: 'Could not save Sean settings' });
+  }
+});
+
+// "Let Sean allocate now" — same rules as after import, for lines already on the page
+router.post('/sean-auto-allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
+  try {
+    const settings = await seanCompanySettings(req.user.companyId);
+    if (!settings.autoAllocate) {
+      return res.status(409).json({ success: false, error: 'Switch on "Sean allocates by himself" for this client first.' });
+    }
+    let q = supabase.from('bank_transactions').select('id')
+      .eq('company_id', req.user.companyId).eq('status', 'unmatched')
+      .order('date', { ascending: true }).limit(1000);
+    const bankAccountId = parseInt(req.body && req.body.bankAccountId, 10);
+    if (bankAccountId > 0) q = q.eq('bank_account_id', bankAccountId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    const summary = await seanAutoAllocate(req, (data || []).map(r => r.id));
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    console.error('[bank.sean-auto-allocate]', err.message);
+    res.status(500).json({ success: false, error: 'Sean could not allocate: ' + err.message });
+  }
+});
+
+router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allocate'), async (req, res) => {
+  const result = await allocateBankTransaction(req, req.params.id, req.body);
+  res.status(result.status).json(result.body);
+});
+
+function _result(status, body) {
+  return { status, body };
+}
+
+/**
+ * Core of POST /transactions/:id/allocate — the ONE posting path for a bank
+ * line (journal, VAT split, post-posting validation, auto-reversal, audit,
+ * Sean learning event). Shared by the route and Sean auto-allocation so the
+ * rules can never drift apart.
+ *
+ * @param {object} req   Express request of the acting user (company scope, user id, audit)
+ * @param {number|string} bankTransactionId
+ * @param {object} body  { lines, description, allocationType, appliedRuleId, payrollMatchKey, seanAuto }
+ * @returns {Promise<{status: number, body: object}>}
+ */
+async function allocateBankTransaction(req, bankTransactionId, body) {
+  try {
+    const { lines, description, allocationType, appliedRuleId, payrollMatchKey } = body;
+    // Set only by seanAutoAllocate() (server side) — never trusted from the browser
+    const seanAuto = body.seanAuto === true && req._seanAutoAllocate === true;
 
     // Validate appliedRuleId if provided — must belong to company and be active
     if (appliedRuleId != null) {
@@ -1325,14 +1483,14 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         .eq('company_id', req.user.companyId)
         .maybeSingle();
       if (ruleErr || !ruleRow) {
-        return res.status(422).json({
+        return _result(422, {
           success: false,
           error: 'appliedRuleId does not exist or does not belong to this company',
           errorCode: 'INVALID_RULE_ID'
         });
       }
       if (!ruleRow.is_active) {
-        return res.status(422).json({
+        return _result(422, {
           success: false,
           error: 'appliedRuleId refers to an inactive rule',
           errorCode: 'INACTIVE_RULE'
@@ -1341,23 +1499,23 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     }
 
     if (!lines || !Array.isArray(lines)) {
-      return res.status(400).json({ success: false, error: 'Lines array is required', errorCode: 'MISSING_LINES' });
+      return _result(400, { success: false, error: 'Lines array is required', errorCode: 'MISSING_LINES' });
     }
 
     // Get bank transaction with linked bank account ledger_account_id
     const { data: bankTxn, error: txnErr } = await supabase
       .from('bank_transactions')
       .select('*, bank_accounts!bank_account_id(ledger_account_id, name, bank_name)')
-      .eq('id', req.params.id)
+      .eq('id', bankTransactionId)
       .eq('company_id', req.user.companyId)
       .single();
 
     if (txnErr || !bankTxn) {
-      return res.status(404).json({ success: false, error: 'Bank transaction not found', errorCode: 'TRANSACTION_NOT_FOUND' });
+      return _result(404, { success: false, error: 'Bank transaction not found', errorCode: 'TRANSACTION_NOT_FOUND' });
     }
 
     if (bankTxn.status !== 'unmatched') {
-      return res.status(409).json({ success: false, error: 'Transaction already allocated', errorCode: 'ALREADY_ALLOCATED', details: { status: bankTxn.status } });
+      return _result(409, { success: false, error: 'Transaction already allocated', errorCode: 'ALREADY_ALLOCATED', details: { status: bankTxn.status } });
     }
 
     // Flatten the ledger_account_id from the nested bank_accounts relation
@@ -1365,7 +1523,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
     const bankAccountName = bankTxn.bank_accounts?.name;
 
     if (!ledgerAccountId) {
-      return res.status(400).json({
+      return _result(400, {
         success: false,
         error: 'Bank account has no linked ledger account. Go to Bank Accounts, edit this account and select a Ledger Account.',
         errorCode: 'MISSING_LEDGER_ACCOUNT'
@@ -1424,14 +1582,14 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
 
       if (hasVatBearingLine && !cachedVatAccount) {
         if (isMoneyIn) {
-          return res.status(422).json({
+          return _result(422, {
             success: false,
             error: 'VAT Output account (code 2300) not found. Please provision the base chart of accounts before posting VAT-bearing bank allocations.',
             errorCode: 'MISSING_VAT_OUTPUT_ACCOUNT',
           });
         }
 
-        return res.status(422).json({
+        return _result(422, {
           success: false,
           error: 'VAT Input account (code 1400) not found. Please provision the base chart of accounts before posting VAT-bearing bank allocations.',
           errorCode: 'MISSING_VAT_INPUT_ACCOUNT',
@@ -1471,7 +1629,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         const vatAccount = cachedVatAccount;
         if (!vatAccount) {
           // Defensive guard: flow should already have hard-blocked before journal creation.
-          return res.status(422).json({
+          return _result(422, {
             success: false,
             error: isMoneyIn
               ? 'VAT Output account (code 2300) not found. Please provision the base chart of accounts before posting VAT-bearing bank allocations.'
@@ -1510,7 +1668,8 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         { bankTransactionId: bankTxn.id },
         appliedRuleId != null ? { appliedRuleId } : {},
         // Paytime spec 10 VU-04: which payroll payment this bank line was confirmed as
-        PayrollBankMatching.cleanMatchKey(payrollMatchKey) ? { payrollMatchKey: PayrollBankMatching.cleanMatchKey(payrollMatchKey) } : {}
+        PayrollBankMatching.cleanMatchKey(payrollMatchKey) ? { payrollMatchKey: PayrollBankMatching.cleanMatchKey(payrollMatchKey) } : {},
+        seanAuto ? { seanAutoAllocated: true } : {}
       )
     });
 
@@ -1531,7 +1690,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         console.error('[bank.allocate] Draft journal cleanup failed. Journal', journal.id,
           'is orphaned at status=draft. Manual cleanup required.', cleanupErr.message);
       }
-      return res.status(400).json({
+      return _result(400, {
         success: false,
         error: `Allocation failed: could not post journal to the General Ledger. ${postErr.message}`,
         errorCode: 'JOURNAL_POST_FAILED',
@@ -1581,7 +1740,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         },
         `Bank allocation failed: post-posting validation error — ${validation.reason}`
       );
-      return res.status(500).json({
+      return _result(500, {
         error: `Allocation failed post-posting validation: ${validation.reason}. The journal has been reversed.`,
         journalId: journal.id
       });
@@ -1615,7 +1774,12 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       allocated_account_id:  allocatedAccountId,
       allocation_type:       allocationType || null,
       allocated_account_name: allocatedAccountName,
-      vat_setting_id:        (lines[0]?.vatSettingId) ? parseInt(lines[0].vatSettingId, 10) : null
+      vat_setting_id:        (lines[0]?.vatSettingId) ? parseInt(lines[0].vatSettingId, 10) : null,
+      // Who decided this allocation (migration 175) — shown in the Reviewed tab
+      allocation_source:     seanAuto ? 'sean_auto'
+        : appliedRuleId != null ? 'bank_rule'
+        : PayrollBankMatching.cleanMatchKey(payrollMatchKey) ? 'payroll'
+        : 'manual'
     };
     const { error: updErr } = await supabase
       .from('bank_transactions')
@@ -1670,7 +1834,7 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
         },
         `Bank allocation failed: bank transaction linkage update error after GL post`
       );
-      return res.status(500).json({
+      return _result(500, {
         error: 'Allocation failed: the journal was posted but the bank transaction could not be linked. The journal has been reversed. Please try again.',
         journalId: journal.id
       });
@@ -1682,8 +1846,10 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
       'BANK_TRANSACTION',
       bankTxn.id,
       { status: 'unmatched' },
-      { status: 'matched', journalId: journal.id },
-      'Bank transaction allocated to journal'
+      { status: 'matched', journalId: journal.id, ...(seanAuto ? { allocationSource: 'sean_auto' } : {}) },
+      seanAuto
+        ? 'Bank transaction auto-allocated by Sean from this client\'s own history (opt-in, ≤ R5 000)'
+        : 'Bank transaction allocated to journal'
     );
 
     // Log rule acceptance if this allocation was triggered by a bank allocation rule
@@ -1737,20 +1903,20 @@ router.post('/transactions/:id/allocate', authenticate, hasPermission('bank.allo
 
     const fullJournal = await JournalService.getJournalWithLines(journal.id, req.user.companyId);
 
-    res.status(201).json({
+    return _result(201, {
       message: 'Bank transaction allocated and posted to General Ledger',
       journal: fullJournal
     });
 
   } catch (error) {
     console.error('[bank.allocate] Unhandled error:', error);
-    res.status(400).json({
+    return _result(400, {
       success: false,
       error: error.message || 'Failed to allocate bank transaction',
       errorCode: error.errorCode || 'ALLOCATION_FAILED'
     });
   }
-});
+}
 
 /**
  * DELETE /api/bank/transactions/:id/allocate  (unallocate)
@@ -1809,6 +1975,7 @@ async function _clearBankTransactionAllocation(bankTxn, companyId, userId, reaso
       allocated_account_id:   null,
       allocation_type:        null,
       allocated_account_name: null,
+      allocation_source:      null,
       vat_setting_id:         null
     })
     .eq('id', bankTxn.id);
@@ -2667,3 +2834,8 @@ router.delete('/transactions/:id', authenticate, hasPermission('bank.manage'), a
 });
 
 module.exports = router;
+
+// Used by bank staging confirm: Sean posts the lines he is sure of right after import
+module.exports.seanAutoAllocate = seanAutoAllocate;
+module.exports.seanCompanySettings = seanCompanySettings;
+module.exports.allocateBankTransaction = allocateBankTransaction;

@@ -40,6 +40,16 @@ const { normalizeBankDescription } = require('../modules/accounting/services/ban
 // shown in the AI panel. Exported so the page and the tests agree.
 const PREFILL_MIN_CONFIDENCE = 70;
 
+// Phase 2 — Sean may POST a line by himself (only for companies that switched
+// it on) when ALL of these hold (Ruan, 2026-11-10):
+//   • the client's own history, exact same line (not "similar")
+//   • seen at least AUTO_MIN_COUNT times and EVERY time the same account
+//   • the VAT setting was the same every time (Sean never decides VAT)
+//   • type 'account' (never transfers, VAT payments, AR/AP)
+//   • amount at most AUTO_MAX_AMOUNT (rand)
+const AUTO_MIN_COUNT = 5;
+const AUTO_MAX_AMOUNT = 5000;
+
 const HISTORY_LIMIT = 5000;           // most recent posted lines considered
 const HISTORY_PAGE  = 1000;           // PostgREST max rows per request
 const BLOCKED_CODES = new Set(['1100', '2000']); // AR / AP control — Record Payment only
@@ -138,6 +148,7 @@ function vote(groupRows) {
   const vatSettingId = [...winner.vats.entries()].sort((a, b) => b[1] - a[1])[0][0];
   return {
     accountId: winner.accountId, type: winner.type, vatSettingId,
+    vatConsistent: winner.vats.size === 1,
     top: winner.n, total: groupRows.length, last: winner.last, recentChange,
     alternatives: ranked.filter(c => c.accountId !== winner.accountId).slice(0, 2)
       .map(c => ({ accountId: c.accountId, count: c.n }))
@@ -264,7 +275,12 @@ function suggestAll({ transactions, history, accounts, vatSettings = [], globalP
           : h.recentChange
             ? `Allocated here the last ${h.top} time(s)${when} — earlier it went elsewhere`
             : `Allocated here ${h.top} of ${h.total} time(s) before${when}`,
-        alternatives: h.alternatives.filter(a => byId.has(a.accountId))
+        alternatives: h.alternatives.filter(a => byId.has(a.accountId)),
+        autoEligible: !h.similar && !h.recentChange && h.top === h.total && h.top >= AUTO_MIN_COUNT
+          && h.vatConsistent && h.type === 'account'
+          // a historic VAT setting that is no longer active would silently drop VAT
+          && (h.vatSettingId == null || vatById.has(h.vatSettingId))
+          && Math.abs(Number(txn.amount) || 0) <= AUTO_MAX_AMOUNT
       };
     }
 
@@ -290,6 +306,7 @@ function suggestAll({ transactions, history, accounts, vatSettings = [], globalP
         return { accountId: alt.accountId, accountCode: aa.code, accountName: aa.name, count: alt.count };
       });
       s.prefill = s.confidence >= PREFILL_MIN_CONFIDENCE;
+      s.autoEligible = s.autoEligible === true;
     }
     out[txn.id] = s;
   }
@@ -345,6 +362,8 @@ async function suggestForTransactions(supabase, companyId, transactionIds, { get
 
 module.exports = {
   PREFILL_MIN_CONFIDENCE,
+  AUTO_MIN_COUNT,
+  AUTO_MAX_AMOUNT,
   merchantKey,
   similarity,
   buildHistoryIndex,

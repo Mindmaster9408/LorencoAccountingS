@@ -154,6 +154,56 @@ describe('approved global knowledge', () => {
   });
 });
 
+describe('auto-allocation eligibility (Phase 2)', () => {
+  const five = (desc, amount, accountId, extra = {}) =>
+    [1, 2, 3, 4, 5].map(m => h(desc, amount, accountId, `2026-0${m}-28`, extra));
+  const run = (txn, history) => E.suggestAll({ transactions: [txn], history, accounts: ACCOUNTS, vatSettings: VAT })[txn.id];
+
+  test('5 times, always the same account, small amount → eligible', () => {
+    expect(run({ id: 1, description: 'MONTHLY MANAGEMENT FEE', amount: -9 }, five('MONTHLY MANAGEMENT FEE', -9, 1)).autoEligible).toBe(true);
+  });
+
+  test('only 4 times → not eligible (still prefilled)', () => {
+    const s = run({ id: 1, description: 'MONTHLY MANAGEMENT FEE', amount: -9 }, five('MONTHLY MANAGEMENT FEE', -9, 1).slice(1));
+    expect(s.autoEligible).toBe(false);
+    expect(s.prefill).toBe(true);
+  });
+
+  test('once to a different account → not eligible', () => {
+    const hist = [...five('ACME SUBSCRIPTION', -99, 6), h('ACME SUBSCRIPTION', -99, 1, '2026-01-02')];
+    expect(run({ id: 1, description: 'ACME SUBSCRIPTION', amount: -99 }, hist).autoEligible).toBe(false);
+  });
+
+  test('above R5 000 → not eligible', () => {
+    expect(run({ id: 1, description: 'IB PAYMENT TO J TESTPERSON', amount: -5000.01 }, five('IB PAYMENT TO J TESTPERSON', -6000, 2)).autoEligible).toBe(false);
+    expect(run({ id: 2, description: 'IB PAYMENT TO J TESTPERSON', amount: -5000 }, five('IB PAYMENT TO J TESTPERSON', -6000, 2)).autoEligible).toBe(true);
+  });
+
+  test('VAT not the same every time → not eligible; same every time → eligible with that VAT', () => {
+    const mixed = [...five('EXAMPLE GARAGE FUEL', -300, 3, { vat_setting_id: 31 }), h('EXAMPLE GARAGE FUEL', -300, 3, '2026-06-01')];
+    expect(run({ id: 1, description: 'EXAMPLE GARAGE FUEL', amount: -300 }, mixed).autoEligible).toBe(false);
+    const same = run({ id: 2, description: 'EXAMPLE GARAGE FUEL', amount: -300 }, five('EXAMPLE GARAGE FUEL', -300, 3, { vat_setting_id: 31 }));
+    expect(same).toMatchObject({ autoEligible: true, vatSettingId: 31 });
+  });
+
+  test('historic VAT setting no longer active → not eligible', () => {
+    const s = E.suggestAll({ transactions: [{ id: 1, description: 'EXAMPLE GARAGE FUEL', amount: -300 }],
+      history: five('EXAMPLE GARAGE FUEL', -300, 3, { vat_setting_id: 99 }), accounts: ACCOUNTS, vatSettings: VAT })[1];
+    expect(s.autoEligible).toBe(false);
+  });
+
+  test('similar (not identical) line, starter and global suggestions are never eligible', () => {
+    const similar = run({ id: 1, description: 'ACME SOFTWARE SUBSCRIPTION ANNUAL', amount: -99 }, five('ACME SOFTWARE SUBSCRIPTION', -99, 6));
+    expect(similar.source).toBe('client_history');
+    expect(similar.autoEligible).toBe(false);
+    expect(run({ id: 2, description: 'CASH WITHDRAWAL FEE', amount: -12 }, []).autoEligible).toBe(false);
+  });
+
+  test('VAT-payment type history is never eligible', () => {
+    expect(run({ id: 1, description: 'SARS VAT PAYMENT', amount: -900 }, five('SARS VAT PAYMENT', -900, 1, { allocation_type: 'vat' })).autoEligible).toBe(false);
+  });
+});
+
 describe('suggestForTransactions (data loading)', () => {
   function fakeSupabase(tables) {
     return {

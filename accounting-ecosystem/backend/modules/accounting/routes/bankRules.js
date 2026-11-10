@@ -23,6 +23,7 @@ const { supabase }   = require('../../../config/database');
 const AuditLogger    = require('../services/auditLogger');
 const { authenticate, hasPermission } = require('../middleware/auth');
 const { normalizeBankDescription } = require('../services/bankDescriptionNormalizer');
+const { matchBankRule } = require('../services/bankRuleMatcher');
 
 function userId(req) {
   return req.user && req.user.userId ? req.user.userId : (req.user && req.user.id ? req.user.id : null);
@@ -373,34 +374,8 @@ router.get('/suggest', authenticate, hasPermission('bank.view'), async (req, res
 
     const normalizedDesc = normalizeBankDescription(txn.description || '');
 
-    // Run matching pipeline
-    let match = null;
-
-    // Pass 1: exact
-    for (const rule of rules) {
-      if (rule.match_type === 'exact' && normalizedDesc === rule.normalized_pattern) {
-        match = rule;
-        break;
-      }
-    }
-    // Pass 2: contains
-    if (!match) {
-      for (const rule of rules) {
-        if (rule.match_type === 'contains' && normalizedDesc.includes(rule.normalized_pattern)) {
-          match = rule;
-          break;
-        }
-      }
-    }
-    // Pass 3: starts_with
-    if (!match) {
-      for (const rule of rules) {
-        if (rule.match_type === 'starts_with' && normalizedDesc.startsWith(rule.normalized_pattern)) {
-          match = rule;
-          break;
-        }
-      }
-    }
+    // Run matching pipeline (exact → contains → starts_with; shared with Sean)
+    const match = matchBankRule(rules, normalizedDesc);
 
     if (!match) return res.json({ suggestion: null });
 

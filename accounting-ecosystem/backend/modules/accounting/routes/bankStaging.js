@@ -271,9 +271,31 @@ router.post('/confirm',
         'Staged bank transactions confirmed to bank_transactions'
       );
 
+      // Sean (opt-in per company): post the lines he is sure of. Runs in the
+      // background so this confirmation returns at once; every posting goes
+      // through the normal allocate path and is audited + undoable.
+      let seanAutoAllocate = false;
+      if (result.confirmed.length) {
+        try {
+          const bankRoutes = require('./bank');
+          seanAutoAllocate = (await bankRoutes.seanCompanySettings(req.user.companyId)).autoAllocate;
+          if (seanAutoAllocate) {
+            const ids = result.confirmed.map(t => t.id);
+            setImmediate(() => {
+              bankRoutes.seanAutoAllocate(req, ids)
+                .then(s => console.log(`[bankStaging/confirm] Sean auto-allocated ${s.allocated}/${s.considered} line(s) for company ${req.user.companyId}` + (s.failed.length ? `, ${s.failed.length} failed` : '')))
+                .catch(err => console.error('[bankStaging/confirm] Sean auto-allocation failed:', err.message));
+            });
+          }
+        } catch (err) {
+          console.error('[bankStaging/confirm] Sean settings check failed:', err.message);
+        }
+      }
+
       return res.status(201).json({
         confirmed: result.confirmed,
         skipped:   result.skipped,
+        seanAutoAllocate,
       });
     } catch (err) {
       console.error('[bankStaging/confirm]', err);

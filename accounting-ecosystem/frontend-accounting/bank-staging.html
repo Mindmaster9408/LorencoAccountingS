@@ -1230,15 +1230,23 @@
         openModal('confirmModal');
     }
 
+    // Sean auto-allocation is on for this company → he is posting the lines he
+    // is sure of in the background (see /bank/staging/confirm).
+    function seanAutoNote(r) {
+        return r && r.seanAutoAllocate
+            ? ' 🤖 Sean is allocating the lines he is sure of — see the Reviewed tab on the Bank page in a moment.'
+            : '';
+    }
+
     async function doConfirm() {
         if (!pendingConfirmId) return;
         const btn = document.getElementById('confirmModalBtn');
         btn.disabled = true; btn.textContent = 'Confirming…';
 
         try {
-            await apiPost('/bank/staging/confirm', { stagingIds: [pendingConfirmId] });
+            const r = await apiPost('/bank/staging/confirm', { stagingIds: [pendingConfirmId] });
             closeModal('confirmModal');
-            showBanner('success', '✓ Transaction confirmed and moved to the reconciliation queue.');
+            showBanner('success', '✓ Transaction confirmed and moved to the reconciliation queue.' + seanAutoNote(r));
             await loadPage();
         } catch (e) {
             showBanner('error', 'Confirm failed: ' + e.message);
@@ -1375,8 +1383,8 @@
                 showBanner('warning', 'No confirmable transactions found with current filters.');
                 return;
             }
-            await apiPost('/bank/staging/confirm', { stagingIds: ids });
-            showBanner('success', `✓ ${ids.length} transaction(s) confirmed and moved to the reconciliation queue.`);
+            const r = await apiPost('/bank/staging/confirm', { stagingIds: ids });
+            showBanner('success', `✓ ${ids.length} transaction(s) confirmed and moved to the reconciliation queue.` + seanAutoNote(r));
             await loadPage();
         } catch (e) {
             showBanner('error', 'Bulk confirm failed: ' + e.message);

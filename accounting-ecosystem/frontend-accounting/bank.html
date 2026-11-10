@@ -1019,6 +1019,15 @@
         .rule-suggestion-banner.sean {
             color: #8b7cf6;
         }
+        .sean-badge {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 7px;
+            border-radius: 10px;
+            font-size: 11px;
+            color: #8b7cf6;
+            background: rgba(139, 124, 246, 0.15);
+        }
         .rule-suggestion-banner .sean-confidence {
             padding: 1px 7px;
             border-radius: 10px;
@@ -1816,6 +1825,11 @@
                     % confidence
                 </label>
                 <button class="action-btn" onclick="massAcceptSeanSuggestions()">Select Sean's Lines</button>
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-left:12px;" title="Only lines this client allocated the same way 5+ times (same account and VAT), up to R5 000. Never transfers, VAT payments, bank-rule or payroll lines. Every line Sean posts is marked and can be undone.">
+                    <input type="checkbox" id="seanAutoToggle" onchange="toggleSeanAutoAllocate(this)" disabled>
+                    Sean posts the lines he is sure of after import
+                </label>
+                <button class="action-btn" id="seanAutoNowBtn" onclick="seanAllocateNow()" style="display:none;">Let Sean Allocate Now</button>
             </div>
             
             <div class="section-header">
@@ -2330,7 +2344,10 @@ Click OK to simulate uploading a file.`;
                             ? (window._vatSettings || []).find(vs => vs.id === txn.vat_setting_id)
                             : null;
                         const vatLabel   = vatSetting ? vatSetting.name : '—';
-                        return `<td><span style="font-size:12px;color:#555;">${escapeHtml(typeLabel)}</span></td>
+                        const seanBadge  = txn.allocation_source === 'sean_auto'
+                            ? ' <span class="sean-badge" title="Posted by Sean from this client\'s own history — Undo works as usual">&#129302; Sean</span>'
+                            : '';
+                        return `<td><span style="font-size:12px;color:#555;">${escapeHtml(typeLabel)}</span>${seanBadge}</td>
                 <td><span style="font-size:12px;color:#555;">${acctName ? escapeHtml(acctName) : '<span style="color:#9aa0a6">—</span>'}</span></td>
                 <td><span style="font-size:12px;color:#555;">${escapeHtml(vatLabel)}</span></td>`;
                     })()
@@ -4615,6 +4632,7 @@ Click OK to simulate uploading a file.`;
             // Load chart of accounts, bank accounts, VAT settings, then transactions in parallel
             await Promise.all([loadChartOfAccounts(), loadBankAccounts(), loadVatSettings()]);
             await loadTransactions();
+            loadSeanSettings(); // non-blocking
         });
         
         // ===================================
@@ -4856,6 +4874,85 @@ Click OK to simulate uploading a file.`;
                 }
             });
             return;
+        }
+
+        // ── Sean auto-allocation (Phase 2, opt-in per client) ──────────────
+        // Settings live on the company (server). Switching on asks for
+        // confirmation; Sean then posts his sure lines after every import and
+        // on "Let Sean Allocate Now". Everything he posts is marked and undoable.
+        let _seanAutoSettings = null;
+
+        async function loadSeanSettings() {
+            const toggle = document.getElementById('seanAutoToggle');
+            try {
+                const res = await fetch('/api/accounting/bank/sean-settings', { headers: getAuthHeaders() });
+                if (!res.ok) return;
+                _seanAutoSettings = await res.json();
+                if (toggle) { toggle.checked = !!_seanAutoSettings.autoAllocate; toggle.disabled = false; }
+                const nowBtn = document.getElementById('seanAutoNowBtn');
+                if (nowBtn) nowBtn.style.display = _seanAutoSettings.autoAllocate ? '' : 'none';
+            } catch (_) { /* Sean settings are optional — page works without them */ }
+        }
+
+        async function saveSeanAutoAllocate(on) {
+            const res = await fetch('/api/accounting/bank/sean-settings', {
+                method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify({ autoAllocate: on })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+            await loadSeanSettings();
+        }
+
+        function toggleSeanAutoAllocate(cb) {
+            const on = cb.checked;
+            cb.checked = !on; // only flips once saved
+            const s = _seanAutoSettings || { autoMinCount: 5, autoMaxAmount: 5000 };
+            if (!on) {
+                saveSeanAutoAllocate(false)
+                    .then(() => showBankPageAlert('Sean will no longer post lines by himself for this client. He still fills in suggestions.', 'warning'))
+                    .catch(err => showBankPageAlert('Could not save: ' + err.message, 'error'));
+                return;
+            }
+            openBankActionModal({
+                title: 'Let Sean post lines by himself for this client?',
+                detailsHtml: [
+                    '<p>After every import Sean will post a line himself only when <strong>this client</strong> allocated the exact same line '
+                        + s.autoMinCount + '+ times before, <strong>every time to the same account</strong> (and the same VAT setting), and it is at most <strong>R '
+                        + Number(s.autoMaxAmount).toLocaleString('en-ZA') + '</strong>.</p>',
+                    '<p>Never: transfers, VAT payments, lines a bank rule or payroll payment matches, or anything bigger.</p>',
+                    '<p>Every line he posts is marked <strong>🤖 Sean</strong> in the Reviewed tab and can be undone. You can switch this off at any time.</p>'
+                ].join(''),
+                confirmText: 'Switch on for this client',
+                loadingText: 'Saving…',
+                actionKey: 'seanAutoOn',
+                onConfirm: async () => {
+                    await saveSeanAutoAllocate(true);
+                    showBankPageAlert('Sean auto-allocation is on for this client. Use "Let Sean Allocate Now" for lines already here.', 'warning');
+                }
+            });
+        }
+
+        function seanAllocateNow() {
+            openBankActionModal({
+                title: 'Let Sean allocate now',
+                detailsHtml: '<p>Sean will post the unallocated lines' + (selectedBankAccountId ? ' of this bank account' : '')
+                    + ' that he is sure of (same rules as after import). Everything else stays for you.</p>',
+                confirmText: 'Let Sean allocate',
+                loadingText: 'Sean is allocating…',
+                actionKey: 'seanAllocateNow',
+                onConfirm: async () => {
+                    const res = await fetch('/api/accounting/bank/sean-auto-allocate', {
+                        method: 'POST', headers: getAuthHeaders(),
+                        body: JSON.stringify({ bankAccountId: selectedBankAccountId || null })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+                    await loadTransactions();
+                    let msg = `🤖 Sean posted ${data.allocated} of ${data.considered} unallocated line(s). The rest are filled in or left for you.`;
+                    if (data.failed && data.failed.length) msg += `\n${data.failed.length} could not be posted: ` + data.failed.slice(0, 5).map(f => '#' + f.id + ' ' + f.error).join('; ');
+                    showBankPageAlert(msg, data.failed && data.failed.length ? 'error' : 'warning');
+                }
+            });
         }
 
         // Select the lines Sean filled at/above a confidence so the user can
