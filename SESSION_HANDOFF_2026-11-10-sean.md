@@ -61,3 +61,22 @@ FOLLOW-UP NOTE
 - Risk if not checked: low today (AR/AP barely used)
 - Recommended next review point: when a client starts using AR/AP invoices
 ```
+
+---
+
+## Addendum — Sean's month-end review (commit `74da810`)
+- `backend/sean/bank-review.js` (new, read-only) and `GET /api/accounting/bank/sean-review?bankAccountId=`. Bank page button: **🤖 Sean's Review**.
+- Checks per bank account:
+  - **balance_break:** checked day by day, so lines can be in any order within a day.
+  - **gap:** more than 35 days with no lines.
+  - **duplicate:** the same statement balance means "problem"; with no statement balance it is only a "check".
+  - **outlier:** a line booked against the client's own habit (seen 4+ times, booked differently once).
+  - **stale:** unallocated for more than 30 days.
+  - **sean_auto:** Sean's own postings, listed for a quick look.
+- Each finding has a "Show" link that filters the page to the date and switches to the right tab.
+- On real data the review found:
+  - DroneDog: a missing monthly statement (2025-05-12 → 06-18) and a balance break on 2026-09-01.
+  - Two other clients: missing statements.
+- 13 tests, all with fictional data.
+
+**Integration point for the local LLM (Ollama, Ruan's other session):** lines with no client history get no suggestion today (about 14% in the backtest). A local-model guess could be added as one more source in `suggestAll()` in `bank-allocation-engine.js`. If so, it should have low confidence: never prefilled, never `autoEligible`. Nothing has been built for this.
