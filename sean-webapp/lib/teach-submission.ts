@@ -46,7 +46,7 @@ export async function submitTeachContent(
         slug,
         contentText: teachData.contentText,
         language: teachData.language,
-        tags: JSON.stringify(teachData.tags),
+        tags: teachData.tags, // native Postgres array (sean_knowledge_items.tags TEXT[]) — see 2026-08-31 SEVCO migration, no longer JSON-encoded
         primaryDomain: teachData.primaryDomain,
         secondaryDomains: JSON.stringify(teachData.secondaryDomains),
         status: "PENDING",
@@ -61,7 +61,7 @@ export async function submitTeachContent(
         userId,
         actionType: "KB_SUBMIT",
         entityType: "KnowledgeItem",
-        entityId: knowledgeItem.id,
+        entityId: String(knowledgeItem.id), // KnowledgeItem.id is now Int (sean_knowledge_items.id), AuditLog.entityId stays String
         detailsJson: JSON.stringify({
           conversationId,
           layer: teachData.layer,
@@ -90,7 +90,7 @@ export async function submitTeachContent(
       slug,
       contentText: teachData.contentText,
       language: teachData.language,
-      tags: JSON.stringify(teachData.tags),
+      tags: teachData.tags, // native Postgres array — see 2026-08-31 SEVCO migration
       primaryDomain: teachData.primaryDomain,
       secondaryDomains: JSON.stringify(teachData.secondaryDomains),
       status: "PENDING",
@@ -105,7 +105,7 @@ export async function submitTeachContent(
       userId,
       actionType: "KB_SUBMIT",
       entityType: "KnowledgeItem",
-      entityId: knowledgeItem.id,
+      entityId: String(knowledgeItem.id), // KnowledgeItem.id is now Int, AuditLog.entityId stays String
       detailsJson: JSON.stringify({
         conversationId,
         layer: teachData.layer,

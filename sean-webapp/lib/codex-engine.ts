@@ -68,7 +68,7 @@ export interface LookupTable {
 
 // Parsed Codex Item
 export interface ParsedCodexItem {
-  id: string;
+  id: number; // KnowledgeItem.id is Int (sean_knowledge_items.id) — see 2026-08-31 SEVCO migration
   citationId: string;
   title: string;
   type: "tax_rule" | "vat_cross_reference" | "decision_engine" | "lookup_table" | "general";
@@ -85,13 +85,17 @@ export interface ParsedCodexItem {
  * Parse a codex item's contentText and determine its type
  */
 export function parseCodexItem(item: {
-  id: string;
-  citationId: string;
+  id: number;
+  citationId: string | null;
   title: string;
-  contentText: string;
+  contentText: string | null;
   primaryDomain: string;
   layer: string;
 }): ParsedCodexItem | null {
+  // contentText/citationId are nullable columns on the shared sean_knowledge_items
+  // table (legacy rows from the pre-sean-webapp codex pipeline may have neither) —
+  // nothing to parse and no citation to attach without both.
+  if (!item.contentText || !item.citationId) return null;
   try {
     const content = JSON.parse(item.contentText);
     let type: ParsedCodexItem["type"] = "general";

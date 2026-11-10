@@ -26,6 +26,8 @@ export async function POST(request: NextRequest) {
       where: {
         status: "APPROVED",
         scopeType: "GLOBAL",
+        contentText: { not: null }, // sean_knowledge_items.content_text is nullable (shared table) — never match against an empty-body row
+        citationId: { not: null },
       },
       take: 10,
       orderBy: {
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     for (const item of knowledgeItems) {
       const titleLower = item.title.toLowerCase();
-      const contentLower = item.contentText.toLowerCase();
+      const contentLower = (item.contentText as string).toLowerCase();
       let score = 0;
 
       // Extract keywords from question (simple heuristic)
@@ -68,7 +70,7 @@ export async function POST(request: NextRequest) {
     } else {
       outcomeText = `${bestMatch.contentText} [${bestMatch.citationId}]`;
       matchedCitations.push({
-        citationId: bestMatch.citationId,
+        citationId: bestMatch.citationId as string,
         title: bestMatch.title,
       });
     }

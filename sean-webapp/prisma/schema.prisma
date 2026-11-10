@@ -2,15 +2,31 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Shared production Postgres — the same database accounting-ecosystem's
+// backend already connects to directly (ACCOUNTING_DATABASE_URL-style
+// connection string, session-mode pooler, port 5432). See
+// project_sevco_brain_architecture memory for why this replaced sean-webapp's
+// old local SQLite file (2026-08-31 consolidation onto SEVCO).
+//
+// relationMode = "prisma": every @relation below is enforced by Prisma
+// Client at the application level, NOT via a Postgres foreign-key
+// constraint. Required because two models (KnowledgeItem, IntentPattern)
+// live in tables this schema does NOT own the DDL for (sean_knowledge_items /
+// sean_intent_patterns — owned exclusively by
+// accounting-ecosystem/backend/config/migrations/*.sql, see the comment on
+// KnowledgeItem below) — Prisma must never try to add a DB-level FK to a
+// table it doesn't manage. Applied consistently to every model, not just
+// those two, to keep one relation style throughout this schema.
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
 
   sessions              Session[]
   conversations         Conversation[]
@@ -21,71 +37,86 @@ model User {
   allocationRules       AllocationRule[]
   confirmedAllocations  BankTransaction[] @relation("confirmedBy")
   coachingDataAccesses  CoachingDataAccess[]
+
+  @@map("sean_app_users")
 }
 
 model Session {
   id        String   @id @default(cuid())
-  userId    String
+  userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sean_app_sessions")
 }
 
 model Conversation {
   id        String    @id @default(cuid())
-  userId    String
+  userId    String    @map("user_id")
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String    @default("Untitled")
-  module    String?   @default("general") // "general" | "accounting" | "allocation"
-  // Which client this conversation is grounded in (optional) — when set and the
-  // client has an ecoCompanyId, chat answers are grounded in that company's live
-  // accounting-ecosystem data. See lib/accounting-context.ts.
-  clientId  String?
-  client    Client?   @relation("conversationClient", fields: [clientId], references: [id], onDelete: SetNull)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  module    String?   @default("general") @map("module")
+  clientId  String?   @map("client_id")
+  client    Client?   @relation("conversationClient", fields: [clientId], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   messages Message[]
 
   @@index([clientId])
+  @@map("sean_app_conversations")
 }
 
 model Message {
   id             String       @id @default(cuid())
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String       @default("user") // user | assistant
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  role           String       @default("user")
   content        String
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([conversationId])
+  @@map("sean_app_messages")
 }
 
+// ============================================================================
+// SHARED SEVCO BRAIN TABLE — DDL owned exclusively by
+// accounting-ecosystem/backend/config/migrations/001_sean_tables.sql (base)
+// + 158_sean_knowledge_items_webapp_columns.sql (the columns this model
+// needs). NEVER run `prisma migrate dev/deploy` against this model — if the
+// shared migration ever changes this table's columns, update the @map
+// annotations below in the same PR, by hand. See that migration file's own
+// header comment, which points back here.
+// ============================================================================
 model KnowledgeItem {
-  id                String   @id @default(cuid())
-  layer             String   // LEGAL | FIRM | CLIENT
-  scopeType         String   @default("GLOBAL") // GLOBAL | CLIENT
-  scopeClientId     String?  // only for CLIENT scope
+  id                Int      @id @default(autoincrement())
+  layer             String
+  scopeType         String   @default("GLOBAL") @map("scope_type")
+  scopeClientId     String?  @map("scope_client_id")
   title             String
-  slug              String
-  contentText       String
-  language          String   @default("EN") // AF | EN | MIXED
-  tags              String   @default("[]") // JSON array
-  primaryDomain     String   @default("OTHER") // VAT | INCOME_TAX | COMPANY_TAX | PAYROLL | CAPITAL_GAINS_TAX | WITHHOLDING_TAX | ACCOUNTING_GENERAL | OTHER
-  secondaryDomains  String   @default("[]") // JSON array of domain strings
-  status            String   @default("PENDING") // PENDING | APPROVED | REJECTED
-  kbVersion         Int      @default(1)
-  citationId        String   @unique // KB:LEGAL:slug:v1
-  supersededById    String?  // nullable FK to newer version
-  sourceType        String?  // "user" | "website" | null (for manual submissions)
-  sourceUrl         String?  // URL if sourceType=website
-  sourceSection     String?  // heading/section where content came from
-  submittedByUserId String?
+  slug              String?
+  contentText       String?  @map("content_text")
+  language          String   @default("EN")
+  tags              String[] @default([])
+  primaryDomain     String   @default("OTHER") @map("domain")
+  secondaryDomains  String   @default("[]") @map("secondary_domains") // JSON-encoded array — deliberately NOT a native array, see 158's migration comment (too many existing JSON.stringify/parse call sites to convert in this pass)
+  status            String   @default("PENDING")
+  kbVersion         Int      @default(1) @map("kb_version")
+  citationId        String?  @unique @map("citation_id")
+  supersededById    Int?     @map("superseded_by_id")
+  sourceType        String?  @map("source_type")
+  sourceUrl         String?  @map("source_url")
+  sourceSection     String?  @map("source_section")
+  submittedByUserId String?  @map("submitted_by_user_id")
   submittedBy       User?    @relation("submittedBy", fields: [submittedByUserId], references: [id], onDelete: SetNull)
-  approvedByUserId  String?
+  approvedByUserId  String?  @map("approved_by_user_id")
   approvedBy        User?    @relation("approvedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
-  approvedAt        DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  approvedAt        DateTime? @map("approved_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([layer])
@@ -93,385 +124,308 @@ model KnowledgeItem {
   @@index([slug])
   @@index([primaryDomain])
   @@index([sourceType])
+  @@index([submittedByUserId])
+  @@index([approvedByUserId])
+  @@map("sean_knowledge_items")
 }
 
 model AuditLog {
   id          String   @id @default(cuid())
-  userId      String?
+  userId      String?  @map("user_id")
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  actionType  String   // LOGIN | LOGOUT | MESSAGE_SEND | KB_SUBMIT | KB_APPROVE | KB_REJECT | REASON_QUERY | LLM_BOOTSTRAP | ALLOCATION_LEARN | ALLOCATION_REINFORCE
-  entityType  String? // Conversation | Message | KnowledgeItem | AllocationRule | BankTransaction | None
-  entityId    String?
-  detailsJson String? // JSON string with additional details
-  createdAt   DateTime @default(now())
+  actionType  String   @map("action_type")
+  entityType  String?  @map("entity_type")
+  entityId    String?  @map("entity_id")
+  detailsJson String?  @map("details_json")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([actionType])
   @@index([userId])
   @@index([createdAt])
+  @@map("sean_app_audit_log")
 }
 
-// Bank Transaction for allocation learning
 model BankTransaction {
-  id                String   @id @default(cuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date              DateTime
-  description       String   // Display description
-  rawDescription    String   // Original bank description
-  amount            Float
-  isDebit           Boolean  @default(true)
-  suggestedCategory String?  // Sean's suggestion
-  suggestedConfidence Float?
-  confirmedCategory String?  // User's confirmed category
-  confirmedByUserId String?
-  confirmedBy       User?    @relation("confirmedBy", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
-  feedback          String?  // User's explanation for correction (Teach Sean)
-  processed         Boolean  @default(false)
-  // Multi-tenant support
-  clientId          String?  // Optional client/company ID
-  client            Client?  @relation("clientTransactions", fields: [clientId], references: [id], onDelete: SetNull)
-  bankAccount       String?  // Bank account identifier
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  userId              String   @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                DateTime
+  description         String
+  rawDescription      String   @map("raw_description")
+  amount              Float
+  isDebit             Boolean  @default(true) @map("is_debit")
+  suggestedCategory   String?  @map("suggested_category")
+  suggestedConfidence Float?   @map("suggested_confidence")
+  confirmedCategory   String?  @map("confirmed_category")
+  confirmedByUserId   String?  @map("confirmed_by_user_id")
+  confirmedBy         User?    @relation("confirmedBy", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+  feedback            String?
+  processed           Boolean  @default(false)
+  clientId            String?  @map("client_id")
+  client              Client?  @relation("clientTransactions", fields: [clientId], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  bankAccount         String?  @map("bank_account")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([confirmedCategory])
   @@index([processed])
   @@index([date])
   @@index([clientId])
+  @@index([confirmedByUserId])
+  @@map("sean_app_bank_transactions")
 }
 
-// Learned allocation rules
 model AllocationRule {
   id                String   @id @default(cuid())
-  pattern           String   // Original description that created this rule
-  normalizedPattern String   // Lowercase, simplified for matching
-  category          String   // The allocation category code
+  pattern           String
+  normalizedPattern String   @map("normalized_pattern")
+  category          String
   confidence        Float    @default(0.7)
-  learnedFromCount  Int      @default(1) // How many times this was confirmed
-  createdByUserId   String?
+  learnedFromCount  Int      @default(1) @map("learned_from_count")
+  createdByUserId   String?  @map("created_by_user_id")
   createdBy         User?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
-  // Multi-tenant support
-  clientId          String?  // Optional client ID for client-specific rules
-  client            Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  isGlobal          Boolean  @default(true) // If true, applies to all clients
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  clientId          String?  @map("client_id")
+  client            Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  isGlobal          Boolean  @default(true) @map("is_global")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@index([normalizedPattern])
   @@index([category])
   @@index([confidence])
   @@index([clientId])
   @@index([isGlobal])
+  @@index([createdByUserId])
+  @@map("sean_app_allocation_rules")
 }
 
-// Client/Company for multi-tenant allocation rules
 model Client {
-  id                String   @id @default(cuid())
-  name              String
-  code              String   @unique // Short code for API calls
-  description       String?
-  isActive          Boolean  @default(true)
+  id                    String   @id @default(cuid())
+  name                  String
+  code                  String   @unique
+  description           String?
+  isActive              Boolean  @default(true) @map("is_active")
+  ecoCompanyId          String?  @unique @map("eco_company_id")
+  industryId            String?  @map("industry_id")
+  industry              Industry? @relation(fields: [industryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  businessType          String?  @map("business_type")
+  vatRegistered         Boolean  @default(false) @map("vat_registered")
+  vatNumber             String?  @map("vat_number")
+  companyRegNumber      String?  @map("company_reg_number")
+  businessDescription   String?  @map("business_description")
+  mainProducts          String?  @default("[]") @map("main_products")
+  mainServices          String?  @default("[]") @map("main_services")
+  mainExpenseTypes      String?  @default("[]") @map("main_expense_types")
+  mainIncomeTypes       String?  @default("[]") @map("main_income_types")
+  financialYearEnd      String?  @map("financial_year_end")
+  contactPerson         String?  @map("contact_person")
+  contactEmail          String?  @map("contact_email")
+  contactPhone          String?  @map("contact_phone")
+  dataIsolationLevel    String   @default("STRICT") @map("data_isolation_level")
+  defaultMinConfidence  Float    @default(0.8) @map("default_min_confidence")
+  autoAllocateEnabled   Boolean  @default(true) @map("auto_allocate_enabled")
 
-  // Link to the accounting-ecosystem company this client corresponds to (the
-  // numeric `companies.id` used by the separate accounting-ecosystem backend).
-  // Null until a superuser links this client — see lib/accounting-context.ts
-  // for how it's used to fetch live trial balance / bank / VAT data.
-  ecoCompanyId      String?  @unique
-
-  // ============================================
-  // COMPANY PROFILE - "Teach Sean about this company"
-  // This helps Sean understand what the company does
-  // ============================================
-  industryId        String?  // Link to industry type
-  industry          Industry? @relation(fields: [industryId], references: [id])
-  businessType      String?  // PTY_LTD | CC | SOLE_PROP | TRUST | NPC | PARTNERSHIP
-  vatRegistered     Boolean  @default(false)
-  vatNumber         String?
-  companyRegNumber  String?
-
-  // What does this company do? (free text for Sean to understand)
-  businessDescription String? // e.g., "Sells computer parts and repairs laptops"
-  mainProducts      String?  // JSON array: ["computer parts", "laptop repairs", "IT support"]
-  mainServices      String?  // JSON array: ["IT consulting", "network setup"]
-  mainExpenseTypes  String?  // JSON array: what they typically spend on
-  mainIncomeTypes   String?  // JSON array: how they earn money
-
-  // Financial year
-  financialYearEnd  String?  // "02" for February, "12" for December
-
-  // Contact (for reference only, not shared)
-  contactPerson     String?
-  contactEmail      String?
-  contactPhone      String?
-
-  // ============================================
-  // PRIVACY & DATA ISOLATION
-  // ============================================
-  dataIsolationLevel String @default("STRICT") // STRICT | INDUSTRY_LEARNING
-  // STRICT = No data leaves this client, ever
-  // INDUSTRY_LEARNING = Anonymized patterns can improve industry knowledge
-
-  // Default allocation settings per client
-  defaultMinConfidence Float @default(0.8)
-  autoAllocateEnabled  Boolean @default(true)
-
-  // Relationships
   allocationRules   AllocationRule[]
   bankTransactions  BankTransaction[] @relation("clientTransactions")
   customCategories  ClientCategory[]
-  companyNotes      CompanyNote[]
   conversations     Conversation[]   @relation("conversationClient")
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([code])
   @@index([isActive])
   @@index([industryId])
   @@index([businessType])
+  @@map("sean_app_clients")
 }
 
-// ============================================
-// INDUSTRY TYPES - Anonymized learning across companies
-// Sean learns patterns by industry WITHOUT knowing which company
-// ============================================
 model Industry {
-  id                String   @id @default(cuid())
-  code              String   @unique // e.g., "IT_SERVICES", "RETAIL", "CONSTRUCTION"
-  name              String   // e.g., "IT Services & Consulting"
-  description       String?
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  parentId    String?  @map("parent_id")
+  parent      Industry? @relation("IndustryHierarchy", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  children    Industry[] @relation("IndustryHierarchy")
 
-  // Parent industry for hierarchy (e.g., "RETAIL" -> "RETAIL_CLOTHING")
-  parentId          String?
-  parent            Industry? @relation("IndustryHierarchy", fields: [parentId], references: [id])
-  children          Industry[] @relation("IndustryHierarchy")
+  typicalExpenses      String @default("[]") @map("typical_expenses")
+  typicalIncome        String @default("[]") @map("typical_income")
+  commonVendors        String @default("[]") @map("common_vendors")
+  learningContributors Int    @default(0) @map("learning_contributors")
 
-  // Expected allocation patterns for this industry (learned over time)
-  // These are ANONYMIZED - no company names, just patterns
-  typicalExpenses   String   @default("[]") // JSON: [{"category": "STOCK_PURCHASES", "percentage": 40}, ...]
-  typicalIncome     String   @default("[]") // JSON: [{"category": "REVENUE", "percentage": 95}, ...]
-  commonVendors     String   @default("[]") // JSON: ["makro", "incredible connection"] - generic vendors
+  clients          Client[]
+  industryPatterns IndustryPattern[]
 
-  // How many companies have contributed to learning (anonymized count)
-  learningContributors Int   @default(0)
-
-  // Relationships
-  clients           Client[]
-  industryPatterns  IndustryPattern[]
-
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([code])
   @@index([parentId])
+  @@map("sean_app_industries")
 }
 
-// ============================================
-// INDUSTRY PATTERNS - Anonymized allocation patterns
-// Learned from ALL companies in an industry (no company names!)
-// ============================================
 model IndustryPattern {
   id                String   @id @default(cuid())
-  industryId        String
-  industry          Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
-
-  // Pattern details (ANONYMIZED - no company reference)
-  normalizedPattern String   // e.g., "makro wholesale"
-  suggestedCategory String   // e.g., "STOCK_PURCHASES"
+  industryId        String   @map("industry_id")
+  industry          Industry @relation(fields: [industryId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  normalizedPattern String   @map("normalized_pattern")
+  suggestedCategory String   @map("suggested_category")
   confidence        Float    @default(0.5)
-
-  // How many times this pattern was seen across the industry
-  // (we count occurrences, not companies, for privacy)
-  occurrenceCount   Int      @default(1)
-
-  // Last updated (no company info, just timestamp)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  occurrenceCount   Int      @default(1) @map("occurrence_count")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@unique([industryId, normalizedPattern])
   @@index([industryId])
   @@index([normalizedPattern])
   @@index([suggestedCategory])
+  @@map("sean_app_industry_patterns")
 }
 
-// ============================================
-// COMPANY NOTES - Internal notes about company
-// (Never shared, for internal reference only)
-// ============================================
-model CompanyNote {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  noteType    String   // PROFILE | ALLOCATION_HINT | WARNING | GENERAL
-  content     String   // The note content
-  createdBy   String?  // User who created the note
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([clientId])
-  @@index([noteType])
-}
-
-// ============================================
-// PRIVACY AUDIT LOG - Track all data access
-// For compliance and security
-// ============================================
 model PrivacyAuditLog {
-  id              String   @id @default(cuid())
-  userId          String?
-  clientId        String?  // Which client's data was accessed
-  actionType      String   // VIEW | EXPORT | SHARE | DELETE | ANONYMIZE
-  dataType        String   // TRANSACTION | ALLOCATION | PROFILE | REPORT
-  description     String?
-  ipAddress       String?
-  userAgent       String?
-
-  // Was any data anonymized or aggregated?
-  wasAnonymized   Boolean  @default(false)
-
-  createdAt       DateTime @default(now())
+  id            String   @id @default(cuid())
+  userId        String?  @map("user_id")
+  clientId      String?  @map("client_id")
+  actionType    String   @map("action_type")
+  dataType      String   @map("data_type")
+  description   String?
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  wasAnonymized Boolean  @default(false) @map("was_anonymized")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([clientId])
   @@index([actionType])
   @@index([createdAt])
+  @@map("sean_app_privacy_audit_log")
 }
 
-// Custom categories per client (extends base categories)
 model ClientCategory {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  code        String   // Category code
-  label       String   // Display label
-  keywords    String   @default("[]") // JSON array of keywords
-  parentCode  String?  // Maps to base category if needed
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  clientId   String   @map("client_id")
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  code       String
+  label      String
+  keywords   String   @default("[]")
+  parentCode String?  @map("parent_code")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@unique([clientId, code])
   @@index([clientId])
+  @@map("sean_app_client_categories")
 }
 
-// Allowed emails for login (dynamic allowlist)
-// SUPER_USER = Can access the Sean webapp directly (full control)
-// ADMIN = Administrative access via APIs only (used by other apps)
-// Only SUPER_USERs can log into the Sean webapp UI
 model AllowedEmail {
   id                String   @id @default(cuid())
   email             String   @unique
-  role              String   @default("SUPER_USER") // SUPER_USER | ADMIN
-  hasCoachingAccess Boolean  @default(false) // Only ruanvlog@lorenco.co.za has true
-  addedBy           String?
-  createdAt         DateTime @default(now())
+  role              String   @default("SUPER_USER")
+  hasCoachingAccess Boolean  @default(false) @map("has_coaching_access")
+  addedBy           String?  @map("added_by")
+  createdAt         DateTime @default(now()) @map("created_at")
 
   @@index([email])
   @@index([hasCoachingAccess])
+  @@map("sean_app_allowed_emails")
 }
 
-// Coaching data access audit log
-// Tracks when ruan accesses coaching client data for compliance
 model CoachingDataAccess {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clientId    String?  // Which coaching client was accessed
-  accessType  String   // VIEW | QUERY | EXPORT
-  accessedAt  DateTime @default(now())
-  ipAddress   String?
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId   String?  @map("client_id")
+  accessType String   @map("access_type")
+  accessedAt DateTime @default(now()) @map("accessed_at")
+  ipAddress  String?  @map("ip_address")
 
   @@index([userId])
   @@index([clientId])
   @@index([accessedAt])
+  @@map("sean_app_coaching_data_access")
 }
 
-// Sean Agent Status and Configuration
 model SeanAgent {
-  id                  String   @id @default(cuid())
-  name                String   @default("Sean") // Agent name
-  status              String   @default("INACTIVE") // ACTIVE | INACTIVE | PAUSED
-  authorizedActions   String   @default("[]") // JSON array: ["ALLOCATE", "RESPOND", "LEARN"]
-
-  // Auto-allocation settings
-  autoAllocateEnabled Boolean  @default(false)
-  autoAllocateInterval Int     @default(60) // Minutes between auto-allocation runs
-  autoAllocateMinConfidence Float @default(0.8) // Minimum confidence for auto-allocation
-  autoAllocateLastRun DateTime?
-  autoAllocateNextRun DateTime?
-
-  // API fallback settings
-  llmFallbackEnabled  Boolean  @default(true) // Call LLM when no match found
-  llmFallbackProvider String?  // claude | openai | grok
-
-  // Stats
-  totalAllocations    Int      @default(0)
-  totalLLMCalls       Int      @default(0)
-
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                        String   @id @default(cuid())
+  name                      String   @default("Sean")
+  status                    String   @default("INACTIVE")
+  authorizedActions         String   @default("[]") @map("authorized_actions")
+  autoAllocateEnabled       Boolean  @default(false) @map("auto_allocate_enabled")
+  autoAllocateInterval      Int      @default(60) @map("auto_allocate_interval")
+  autoAllocateMinConfidence Float    @default(0.8) @map("auto_allocate_min_confidence")
+  autoAllocateLastRun       DateTime? @map("auto_allocate_last_run")
+  autoAllocateNextRun       DateTime? @map("auto_allocate_next_run")
+  llmFallbackEnabled        Boolean  @default(true) @map("llm_fallback_enabled")
+  llmFallbackProvider       String?  @map("llm_fallback_provider")
+  totalAllocations          Int      @default(0) @map("total_allocations")
+  totalLLMCalls             Int      @default(0) @map("total_llm_calls")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
 
   @@index([status])
+  @@map("sean_app_agent")
 }
 
-// Auto-allocation job runs
 model AllocationJobRun {
-  id                  String   @id @default(cuid())
-  agentId             String
-  status              String   @default("RUNNING") // RUNNING | COMPLETED | FAILED
-  startedAt           DateTime @default(now())
-  completedAt         DateTime?
-
-  // Results
-  transactionsProcessed Int    @default(0)
-  autoAllocated       Int      @default(0)
-  llmAllocated        Int      @default(0)
-  needsReview         Int      @default(0)
-  errors              Int      @default(0)
-
-  detailsJson         String?  // JSON with full details
-  errorMessage        String?
+  id                    String   @id @default(cuid())
+  agentId               String   @map("agent_id")
+  status                String   @default("RUNNING")
+  startedAt             DateTime @default(now()) @map("started_at")
+  completedAt           DateTime? @map("completed_at")
+  transactionsProcessed Int      @default(0) @map("transactions_processed")
+  autoAllocated         Int      @default(0) @map("auto_allocated")
+  llmAllocated          Int      @default(0) @map("llm_allocated")
+  needsReview           Int      @default(0) @map("needs_review")
+  errors                Int      @default(0)
+  detailsJson           String?  @map("details_json")
+  errorMessage          String?  @map("error_message")
 
   @@index([agentId])
   @@index([status])
   @@index([startedAt])
+  @@map("sean_app_allocation_job_runs")
 }
 
-// Cached LLM allocation responses (bootstrap for allocations)
 model AllocationLLMCache {
-  id                  String   @id @default(cuid())
-  normalizedPattern   String   @unique // Normalized description
-  suggestedCategory   String
-  reasoning           String?  // LLM's reasoning
-  provider            String   // claude | openai | grok
-  confidence          Float    @default(0.7)
-  usedCount           Int      @default(1)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                String   @id @default(cuid())
+  normalizedPattern String   @unique @map("normalized_pattern")
+  suggestedCategory String   @map("suggested_category")
+  reasoning         String?
+  provider          String
+  confidence        Float    @default(0.7)
+  usedCount         Int      @default(1) @map("used_count")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@index([normalizedPattern])
   @@index([suggestedCategory])
+  @@map("sean_app_allocation_llm_cache")
 }
 
-// Cached chat-message intent classifications (Phase 2 — see SEAN_CFO_ROADMAP.md).
-// Global, not client-scoped: intent ("what kind of message is this") isn't a
-// per-company concept the way allocation categories are.
+// ============================================================================
+// SHARED SEVCO BRAIN TABLE — DDL owned exclusively by
+// accounting-ecosystem/backend/config/migrations/159_sean_intent_patterns.sql
+// + 161_sean_intent_patterns_missing_columns.sql. Same rule as KnowledgeItem
+// above: never `prisma migrate` this table, hand-update @map if the shared
+// migration changes it.
+// ============================================================================
 model IntentPattern {
-  id                String   @id @default(cuid())
-  normalizedPattern String   @unique // normalizeIntentQuery() output
-  intentType        String   // CALCULATION | TEACH | ALLOCATION | QUESTION | GENERAL
-  domain            String   // VAT | INCOME_TAX | ... | ACCOUNTING_GENERAL | OTHER
+  id                Int      @id @default(autoincrement())
+  normalizedPattern String   @unique @map("normalized_pattern")
+  intentType        String   @map("intent_type")
+  domain            String   @default("OTHER")
   confidence        Float    @default(0.7)
-  source            String   // "llm" | "seed"
-  provider          String?  // which LLM produced it; null for seeded entries
-  reasoning         String?  // short LLM justification, for debugging
-  usedCount         Int      @default(1)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  source            String   @default("llm")
+  provider          String?
+  reasoning         String?
+  usedCount         Int      @default(1) @map("used_count")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@index([normalizedPattern])
   @@index([intentType])
+  @@map("sean_intent_patterns")
 }

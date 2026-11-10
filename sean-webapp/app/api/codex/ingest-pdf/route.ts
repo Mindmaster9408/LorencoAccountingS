@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     const domainCounts: Record<string, number> = {};
-    const createdIds: string[] = [];
+    const createdIds: number[] = []; // KnowledgeItem.id is Int (sean_knowledge_items.id) — see 2026-08-31 SEVCO migration
 
     for (let i = 0; i < chunks.length; i++) {
       const chunkNum = i + 1;
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
           slug,
           contentText: chunkContent,
           language: "EN",
-          tags: JSON.stringify(["pdf-ingest", safeBaseName]),
+          tags: ["pdf-ingest", safeBaseName], // native array — see 2026-08-31 SEVCO migration
           primaryDomain: chunkDomain,
           secondaryDomains: JSON.stringify([]),
           status: "PENDING",

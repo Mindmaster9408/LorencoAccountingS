@@ -85,15 +85,16 @@ export async function bootstrapAnswer(
     where: {
       slug: { contains: queryHash },
       status: "APPROVED",
+      contentText: { not: null }, // sean_knowledge_items.content_text is nullable (shared table) — never surface an empty-body row as a cached answer
     },
   });
 
   if (cachedItem) {
     console.log(`[Bootstrap] Cache HIT for hash ${queryHash}`);
     return {
-      answer: cachedItem.contentText,
+      answer: cachedItem.contentText as string,
       source: "KB",
-      citationId: cachedItem.citationId,
+      citationId: cachedItem.citationId ?? undefined,
       cached: true,
       domain: cachedItem.primaryDomain,
     };
@@ -103,6 +104,7 @@ export async function bootstrapAnswer(
   const existingKB = await prisma.knowledgeItem.findMany({
     where: {
       status: "APPROVED",
+      contentText: { not: null }, // see cache-lookup comment above
       OR: [
         { primaryDomain: inferredDomain },
         { primaryDomain: "OTHER" },
@@ -130,9 +132,9 @@ export async function bootstrapAnswer(
   if (bestMatch && bestScore >= 0.6) {
     console.log(`[Bootstrap] KB match found with score ${bestScore.toFixed(2)}`);
     return {
-      answer: bestMatch.contentText,
+      answer: bestMatch.contentText as string,
       source: "KB",
-      citationId: bestMatch.citationId,
+      citationId: bestMatch.citationId ?? undefined,
       cached: false,
       domain: bestMatch.primaryDomain,
     };
@@ -169,7 +171,7 @@ export async function bootstrapAnswer(
         slug,
         contentText: llmAnswer,
         language: "EN",
-        tags: JSON.stringify(["bootstrap", "auto-generated", provider.toLowerCase()]),
+        tags: ["bootstrap", "auto-generated", provider.toLowerCase()], // native array — see 2026-08-31 SEVCO migration
         primaryDomain: inferredDomain,
         secondaryDomains: JSON.stringify([]),
         status: "APPROVED", // Auto-approve bootstrap answers
@@ -188,7 +190,7 @@ export async function bootstrapAnswer(
         userId,
         actionType: "LLM_BOOTSTRAP",
         entityType: "KnowledgeItem",
-        entityId: newItem.id,
+        entityId: String(newItem.id), // KnowledgeItem.id is now Int, AuditLog.entityId stays String
         detailsJson: JSON.stringify({
           question: question.substring(0, 200),
           queryHash,
