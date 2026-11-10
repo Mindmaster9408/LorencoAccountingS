@@ -960,7 +960,12 @@ router.get('/companies', authenticateToken, async (req, res) => {
         : clientIds.has(c.id)
           ? 'client'
           : 'standalone',
-    }));
+    }))
+      // Primary company first — mirrors the same sort already used at /login
+      // (line ~183). The dashboard has no real company switcher to rely on
+      // otherwise, so whichever row lands at [0] here silently becomes "the"
+      // company for the whole session.
+      .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
 
     res.json({ companies: list });
   } catch (err) {

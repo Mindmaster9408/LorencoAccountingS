@@ -996,6 +996,45 @@
             " onmouseenter="this.style.background='rgba(102,126,234,0.28)';this.style.borderColor='rgba(102,126,234,0.6)'"
                onmouseleave="this.style.background='rgba(102,126,234,0.15)';this.style.borderColor='rgba(102,126,234,0.3)'"
                title="Click to manage practice settings"></span>
+
+            <!-- Company switcher — only shown when the logged-in user belongs to more
+                 than one company. Deliberately a separate control from practiceNameBadge
+                 above (which opens practice SETTINGS) so switching companies never
+                 collides with that existing, already-relied-on click behaviour. -->
+            <div id="companySwitchWrap" style="position:relative; display:none;">
+                <span id="companySwitchBtn" onclick="toggleCompanySwitch(event)" style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    margin-left: 6px;
+                    padding: 3px 10px;
+                    background: rgba(255,255,255,0.06);
+                    border: 1px solid rgba(255,255,255,0.14);
+                    border-radius: 20px;
+                    font-size: 0.78rem;
+                    font-weight: 600;
+                    color: rgba(255,255,255,0.65);
+                    cursor: pointer;
+                    transition: background 0.2s, border-color 0.2s;
+                " onmouseenter="this.style.background='rgba(255,255,255,0.12)'"
+                   onmouseleave="this.style.background='rgba(255,255,255,0.06)'"
+                   title="Switch company">&#8645; Switch</span>
+                <div id="companySwitchDropdown" style="
+                    display: none;
+                    position: absolute;
+                    top: 130%;
+                    left: 0;
+                    min-width: 240px;
+                    max-height: 320px;
+                    overflow-y: auto;
+                    background: #15151f;
+                    border: 1px solid rgba(102,126,234,0.3);
+                    border-radius: 10px;
+                    padding: 6px;
+                    z-index: 200;
+                    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+                "></div>
+            </div>
         </div>
         <div class="topbar-right">
             <div class="user-badge" id="userBadge" onclick="openProfileModal()" title="Edit your profile">
@@ -2217,8 +2256,47 @@
                 }
             }
 
-            // Auto-select first company (Infinite Legacy for superusers)
-            selectedCompany = companies[0];
+            // Auto-select: Infinite Legacy for superusers (forced above); otherwise
+            // whichever company this user last explicitly switched to (if they still
+            // have access to it), else their primary company (companies is already
+            // sorted primary-first by the backend), else just the first one.
+            // Root cause of "2 practices, can only get into 1" (P4, flagged 2026-10-01):
+            // this picked companies[0] with no further say, AND there was no switcher
+            // UI at all to reach the other one — see selectCompany()/renderCompanySwitcher().
+            if (!isSuperAdmin) {
+                const lastId = localStorage.getItem('eco_last_company_id');
+                const remembered = lastId ? companies.find(c => String(c.id) === lastId) : null;
+                selectedCompany = remembered || companies[0];
+
+                // If the remembered pick isn't what the current token was issued for
+                // (e.g. it was issued at login for the primary company), refresh it —
+                // mirrors the superadmin branch above so every subsequent API call is
+                // scoped to the company actually shown in the UI, not a stale one.
+                try {
+                    const currentToken = localStorage.getItem('eco_token');
+                    const payload = JSON.parse(atob(currentToken.split('.')[1]));
+                    if (payload.companyId !== selectedCompany.id) {
+                        const selRes = await fetch(`${API_BASE}/api/auth/select-company`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentToken}` },
+                            body: JSON.stringify({ companyId: selectedCompany.id })
+                        });
+                        if (selRes.ok) {
+                            const selData = await selRes.json();
+                            localStorage.setItem('eco_token', selData.token);
+                            selectedCompany = { ...selectedCompany, ...selData.company, role: selData.role, apps_access: selData.apps_access };
+                            if (currentUser && selData.hasCoachingAccess !== undefined) {
+                                currentUser.hasCoachingAccess = selData.hasCoachingAccess;
+                                localStorage.setItem('eco_user', JSON.stringify(currentUser));
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Token refresh for selected company failed:', e);
+                }
+            } else {
+                selectedCompany = companies[0];
+            }
             document.getElementById('statCompanies').textContent = companies.length;
 
             // Show practice name in topbar
@@ -2231,6 +2309,7 @@
                 badge.textContent = dispName + codeTag + ' ✏';
                 badge.style.display = '';
             }
+            renderCompanySwitcher();
         }
 
         async function createCompany() {
@@ -2297,8 +2376,53 @@
             }
         }
 
-        function selectCompany(idx) {
-            selectedCompany = companies[idx];
+        // Switching companies must refresh the JWT too — every backend route reads
+        // req.companyId from the token (middleware/auth.js), not from this frontend
+        // variable. Before this fix nothing ever called selectCompany() at all (no
+        // switcher UI existed), so a user with more than one company had no way to
+        // reach the second one no matter what the dashboard displayed.
+        async function selectCompany(idx) {
+            const target = companies[idx];
+            if (!target || (selectedCompany && target.id === selectedCompany.id)) {
+                closeCompanySwitch();
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/auth/select-company`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ companyId: target.id })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to switch company');
+
+                localStorage.setItem('eco_token', data.token);
+                localStorage.setItem('eco_last_company_id', String(target.id));
+                if (currentUser && data.hasCoachingAccess !== undefined) {
+                    currentUser.hasCoachingAccess = data.hasCoachingAccess;
+                    localStorage.setItem('eco_user', JSON.stringify(currentUser));
+                }
+
+                // Merge the authoritative company/role/apps_access the backend just
+                // confirmed into the list entry the UI already had (keeps company_type
+                // etc. that /select-company doesn't return).
+                selectedCompany = {
+                    ...target,
+                    ...data.company,
+                    role: data.role,
+                    apps_access: data.apps_access,
+                };
+                companies[idx] = selectedCompany;
+            } catch (err) {
+                showToast(err.message, true);
+                closeCompanySwitch();
+                return;
+            }
+
+            closeCompanySwitch();
+
             // Company changed — cached data is stale for this new context
             _clientsCache = null;
             _usersCache   = null;
@@ -2313,6 +2437,7 @@
                 _badge.textContent = _dispName + _codeTag + ' ✏';
             }
             renderApps();
+            renderCompanySwitcher();
 
             // Show/hide user management section based on role in this company
             const umSection = document.getElementById('userMgmtSection');
@@ -2326,6 +2451,68 @@
             if (document.getElementById('usersPanel').classList.contains('show')) {
                 loadUsers();
             }
+
+            // Reload client list for the new company context if that panel is open
+            if (document.getElementById('clientsPanel') && document.getElementById('clientsPanel').classList.contains('show')) {
+                loadClients().catch(() => {});
+            }
+        }
+
+        // ── Company Switcher dropdown ──
+        function renderCompanySwitcher() {
+            const wrap = document.getElementById('companySwitchWrap');
+            const dropdown = document.getElementById('companySwitchDropdown');
+            if (!wrap || !dropdown) return;
+
+            if (!companies || companies.length < 2) {
+                wrap.style.display = 'none';
+                return;
+            }
+            wrap.style.display = '';
+
+            dropdown.innerHTML = companies.map((c, idx) => {
+                const isCurrent = selectedCompany && c.id === selectedCompany.id;
+                const tradingOk = c.trading_name && c.trading_name.toLowerCase() !== 'default';
+                const dispName = tradingOk ? c.trading_name : c.company_name;
+                const roleLabel = (c.role || 'user').replace(/_/g, ' ');
+                return `
+                    <div onclick="selectCompany(${idx})" style="
+                        display:flex; align-items:center; justify-content:space-between; gap:8px;
+                        padding:8px 10px; border-radius:7px; cursor:pointer;
+                        background:${isCurrent ? 'rgba(102,126,234,0.18)' : 'transparent'};
+                    " onmouseenter="if(!${isCurrent}) this.style.background='rgba(255,255,255,0.06)'"
+                       onmouseleave="this.style.background='${isCurrent ? 'rgba(102,126,234,0.18)' : 'transparent'}'">
+                        <div style="min-width:0;">
+                            <div style="color:#e5e7eb; font-size:0.84rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(dispName || '')}</div>
+                            <div style="color:rgba(255,255,255,0.4); font-size:0.7rem; text-transform:capitalize;">${escHtml(roleLabel)}</div>
+                        </div>
+                        ${isCurrent ? '<span style="color:#6ee7b7; font-size:0.9rem; flex-shrink:0;">&#10003;</span>' : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleCompanySwitch(evt) {
+            if (evt) evt.stopPropagation();
+            const dropdown = document.getElementById('companySwitchDropdown');
+            if (!dropdown) return;
+            if (dropdown.style.display === 'block') {
+                closeCompanySwitch();
+            } else {
+                dropdown.style.display = 'block';
+                document.addEventListener('click', _companySwitchOutsideHandler);
+            }
+        }
+
+        function closeCompanySwitch() {
+            const dropdown = document.getElementById('companySwitchDropdown');
+            if (dropdown) dropdown.style.display = 'none';
+            document.removeEventListener('click', _companySwitchOutsideHandler);
+        }
+
+        function _companySwitchOutsideHandler(evt) {
+            const wrap = document.getElementById('companySwitchWrap');
+            if (wrap && !wrap.contains(evt.target)) closeCompanySwitch();
         }
 
         // ── Render Apps ──
@@ -2619,6 +2806,7 @@
             localStorage.removeItem('eco_user');
             localStorage.removeItem('eco_companies');
             localStorage.removeItem('eco_super_admin');
+            localStorage.removeItem('eco_last_company_id');
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('company');
