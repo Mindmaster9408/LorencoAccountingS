@@ -154,6 +154,7 @@ const PERMISSIONS = {
   'ar.invoice.create': ['admin', 'accountant', 'bookkeeper'],
   'ar.invoice.edit':   ['admin', 'accountant', 'bookkeeper'],
   'ar.invoice.post':   ['admin', 'accountant'],
+  'ar.invoice.send':   ['admin', 'accountant'],
   'ar.invoice.void':   ['admin', 'accountant'],
   'ar.payment.record': ['admin', 'accountant', 'bookkeeper'],
   'ar.payment.void':   ['admin', 'accountant'],
