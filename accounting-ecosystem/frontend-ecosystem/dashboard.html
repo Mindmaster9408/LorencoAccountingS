@@ -414,6 +414,7 @@
         .app-card.coaching { --app-color: #f97316; --app-color-dark: #ea580c; }
         .app-card.inventory { --app-color: #22d3ee; --app-color-dark: #06b6d4; }
         .app-card.practice  { --app-color: #a78bfa; --app-color-dark: #7c3aed; }
+        .app-card.insights  { --app-color: #34d399; --app-color-dark: #0ea5e9; }
 
         .app-card.pos .app-icon   { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
         .app-card.payroll .app-icon { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
@@ -423,6 +424,7 @@
         .app-card.coaching .app-icon { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
         .app-card.inventory .app-icon { background: rgba(34, 211, 238, 0.15); color: #22d3ee; }
         .app-card.practice .app-icon  { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
+        .app-card.insights .app-icon  { background: rgba(52, 211, 153, 0.15); color: #34d399; }
 
         /* ── Quick Stats ─────────────────────────────────────── */
         .stats-row {
@@ -2056,6 +2058,19 @@
                 desc: 'Photograph slips and invoices on your phone and keep the originals safely online for 7 years.',
                 path: '/slips',
                 cssClass: 'practice',
+            },
+            {
+                // Insights (2026-11-11) — read-only owner dashboard: Ledger Leo
+                // financials + Checkout Charlie sales. Will be renamed 'Commander'
+                // later; the key stays 'insights'. Super admins see it automatically
+                // (Rule F1); real clients only once 'insights' is in modules_enabled.
+                key: 'insights',
+                name: 'Insights',
+                subtitle: 'Owner Dashboard',
+                icon: '&#128202;',
+                desc: 'See how the business is doing at a glance: revenue, profit, cash and till sales, with trends.',
+                path: '/insights',
+                cssClass: 'insights',
             }
         ];
 

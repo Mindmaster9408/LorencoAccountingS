@@ -106,6 +106,20 @@ const modules = {
     routePrefix: '/api/slips',
     requiredTables: ['slips'],
   },
+  insights: {
+    name: 'Insights',
+    key: 'insights',
+    // Owner reporting app (Syft-style), 2026-11-11. Will be renamed
+    // "Commander" later; the key stays 'insights'. On unless explicitly
+    // switched off (MODULE_INSIGHTS_ENABLED=false), same as slips. Real
+    // clients only see it once 'insights' is in their
+    // companies.modules_enabled; super admins bypass that (Rule F1).
+    active: (process.env.MODULE_INSIGHTS_ENABLED || 'true').toLowerCase() === 'true',
+    version: '0.1.0',
+    description: 'Owner dashboard: Ledger Leo financials and Checkout Charlie sales in one read-only view.',
+    routePrefix: '/api/insights',
+    requiredTables: ['journals', 'journal_lines', 'accounts', 'sales', 'sale_items'],
+  },
 };
 
 /**

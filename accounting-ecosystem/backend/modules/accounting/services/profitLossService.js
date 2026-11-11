@@ -14,7 +14,7 @@
  * documented history of a real bug class here (reversed journals once
  * silently excluded from reports instead of netting to zero); this file
  * deliberately does not touch the SQL/filter logic in
- * routes/reports.js's fetchAccountBalances() (status IN ('posted','reversed')
+ * services/glReportData.js's fetchAccountBalances() (status IN ('posted','reversed')
  * etc.) at all — it only classifies whatever lines that function already
  * fetched.
  * ============================================================================
@@ -76,7 +76,7 @@ function buildProfitLossTotals(classifiedEntries) {
 }
 
 /**
- * fetchAccountBalances (routes/reports.js) fetches its `date` column via the
+ * fetchAccountBalances (services/glReportData.js) fetches its `date` column via the
  * direct pg Pool, not the Supabase client — and node-postgres's default type
  * parser for a DATE column returns a real JS Date object (constructed at
  * LOCAL midnight of that calendar date), not a string. `String(dateObject)`
@@ -100,7 +100,7 @@ function toDateOnlyString(value) {
 
 /**
  * Groups journal_lines rows (each must include account_id, debit, credit,
- * and a `date` column — fetchAccountBalances in routes/reports.js selects
+ * and a `date` column — fetchAccountBalances in services/glReportData.js selects
  * this) into { 'YYYY-MM': { [account_id]: { debit, credit } } }.
  */
 function aggregateLinesByMonth(lines) {

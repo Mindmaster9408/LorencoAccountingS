@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insights — Lorenco Ecosystem</title>
+    <link rel="stylesheet" href="/insights/css/insights.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <header class="topbar">
+        <div class="brand">
+            <a href="/dashboard" class="back" title="Back to the Eco dashboard">&larr;</a>
+            <div>
+                <h1>Insights</h1>
+                <div class="muted small" id="companyName">&nbsp;</div>
+            </div>
+        </div>
+        <div class="period">
+            <label class="inline">Period
+                <select id="preset">
+                    <option value="mtd">This month to date</option>
+                    <option value="last_month">Last month</option>
+                    <option value="last_3">Last 3 full months</option>
+                    <option value="ytd">This calendar year to date</option>
+                    <option value="last_12">Last 12 full months</option>
+                    <option value="custom">Custom…</option>
+                </select>
+            </label>
+            <span id="customRange" hidden>
+                <input type="date" id="fromDate" aria-label="From date">
+                <input type="date" id="toDate" aria-label="To date">
+                <button class="btn btn-sm" id="applyCustom">Apply</button>
+            </span>
+        </div>
+    </header>
+
+    <main>
+        <div id="status" class="status">Loading…</div>
+        <div id="periodNote" class="muted small period-note" hidden></div>
+
+        <!-- ── Finance (Ledger Leo) ───────────────────────────────────── -->
+        <section id="financeSection" hidden>
+            <div class="section-head">
+                <h2>Financial performance</h2>
+                <span class="source" id="financeSource"></span>
+            </div>
+            <div class="kpi-grid" id="financeKpis"></div>
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>Revenue &amp; profit trend</h3>
+                    <span class="muted small">Last 12 months</span>
+                </div>
+                <div class="chart-box tall"><canvas id="financeTrend"></canvas></div>
+            </div>
+        </section>
+
+        <!-- ── Sales (Checkout Charlie) ───────────────────────────────── -->
+        <section id="salesSection" hidden>
+            <div class="section-head">
+                <h2>Till sales</h2>
+                <span class="source" id="salesSource"></span>
+            </div>
+
+            <div class="sales-layout">
+                <div class="sales-main">
+                    <div class="kpi-grid" id="salesKpis"></div>
+
+                    <div class="grid-2">
+                        <div class="panel">
+                            <div class="panel-head">
+                                <h3>Sales &amp; orders trend</h3>
+                                <span class="muted small">Last 12 months</span>
+                            </div>
+                            <div class="chart-box"><canvas id="salesTrend"></canvas></div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-head"><h3>Sales by product category</h3></div>
+                            <div class="chart-box"><canvas id="categoryChart"></canvas></div>
+                            <div class="empty" id="categoryEmpty" hidden>No sales in this period.</div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="panel">
+                            <div class="panel-head">
+                                <h3>Sales by store / till</h3>
+                                <span class="info" tabindex="0" data-tip="Store = the till's location as set up in Checkout Charlie (falls back to the till name).">i</span>
+                            </div>
+                            <div class="chart-box"><canvas id="storeChart"></canvas></div>
+                            <div class="empty" id="storeEmpty" hidden>No sales in this period.</div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-head">
+                                <h3>Top performing products</h3>
+                                <span class="info" tabindex="0" data-tip="Ranked by sales value (incl. VAT). Year-on-year compares with the same dates last year.">i</span>
+                            </div>
+                            <div class="table-wrap">
+                                <table class="data">
+                                    <thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Sales</th><th class="num">YoY</th></tr></thead>
+                                    <tbody id="topProducts"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <aside class="slicers panel">
+                    <div class="panel-head"><h3>Filters</h3><button class="btn btn-sm" id="clearFilters">Clear</button></div>
+                    <label>Store / till<select id="fStore"><option value="">All</option></select></label>
+                    <label>Product category<select id="fCategory"><option value="">All</option></select></label>
+                    <label>Payment method<select id="fPayment"><option value="">All</option></select></label>
+                    <p class="muted small">Filters apply to the till sales section only. Financial figures always show the whole business.</p>
+                    <div class="pay-list" id="paymentList"></div>
+                </aside>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h3>Latest sales</h3>
+                    <span class="muted small">Most recent 15 in this period</span>
+                </div>
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead><tr><th>Date</th><th>Sale</th><th>Store / till</th><th>Categories</th><th class="num">Items</th><th class="num">Amount</th></tr></thead>
+                        <tbody id="recentSales"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="nothing" class="panel empty-state" hidden>
+            <h2>Nothing to show yet</h2>
+            <p class="muted" id="nothingText"></p>
+        </section>
+    </main>
+
+    <script src="/insights/js/insights.js"></script>
+</body>
+</html>

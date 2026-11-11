@@ -67,7 +67,7 @@ const paytimeChatRoutes  = require('./modules/paytime-chat/routes');
 
 let posRoutes, payrollRoutes, accountingRoutes, seanRoutes, interCompanyRoutes, coachingRoutes;
 let receiptsRoutes, barcodesRoutes, reportsRoutes;
-let inventoryRoutes, practiceRoutes, commanderRoutes, collectorRoutes, collectorPublicRoutes, slipsRoutes;
+let inventoryRoutes, practiceRoutes, commanderRoutes, collectorRoutes, collectorPublicRoutes, slipsRoutes, insightsRoutes;
 
 if (isModuleEnabled('pos')) {
   posRoutes = require('./modules/pos');
@@ -87,6 +87,7 @@ if (isModuleEnabled('collector')) {
   collectorPublicRoutes = require('./modules/collector/routes/public-portal');
 }
 if (isModuleEnabled('slips'))      slipsRoutes = require('./modules/slips');
+if (isModuleEnabled('insights'))   insightsRoutes = require('./modules/insights');
 
 // Coaching module — always load routes (routing is separate from DB connection).
 // DB connection is lazy: coaching module only connects to Postgres when first route is called.
@@ -479,6 +480,19 @@ if (slipsRoutes) {
   console.log('  ⬜ Slips module (Slip Capture) — disabled');
 }
 
+// Insights (2026-11-11) — read-only owner dashboard (Leo financials + Charlie sales).
+if (insightsRoutes) {
+  app.use('/api/insights',
+    authenticateToken,
+    requireModule('insights'),
+    auditMiddleware,
+    insightsRoutes
+  );
+  console.log('  ✅ Insights module (owner reporting) — ACTIVE');
+} else {
+  console.log('  ⬜ Insights module (owner reporting) — disabled');
+}
+
 // ─── Static File Serving ─────────────────────────────────────────────────────
 
 const ecosystemFrontendPath = path.join(__dirname, '..', 'frontend-ecosystem');
@@ -493,6 +507,7 @@ const commanderFrontendPath = path.join(__dirname, 'frontend-commander'); // ins
 const collectorFrontendPath       = path.join(__dirname, 'frontend-collector');        // staff-facing, authenticated
 const collectorPublicFrontendPath = path.join(__dirname, 'frontend-collector-public'); // client-facing, NO authentication
 const slipsFrontendPath           = path.join(__dirname, 'frontend-slips');            // phone-first PWA, own login
+const insightsFrontendPath        = path.join(__dirname, 'frontend-insights');         // owner dashboard, token from dashboard SSO
 
 // ── Cache-Control helper ──────────────────────────────────────────────────────
 // HTML files: never cache — browser must always revalidate on navigation.
@@ -778,6 +793,11 @@ app.get('/collect/:token', (req, res) => {
 // from a phone's home screen, where the dashboard's SSO token isn't present.
 app.use('/slips', express.static(slipsFrontendPath, staticOptions));
 app.get(['/slips', '/slips/*'], (req, res) => sendHtml(res, path.join(slipsFrontendPath, 'index.html')));
+
+// Insights — single-page owner dashboard. Auth at the API layer (/api/insights);
+// the page picks up the 'insights_token' the Eco dashboard's SSO launch stores.
+app.use('/insights', express.static(insightsFrontendPath, staticOptions));
+app.get(['/insights', '/insights/*'], (req, res) => sendHtml(res, path.join(insightsFrontendPath, 'index.html')));
 
 // Accounting: multi-page frontend (30+ HTML pages)
 app.get('/accounting', (req, res) => {
