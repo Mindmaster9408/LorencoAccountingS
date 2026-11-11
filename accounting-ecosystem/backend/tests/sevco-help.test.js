@@ -200,3 +200,25 @@ describe('real Ledger Leo articles (2026-11-11): common questions find the right
       .forEach(q => expect([q, K.isAdviceQuestion(q)]).toEqual([q, false]));
   });
 });
+
+describe('Ledger Leo batch 2 (full coverage): screens + troubleshooting questions find the right article (top 3)', () => {
+  const j = require('../../docs/sevco/help/leo-articles.json');
+  const arts = (L) => j.articles.map(a => ({ slug: a.slug, title: a[L].title, body: a[L].body, tags: a.tags }));
+  const cases = [
+    ['where do I start', 'en', 'begin/eerste-stappe'], ['waar begin ek', 'af', 'begin/eerste-stappe'],
+    ['how do I switch to another company', 'en', 'maatskappy/wissel-maatskappy'], ['edit a customer email address', 'en', 'kliente/klient-wysig'],
+    ['how do I change a posted invoice', 'en', 'kliente/faktuur-wysig'], ['reverse a customer payment', 'en', 'kliente/betaling-omkeer'],
+    ['upload a supplier invoice to be scanned', 'en', 'verskaffers/ocr-faktuur'], ['possible duplicate in staging', 'en', 'bank/staging'],
+    ['transfer between my bank accounts', 'en', 'bank/oordrag'], ['attach a slip to a bank transaction', 'en', 'bank/dokumente'],
+    ['salary payment on bank statement', 'en', 'bank/salarisbetalings'], ['profit per division', 'en', 'verslae/divisies'],
+    ['enter previous years figures', 'en', 'verslae/historiese-syfers'], ['paye emp201 in leo', 'en', 'paye/paye-in-leo'],
+    ['hoe verander ek my wagwoord', 'af', 'maatskappy/profiel-wagwoord'], ['import from sage old system ledger', 'en', 'admin/ou-grootboek-invoer'],
+    ['my invoice wont post', 'en', 'probleem/faktuur-boek-nie'], ['invoice email not sent', 'en', 'probleem/epos-stuur-nie'],
+    ['kliënt het betaal maar faktuur wys steeds oop', 'af', 'probleem/betaling-nie-op-faktuur'], ['cannot void invoice', 'en', 'probleem/kan-nie-void-nie'],
+    ['bank account has no linked ledger account', 'en', 'probleem/bank-geen-grootboekrekening'], ['amount not showing in reports', 'en', 'probleem/verslag-syfers-verkeerd'],
+    ['cannot create journal in a locked period', 'en', 'probleem/geslote-periode'], ['locked VAT period cannot change', 'en', 'btw/btw-periode-gesluit']
+  ];
+  test.each(cases)('%s', (q, L, slug) => {
+    expect(K.rank(arts(L), q).map(r => r.slug)).toContain(slug);
+  });
+});
