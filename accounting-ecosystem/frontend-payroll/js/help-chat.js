@@ -17,16 +17,16 @@
     var APP = 'paytime';
     var ICON = 'assets/branding/paytime-bot.png';
     var T = {
-        AF: { title: 'Paytime-assistent', hint: 'Vra my hoe om iets in Paytime te doen, bv. "Hoe sit ek oortyd op \'n payslip?"',
+        AF: { title: 'PIP — Paytime\'s Intelligent Pal', hint: 'Hallo! Ek is Pip, jou Paytime-assistent.\nVra my hoe om iets in Paytime te doen, bv. "Hoe sit ek oortyd op \'n payslip?"',
               placeholder: 'Tik jou vraag…', send: 'Stuur', open: 'Maak die skerm oop', none: 'Ek het nog nie \'n hulpartikel hieroor nie. Jou vraag is aangeteken sodat ons dit kan byvoeg.',
-              thinking: 'Die assistent skryf ook \'n kort antwoord…', offline: 'Die AI-assistent is tans af — hier is die hulpartikel wat die beste pas.',
+              thinking: 'Pip skryf ook \'n kort antwoord…', offline: 'Pip se AI-helper is tans af — hier is die hulpartikel wat die beste pas.',
               helpful: 'Was dit nuttig?', thanks: 'Dankie!', error: 'Kon nie nou antwoord nie. Probeer weer.', source: 'Bron' },
-        EN: { title: 'Paytime assistant', hint: 'Ask me how to do something in Paytime, e.g. "How do I add overtime to a payslip?"',
+        EN: { title: 'PIP — Paytime\'s Intelligent Pal', hint: 'Hi! I\'m Pip, your Paytime assistant.\nAsk me how to do something in Paytime, e.g. "How do I add overtime to a payslip?"',
               placeholder: 'Type your question…', send: 'Send', open: 'Open the screen', none: 'I don\'t have a help article about this yet. Your question was noted so we can add one.',
-              thinking: 'The assistant is also writing a short answer…', offline: 'The AI assistant is offline right now — here is the help article that fits best.',
+              thinking: 'Pip is also writing a short answer…', offline: 'Pip\'s AI helper is offline right now — here is the help article that fits best.',
               helpful: 'Was this helpful?', thanks: 'Thank you!', error: 'Could not answer right now. Please try again.', source: 'Source' }
     };
-    var lang = 'AF';
+    var lang = 'EN';   // English first (Ruan 2026-11-11); AF/EN toggle in the header
 
     function token() {
         try { return (window.safeLocalStorage || window.localStorage).getItem('token'); } catch (e) { return null; }
@@ -51,7 +51,7 @@
         'display:none;flex-direction:column;background:#0d0a18;color:#e9e4ff;border:1px solid #3b2a6b;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5),0 0 30px rgba(124,58,237,.25);font-family:inherit}' +
         '#phc-panel.open{display:flex}' +
         '.phc-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #2a1f4d}' +
-        '.phc-head img{width:34px;height:34px;border-radius:50%}.phc-head b{flex:1;font-size:15px}' +
+        '.phc-head img{width:34px;height:34px;border-radius:50%}.phc-head b{flex:1;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
         '.phc-lang button{background:none;border:1px solid #4c3a85;color:#bfb3ef;border-radius:6px;padding:2px 7px;margin-left:4px;cursor:pointer;font-size:12px}' +
         '.phc-lang button.on{background:#7c3aed;color:#fff;border-color:#7c3aed}' +
         '.phc-x{background:none;border:none;color:#bfb3ef;font-size:20px;cursor:pointer}' +
@@ -71,9 +71,9 @@
 
     function build() {
         var style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
-        var btn = el('<button id="phc-btn" type="button" aria-label="Paytime assistant"><img src="' + ICON + '" alt=""></button>');
+        var btn = el('<button id="phc-btn" type="button" aria-label="Pip, your Paytime assistant"><img src="' + ICON + '" alt=""></button>');
         btn.querySelector('img').onerror = function () { btn.innerHTML = '<span>🤖</span>'; };
-        var panel = el('<div id="phc-panel" role="dialog" aria-label="Paytime assistant">' +
+        var panel = el('<div id="phc-panel" role="dialog" aria-label="Pip, your Paytime assistant">' +
             '<div class="phc-head"><img src="' + ICON + '" alt="" onerror="this.style.display=\'none\'"><b id="phc-title"></b>' +
             '<span class="phc-lang"><button type="button" data-l="AF">AF</button><button type="button" data-l="EN">EN</button></span>' +
             '<button class="phc-x" type="button" aria-label="Close">×</button></div>' +
