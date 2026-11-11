@@ -24,6 +24,8 @@
     // both call this shared route directly and would otherwise be silently
     // rewritten to a nonexistent /api/accounting/users/*.
     '/api/users',
+    // SEVCO help chatbot (2026-11-11) — shared /api/help, not an accounting route.
+    '/api/help/',
   ];
 
   function isEcoSharedRoute(u) {

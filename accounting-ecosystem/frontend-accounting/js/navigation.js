@@ -22,6 +22,38 @@
   }
 })();
 
+// ─── Inject the Leo help assistant (SEVCO help chatbot, 2026-11-11) ───────
+// Same idea as Paytime's Pip: answers 'how do I … in Leo' from help articles a
+// super user approved in SEVCO. Shared widget: /dashboard/js/app-help-chat.js.
+// It stays hidden until at least one Leo article is approved.
+(function() {
+  if (document.getElementById('app-help-chat-script')) return;
+  let isSuper = false;
+  try { const u = JSON.parse(localStorage.getItem('user') || 'null'); isSuper = !!(u && u.isGlobalAdmin === true); } catch (e) { /* not signed in */ }
+  window.APP_HELP_CHAT = {
+    app: 'leo',
+    tokenKey: 'token',
+    icon: '/accounting/assets/branding/leo-bot.png',
+    emoji: '🦁',
+    accent: '#f5b335',
+    accentSoft: 'rgba(245,179,53,.5)',
+    // Super admins also have the Sean AI bubble bottom-right — sit above it.
+    bottom: isSuper ? 92 : 20,
+    text: {
+      AF: { title: 'Leo — Hulp-assistent', aria: 'Leo hulp-assistent',
+            hint: "Hallo! Ek is Leo se hulp-assistent.\nVra my hoe om iets in Ledger Leo te doen, bv. \"Hoe maak ek 'n faktuur?\"",
+            advice: "Dit klink na 'n BTW-, belasting- of rekeningkundige adviesvraag. Ek help met hoe Leo werk — waar om iets in te sit en watter knoppie om te druk.\nAdvies (bv. of iets BTW-pligtig is of na watter rekening iets moet gaan) is deel van die betaalde Sean AI-byvoeging, of vra jou rekenmeester." },
+      EN: { title: 'Leo — Help assistant', aria: 'Leo help assistant',
+            hint: "Hi! I'm Leo's help assistant.\nAsk me how to do something in Ledger Leo, e.g. \"How do I create an invoice?\"\nJy kan ook in Afrikaans vra.",
+            advice: "That sounds like a VAT, tax or accounting advice question. I help with how Leo works — where to enter something and which button to click.\nAdvice (e.g. whether something carries VAT or which account it belongs in) is part of the paid Sean AI add-on, or ask your accountant." }
+    }
+  };
+  const script = document.createElement('script');
+  script.id = 'app-help-chat-script';
+  script.src = '/dashboard/js/app-help-chat.js?v=20261111';
+  document.head.appendChild(script);
+})();
+
 function createNavigation() {
   // Strip /accounting/ prefix for current page detection
   const pathname = window.location.pathname.replace(/^\/accounting\/?/, '');

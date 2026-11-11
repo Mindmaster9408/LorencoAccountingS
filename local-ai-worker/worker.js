@@ -124,11 +124,11 @@ const PROMPT = [
 ].join('\n');
 
 const HELP_PROMPT = {
-  AF: 'Jy is Pip, die hulp-assistent van Lorenco {APP}. Gebruik net die hulpartikels hieronder om die gebruiker se vraag te beantwoord. ' +
+  AF: 'Jy is {BOT}, die hulp-assistent van Lorenco {APP}. Gebruik net die hulpartikels hieronder om die gebruiker se vraag te beantwoord. ' +
       'Skryf in suiwer Suid-Afrikaanse Afrikaans (nie Nederlands nie), kort en duidelik, in hoogstens 6 genommerde stappe, ' +
       'en gebruik die presiese knoppie- en skermname uit die artikels. Moenie iets byvoeg wat nie in die artikels staan nie. ' +
       'Uitsondering: as die artikels glad nie oor die vraag gaan nie, antwoord met net hierdie een woord: NOT_COVERED',
-  EN: 'You are Pip, the help assistant of Lorenco {APP}. Use only the help articles below to answer the question of the user. ' +
+  EN: 'You are {BOT}, the help assistant of Lorenco {APP}. Use only the help articles below to answer the question of the user. ' +
       'Write in English, short and clear, in at most 6 numbered steps, using the exact button and screen names from the articles. ' +
       'Do not add anything that is not in the articles. ' +
       'Exception: if the articles are not about the question at all, answer with just this one word: NOT_COVERED'
@@ -137,7 +137,9 @@ const HELP_PROMPT = {
 async function answerHelp(cfg, payload) {
   const started = Date.now();
   const L = payload.language === 'EN' ? 'EN' : 'AF';
-  const app = payload.app === 'paytime' ? 'Paytime' : String(payload.app || '');
+  // app_name / bot_name come from the server (knowledge.js APPS) — older servers send neither.
+  const app = payload.app_name || (payload.app === 'paytime' ? 'Paytime' : String(payload.app || ''));
+  const bot = payload.bot_name || 'Pip';
   const NL = String.fromCharCode(10);
   const articles = (payload.articles || []).map((a, i) => '### Article ' + (i + 1) + ': ' + a.title +
     (a.screen_name ? ' (screen: ' + a.screen_name + ')' : '') + NL + a.body).join(NL + NL);
@@ -150,7 +152,7 @@ async function answerHelp(cfg, payload) {
       keep_alive: cfg.keepAlive || '24h',
       options: { temperature: 0.2, num_predict: 400 },
       messages: [
-        { role: 'system', content: HELP_PROMPT[L].replace('{APP}', app) + NL + NL + articles },
+        { role: 'system', content: HELP_PROMPT[L].replace('{APP}', app).replace('{BOT}', bot) + NL + NL + articles },
         { role: 'user', content: String(payload.question || '').slice(0, 1000) }
       ]
     }),

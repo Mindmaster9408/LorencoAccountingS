@@ -13,6 +13,7 @@
 
 const { supabase } = require('../../config/database');
 const { approvedArticles } = require('./routes');
+const { APPS } = require('./knowledge');
 
 async function loadQuestion(job) {
   const { data, error } = await supabase.from('sevco_help_questions').select('*')
@@ -28,7 +29,9 @@ async function payload(job) {
   const articles = (q.matched_slugs || []).map(s => all.find(a => a.slug === s)).filter(Boolean)
     .map(a => ({ title: a.title, body: a.body, screen_name: a.screen_name || null }));
   if (!articles.length) throw Object.assign(new Error('The matched articles are no longer approved'), { permanent: true });
-  return { kind: 'help_answer', question: q.question, language: q.language, app: q.app, articles };
+  const cfg = APPS[q.app] || {};
+  return { kind: 'help_answer', question: q.question, language: q.language, app: q.app,
+    app_name: cfg.name || q.app, bot_name: cfg.bot || 'Pip', articles };
 }
 
 async function complete(job, output) {

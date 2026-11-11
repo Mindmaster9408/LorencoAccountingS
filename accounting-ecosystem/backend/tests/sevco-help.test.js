@@ -156,3 +156,47 @@ describe('real Paytime articles: common questions find the right article (top 3 
     slugs.forEach(s => expect(s).toMatch(/^[a-z0-9]+(?:[/-][a-z0-9]+)*$/));
   });
 });
+
+describe('real Ledger Leo articles (2026-11-11): common questions find the right article (top 3)', () => {
+  const j = require('../../docs/sevco/help/leo-articles.json');
+  const arts = (L) => j.articles.map(a => ({ slug: a.slug, title: a[L].title, body: a[L].body, tags: a.tags }));
+  const cases = [
+    ['how do I create an invoice', 'en', 'kliente/faktuur'], ['hoe maak ek n faktuur', 'af', 'kliente/faktuur'],
+    ['how do I email an invoice to the client', 'en', 'kliente/faktuur-epos-pdf'], ['hoe stuur ek n faktuur per epos', 'af', 'kliente/faktuur-epos-pdf'],
+    ['convert a quote to an invoice', 'en', 'kliente/kwotasie'], ['hoe maak ek n kwotasie', 'af', 'kliente/kwotasie'],
+    ['how do I record a customer payment', 'en', 'kliente/betaling-ontvang'], ['kliënt het betaal hoe teken ek dit aan', 'af', 'kliente/betaling-ontvang'],
+    ['how do I add a new customer', 'en', 'kliente/nuwe-klient'], ['add items to my price list', 'en', 'kliente/items'],
+    ['credit note for an invoice', 'en', 'kliente/kredietnota'], ['send a statement to a customer', 'en', 'kliente/staat-ouderdom'],
+    ['how do I import a bank statement', 'en', 'bank/bankstaat-invoer'], ['hoe laai ek n pdf bankstaat op', 'af', 'bank/bankstaat-invoer'],
+    ['allocate bank transactions', 'en', 'bank/toeken'], ['hoe ken ek banktransaksies toe', 'af', 'bank/toeken'],
+    ['how do I reconcile the bank', 'en', 'bank/rekonsiliasie'], ['create a bank rule', 'en', 'bank/bankreels'],
+    ['record a supplier invoice', 'en', 'verskaffers/verskafferfaktuur'], ['hoe betaal ek n verskaffer', 'af', 'verskaffers/betaal-verskaffer'],
+    ['how do I do a journal entry', 'en', 'rekeninge/joernaal'], ['reverse a journal', 'en', 'rekeninge/joernaal'],
+    ['opening balances from old system', 'en', 'rekeninge/openingsaldos'], ['how do I lock a month', 'en', 'rekeninge/periode-sluit'],
+    ['where is the profit and loss report', 'en', 'verslae/wins-verlies'], ['trial balance', 'en', 'verslae/balansstaat-proefbalans'],
+    ['how do I do the VAT201 return', 'en', 'btw/btw201'], ['set up chart of accounts', 'en', 'begin/rekeningplan'],
+    ['add a user', 'en', 'maatskappy/gebruikers'], ['client wants to pay monthly', 'en', 'kliente/jaarliks-maandeliks'],
+    ['upload company logo', 'en', 'begin/maatskappy-profiel'], ['add a bank account', 'en', 'bank/bankrekening']
+  ];
+  test.each(cases)('%s', (q, L, slug) => {
+    expect(K.rank(arts(L), q).map(r => r.slug)).toContain(slug);
+  });
+  test('every slug is valid and unique; both languages present; screen links stay inside Leo', () => {
+    const slugs = j.articles.map(a => a.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+    j.articles.forEach(a => {
+      expect(a.slug).toMatch(/^[a-z0-9]+(?:[/-][a-z0-9]+)*$/);
+      expect(a.af.title && a.af.body && a.en.title && a.en.body).toBeTruthy();
+      expect(a.screen_url).toMatch(/^\/accounting\//);
+    });
+  });
+  test('Leo is a help app on the accounting module', () => {
+    expect(K.APPS.leo).toMatchObject({ domain: 'LEO_HELP', module: 'accounting' });
+  });
+  test('VAT advice questions go to paid Sean; Leo how-to questions do not', () => {
+    ['is a cellphone vatable?', 'can I claim VAT on entertainment?', 'what are the VAT rules for exports',
+     'is dit nulkoers?', 'mag ek btw eis op n motor?'].forEach(q => expect([q, K.isAdviceQuestion(q)]).toEqual([q, true]));
+    ['how do I do the VAT201 return', 'where is the VAT report', 'hoe sluit ek die btw periode', 'how do I create an invoice with VAT']
+      .forEach(q => expect([q, K.isAdviceQuestion(q)]).toEqual([q, false]));
+  });
+});

@@ -198,11 +198,19 @@
         <div class="tab-bar">
             <button class="tab-btn active" id="tabBtnIrp5" onclick="switchTab('irp5')">Paytime IRP5 Learning</button>
             <button class="tab-btn" id="tabBtnBank" onclick="switchTab('bank')">Bank Allocation Learning</button>
-            <button class="tab-btn" id="tabBtnHelp" onclick="switchTab('help')">Paytime Help (chatbot knowledge)</button>
+            <button class="tab-btn" id="tabBtnHelp" onclick="switchTab('help')">App Help (chatbot knowledge)</button>
         </div>
 
         <!-- SEVCO help knowledge (2026-11-10): what every app's chatbot answers from -->
         <div id="tabHelp" class="tab-panel">
+            <div class="action-row" style="margin-bottom:12px;align-items:center;gap:8px;">
+                <label style="font-size:0.85rem;">App:
+                    <select id="helpApp" class="h-in" style="width:auto;display:inline-block;" onchange="onHelpAppChange()">
+                        <option value="paytime">Paytime (Pip)</option>
+                        <option value="leo">Ledger Leo</option>
+                    </select>
+                </label>
+            </div>
             <div class="section">
                 <div class="section-header">
                     <h2>Questions to deal with</h2>
@@ -222,9 +230,9 @@
             <div class="section" id="helpEditor" style="display:none;">
                 <div class="section-header"><h2 id="helpEditorTitle">Article</h2></div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <label>Slug (e.g. payslip/oortyd)<input id="hSlug" class="h-in"></label>
+                    <label>Slug (e.g. payslip/oortyd or invoices/new)<input id="hSlug" class="h-in"></label>
                     <label>Search words (comma separated)<input id="hTags" class="h-in"></label>
-                    <label>Screen link (e.g. /payroll/employee-detail.html)<input id="hUrl" class="h-in"></label>
+                    <label>Screen link (e.g. /payroll/employee-detail.html, /accounting/invoices.html)<input id="hUrl" class="h-in"></label>
                     <label>Screen name (e.g. Payslip page)<input id="hScreen" class="h-in"></label>
                     <label>Afrikaans title<input id="hAfTitle" class="h-in"></label>
                     <label>English title<input id="hEnTitle" class="h-in"></label>
@@ -580,8 +588,13 @@
             if (name === 'help') { loadHelpArticles(); loadHelpQuestions(); }
         }
 
-        // ── Paytime Help — the chatbot's knowledge (SEVCO = the brain) ──
+        // ── App Help — each app chatbot's knowledge (SEVCO = the brain) ──
         let helpArticles = [];
+        const helpApp = () => document.getElementById('helpApp').value;
+        function onHelpAppChange() {
+            document.getElementById('helpEditor').style.display = 'none';
+            loadHelpArticles(); loadHelpQuestions();
+        }
         async function apiPut(path, body) {
             const res = await fetch(`${API_BASE}${path}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body || {}) });
             if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `Request failed (${res.status})`); }
@@ -590,7 +603,7 @@
         async function loadHelpArticles() {
             const box = document.getElementById('helpArticles');
             try {
-                const data = await apiGet('/api/sevco/help/articles?app=paytime');
+                const data = await apiGet('/api/sevco/help/articles?app=' + helpApp());
                 helpArticles = data.articles || [];
                 if (!helpArticles.length) { box.innerHTML = '<div class="empty-state">No articles yet.</div>'; return; }
                 box.innerHTML = '<table class="data-table"><thead><tr><th>Article</th><th>Screen</th><th>Status</th><th></th></tr></thead><tbody>' +
@@ -619,7 +632,7 @@
         }
         async function saveHelpArticle() {
             const v = id => document.getElementById(id).value.trim();
-            const body = { app: 'paytime', slug: v('hSlug'), tags: v('hTags'), screen_url: v('hUrl'), screen_name: v('hScreen') };
+            const body = { app: helpApp(), slug: v('hSlug'), tags: v('hTags'), screen_url: v('hUrl'), screen_name: v('hScreen') };
             if (v('hAfTitle') || v('hAfBody')) body.af = { title: v('hAfTitle'), body: v('hAfBody') };
             if (v('hEnTitle') || v('hEnBody')) body.en = { title: v('hEnTitle'), body: v('hEnBody') };
             try {
@@ -630,13 +643,13 @@
         }
         async function helpArticleAction(action, slug) {
             if (action === 'archive' && !confirm('Archive this article? The assistant will stop using it.')) return;
-            try { await apiPost('/api/sevco/help/articles/' + action, { app: 'paytime', slug }); loadHelpArticles(); }
+            try { await apiPost('/api/sevco/help/articles/' + action, { app: helpApp(), slug }); loadHelpArticles(); }
             catch (e) { alert(e.message); }
         }
         async function loadHelpQuestions() {
             const box = document.getElementById('helpQuestions');
             try {
-                const data = await apiGet('/api/sevco/help/questions?app=paytime&open=1');
+                const data = await apiGet('/api/sevco/help/questions?app=' + helpApp() + '&open=1');
                 const qs = data.questions || [];
                 if (!qs.length) { box.innerHTML = '<div class="empty-state">Nothing to deal with.</div>'; return; }
                 box.innerHTML = qs.map(q => `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:0.85rem;">

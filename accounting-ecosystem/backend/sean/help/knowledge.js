@@ -20,8 +20,10 @@
 
 'use strict';
 
+// bot = the assistant's name the local AI uses in its prompt (Pip for Paytime).
 const APPS = {
-  paytime: { domain: 'PAYTIME_HELP', module: 'payroll', name: 'Paytime' }
+  paytime: { domain: 'PAYTIME_HELP', module: 'payroll',    name: 'Paytime',    bot: 'Pip' },
+  leo:     { domain: 'LEO_HELP',     module: 'accounting', name: 'Ledger Leo', bot: 'Leo' }   // 2026-11-11
 };
 
 const STOP = new Set((
@@ -38,7 +40,19 @@ const SYNONYMS = [
   ['verlof', 'leave'], ['bank', 'eft', 'banklêer', 'bankfile'], ['verhoging', 'increase', 'raise'], ['agterstallig', 'backpay', 'back'],
   ['motor', 'car', 'vehicle', 'voertuig'], ['pensioen', 'pension', 'voorsorg', 'provident', 'aftree', 'retirement'],
   ['mediese', 'medical', 'medies'], ['bywoning', 'attendance', 'ure', 'hours'], ['verslag', 'report', 'verslae', 'reports'],
-  ['irp5', 'it3a', 'sertifikaat', 'certificate', 'certificates'], ['maand', 'month', 'maande', 'months', 'periode', 'period'], ['uitvoer', 'execute', 'run', 'loop', 'hardloop'], ['nuwe', 'new', 'byvoeg', 'add', 'voeg', 'sit', 'put']
+  ['irp5', 'it3a', 'sertifikaat', 'certificate', 'certificates'], ['maand', 'month', 'maande', 'months', 'periode', 'period'], ['uitvoer', 'execute', 'run', 'loop', 'hardloop'], ['nuwe', 'new', 'byvoeg', 'add', 'voeg', 'sit', 'put'],
+  // Ledger Leo (2026-11-11)
+  ['faktuur', 'fakture', 'invoice', 'invoices'], ['kwotasie', 'kwotasies', 'quote', 'quotes', 'quotation', 'estimate'],
+  ['kredietnota', 'krediet', 'credit', 'creditnote'],
+  ['klient', 'kliente', 'customer', 'customers', 'debiteur', 'debiteure', 'debtor', 'debtors'],
+  ['verskaffer', 'verskaffers', 'supplier', 'suppliers', 'krediteur', 'krediteure', 'creditor', 'creditors', 'vendor'],
+  ['joernaal', 'joernale', 'journal', 'journals'], ['btw', 'vat', 'vat201'],
+  ['rekeningplan', 'chart', 'grootboek', 'ledger', 'gl'], ['bankstaat', 'statement', 'statements', 'state'],
+  ['rekonsiliasie', 'rekonsilieer', 'reconciliation', 'reconcile', 'recon'], ['toeken', 'toekenning', 'allocate', 'allocation', 'allokeer'],
+  ['ontvangs', 'ontvangste', 'receipt', 'receipts'], ['produk', 'produkte', 'product', 'products', 'diens', 'dienste', 'service', 'services'],
+  ['wins', 'verlies', 'profit', 'loss', 'inkomstestaat'], ['balansstaat', 'balance'], ['proefbalans', 'trial'],
+  ['ouderdom', 'aged', 'ageing', 'aging', 'uitstaande', 'outstanding'], ['openingsaldo', 'opening', 'openingsaldos'],
+  ['import', 'oplaai', 'upload'], ['epos', 'email', 'stuur', 'send']
 ];
 const SYN = new Map();
 SYNONYMS.forEach(group => group.forEach(w => SYN.set(w, group)));
@@ -121,7 +135,7 @@ function detectLanguage(text, fallback = 'EN') {
 // judgement ("is X taxable?", "which IRP5 code?", "should I deduct UIF?") are the paid
 // Sean AI add-on, so Pip must not try to answer them from a how-to article.
 // "How do I set an item to 80% taxable?" is an app question and must NOT match here.
-const TAX = '(tax|taxed|taxable|paye|uif|sdl|sars|irp5|it3a|deduct\\w*|exempt\\w*|belasting\\w*|belasbaar|aftrek\\w*|vrygestel\\w*)';
+const TAX = '(tax|taxed|taxable|paye|uif|sdl|sars|irp5|it3a|vat|btw|deduct\\w*|exempt\\w*|belasting\\w*|belasbaar|aftrek\\w*|vrygestel\\w*)';
 const ADVICE_PATTERNS = [
   // "is a cellphone allowance taxable?" / "is 'n selfoontoelae belasbaar?"
   /\b(is|are|was|word)\b[^?.!]{0,60}\b(taxable|non-taxable|tax[- ]?free|deductible|exempt|belasbaar|belastingvry|aftrekbaar|vrygestel)\b/,
@@ -133,7 +147,11 @@ const ADVICE_PATTERNS = [
   new RegExp('\\b(should (i|we)|do (i|we) (have|need) to|must (i|we)|am i allowed|are we allowed|moet (ek|ons)|mag (ek|ons)|is ek verplig)\\b[^?.!]{0,80}\\b' + TAX),
   // legality / rules
   /\b(is (it|this|that) legal|is dit wettig|wat s[êe] (sars|die wet)|what does (sars|the law) say)\b/,
-  /\b(sars|tax) (rule|rules|rate|rates|limit|limits|reël|reëls|tarief|perk)\b/
+  /\b(sars|tax) (rule|rules|rate|rates|limit|limits|reël|reëls|tarief|perk)\b/,
+  // Ledger Leo (2026-11-11): VAT / accounting judgement is advice too
+  /\b(is|are|word)\b[^?.!]{0,60}\b(vatable|zero[- ]?rated|nulkoers\w*|btw[- ]?pligtig)\b/,
+  /\b(can|may|kan|mag) (i|we|ek|ons) (claim|eis)\b[^?.!]{0,40}\b(vat|btw|input|insette?|expense|uitgawe)\b/,
+  /\b(vat|btw) (rule|rules|rate|reël|reëls|tarief)\b/
 ];
 // Questions that clearly ask where/how in the app stay app questions even with tax words.
 const APP_HOWTO = /^\s*(how (do|can|to)|where (do|can|is)|hoe (sit|doen|kan|maak|voeg|stel|verander|kry|druk)|waar (sit|kry|is|stel|druk))\b/;

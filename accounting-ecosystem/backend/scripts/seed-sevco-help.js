@@ -2,7 +2,7 @@
 /**
  * Loads help articles from docs/sevco/help/<app>-articles.json into SEVCO's brain
  * (sean_knowledge_items) as DRAFT rows — one per language. A super user approves
- * each article in SEVCO → Paytime Help before the assistant uses it.
+ * each article in SEVCO → App Help before the assistant uses it.
  *
  * New slugs are added as DRAFT v1. Existing slugs are left alone, unless --update:
  * then a language whose title/body in the file differs from the current version gets
@@ -80,6 +80,6 @@ function row(domain, a, L, version, now) {
     const { error: insErr } = await supabase.from('sean_knowledge_items').insert(rows);
     if (insErr) throw new Error(insErr.message);
   }
-  console.log(`\nInserted ${summary}. Approve them in SEVCO → Paytime Help.`);
+  console.log(`\nInserted ${summary}. Approve them in SEVCO → App Help (choose the app).`);
   process.exit(0);
 })().catch(e => { console.error('Failed:', e.message); process.exit(1); });

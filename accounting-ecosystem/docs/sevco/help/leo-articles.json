@@ -1,0 +1,398 @@
+{
+  "app": "leo",
+  "note": "Ledger Leo help articles, batch 1 (2026-11-11). Every button/screen name was checked against frontend-accounting/*.html. Seed as DRAFT with: node scripts/seed-sevco-help.js leo --write — a super user approves each in SEVCO → App Help (Ledger Leo). Free = how to use Leo; VAT/tax/accounting advice = paid Sean AI.",
+  "articles": [
+    {
+      "slug": "begin/rekeningplan",
+      "screen_url": "/accounting/accounts.html",
+      "screen_name": "Chart of Accounts",
+      "tags": ["rekeningplan", "chart", "accounts", "rekeninge", "begin", "start", "setup", "opstel", "template"],
+      "af": {
+        "title": "Rekeningplan opstel (eerste stap vir 'n nuwe maatskappy)",
+        "body": "1. Gaan na Accounts → Chart of Accounts.\n2. As die maatskappy nog geen rekeninge het nie, wys die skerm \"No chart of accounts set up yet\". Klik Set up Default SA Chart of Accounts, of klik 🏭 Industry Templates en kies 'n bedryf met Use this template.\n3. Ekstra rekeninge: klik + New Account, vul Account Code (of klik Generate), Account Name en Type in, en klik Save Account.\n4. 'n Onderrekening (bv. 4000/001 Online Sales): klik + Sub langs die hoofrekening.\nLet wel: fakture, bank-toekennings en joernale kan eers boek as daar 'n rekeningplan is."
+      },
+      "en": {
+        "title": "Set up the chart of accounts (first step for a new company)",
+        "body": "1. Go to Accounts → Chart of Accounts.\n2. If the company has no accounts yet, the screen shows \"No chart of accounts set up yet\". Click Set up Default SA Chart of Accounts, or click 🏭 Industry Templates and pick an industry with Use this template.\n3. Extra accounts: click + New Account, fill in Account Code (or click Generate), Account Name and Type, and click Save Account.\n4. A sub-account (e.g. 4000/001 Online Sales): click + Sub next to the main account.\nNote: invoices, bank allocations and journals can only post once a chart of accounts exists."
+      }
+    },
+    {
+      "slug": "begin/maatskappy-profiel",
+      "screen_url": "/accounting/company.html",
+      "screen_name": "Company Profile",
+      "tags": ["maatskappy", "company", "profiel", "profile", "logo", "btw-nommer", "vat number", "bankbesonderhede", "banking details", "jaareinde", "year end"],
+      "af": {
+        "title": "Maatskappybesonderhede, logo en BTW-registrasie",
+        "body": "1. Gaan na Company → Company Profile.\n2. Basic Information: Company Name, Trading As, Registration Number. Klik Upload Logo vir die logo wat op fakture en kwotasies verskyn.\n3. Tax Information: Income Tax Number, VAT Registered? (en dan VAT Number), Financial Year End en VAT Submission Frequency.\n4. Contact Information en Banking Details (die bankbesonderhede verskyn op jou fakture).\n5. Klik Save Profile."
+      },
+      "en": {
+        "title": "Company details, logo and VAT registration",
+        "body": "1. Go to Company → Company Profile.\n2. Basic Information: Company Name, Trading As, Registration Number. Click Upload Logo for the logo shown on invoices and quotes.\n3. Tax Information: Income Tax Number, VAT Registered? (then VAT Number), Financial Year End and VAT Submission Frequency.\n4. Contact Information and Banking Details (the banking details appear on your invoices).\n5. Click Save Profile."
+      }
+    },
+    {
+      "slug": "kliente/nuwe-klient",
+      "screen_url": "/accounting/customer-list.html",
+      "screen_name": "Customer List",
+      "tags": ["klient", "customer", "debiteur", "nuwe", "new", "add", "kontak"],
+      "af": {
+        "title": "'n Nuwe kliënt byvoeg",
+        "body": "1. Gaan na Customers → Customer List.\n2. Klik + Add Customer.\n3. Details: Customer Name (verpligtend), Contact Person, Phone, Email.\n4. Address: Street Address, City, Postal Code.\n5. Financial: Credit Limit, Payment Terms (Days), Tax Number (die kliënt se BTW-nommer).\n6. Klik Save Customer.\nWenk: op die New Invoice- en New Quote-skerm kan jy ook vinnig 'n kliënt byvoeg (Add Customer)."
+      },
+      "en": {
+        "title": "Add a new customer",
+        "body": "1. Go to Customers → Customer List.\n2. Click + Add Customer.\n3. Details: Customer Name (required), Contact Person, Phone, Email.\n4. Address: Street Address, City, Postal Code.\n5. Financial: Credit Limit, Payment Terms (Days), Tax Number (the customer's VAT number).\n6. Click Save Customer.\nTip: on the New Invoice and New Quote screens you can also quickly add a customer (Add Customer)."
+      }
+    },
+    {
+      "slug": "kliente/items",
+      "screen_url": "/accounting/products-services.html",
+      "screen_name": "Products & Services",
+      "tags": ["item", "items", "produk", "product", "diens", "service", "prys", "price", "pryslys", "kode", "code"],
+      "af": {
+        "title": "Items (produkte en dienste) byvoeg",
+        "body": "1. Gaan na Customers → Products & Services.\n2. Klik + New Item.\n3. Vul Item Name (verpligtend) en Item Code in, en kies die Type: Service, Product of Non-stock Product.\n4. Kies die VAT Treatment: Standard (15%), Zero Rated of Exempt.\n5. Vul die Selling Price (ex VAT) in en kies die Income Account (die inkomsterekening waarheen die verkope gaan).\n6. Klik Save Item.\nItems verskyn dan op fakture en kwotasies as jy by 'n lyn Item kies. 'n Item wat jy nie meer gebruik nie: klik Deactivate."
+      },
+      "en": {
+        "title": "Add items (products and services)",
+        "body": "1. Go to Customers → Products & Services.\n2. Click + New Item.\n3. Fill in Item Name (required) and Item Code, and choose the Type: Service, Product or Non-stock Product.\n4. Choose the VAT Treatment: Standard (15%), Zero Rated or Exempt.\n5. Fill in the Selling Price (ex VAT) and choose the Income Account (the income account the sales go to).\n6. Click Save Item.\nItems then appear on invoices and quotes when you choose Item on a line. An item you no longer use: click Deactivate."
+      }
+    },
+    {
+      "slug": "kliente/kwotasie",
+      "screen_url": "/accounting/quotes.html",
+      "screen_name": "Quotes",
+      "tags": ["kwotasie", "quote", "quotation", "skatting", "estimate", "aanvaar", "accepted"],
+      "af": {
+        "title": "'n Kwotasie maak (en later omskakel)",
+        "body": "1. Gaan na Customers → Quotes en klik + New Quote.\n2. Kies die Customer, Quote Date en Expiry Date, en kies Exc of Inc (pryse sonder of met BTW).\n3. By elke lyn kies jy Acct (rekening) of Item, vul Qty en Price in. Klik + Add Line vir nog lyne.\n4. Opsioneel: Notes en Terms & Conditions. Klik Save Quote.\n5. Klik PDF om die kwotasie vir die kliënt te kry. Werk die status by met Mark Sent, Mark Accepted of Decline.\n6. Wanneer die kliënt aanvaar: klik → Invoice (of → Convert to Invoice in die kwotasie). Dit maak 'n konsep-faktuur; gaan na Invoices om dit te boek."
+      },
+      "en": {
+        "title": "Create a quote (and convert it later)",
+        "body": "1. Go to Customers → Quotes and click + New Quote.\n2. Choose the Customer, Quote Date and Expiry Date, and choose Exc or Inc (prices excluding or including VAT).\n3. On each line choose Acct (account) or Item, fill in Qty and Price. Click + Add Line for more lines.\n4. Optional: Notes and Terms & Conditions. Click Save Quote.\n5. Click PDF to get the quote for the client. Update the status with Mark Sent, Mark Accepted or Decline.\n6. When the client accepts: click → Invoice (or → Convert to Invoice inside the quote). This creates a draft invoice; go to Invoices to post it."
+      }
+    },
+    {
+      "slug": "kliente/faktuur",
+      "screen_url": "/accounting/invoices.html",
+      "screen_name": "Invoices",
+      "tags": ["faktuur", "invoice", "nuwe", "new", "boek", "post", "konsep", "draft", "verkope", "sales"],
+      "af": {
+        "title": "'n Faktuur maak en boek",
+        "body": "1. Gaan na Customers → Invoices en klik + New Invoice.\n2. Kies die Customer en die Invoice Date (en opsioneel Due Date en Reference).\n3. Kies EX VAT (pryse sonder BTW, BTW word bygetel) of INC VAT (pryse sluit BTW in).\n4. By elke lyn kies jy Account of Item, en vul Description, Qty en Price in. + Add Line vir nog lyne.\n5. Klik Save (of Save & New). Die faktuur is nou 'n konsep (Draft).\n6. Klik Post to GL by die faktuur om dit in die boeke te boek. Eers dan tel dit by die kliënt se balans en die verslae.\n'n Konsep kan jy nog met Edit verander; 'n geboekte faktuur nie meer nie (gebruik 'n kredietnota of Void)."
+      },
+      "en": {
+        "title": "Create and post an invoice",
+        "body": "1. Go to Customers → Invoices and click + New Invoice.\n2. Choose the Customer and the Invoice Date (and optionally Due Date and Reference).\n3. Choose EX VAT (prices exclude VAT, VAT is added) or INC VAT (prices include VAT).\n4. On each line choose Account or Item, and fill in Description, Qty and Price. + Add Line for more lines.\n5. Click Save (or Save & New). The invoice is now a Draft.\n6. Click Post to GL on the invoice to post it to the books. Only then does it count in the customer's balance and the reports.\nA draft can still be changed with Edit; a posted invoice cannot (use a credit note or Void)."
+      }
+    },
+    {
+      "slug": "kliente/faktuur-epos-pdf",
+      "screen_url": "/accounting/invoices.html",
+      "screen_name": "Invoices",
+      "tags": ["epos", "email", "stuur", "send", "pdf", "druk", "print", "faktuur", "invoice"],
+      "af": {
+        "title": "'n Faktuur e-pos of as PDF kry",
+        "body": "1. Gaan na Customers → Invoices.\n2. PDF: klik PDF by die faktuur — dit is die faktuur soos die kliënt dit kry.\n3. E-pos: klik 📧 Send by 'n geboekte faktuur. Dit gaan na die kliënt se e-posadres. As dit al gestuur is, staan daar 📧 Re-send (hou die muis daaroor om te sien wanneer en aan wie).\nLet wel: 'n konsep-faktuur kan nie ge-e-pos word nie — boek dit eers met Post to GL."
+      },
+      "en": {
+        "title": "Email an invoice or get it as a PDF",
+        "body": "1. Go to Customers → Invoices.\n2. PDF: click PDF on the invoice — this is the invoice as the client receives it.\n3. Email: click 📧 Send on a posted invoice. It goes to the customer's email address. If it was already sent, it shows 📧 Re-send (hover over it to see when and to whom).\nNote: a draft invoice cannot be emailed — post it first with Post to GL."
+      }
+    },
+    {
+      "slug": "kliente/jaarliks-maandeliks",
+      "screen_url": "/accounting/invoices.html",
+      "screen_name": "Invoices → Monthly Plans",
+      "tags": ["jaarliks", "annual", "maandeliks", "monthly", "paaiement", "instalment", "plan", "herhalend", "recurring"],
+      "af": {
+        "title": "Kliënt kies jaarliks of maandeliks betaal",
+        "body": "1. Op die kwotasie of faktuur merk jy Offer the client an annual or monthly payment option. Die PDF wys die kliënt albei opsies.\n2. As die kwotasie na 'n faktuur omgeskakel word, gaan die opsie saam.\n3. By die konsep-faktuur klik jy Client chose Annual of Client chose Monthly.\n4. Maandeliks: Leo maak 'n plan met 12 maandfakture. Elke maand se faktuur word op sy datum outomaties geskep, geboek en ge-e-pos.\n5. Sien die planne onder Invoices → die oortjie Monthly Plans (vordering en volgende faktuur). Klik Stop plan om dit te stop."
+      },
+      "en": {
+        "title": "Client chooses to pay annually or monthly",
+        "body": "1. On the quote or invoice, tick Offer the client an annual or monthly payment option. The PDF shows the client both options.\n2. When the quote is converted to an invoice, the option carries over.\n3. On the draft invoice, click Client chose Annual or Client chose Monthly.\n4. Monthly: Leo creates a plan of 12 monthly invoices. Each month's invoice is created, posted and emailed automatically on its date.\n5. See the plans under Invoices → the Monthly Plans tab (progress and next invoice). Click Stop plan to stop it."
+      }
+    },
+    {
+      "slug": "kliente/betaling-ontvang",
+      "screen_url": "/accounting/customer-receipts.html",
+      "screen_name": "Customer Receipts",
+      "tags": ["betaling", "payment", "ontvang", "receipt", "ontvangs", "betaal", "paid", "kliënt", "customer"],
+      "af": {
+        "title": "'n Kliënt se betaling aanteken",
+        "body": "1. Gaan na Customers → Customer Receipts en klik + Record Receipt.\n2. Kies die Customer, Receipt Date, Amount Received en die Bank / Cash Account waarin die geld gekom het.\n3. Kies die Payment Method en vul die Reference in.\n4. Onder Allocate to Open Invoices wys die kliënt se oop fakture: tik by elke faktuur hoeveel van die betaling daarheen gaan.\n5. Klik Record Receipt.\nOf: op die Invoices-skerm klik Pay by 'n faktuur (of + Record Payment).\nBelangrik: as die betaling op die bankstaat is, teken dit hier aan — nie op die Bank-skerm as \"Account\" nie, anders word die faktuur nie as betaal gemerk nie."
+      },
+      "en": {
+        "title": "Record a customer payment",
+        "body": "1. Go to Customers → Customer Receipts and click + Record Receipt.\n2. Choose the Customer, Receipt Date, Amount Received and the Bank / Cash Account the money went into.\n3. Choose the Payment Method and fill in the Reference.\n4. Under Allocate to Open Invoices the customer's open invoices are shown: type how much of the payment goes to each invoice.\n5. Click Record Receipt.\nOr: on the Invoices screen click Pay on an invoice (or + Record Payment).\nImportant: if the payment is on the bank statement, record it here — not on the Bank screen as \"Account\", otherwise the invoice is not marked as paid."
+      }
+    },
+    {
+      "slug": "kliente/kredietnota",
+      "screen_url": "/accounting/credit-notes.html",
+      "screen_name": "Credit Notes",
+      "tags": ["kredietnota", "credit", "note", "terugbetaling", "refund", "korting", "kanselleer", "cancel", "void"],
+      "af": {
+        "title": "'n Kredietnota maak of 'n faktuur kanselleer",
+        "body": "Kredietnota (deel of hele faktuur terug):\n1. Op Customers → Invoices klik Credit Note by die faktuur — die kredietnota word aan die faktuur gekoppel. Of gaan na Customers → Credit Notes en klik + New Credit Note.\n2. Kies die Customer, Credit Note Date en 'n Reason, en vul die lyne in.\n3. Klik Save Draft, of Save & Post to GL om dit dadelik te boek.\nFaktuur kanselleer: klik Void by die faktuur en gee 'n rede. Void werk net as daar nog geen betaling teen die faktuur is nie."
+      },
+      "en": {
+        "title": "Create a credit note or cancel an invoice",
+        "body": "Credit note (part or all of an invoice back):\n1. On Customers → Invoices click Credit Note on the invoice — the credit note is linked to that invoice. Or go to Customers → Credit Notes and click + New Credit Note.\n2. Choose the Customer, Credit Note Date and a Reason, and fill in the lines.\n3. Click Save Draft, or Save & Post to GL to post it immediately.\nCancel an invoice: click Void on the invoice and give a reason. Void only works while there is no payment against the invoice."
+      }
+    },
+    {
+      "slug": "kliente/staat-ouderdom",
+      "screen_url": "/accounting/aged-debtors.html",
+      "screen_name": "Aged Debtors",
+      "tags": ["staat", "statement", "ouderdom", "aged", "debiteure", "debtors", "uitstaande", "outstanding", "skuld", "owe", "aging"],
+      "af": {
+        "title": "Wie skuld ons? Ouderdomsanalise en kliëntstate",
+        "body": "1. Gaan na Reports → Aged Debtors (of Customers → Customer Aging).\n2. Kies die As At Date en klik Generate Report. Jy sien elke kliënt se uitstaande bedrag per ouderdom.\n3. Klik Export PDF of Export Excel vir 'n afskrif.\n4. Om 'n kliënt 'n staat te e-pos: klik 📧 Send Statement by die kliënt. Leo vra die begin- en einddatum van die staat en stuur dit na die kliënt se e-posadres."
+      },
+      "en": {
+        "title": "Who owes us? Aged debtors and customer statements",
+        "body": "1. Go to Reports → Aged Debtors (or Customers → Customer Aging).\n2. Choose the As At Date and click Generate Report. You see each customer's outstanding amount by age.\n3. Click Export PDF or Export Excel for a copy.\n4. To email a customer a statement: click 📧 Send Statement on the customer. Leo asks for the statement's start and end date and sends it to the customer's email address."
+      }
+    },
+    {
+      "slug": "verskaffers/nuwe-verskaffer",
+      "screen_url": "/accounting/suppliers.html",
+      "screen_name": "Suppliers",
+      "tags": ["verskaffer", "supplier", "krediteur", "creditor", "nuwe", "new", "add"],
+      "af": {
+        "title": "'n Nuwe verskaffer byvoeg",
+        "body": "1. Gaan na Suppliers → Supplier List (of Suppliers → New Supplier).\n2. Klik + New Supplier.\n3. Vul Supplier Name (verpligtend), Contact Person, Email, Phone en VAT Number in.\n4. Opsioneel: Payment Terms en die verskaffer se bankbesonderhede (Bank, Account #, Branch Code).\n5. Klik Save Supplier."
+      },
+      "en": {
+        "title": "Add a new supplier",
+        "body": "1. Go to Suppliers → Supplier List (or Suppliers → New Supplier).\n2. Click + New Supplier.\n3. Fill in Supplier Name (required), Contact Person, Email, Phone and VAT Number.\n4. Optional: Payment Terms and the supplier's bank details (Bank, Account #, Branch Code).\n5. Click Save Supplier."
+      }
+    },
+    {
+      "slug": "verskaffers/verskafferfaktuur",
+      "screen_url": "/accounting/suppliers.html?tab=invoices",
+      "screen_name": "Suppliers → Invoices",
+      "tags": ["verskafferfaktuur", "supplier", "invoice", "faktuur", "rekening", "bill", "aankoop", "purchase", "uitgawe", "expense"],
+      "af": {
+        "title": "'n Verskaffer se faktuur aanteken",
+        "body": "1. Gaan na Suppliers → Supplier Invoices.\n2. Klik + Record Invoice.\n3. Kies die Supplier, vul die Supplier Invoice Number, Invoice Date en Due Date in.\n4. Vul die lyne in met die uitgawe- of voorraadrekening en bedrae. + Add Line vir nog lyne.\n5. Klik Save Invoice. 'n Verskafferfaktuur word dadelik in die boeke geboek (daar is geen konsep-stap nie).\nFout gemaak? Klik Void by die faktuur.\nWenk: onder die oortjie 📄 OCR Invoice Review kan jy 'n faktuur oplaai (📤 Upload Invoice) sodat die besonderhede ingelees word."
+      },
+      "en": {
+        "title": "Record a supplier invoice",
+        "body": "1. Go to Suppliers → Supplier Invoices.\n2. Click + Record Invoice.\n3. Choose the Supplier, fill in the Supplier Invoice Number, Invoice Date and Due Date.\n4. Fill in the lines with the expense or stock account and amounts. + Add Line for more lines.\n5. Click Save Invoice. A supplier invoice posts to the books immediately (there is no draft step).\nMade a mistake? Click Void on the invoice.\nTip: under the 📄 OCR Invoice Review tab you can upload an invoice (📤 Upload Invoice) so its details are read in."
+      }
+    },
+    {
+      "slug": "verskaffers/betaal-verskaffer",
+      "screen_url": "/accounting/suppliers.html?tab=payments",
+      "screen_name": "Suppliers → Payments",
+      "tags": ["betaal", "pay", "betaling", "payment", "verskaffer", "supplier", "krediteur"],
+      "af": {
+        "title": "'n Verskaffer betaal",
+        "body": "1. Gaan na Suppliers → Supplier Payments en klik + Record Payment (of klik Pay by die verskafferfaktuur).\n2. Kies die verskaffer, Payment Date, Payment Method en Amount, en vul die Reference in.\n3. Kies die Bank Account — dan boek Leo die betaling uit die bank.\n4. Klik Record Payment.\nVerkeerd? Klik Reverse by die betaling.\nBelangrik: as die betaling op die bankstaat is, teken dit hier aan — nie op die Bank-skerm as \"Account\" nie, anders word die verskafferfaktuur nie as betaal gemerk nie."
+      },
+      "en": {
+        "title": "Pay a supplier",
+        "body": "1. Go to Suppliers → Supplier Payments and click + Record Payment (or click Pay on the supplier invoice).\n2. Choose the supplier, Payment Date, Payment Method and Amount, and fill in the Reference.\n3. Choose the Bank Account — Leo then posts the payment out of the bank.\n4. Click Record Payment.\nWrong? Click Reverse on the payment.\nImportant: if the payment is on the bank statement, record it here — not on the Bank screen as \"Account\", otherwise the supplier invoice is not marked as paid."
+      }
+    },
+    {
+      "slug": "verskaffers/bestelling",
+      "screen_url": "/accounting/suppliers.html?tab=orders",
+      "screen_name": "Suppliers → Purchase Orders",
+      "tags": ["bestelling", "order", "purchase", "po", "aankoop", "bestel"],
+      "af": {
+        "title": "'n Bestelling (purchase order) maak",
+        "body": "1. Gaan na Suppliers → Purchase Orders en klik + New Purchase Order.\n2. Kies die Supplier, PO Date en Expected Delivery, en kies Excluding VAT of Including VAT.\n3. Vul die lyne in en klik Create Purchase Order.\n4. Klik Approve om die bestelling goed te keur, en Received wanneer die goedere ontvang is.\nLet wel: 'n bestelling boek niks in die boeke nie. Teken die verskaffer se faktuur aan wanneer dit kom."
+      },
+      "en": {
+        "title": "Create a purchase order",
+        "body": "1. Go to Suppliers → Purchase Orders and click + New Purchase Order.\n2. Choose the Supplier, PO Date and Expected Delivery, and choose Excluding VAT or Including VAT.\n3. Fill in the lines and click Create Purchase Order.\n4. Click Approve to approve the order, and Received when the goods arrive.\nNote: a purchase order does not post anything to the books. Record the supplier's invoice when it arrives."
+      }
+    },
+    {
+      "slug": "bank/bankrekening",
+      "screen_url": "/accounting/bank.html",
+      "screen_name": "Bank Transactions",
+      "tags": ["bankrekening", "bank", "account", "nuwe", "add", "rekening", "skakel", "link", "ledger"],
+      "af": {
+        "title": "'n Bankrekening byvoeg",
+        "body": "1. Gaan na Banking → Bank Transactions.\n2. Klik + Add Account by Bank Accounts.\n3. Vul Account Name, Bank en Account Number in.\n4. Kies die Linked Ledger Account (die bankrekening in jou rekeningplan, bv. 1020 Bank Account). Sonder dit kan transaksies nie toegeken word nie.\n5. Opsioneel: Opening Balance (R) en Opening Balance Date.\n6. Klik Save Account."
+      },
+      "en": {
+        "title": "Add a bank account",
+        "body": "1. Go to Banking → Bank Transactions.\n2. Click + Add Account under Bank Accounts.\n3. Fill in Account Name, Bank and Account Number.\n4. Choose the Linked Ledger Account (the bank account in your chart of accounts, e.g. 1020 Bank Account). Without it, transactions cannot be allocated.\n5. Optional: Opening Balance (R) and Opening Balance Date.\n6. Click Save Account."
+      }
+    },
+    {
+      "slug": "bank/bankstaat-invoer",
+      "screen_url": "/accounting/bank.html",
+      "screen_name": "Bank Transactions",
+      "tags": ["bankstaat", "statement", "invoer", "import", "oplaai", "upload", "pdf", "csv", "excel", "ofx", "staging"],
+      "af": {
+        "title": "'n Bankstaat invoer (PDF, CSV/Excel, foto of OFX)",
+        "body": "1. Gaan na Banking → Bank Transactions en klik 📥 Import Statement.\n2. Kies die soort lêer: 📊 CSV / Excel, 📋 PDF Statement, 📸 Photo / Image of 📂 OFX / QFX, en kies die Bank Account.\n3. CSV: klik Next: Map Columns → en wys watter kolom die Date, Description en bedrag (Amount, of Debit en Credit) is.\n4. Kyk die lyne na en klik Import Transactions.\n5. Die lyne gaan eers na Import Review (Staging). Klik Open Bank Staging → (of Banking → Import Review (Staging)), kyk vir duplikate en klik Confirm All Visible of bevestig lyn vir lyn.\n6. Bevestigde lyne verskyn op Bank Transactions om toe te ken.\nLet wel: PDF-state van Standard Bank, ABSA, FNB, Nedbank en Capitec (besigheid) word gelees. Geskandeerde of wagwoord-beskermde PDF's werk nie — gebruik CSV."
+      },
+      "en": {
+        "title": "Import a bank statement (PDF, CSV/Excel, photo or OFX)",
+        "body": "1. Go to Banking → Bank Transactions and click 📥 Import Statement.\n2. Choose the file type: 📊 CSV / Excel, 📋 PDF Statement, 📸 Photo / Image or 📂 OFX / QFX, and choose the Bank Account.\n3. CSV: click Next: Map Columns → and show which column is the Date, Description and amount (Amount, or Debit and Credit).\n4. Check the lines and click Import Transactions.\n5. The lines first go to Import Review (Staging). Click Open Bank Staging → (or Banking → Import Review (Staging)), check for duplicates and click Confirm All Visible or confirm line by line.\n6. Confirmed lines appear on Bank Transactions to allocate.\nNote: PDF statements from Standard Bank, ABSA, FNB, Nedbank and Capitec (business) are read. Scanned or password-protected PDFs don't work — use CSV."
+      }
+    },
+    {
+      "slug": "bank/toeken",
+      "screen_url": "/accounting/bank.html",
+      "screen_name": "Bank Transactions",
+      "tags": ["toeken", "allocate", "allocation", "allokeer", "transaksie", "transaction", "rekening", "account", "kategoriseer", "categorise"],
+      "af": {
+        "title": "Banktransaksies toeken (allocate)",
+        "body": "1. Gaan na Banking → Bank Transactions. Nuwe lyne staan onder New Transactions.\n2. By 'n lyn kies jy die tipe: Account, Transfer (na 'n ander bankrekening) of VAT Payment.\n3. Kies die rekening (Select Account…) en, as dit geld, die BTW-instelling.\n4. Klik Allocate en bevestig met Allocate transaction. Leo boek die dubbele inskrywing.\n5. Baie lyne gelyk: merk hulle en klik Allocate Selected.\n6. Geld in en uit verkeerd om ingevoer? Klik ↕ Flip. Verkeerd toegeken? Klik Undo.\nBelangrik: 'n kliënt- of verskafferbetaling teen 'n faktuur teken jy aan by Customer Receipts of Supplier Payments, nie hier nie."
+      },
+      "en": {
+        "title": "Allocate bank transactions",
+        "body": "1. Go to Banking → Bank Transactions. New lines are under New Transactions.\n2. On a line choose the type: Account, Transfer (to another bank account) or VAT Payment.\n3. Choose the account (Select Account…) and, if it applies, the VAT setting.\n4. Click Allocate and confirm with Allocate transaction. Leo posts the double entry.\n5. Many lines at once: tick them and click Allocate Selected.\n6. Money in and out imported the wrong way round? Click ↕ Flip. Allocated wrongly? Click Undo.\nImportant: a customer or supplier payment against an invoice is recorded under Customer Receipts or Supplier Payments, not here."
+      }
+    },
+    {
+      "slug": "bank/sean-toeken",
+      "screen_url": "/accounting/bank.html",
+      "screen_name": "Bank Transactions",
+      "tags": ["sean", "outomaties", "automatic", "voorstel", "suggestion", "ai", "toeken", "allocate", "vertroue", "confidence"],
+      "af": {
+        "title": "Sean se voorstelle vir banktoekennings gebruik",
+        "body": "1. Op Banking → Bank Transactions stel Sean 'n rekening voor vir lyne wat hy herken (van jou vorige toekennings en bankreëls).\n2. Klik Use Sean's suggestion by 'n lyn om sy voorstel te aanvaar, en dan Allocate.\n3. Baie lyne: kies 'n vertroue-persentasie by Select Sean's lines ≥ % confidence, klik Select Sean's Lines en dan Allocate Selected.\n4. Klik Sean's Review om te sien wat Sean voorstel of reeds geboek het.\n5. As die maatskappy dit aangeskakel het, kan Sean na invoer self die lyne boek waarvan hy seker is (Sean posts the lines he is sure of after import), of klik Let Sean Allocate Now.\nSean leer van jou toekennings — hoe meer jy toeken, hoe beter word die voorstelle."
+      },
+      "en": {
+        "title": "Use Sean's suggestions for bank allocations",
+        "body": "1. On Banking → Bank Transactions Sean suggests an account for lines he recognises (from your previous allocations and bank rules).\n2. Click Use Sean's suggestion on a line to accept it, then Allocate.\n3. Many lines: choose a confidence percentage at Select Sean's lines ≥ % confidence, click Select Sean's Lines and then Allocate Selected.\n4. Click Sean's Review to see what Sean suggests or has already posted.\n5. If the company switched it on, Sean can post the lines he is sure of himself after import (Sean posts the lines he is sure of after import), or click Let Sean Allocate Now.\nSean learns from your allocations — the more you allocate, the better the suggestions get."
+      }
+    },
+    {
+      "slug": "bank/bankreels",
+      "screen_url": "/accounting/bank-rules.html",
+      "screen_name": "Bank Rules",
+      "tags": ["reël", "reels", "rule", "rules", "outomaties", "automatic", "patroon", "pattern", "bankreël"],
+      "af": {
+        "title": "Bankreëls maak (bv. \"ENGEN\" gaan altyd na Brandstof)",
+        "body": "1. Gaan na Banking → Bank Rules (of klik ⚙️ Bank Rules op die Bank-skerm).\n2. Klik + New Rule.\n3. Match Pattern: die woord in die bankbeskrywing, bv. ENGEN. Kies die Match Type en Priority.\n4. Suggest Account: die rekening waarheen dit moet gaan, en opsioneel Suggest VAT Setting.\n5. Klik Save Rule.\nDie reël stel daarna die rekening voor vir elke lyn wat pas. Om 'n reël te stop: klik Deactivate."
+      },
+      "en": {
+        "title": "Create bank rules (e.g. \"ENGEN\" always goes to Fuel)",
+        "body": "1. Go to Banking → Bank Rules (or click ⚙️ Bank Rules on the Bank screen).\n2. Click + New Rule.\n3. Match Pattern: the word in the bank description, e.g. ENGEN. Choose the Match Type and Priority.\n4. Suggest Account: the account it should go to, and optionally Suggest VAT Setting.\n5. Click Save Rule.\nThe rule then suggests that account for every matching line. To stop a rule: click Deactivate."
+      }
+    },
+    {
+      "slug": "bank/rekonsiliasie",
+      "screen_url": "/accounting/bank-reconciliation.html",
+      "screen_name": "Bank Reconciliation",
+      "tags": ["rekonsiliasie", "reconciliation", "reconcile", "rekonsilieer", "bankrekon", "afstem"],
+      "af": {
+        "title": "Die bank rekonsilieer",
+        "body": "1. Ken eers die transaksies toe op Banking → Bank Transactions.\n2. Gaan na Banking → Bank Reconciliation (of klik ✓ Reconcile op die Bank-skerm) en kies die bankrekening.\n3. Onder Allocated Transactions: merk die lyne wat op die bankstaat is (Select All om almal te merk). Die filters wys Pending Reconciliation, Needs Allocation en Already Reconciled.\n4. Kyk na die Reconciliation Summary — die saldo moet ooreenstem met die bankstaat.\n5. Klik Finish Reconciliation.\n'n Gerekonsilieerde lyn terugstel: klik Undo Reconcile op die Bank-skerm."
+      },
+      "en": {
+        "title": "Reconcile the bank",
+        "body": "1. First allocate the transactions on Banking → Bank Transactions.\n2. Go to Banking → Bank Reconciliation (or click ✓ Reconcile on the Bank screen) and choose the bank account.\n3. Under Allocated Transactions: tick the lines that are on the bank statement (Select All ticks all). The filters show Pending Reconciliation, Needs Allocation and Already Reconciled.\n4. Check the Reconciliation Summary — the balance must agree with the bank statement.\n5. Click Finish Reconciliation.\nTo undo a reconciled line: click Undo Reconcile on the Bank screen."
+      }
+    },
+    {
+      "slug": "rekeninge/joernaal",
+      "screen_url": "/accounting/journals.html",
+      "screen_name": "Journal Entries",
+      "tags": ["joernaal", "journal", "inskrywing", "entry", "aansuiwering", "adjustment", "debiet", "debit", "krediet", "credit", "omkeer", "reverse"],
+      "af": {
+        "title": "'n Joernaalinskrywing maak of omkeer",
+        "body": "1. Gaan na Accounts → Journal Entries en klik + New Journal Entry.\n2. Vul die Date, Reference en Description in.\n3. Onder Line Items: kies by elke lyn 'n rekening en vul die debiet- of kredietbedrag in. + Add Line vir nog lyne.\n4. Die totaal-lyn onder wys Debits en Credits — hulle moet gelyk wees.\n5. Klik Save as Draft (later Post) of Save & Post.\nVerkeerd geboek? Klik Reverse by die joernaal — Leo maak 'n teenoorgestelde joernaal. 'n Konsep kan jy met Edit verander of met Delete verwyder."
+      },
+      "en": {
+        "title": "Create or reverse a journal entry",
+        "body": "1. Go to Accounts → Journal Entries and click + New Journal Entry.\n2. Fill in the Date, Reference and Description.\n3. Under Line Items: choose an account on each line and fill in the debit or credit amount. + Add Line for more lines.\n4. The totals line below shows Debits and Credits — they must be equal.\n5. Click Save as Draft (Post later) or Save & Post.\nPosted wrongly? Click Reverse on the journal — Leo creates an opposite journal. A draft can be changed with Edit or removed with Delete."
+      }
+    },
+    {
+      "slug": "rekeninge/openingsaldos",
+      "screen_url": "/accounting/opening-balances.html",
+      "screen_name": "Opening Balances",
+      "tags": ["openingsaldo", "opening", "balances", "oorskakel", "migrate", "proefbalans", "trial", "begin"],
+      "af": {
+        "title": "Openingsaldo's invoer (as jy van 'n ander stelsel oorskakel)",
+        "body": "1. Gaan na Reports → Opening Balances en klik + New Import Batch.\n2. Vul die Effective Date (die datum van die openingsaldo's) en 'n Source Name / Label in, en klik Create Batch.\n3. Klik Add Line vir elke rekening van die ou proefbalans: Source Code, Source Account Name, Debit (R) of Credit (R), en kies Map to COA Account (die rekening in Leo).\n4. Klik Validate TB — die debiete en krediete moet balanseer en elke lyn moet gekoppel wees.\n5. Klik Finalize & Post Journal. Leo boek een openingsaldo-joernaal."
+      },
+      "en": {
+        "title": "Enter opening balances (when moving from another system)",
+        "body": "1. Go to Reports → Opening Balances and click + New Import Batch.\n2. Fill in the Effective Date (the date of the opening balances) and a Source Name / Label, and click Create Batch.\n3. Click Add Line for each account of the old trial balance: Source Code, Source Account Name, Debit (R) or Credit (R), and choose Map to COA Account (the account in Leo).\n4. Click Validate TB — debits and credits must balance and every line must be mapped.\n5. Click Finalize & Post Journal. Leo posts one opening balance journal."
+      }
+    },
+    {
+      "slug": "rekeninge/periode-sluit",
+      "screen_url": "/accounting/accounting-periods.html",
+      "screen_name": "Period Management",
+      "tags": ["periode", "period", "sluit", "lock", "ontsluit", "unlock", "maandeinde", "month-end", "jaareinde"],
+      "af": {
+        "title": "'n Maand of periode sluit (lock)",
+        "body": "1. Gaan na Accounts → Period Management.\n2. As die periode nog nie bestaan nie: vul From Date en To Date in by Create New Period en klik Create Period.\n3. Klik 🔒 Lock by die periode.\nNiks kan daarna geboek word met 'n datum binne 'n geslote periode nie (fakture, joernale, bank). Om iets reg te stel moet 'n admin 🔓 Unlock (Admin) klik.\nWenk: by Check a Date sien jy of 'n datum in 'n oop of geslote periode val."
+      },
+      "en": {
+        "title": "Close (lock) a month or period",
+        "body": "1. Go to Accounts → Period Management.\n2. If the period does not exist yet: fill in From Date and To Date under Create New Period and click Create Period.\n3. Click 🔒 Lock on the period.\nNothing can then be posted with a date inside a locked period (invoices, journals, bank). To correct something an admin must click 🔓 Unlock (Admin).\nTip: under Check a Date you can see whether a date falls in an open or locked period."
+      }
+    },
+    {
+      "slug": "verslae/wins-verlies",
+      "screen_url": "/accounting/reports.html",
+      "screen_name": "Profit & Loss",
+      "tags": ["wins", "verlies", "profit", "loss", "inkomstestaat", "verslag", "report", "uitvoer", "export", "pdf", "tendens", "trend"],
+      "af": {
+        "title": "Die inkomstestaat (Profit & Loss) kry",
+        "body": "1. Gaan na Reports → Profit & Loss.\n2. Kies Date From en Date To en klik Generate Report.\n3. Klik Export PDF of Export CSV vir 'n afskrif.\n4. Onder Profit Trend sien jy die wins maand vir maand: kies Group by en Columns, en wissel tussen 📈 Chart en 🔢 Numbers.\nWenk: Reports → Division P&L wys die wins per afdeling (segment) as die maatskappy afdelings gebruik."
+      },
+      "en": {
+        "title": "Get the Profit & Loss report",
+        "body": "1. Go to Reports → Profit & Loss.\n2. Choose Date From and Date To and click Generate Report.\n3. Click Export PDF or Export CSV for a copy.\n4. Under Profit Trend you see the profit month by month: choose Group by and Columns, and switch between 📈 Chart and 🔢 Numbers.\nTip: Reports → Division P&L shows profit per division (segment) if the company uses divisions."
+      }
+    },
+    {
+      "slug": "verslae/balansstaat-proefbalans",
+      "screen_url": "/accounting/trial-balance.html",
+      "screen_name": "Trial Balance",
+      "tags": ["balansstaat", "balance", "sheet", "proefbalans", "trial", "grootboek", "ledger", "general", "verslag", "report", "kontantvloei", "cash flow"],
+      "af": {
+        "title": "Balansstaat, proefbalans, grootboek en kontantvloei",
+        "body": "Al hierdie verslae is onder die Reports-kieslys (proefbalans en grootboek ook onder Accounts):\n• Balance Sheet — bates, laste en ekwiteit op 'n datum.\n• Trial Balance — kies From Date en To Date (en opsioneel die Journal Source), klik Generate Report, dan Export CSV of Export PDF.\n• General Ledger / Full General Ledger — elke transaksie per rekening.\n• Cash Flow Statement — die kontantvloeistaat.\n• Aged Creditors — wie ons skuld.\n• VAT Reports — sien die BTW-artikel."
+      },
+      "en": {
+        "title": "Balance sheet, trial balance, general ledger and cash flow",
+        "body": "All these reports are under the Reports menu (trial balance and general ledger also under Accounts):\n• Balance Sheet — assets, liabilities and equity at a date.\n• Trial Balance — choose From Date and To Date (and optionally the Journal Source), click Generate Report, then Export CSV or Export PDF.\n• General Ledger / Full General Ledger — every transaction per account.\n• Cash Flow Statement — the cash flow statement.\n• Aged Creditors — who we owe.\n• VAT Reports — see the VAT article."
+      }
+    },
+    {
+      "slug": "btw/btw201",
+      "screen_url": "/accounting/vat.html",
+      "screen_name": "VAT Reports",
+      "tags": ["btw", "vat", "vat201", "sars", "opgawe", "return", "insette", "input", "uitsette", "output", "rekonsiliasie"],
+      "af": {
+        "title": "Die BTW201-opgawe voorberei",
+        "body": "1. Gaan na Tax → VAT Reports (of Reports → VAT Reports).\n2. Kies die VAT Period (bestaan dit nog nie, klik Generate Periods).\n3. Bo-aan sien jy Output VAT, Input VAT en VAT Payable to SARS.\n4. Klik VAT201 Calculation vir die syfers per BTW201-blokkie, en VAT Report vir die transaksies daaragter.\n5. Klik Reconciliation, merk die kontrolelys (fakture, aankope, bankrekon, BTW nagegaan) en klik Mark as Reconciled.\n6. Klik Submit to SARS as jy klaar is. Dit SLUIT die BTW-periode in Leo — daarna kan niks meer verander nie. (Leo dien nie self op eFiling in nie; doen die indiening op eFiling.)"
+      },
+      "en": {
+        "title": "Prepare the VAT201 return",
+        "body": "1. Go to Tax → VAT Reports (or Reports → VAT Reports).\n2. Choose the VAT Period (if it doesn't exist yet, click Generate Periods).\n3. At the top you see Output VAT, Input VAT and VAT Payable to SARS.\n4. Click VAT201 Calculation for the figures per VAT201 field, and VAT Report for the transactions behind them.\n5. Click Reconciliation, tick the checklist (invoices, purchases, bank recon, VAT checked) and click Mark as Reconciled.\n6. Click Submit to SARS when you are done. This LOCKS the VAT period in Leo — nothing can change afterwards. (Leo does not file on eFiling itself; do the submission on eFiling.)"
+      }
+    },
+    {
+      "slug": "maatskappy/gebruikers",
+      "screen_url": "/accounting/users-permissions.html",
+      "screen_name": "Users & Permissions",
+      "tags": ["gebruiker", "user", "users", "toegang", "access", "regte", "permissions", "rol", "role", "span", "team", "personeel"],
+      "af": {
+        "title": "'n Gebruiker byvoeg en regte gee",
+        "body": "1. Gaan na Company → Users & Permissions.\n2. Klik + Add User.\n3. Vul Full Name, Email Address en 'n Temporary Password in.\n4. Kies die Role (dit bepaal wat die gebruiker mag doen).\n5. By App Access Restriction merk jy watter apps die gebruiker mag oopmaak (bv. Accounting).\n6. Klik Add User. Gee die gebruiker die tydelike wagwoord.\nVerander of deaktiveer: klik Edit (Account Status) of Remove."
+      },
+      "en": {
+        "title": "Add a user and give access",
+        "body": "1. Go to Company → Users & Permissions.\n2. Click + Add User.\n3. Fill in Full Name, Email Address and a Temporary Password.\n4. Choose the Role (it decides what the user may do).\n5. Under App Access Restriction tick which apps the user may open (e.g. Accounting).\n6. Click Add User. Give the user the temporary password.\nChange or deactivate: click Edit (Account Status) or Remove."
+      }
+    }
+  ]
+}
