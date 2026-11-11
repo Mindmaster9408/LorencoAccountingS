@@ -93,4 +93,27 @@ function groupArticles(rows) {
   return Object.values(by).sort((x, y) => x.slug.localeCompare(y.slug));
 }
 
-module.exports = { APPS, words, rank, groupArticles, SYNONYMS };
+// ─── language of a question (Ruan 2026-11-11: no AF/EN switch — answer in the language asked) ───
+// Common words that only (or mostly) occur in one of the two languages. Words both share
+// ("is", "my", "in", "op"/"of" lookalikes) are left out so they never tip the balance.
+const AF_WORDS = new Set(('hoe wat waar hoekom wanneer watter ek jy julle ons hulle nie die n \'n van vir sit kry moet sal kan ' +
+  'wil gaan doen maak werk werknemer werknemers salaris betaal betaling maand maande oortyd korttyd verander byvoeg bygevoeg ' +
+  'en om te het word deur hierdie daardie asseblief dankie ure loon belasting jaar skerm knoppie bladsy hulp beëindig dit').split(/\s+/));
+const EN_WORDS = new Set(('how what where why when which i you we they not the a an of for put get should will can could ' +
+  'want go do does did make work employee employees salary pay payment month months overtime change add added ' +
+  'and to have has by this that please thanks hours wage tax year screen button page help terminate it').split(/\s+/));
+// "kan" (af) vs "can" (en), "werk" vs "work" etc. are distinct spellings, so a plain lookup is enough.
+
+/**
+ * 'AF' or 'EN' for a question, or `fallback` when it cannot tell (e.g. one word like "payslip").
+ */
+function detectLanguage(text, fallback = 'EN') {
+  const toks = String(text || '').toLowerCase().replace(/[’`]/g, "'").match(/'n|[a-zëêéèôûîï']+/g) || [];
+  let af = 0, en = 0;
+  for (const t of toks) { if (AF_WORDS.has(t)) af++; if (EN_WORDS.has(t)) en++; }
+  if (af > en) return 'AF';
+  if (en > af) return 'EN';
+  return fallback === 'AF' ? 'AF' : 'EN';
+}
+
+module.exports = { APPS, words, rank, groupArticles, SYNONYMS, detectLanguage };

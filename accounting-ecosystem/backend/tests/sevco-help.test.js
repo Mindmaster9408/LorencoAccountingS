@@ -26,6 +26,18 @@ describe('rank (no AI needed)', () => {
   });
 });
 
+describe('detectLanguage (answer in the language asked)', () => {
+  test('English and Afrikaans questions are recognised; unclear falls back', () => {
+    expect(K.detectLanguage('How do I add overtime to a payslip?', 'AF')).toBe('EN');
+    expect(K.detectLanguage('how do i finalise the month', 'AF')).toBe('EN');
+    expect(K.detectLanguage('Hoe sit ek oortyd op \'n payslip?', 'EN')).toBe('AF');
+    expect(K.detectLanguage('hoe moet ek n werknemer se salaris verander', 'EN')).toBe('AF');
+    expect(K.detectLanguage('payslip', 'AF')).toBe('AF');
+    expect(K.detectLanguage('payslip', 'EN')).toBe('EN');
+    expect(K.detectLanguage('', undefined)).toBe('EN');
+  });
+});
+
 describe('API', () => {
   let server, base;
   beforeAll(async () => {

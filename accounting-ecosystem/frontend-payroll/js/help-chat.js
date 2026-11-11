@@ -21,12 +21,12 @@
               placeholder: 'Tik jou vraag…', send: 'Stuur', open: 'Maak die skerm oop', none: 'Ek het nog nie \'n hulpartikel hieroor nie. Jou vraag is aangeteken sodat ons dit kan byvoeg.',
               thinking: 'Pip skryf ook \'n kort antwoord…', offline: 'Pip se AI-helper is tans af — hier is die hulpartikel wat die beste pas.',
               helpful: 'Was dit nuttig?', thanks: 'Dankie!', error: 'Kon nie nou antwoord nie. Probeer weer.', source: 'Bron' },
-        EN: { title: 'PIP — Paytime\'s Intelligent Pal', hint: 'Hi! I\'m Pip, your Paytime assistant.\nAsk me how to do something in Paytime, e.g. "How do I add overtime to a payslip?"',
+        EN: { title: 'PIP — Paytime\'s Intelligent Pal', hint: 'Hi! I\'m Pip, your Paytime assistant.\nAsk me how to do something in Paytime, e.g. "How do I add overtime to a payslip?"\nJy kan ook in Afrikaans vra.',
               placeholder: 'Type your question…', send: 'Send', open: 'Open the screen', none: 'I don\'t have a help article about this yet. Your question was noted so we can add one.',
               thinking: 'Pip is also writing a short answer…', offline: 'Pip\'s AI helper is offline right now — here is the help article that fits best.',
               helpful: 'Was this helpful?', thanks: 'Thank you!', error: 'Could not answer right now. Please try again.', source: 'Source' }
     };
-    var lang = 'EN';   // English first (Ruan 2026-11-11); AF/EN toggle in the header
+    var lang = 'EN';   // English first (Ruan 2026-11-11); no switch — each reply follows the language of the question
 
     function token() {
         try { return (window.safeLocalStorage || window.localStorage).getItem('token'); } catch (e) { return null; }
@@ -52,8 +52,6 @@
         '#phc-panel.open{display:flex}' +
         '.phc-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #2a1f4d}' +
         '.phc-head img{width:34px;height:34px;border-radius:50%}.phc-head b{flex:1;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-        '.phc-lang button{background:none;border:1px solid #4c3a85;color:#bfb3ef;border-radius:6px;padding:2px 7px;margin-left:4px;cursor:pointer;font-size:12px}' +
-        '.phc-lang button.on{background:#7c3aed;color:#fff;border-color:#7c3aed}' +
         '.phc-x{background:none;border:none;color:#bfb3ef;font-size:20px;cursor:pointer}' +
         '.phc-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;font-size:13.5px;line-height:1.45}' +
         '.phc-msg{max-width:88%;padding:9px 11px;border-radius:12px}' +
@@ -75,7 +73,6 @@
         btn.querySelector('img').onerror = function () { btn.innerHTML = '<span>🤖</span>'; };
         var panel = el('<div id="phc-panel" role="dialog" aria-label="Pip, your Paytime assistant">' +
             '<div class="phc-head"><img src="' + ICON + '" alt="" onerror="this.style.display=\'none\'"><b id="phc-title"></b>' +
-            '<span class="phc-lang"><button type="button" data-l="AF">AF</button><button type="button" data-l="EN">EN</button></span>' +
             '<button class="phc-x" type="button" aria-label="Close">×</button></div>' +
             '<div class="phc-log" id="phc-log"></div>' +
             '<form class="phc-in" id="phc-form"><input id="phc-q" maxlength="1000" autocomplete="off"><button type="submit" id="phc-send"></button></form></div>');
@@ -83,9 +80,6 @@
         document.body.appendChild(panel);
         btn.addEventListener('click', function () { panel.classList.toggle('open'); if (panel.classList.contains('open')) panel.querySelector('#phc-q').focus(); });
         panel.querySelector('.phc-x').addEventListener('click', function () { panel.classList.remove('open'); });
-        panel.querySelectorAll('.phc-lang button').forEach(function (b) {
-            b.addEventListener('click', function () { lang = b.getAttribute('data-l'); applyLang(); });
-        });
         panel.querySelector('#phc-form').addEventListener('submit', function (e) { e.preventDefault(); ask(); });
         applyLang();
         say('bot', textHtml(T[lang].hint));
@@ -96,7 +90,6 @@
         document.getElementById('phc-title').textContent = t.title;
         document.getElementById('phc-q').placeholder = t.placeholder;
         document.getElementById('phc-send').textContent = t.send;
-        document.querySelectorAll('#phc-panel .phc-lang button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-l') === lang); });
     }
 
     function say(who, html) {
@@ -135,6 +128,8 @@
         api('POST', '/api/help/ask', { app: APP, question: q, language: lang }).then(function (r) {
             if (!r.ok) { say('bot', esc((r.data && r.data.error) || t.error)); return; }
             var d = r.data;
+            // The server works out the language of the question; follow it for the reply and the labels.
+            if (d.language === 'AF' || d.language === 'EN') { lang = d.language; t = T[lang]; applyLang(); }
             if (!d.articles || !d.articles.length) { var m0 = say('bot', esc(t.none)); feedback(m0, d.question_id); return; }
             var lead = d.ai && d.ai.status === 'queued'
                 ? (d.ai.online ? '<div class="phc-note">' + esc(t.thinking) + '</div>' : '<div class="phc-note">' + esc(t.offline) + '</div>')

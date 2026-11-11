@@ -91,7 +91,8 @@ userRouter.post('/ask', (req, res, next) => {
     const app = req._helpApp;
     const question = String(req.body.question || '').trim().slice(0, 1000);
     if (question.length < 2) return res.status(400).json({ error: 'Please type a question' });
-    const language = lang(req.body.language);
+    // Answer in the language the question was asked in; the widget's last language only breaks ties.
+    const language = K.detectLanguage(question, lang(req.body.language));
 
     const articles = await approvedArticles(app, language);
     const ranked = K.rank(articles, question);
