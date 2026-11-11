@@ -14,6 +14,7 @@ const { getEmployeeFilter } = require('../services/paytimeAccess');
 const PayrollDataService = require('../services/PayrollDataService');
 const { payrollEligibility } = require('../services/payrollEligibility');
 const { computeAttendanceProposal, hoursBetween } = require('../services/attendanceProposal');
+const { syncUnpaidLeave, monthsBetween } = require('../services/unpaidLeave');
 
 const router = express.Router();
 
@@ -306,6 +307,84 @@ router.get('/leave', requirePermission('PAYROLL.VIEW'), async (req, res) => {
   }
 });
 
+// ─── unpaid leave → payslip (Ruan 2026-11-11, services/unpaidLeave.js) ──────────
+const LEAVE_TYPES = ['annual', 'sick', 'family', 'maternity', 'study', 'unpaid'];
+const LEAVE_STATUSES = ['approved', 'pending', 'rejected', 'cancelled'];
+
+/** Rewrite the unpaid-leave short time for the months these leave ranges touch. */
+async function syncUnpaidLeaveFor(req, employeeId, ranges) {
+  const months = [].concat(...ranges.filter(Boolean).map(r => monthsBetween(r.start_date, r.end_date)));
+  try {
+    return await syncUnpaidLeave({ supabase, fetchPeriod: PayrollDataService.fetchPeriod }, req.companyId, employeeId, months);
+  } catch (err) {
+    console.error('[leave] unpaid leave sync failed:', err.message);
+    return { updated: [], locked: [], warning: 'The leave is saved, but the payslip could not be updated: ' + err.message };
+  }
+}
+
+/** Adjust the leave balance of the leave's year by `delta` days (+ frees up, - uses). */
+async function adjustLeaveBalance(companyId, employeeId, leaveType, startDate, delta) {
+  if (!delta) return;
+  const year = new Date(startDate).getFullYear();
+  const { data: bal } = await supabase.from('leave_balances').select('id, balance')
+    .eq('company_id', companyId).eq('employee_id', employeeId)
+    .eq('leave_type', leaveType).eq('year', year).maybeSingle();
+  if (bal) {
+    await supabase.from('leave_balances')
+      .update({ balance: parseFloat(bal.balance) + delta, updated_at: new Date().toISOString() }).eq('id', bal.id);
+  }
+}
+
+/**
+ * POST /api/payroll/attendance/leave   { employee_id, records: [{ leave_type, start_date, end_date, days_taken, status, reason }] }
+ * Restored 2026-11-11 — it was removed by mistake in Fase 8 (369e52e), so "Save Leave"
+ * failed for everyone. Balance is used only by APPROVED leave (the old route also
+ * deducted pending leave). Approved unpaid leave goes onto the payslip as short time.
+ */
+router.post('/leave', requirePermission('PAYROLL.CREATE'), async (req, res) => {
+  try {
+    const employeeId = parseInt(req.body && req.body.employee_id, 10);
+    const records = Array.isArray(req.body && req.body.records) ? req.body.records : [];
+    if (!employeeId || !records.length) return res.status(400).json({ error: 'employee_id and records array required' });
+
+    const visible = await visibleEmployeeIds(req);
+    if (!visible.map(String).includes(String(employeeId))) return res.status(404).json({ error: 'Employee not found' });
+
+    const rows = [];
+    for (const [i, r] of records.entries()) {
+      const type = String(r.leave_type || r.type || 'annual').toLowerCase();
+      const status = String(r.status || 'pending').toLowerCase();
+      const start = String(r.start_date || '').slice(0, 10);
+      const end = String(r.end_date || r.start_date || '').slice(0, 10);
+      if (!LEAVE_TYPES.includes(type)) return res.status(400).json({ error: `record ${i + 1}: unknown leave type ${type}` });
+      if (!LEAVE_STATUSES.includes(status)) return res.status(400).json({ error: `record ${i + 1}: unknown status ${status}` });
+      if (!DATE_RE.test(start) || !DATE_RE.test(end)) return res.status(400).json({ error: `record ${i + 1}: start_date and end_date (YYYY-MM-DD) are required` });
+      if (end < start) return res.status(400).json({ error: `record ${i + 1}: end date is before the start date` });
+      const days = parseFloat(r.days_taken || r.days);
+      rows.push({
+        company_id: req.companyId, employee_id: employeeId, leave_type: type,
+        start_date: start, end_date: end, days_taken: days > 0 ? days : 1,
+        status, reason: r.reason ? String(r.reason).slice(0, 500) : null
+      });
+    }
+
+    const { data, error } = await supabase.from('leave_records').insert(rows).select();
+    if (error) return res.status(500).json({ error: error.message });
+
+    for (const rec of rows) {
+      if (rec.status === 'approved') await adjustLeaveBalance(req.companyId, employeeId, rec.leave_type, rec.start_date, -rec.days_taken);
+    }
+    const unpaid = rows.filter(r => r.leave_type === 'unpaid');
+    const payslip = unpaid.length ? await syncUnpaidLeaveFor(req, employeeId, unpaid) : null;
+    try {
+      await auditFromReq(req, 'CREATE', 'leave', employeeId, { module: 'payroll', metadata: { records: rows.length, payslip } });
+    } catch (_) { /* best effort */ }
+    res.status(201).json({ data: data || [], payslip });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 /**
  * PUT /api/payroll/attendance/leave/:id
  * Update a leave record's status or fields.
@@ -318,12 +397,13 @@ router.put('/leave/:id', requirePermission('PAYROLL.CREATE'), async (req, res) =
     // Verify ownership
     const { data: existing, error: fErr } = await supabase
       .from('leave_records')
-      .select('id, company_id, employee_id, days_taken, leave_type, status, start_date')
+      .select('id, company_id, employee_id, days_taken, leave_type, status, start_date, end_date')
       .eq('id', parseInt(id))
       .eq('company_id', req.companyId)
       .maybeSingle();
 
     if (fErr || !existing) return res.status(404).json({ error: 'Leave record not found' });
+    if (status !== undefined && !LEAVE_STATUSES.includes(status)) return res.status(400).json({ error: `unknown status ${status}` });
 
     const updates = {};
     if (status !== undefined) updates.status = status;
@@ -369,7 +449,11 @@ router.put('/leave/:id', requirePermission('PAYROLL.CREATE'), async (req, res) =
     const { data, error } = await supabase.from('leave_records').update(updates).eq('id', parseInt(id)).select().single();
     if (error) return res.status(500).json({ error: error.message });
 
-    res.json({ data });
+    // Unpaid leave: recompute the payslip short time for the old and the new dates.
+    const payslip = existing.leave_type === 'unpaid'
+      ? await syncUnpaidLeaveFor(req, existing.employee_id, [existing, data])
+      : null;
+    res.json({ data, payslip });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -386,7 +470,7 @@ router.delete('/leave/:id', requirePermission('PAYROLL.CREATE'), async (req, res
     // Verify ownership and fetch for balance restoration
     const { data: existing, error: fErr } = await supabase
       .from('leave_records')
-      .select('id, company_id, employee_id, days_taken, leave_type, status, start_date')
+      .select('id, company_id, employee_id, days_taken, leave_type, status, start_date, end_date')
       .eq('id', parseInt(id))
       .eq('company_id', req.companyId)
       .maybeSingle();
@@ -409,7 +493,8 @@ router.delete('/leave/:id', requirePermission('PAYROLL.CREATE'), async (req, res
     const { error } = await supabase.from('leave_records').delete().eq('id', parseInt(id));
     if (error) return res.status(500).json({ error: error.message });
 
-    res.json({ success: true });
+    const payslip = existing.leave_type === 'unpaid' ? await syncUnpaidLeaveFor(req, existing.employee_id, [existing]) : null;
+    res.json({ success: true, payslip });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

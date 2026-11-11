@@ -288,7 +288,8 @@ router.post('/short-time', requirePermission('PAYROLL.CREATE'), async (req, res)
       rows: (entries || []).map(e => ({
         hours_missed: parseFloat(e.hours_missed || e.hours) || 0,
         description: e.description || e.reason || 'Short time',
-        source: e.source === 'attendance' ? 'attendance' : 'manual'
+        // 'leave' = approved unpaid leave (migration 037); kept when the payslip re-saves the list.
+        source: (e.source === 'attendance' || e.source === 'leave') ? e.source : 'manual'
       }))
     });
     res.json({ success: true });

@@ -2424,7 +2424,7 @@
             const stList = document.getElementById('shortTimeList');
             const shortTime = _periodInputsCache.shortTime;
             stList.innerHTML = shortTime.length === 0 ? '<p style="color:#999;font-size:14px;">No short time recorded</p>' :
-                shortTime.map(st => '<div class="salary-item"><span class="salary-label">' + (st.date ? st.date + ' - ' : '') + st.hours_missed + 'hrs missed' + (st.description ? ' (' + st.description + ')' : '') + (st.source === 'attendance' ? ' <span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:1px 6px;font-size:11px;">from attendance</span>' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteShortTime(' + st.id + ')">x</button></div>').join('');
+                shortTime.map(st => '<div class="salary-item"><span class="salary-label">' + (st.date ? st.date + ' - ' : '') + st.hours_missed + 'hrs missed' + (st.description ? ' (' + st.description + ')' : '') + (st.source === 'attendance' ? ' <span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:1px 6px;font-size:11px;">from attendance</span>' : st.source === 'leave' ? ' <span style="background:#fef3c7;color:#92400e;border-radius:8px;padding:1px 6px;font-size:11px;">from unpaid leave</span>' : '') + '</span><button class="delete-btn" onclick="event.stopPropagation(); deleteShortTime(' + st.id + ')">x</button></div>').join('');
 
             // Multi-rate
             const mrList = document.getElementById('multiRateList');
@@ -4424,21 +4424,41 @@
             };
 
             try {
-                await DataAccess.saveLeave(currentCompanyId, currentEmpId, record);
+                const res = await DataAccess.saveLeave(currentCompanyId, currentEmpId, record);
                 closeModal('addLeaveModal');
                 await loadLeaveData();
+                await afterUnpaidLeave(res);
             } catch(e) {
-                alert('Failed to save leave record. Please try again.');
+                alert('Failed to save leave record: ' + (e && e.message ? e.message : 'please try again.'));
             }
         }
 
         async function deleteLeave(id) {
             if (!confirm('Delete this leave record?')) return;
             try {
-                await DataAccess.deleteLeave(currentCompanyId, currentEmpId, id);
+                const res = await DataAccess.deleteLeave(currentCompanyId, currentEmpId, id);
                 await loadLeaveData();
+                await afterUnpaidLeave(res);
             } catch(e) {
                 alert('Failed to delete leave record. Please try again.');
+            }
+        }
+
+        // Approved unpaid leave becomes short time on the payslip (server side). Tell the
+        // user what happened and refresh the payslip figures if the open month changed.
+        async function afterUnpaidLeave(res) {
+            var p = res && res.payslip;
+            if (!p) return;
+            var lines = [];
+            (p.updated || []).forEach(function(u) {
+                if (u.hours > 0) lines.push(u.period_key + ': ' + u.hours + ' hours unpaid leave put on the payslip as short time');
+                else lines.push(u.period_key + ': no unpaid leave short time');
+            });
+            if ((p.locked || []).length) lines.push('Already finalized, not changed: ' + p.locked.join(', ') + ' — correct it in the next open month.');
+            if (p.warning) lines.push(p.warning);
+            if (lines.length) alert('Unpaid leave\n\n' + lines.join('\n'));
+            if ((p.updated || []).some(function(u) { return u.period_key === currentPeriod; })) {
+                try { await loadPeriodInputs(); renderPayroll(); } catch (_) { /* payslip refreshes on next open */ }
             }
         }
 

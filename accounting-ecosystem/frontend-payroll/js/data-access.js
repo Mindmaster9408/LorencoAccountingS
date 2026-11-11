@@ -410,12 +410,13 @@ var DataAccess = (function() {
             return result;
         },
 
+        // Both return the server result: { payslip: { updated, locked, warning } } for unpaid leave.
         deleteLeave: async function(companyId, empId, recordId) {
-            await DELETE('/payroll/attendance/leave/' + recordId);
+            return await DELETE('/payroll/attendance/leave/' + recordId);
         },
 
         updateLeaveStatus: async function(companyId, recordId, status) {
-            await PUT('/payroll/attendance/leave/' + recordId, { status });
+            return await PUT('/payroll/attendance/leave/' + recordId, { status });
         },
 
         // === NOTES ===
