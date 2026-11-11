@@ -908,7 +908,7 @@ router.get('/companies', authenticateToken, async (req, res) => {
     const { data: accessRows, error } = await supabase
       .from('user_company_access')
       .select(`
-        company_id, role, is_primary,
+        company_id, role, is_primary, apps_access,
         companies:company_id (id, company_name, trading_name, modules_enabled, practice_code, account_holder_type, trial_expires_at, trial_base_modules)
       `)
       .eq('user_id', req.user.userId)
@@ -935,6 +935,9 @@ router.get('/companies', authenticateToken, async (req, res) => {
         // Super admins always surface as 'super_admin' in the role field for UI rendering
         role: isSuperAdmin ? 'super_admin' : r.role,
         is_primary: r.is_primary,
+        // Per-user app restriction (null = all company apps) — same as the login response;
+        // the Eco dashboard refreshes from this list on every load (2026-11-11).
+        apps_access: r.apps_access || null,
       }));
 
     // Annotate each company with company_type so the frontend can detect owner-only logins.

@@ -2049,6 +2049,7 @@
                 desc: 'Firmflow-derived practice management, being adapted for international companies. Super-admin testing only.',
                 path: '/commander',
                 cssClass: 'practice',
+                testing: true,   // "Testing" label (Ruan 2026-11-11)
             },
             {
                 // Document Collector (2026-09-12) — not enabled on any company's
@@ -2061,6 +2062,7 @@
                 desc: 'Automated client document chasing — recurring checklists, secure upload links, staff exception review. Super-admin testing only.',
                 path: '/collector',
                 cssClass: 'practice',
+                testing: true,   // "Testing" label (Ruan 2026-11-11)
             },
             {
                 // Slip Capture (2026-10-19) — phone-first slip photo archive.
@@ -2228,23 +2230,23 @@
 
         // ── Render Companies (hidden — auto-selects company for token/SSO, no UI rendered) ──
         async function renderCompanies() {
-            // If no companies in localStorage, fetch from API
-            if (companies.length === 0) {
-                try {
-                    const token = localStorage.getItem('eco_token');
-                    const res = await fetch(`${API_BASE}/api/auth/companies`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.companies && data.companies.length > 0) {
-                            companies = data.companies;
-                            localStorage.setItem('eco_companies', JSON.stringify(companies));
-                        }
+            // ALWAYS refresh from the server (2026-11-11). The copy saved at login is only
+            // a fallback: it kept showing the apps a company had at login time, so an app
+            // switched on later (Warmbaths: Paytime) stayed greyed out until a new login.
+            try {
+                const token = localStorage.getItem('eco_token');
+                const res = await fetch(`${API_BASE}/api/auth/companies`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.companies && data.companies.length > 0) {
+                        companies = data.companies;
+                        localStorage.setItem('eco_companies', JSON.stringify(companies));
                     }
-                } catch (e) {
-                    console.error('Failed to fetch companies:', e);
                 }
+            } catch (e) {
+                console.error('Failed to fetch companies (using the saved list):', e);
             }
 
             if (companies.length === 0) return;
