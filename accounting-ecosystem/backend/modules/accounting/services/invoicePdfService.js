@@ -111,9 +111,39 @@ function drawTableRow(doc, L, y, cols, values, opts = {}) {
  * @param {object[]} lines - customer_invoice_lines rows (description, quantity, unit_price, vat_rate, line_total)
  * @param {object} company - companies row, plus optional company.logoBuffer (Buffer, pre-fetched by the caller)
  * @param {object} customer - customers row (name, email, vat_number)
+ * @param {object} [opts]
+ * @param {object} [opts.plan] - customer_invoice_recurring_plans row (instalments_total, annual_total) when the invoice is a monthly instalment
  * @returns {Buffer}
  */
-function generateInvoicePdf(invoice, lines, company, customer) {
+// ─── Annual / monthly billing blocks (migration 178) ─────────────────────────
+
+const MONTHS_IN_PLAN = 12;
+
+/** "PAYMENT OPTIONS" box — annual once-off vs monthly x 12. Returns new y. */
+function drawPaymentOptions(doc, L, W, y, annualTotal) {
+  const annual  = parseFloat(annualTotal) || 0;
+  const monthly = Math.round((annual / MONTHS_IN_PLAN) * 100) / 100;
+  const h = 58;
+  doc.rect(L, y, W, h).fill('#f9fafb').strokeColor(BORDER).lineWidth(0.5).stroke();
+  doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('PAYMENT OPTIONS', L + 10, y + 8);
+  const colW = (W - 20) / 2;
+  doc.fontSize(8).font('Helvetica').fillColor(MUTED).text('Option 1 — Annual (once-off)', L + 10, y + 22, { width: colW });
+  doc.fontSize(11).font('Helvetica-Bold').fillColor(DARKTEXT).text(fmtMoney(annual), L + 10, y + 34, { width: colW });
+  doc.fontSize(8).font('Helvetica').fillColor(MUTED).text(`Option 2 — Monthly (${MONTHS_IN_PLAN} months)`, L + 10 + colW, y + 22, { width: colW });
+  doc.fontSize(11).font('Helvetica-Bold').fillColor(ACCENT).text(`${fmtMoney(monthly)} x ${MONTHS_IN_PLAN}`, L + 10 + colW, y + 34, { width: colW });
+  return y + h + 4;
+}
+
+/** "Monthly instalment n of N" line on a plan instalment. Returns new y. */
+function drawInstalmentNote(doc, L, W, y, instalmentNo, plan) {
+  doc.fontSize(8).font('Helvetica-Bold').fillColor(ACCENT)
+    .text(`Monthly instalment ${instalmentNo} of ${plan.instalments_total}`, L, y, { width: W });
+  doc.fontSize(8).font('Helvetica').fillColor(MUTED)
+    .text(`Annual agreement: ${fmtMoney(plan.annual_total)}, billed monthly`, L, y + 12, { width: W });
+  return y + 26;
+}
+
+function generateInvoicePdf(invoice, lines, company, customer, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
@@ -184,6 +214,15 @@ function generateInvoicePdf(invoice, lines, company, customer) {
       if (parseFloat(invoice.amount_paid) > 0) {
         totalRow('Paid', fmtMoney(invoice.amount_paid));
         totalRow('Balance', fmtMoney((parseFloat(invoice.total_amount) || 0) - (parseFloat(invoice.amount_paid) || 0)), true);
+      }
+
+      // Annual / monthly billing (migration 178)
+      if (invoice.recurring_plan_id && invoice.recurring_instalment_no && opts.plan) {
+        y += 6;
+        y = drawInstalmentNote(doc, L, W, y, invoice.recurring_instalment_no, opts.plan);
+      } else if (invoice.billing_option_enabled && !invoice.billing_choice) {
+        y += 10;
+        y = drawPaymentOptions(doc, L, W, y, invoice.total_amount);
       }
 
       if (company.bank_name && company.bank_account_number) {
@@ -273,4 +312,99 @@ function generateStatementPdf({ customer, company, periodStart, periodEnd, openi
   });
 }
 
-module.exports = { generateInvoicePdf, generateStatementPdf, fmtMoney, fmtDate };
+/**
+ * Quotation PDF — same look as the invoice. Added 2026-11-11 so a client can
+ * actually be shown a quote (including the annual / monthly options block);
+ * quotes previously had no printable/sendable form at all.
+ *
+ * @param {object} quote - customer_quotes row (quote_number, quote_date, expiry_date, customer_name, subtotal_ex_vat, vat_amount, total_inc_vat, notes, terms, billing_option_enabled)
+ * @param {object[]} lines - customer_quote_lines rows (description, quantity, unit_price, vat_rate, total_inc_vat)
+ * @param {object} company - companies row
+ * @param {object|null} customer - customers row (name, email, vat_number) if linked
+ * @returns {Promise<Buffer>}
+ */
+function generateQuotePdf(quote, lines, company, customer) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4', margin: 45,
+        info: { Title: `Quotation ${quote.quote_number}`, Author: company.trading_name || company.company_name || 'Ledger Leo' },
+      });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const L = doc.page.margins.left;
+      const W = doc.page.width - L - doc.page.margins.right;
+      let y = drawCompanyHeader(doc, company, 'QUOTATION');
+
+      doc.rect(L, y, W / 2 - 6, 60).fill('#f9fafb').strokeColor(BORDER).lineWidth(0.5).stroke();
+      doc.rect(L + W / 2 + 6, y, W / 2 - 6, 60).fill('#f9fafb').strokeColor(BORDER).lineWidth(0.5).stroke();
+
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('QUOTE FOR', L + 10, y + 8);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(DARKTEXT).text(customer?.name || quote.customer_name || 'Customer', L + 10, y + 20, { width: W / 2 - 30, lineBreak: false });
+      if (customer?.email) doc.fontSize(8).font('Helvetica').fillColor(MUTED).text(customer.email, L + 10, y + 34, { width: W / 2 - 30, lineBreak: false });
+      if (customer?.vat_number) doc.fontSize(8).font('Helvetica').fillColor(MUTED).text(`VAT: ${customer.vat_number}`, L + 10, y + 46, { width: W / 2 - 30, lineBreak: false });
+
+      const rx = L + W / 2 + 16;
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('QUOTE #', rx, y + 8);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(DARKTEXT).text(quote.quote_number, rx, y + 20);
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('DATE', rx, y + 34);
+      doc.fontSize(8).font('Helvetica').fillColor(DARKTEXT).text(fmtDate(quote.quote_date), rx + 50, y + 34);
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('VALID UNTIL', rx, y + 46);
+      doc.fontSize(8).font('Helvetica').fillColor(DARKTEXT).text(fmtDate(quote.expiry_date), rx + 50, y + 46);
+
+      y += 74;
+
+      const cols = [
+        { label: 'DESCRIPTION', width: W * 0.44 },
+        { label: 'QTY',         width: W * 0.10, align: 'right' },
+        { label: 'UNIT PRICE',  width: W * 0.16, align: 'right' },
+        { label: 'VAT',         width: W * 0.10, align: 'right' },
+        { label: 'TOTAL',       width: W * 0.20, align: 'right' },
+      ];
+      y = drawTableHeader(doc, L, W, y, cols);
+      (lines || []).forEach((l, i) => {
+        const vatRate = l.vat_rate != null ? l.vat_rate : 15;
+        y = drawTableRow(doc, L, y, cols, [
+          l.description || '',
+          l.quantity,
+          fmtMoney(l.unit_price),
+          `${vatRate}%`,
+          fmtMoney(l.total_inc_vat),
+        ], { zebra: i % 2 === 1 });
+      });
+
+      y += 8;
+      const totalsX = L + W - 200;
+      const totalRow = (label, value, bold) => {
+        doc.fontSize(9).font(bold ? 'Helvetica-Bold' : 'Helvetica').fillColor(bold ? ACCENT : DARKTEXT)
+          .text(label, totalsX, y, { width: 100 });
+        doc.fontSize(9).font(bold ? 'Helvetica-Bold' : 'Helvetica').fillColor(bold ? ACCENT : DARKTEXT)
+          .text(value, totalsX + 100, y, { width: 100, align: 'right' });
+        y += 16;
+      };
+      totalRow('Subtotal', fmtMoney(quote.subtotal_ex_vat));
+      totalRow('VAT', fmtMoney(quote.vat_amount));
+      totalRow('Total', fmtMoney(quote.total_inc_vat), true);
+
+      if (quote.billing_option_enabled) {
+        y += 10;
+        y = drawPaymentOptions(doc, L, W, y, quote.total_inc_vat);
+      }
+
+      const extra = [quote.notes, quote.terms].filter(Boolean).join('\n\n');
+      if (extra) {
+        y += 14;
+        doc.fontSize(8).font('Helvetica').fillColor(MUTED).text(extra, L, y, { width: W });
+      }
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+module.exports = { generateInvoicePdf, generateQuotePdf, generateStatementPdf, fmtMoney, fmtDate };

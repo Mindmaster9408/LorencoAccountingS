@@ -22,8 +22,15 @@
 
 const express        = require('express');
 const router         = express.Router();
-const { supabase, db } = require('../../../config/database');
+const { supabase }   = require('../../../config/database');
+// FIX 2026-11-11: `db` used to be destructured from ../../../config/database,
+// which does NOT export it — so db.getClient() threw on every create, update
+// and convert (that is why customer_quotes was still empty). The pg pool
+// lives in the accounting module's own config, same as customer-invoices.js.
+const db             = require('../config/database');
 const { authenticate, hasPermission } = require('../middleware/auth');
+const { resolveCustomerId } = require('../services/customerInvoiceCore');
+const { generateQuotePdf } = require('../services/invoicePdfService');
 
 function userId(req) {
   return req.user && req.user.userId ? req.user.userId : null;
@@ -108,6 +115,8 @@ function validateHeader(body) {
     vatMode:     body.vatMode === 'inclusive' ? 'inclusive' : 'exclusive',
     notes:       (body.notes  || '').trim() || null,
     terms:       (body.terms  || '').trim() || null,
+    // Annual / monthly option shown to the client (migration 178) — off unless switched on.
+    billingOptionEnabled: body.billingOptionEnabled === true,
   };
 }
 
@@ -183,14 +192,15 @@ router.post('/', authenticate, hasPermission('ar.invoice.create'), async (req, r
       `INSERT INTO customer_quotes
          (company_id, customer_id, customer_name, quote_number, quote_date,
           expiry_date, status, vat_mode, notes, terms,
-          subtotal_ex_vat, vat_amount, total_inc_vat)
-       VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9,$10,$11,$12)
+          subtotal_ex_vat, vat_amount, total_inc_vat, billing_option_enabled)
+       VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         companyId, hdr.customerId, hdr.customerName, quoteNumber,
         hdr.quoteDate, hdr.expiryDate, hdr.vatMode,
         hdr.notes, hdr.terms,
         totals.subtotalExVat, totals.vatAmount, totals.totalIncVat,
+        hdr.billingOptionEnabled,
       ]
     );
     const quote = rows[0];
@@ -238,12 +248,14 @@ router.put('/:id', authenticate, hasPermission('ar.invoice.create'), async (req,
       `UPDATE customer_quotes SET
          customer_id=$1, customer_name=$2, quote_date=$3, expiry_date=$4,
          vat_mode=$5, notes=$6, terms=$7,
-         subtotal_ex_vat=$8, vat_amount=$9, total_inc_vat=$10, updated_at=NOW()
-       WHERE id=$11 AND company_id=$12`,
+         subtotal_ex_vat=$8, vat_amount=$9, total_inc_vat=$10,
+         billing_option_enabled=$11, updated_at=NOW()
+       WHERE id=$12 AND company_id=$13`,
       [
         hdr.customerId, hdr.customerName, hdr.quoteDate, hdr.expiryDate,
         hdr.vatMode, hdr.notes, hdr.terms,
         totals.subtotalExVat, totals.vatAmount, totals.totalIncVat,
+        hdr.billingOptionEnabled,
         quoteId, companyId,
       ]
     );
@@ -329,57 +341,78 @@ router.post('/:id/convert-to-invoice', authenticate, hasPermission('ar.invoice.c
   const invoiceNumber = `INV-${String((invCount || 0) + 1).padStart(4, '0')}`;
   const today = new Date().toISOString().slice(0, 10);
 
+  // customer_invoices has no customer_name column — it needs a real
+  // customers row. A quote may carry only a typed name, so resolve (or
+  // create) the customer the same way POST /customer-invoices does.
+  let resolvedCustomerId;
+  try {
+    resolvedCustomerId = await resolveCustomerId(companyId, quote.customer_id, quote.customer_name);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+  if (!resolvedCustomerId) return res.status(422).json({ error: 'The quote has no customer to invoice.' });
+
   let pgClient;
   try {
     pgClient = await db.getClient();
     await pgClient.query('BEGIN');
 
-    // Insert draft invoice — exact same columns as customer-invoices.js POST /
+    // Re-check under a row lock — two quick clicks must not create two invoices.
+    const { rows: lockRows } = await pgClient.query(
+      'SELECT status, converted_invoice_id FROM customer_quotes WHERE id=$1 AND company_id=$2 FOR UPDATE',
+      [quoteId, companyId]
+    );
+    if (lockRows[0]?.converted_invoice_id) {
+      await pgClient.query('ROLLBACK');
+      return res.status(409).json({ error: 'This quote has already been converted', invoiceId: lockRows[0].converted_invoice_id });
+    }
+
+    // Insert draft invoice — the REAL customer_invoices columns, exactly as
+    // customer-invoices.js POST / writes them. (FIX 2026-11-11: this used
+    // customer_name/reference/invoice_date/subtotal_ex_vat/total_inc_vat/
+    // created_by_user_id, none of which exist, so every conversion failed.)
+    // Quote line prices are always ex-VAT (see processLines), so the invoice
+    // is EX-VAT mode and the totals carry over unchanged.
     const { rows: invRows } = await pgClient.query(
       `INSERT INTO customer_invoices
-         (company_id, customer_id, customer_name, invoice_number, reference,
-          invoice_date, due_date, status,
-          subtotal_ex_vat, vat_amount, total_inc_vat,
-          amount_paid, notes, created_by_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13)
+         (company_id, customer_id, invoice_number, date, due_date, status, vat_mode,
+          subtotal, vat_amount, total_amount, amount_paid, balance_due, notes, created_by,
+          billing_option_enabled)
+       VALUES ($1,$2,$3,$4,$5,'draft','exclusive',$6,$7,$8,0,$8,$9,$10,$11)
        RETURNING *`,
       [
         companyId,
-        quote.customer_id,
-        quote.customer_name,
+        resolvedCustomerId,
         invoiceNumber,
-        `Converted from ${quote.quote_number}`,  // reference field
         today,
         null,                                      // due_date — user sets on invoice
         quote.subtotal_ex_vat,
         quote.vat_amount,
         quote.total_inc_vat,
-        0,                                         // amount_paid
         quote.notes,
         userId(req),
+        quote.billing_option_enabled === true,     // annual/monthly offer carries over (migration 178)
       ]
     );
     const invoice = invRows[0];
 
-    // Copy quote lines into invoice lines
+    // Copy quote lines into invoice lines (line_total = ex-VAT extended amount)
     if ((quoteLines || []).length > 0) {
       const lineVals   = [];
       const lineParams = [];
       let p = 1;
-      quoteLines.forEach((l, i) => {
-        lineVals.push(`($${p},$${p+1},$${p+2},$${p+3},$${p+4},$${p+5},$${p+6},$${p+7},$${p+8},$${p+9},$${p+10},$${p+11})`);
-        p += 12;
+      quoteLines.forEach((l) => {
+        lineVals.push(`($${p},$${p+1},$${p+2},$${p+3},$${p+4},$${p+5},$${p+6},$${p+7},$${p+8})`);
+        p += 9;
         lineParams.push(
           invoice.id, l.description, l.account_id, l.line_type, l.item_id,
-          l.quantity, l.unit_price, l.vat_rate,
-          l.subtotal_ex_vat, l.vat_amount, l.total_inc_vat, i
+          l.quantity, l.unit_price, l.vat_rate, l.subtotal_ex_vat
         );
       });
       await pgClient.query(
         `INSERT INTO customer_invoice_lines
            (invoice_id, description, account_id, line_type, item_id,
-            quantity, unit_price, vat_rate,
-            subtotal_ex_vat, vat_amount, total_inc_vat, sort_order)
+            quantity, unit_price, vat_rate, line_total)
          VALUES ${lineVals.join(',')}`,
         lineParams
       );
@@ -400,6 +433,43 @@ router.post('/:id/convert-to-invoice', authenticate, hasPermission('ar.invoice.c
     res.status(500).json({ error: err.message });
   } finally {
     if (pgClient) pgClient.release();
+  }
+});
+
+// ─── GET /:id/pdf — quotation PDF ────────────────────────────────────────────
+// Lets the user show / hand the client the quote, including the annual /
+// monthly payment options block when switched on (migration 178).
+
+router.get('/:id/pdf', authenticate, hasPermission('ar.invoice.view'), async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Database not available' });
+  const companyId = req.companyId;
+  const quoteId   = parseInt(req.params.id);
+  if (isNaN(quoteId)) return res.status(400).json({ error: 'Invalid quote ID' });
+  try {
+    const [{ data: quote, error: qErr }, { data: lines, error: lErr }, { data: company, error: cErr }] = await Promise.all([
+      supabase.from('customer_quotes').select('*').eq('id', quoteId).eq('company_id', companyId).maybeSingle(),
+      supabase.from('customer_quote_lines').select('*').eq('quote_id', quoteId).order('sort_order'),
+      supabase.from('companies')
+        .select('company_name, trading_name, registration_number, vat_number, address_street, address_suburb, address_city, contact_email, contact_phone, logo_url, bank_name, bank_account_holder, bank_account_number, bank_branch_code')
+        .eq('id', companyId).maybeSingle(),
+    ]);
+    if (qErr || lErr || cErr) throw new Error((qErr || lErr || cErr).message);
+    if (!quote) return res.status(404).json({ error: 'Quote not found' });
+
+    let customer = null;
+    if (quote.customer_id) {
+      const { data } = await supabase.from('customers').select('id, name, email, vat_number')
+        .eq('id', quote.customer_id).eq('company_id', companyId).maybeSingle();
+      customer = data || null;
+    }
+
+    const pdf = await generateQuotePdf(quote, lines || [], company || {}, customer);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Quote-${String(quote.quote_number).replace(/[^A-Za-z0-9_-]/g, '')}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('GET /accounting/quotes/:id/pdf error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

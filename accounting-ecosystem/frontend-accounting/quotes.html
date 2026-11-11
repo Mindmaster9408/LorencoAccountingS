@@ -364,6 +364,19 @@
           <textarea id="qTerms" rows="2" placeholder="e.g. This quote is valid for 30 days…"></textarea>
         </div>
       </div>
+
+      <!-- Annual / monthly option (migration 178) — off by default -->
+      <div id="qBillingBox" style="margin-top:14px;padding:12px 14px;border:1px solid rgba(255,255,255,0.10);border-radius:8px;background:rgba(255,255,255,0.03)">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="qBillingOpt" onchange="updateQuoteBillingPreview()">
+          Offer the client an annual or monthly payment option
+        </label>
+        <div id="qBillingPreview" style="display:none;margin-top:10px;gap:24px;flex-wrap:wrap;font-size:12px">
+          <div>Annual (once-off)<b id="qBillAnnual" style="display:block;font-size:15px;margin-top:2px">R 0.00</b></div>
+          <div>Monthly (12 months)<b id="qBillMonthly" style="display:block;font-size:15px;margin-top:2px">R 0.00 x 12</b></div>
+        </div>
+        <div id="qBillingHint" style="display:none;font-size:11px;opacity:0.55;margin-top:8px">The quote PDF shows the client both options. The option carries over when the quote is converted to an invoice, where you record the client's choice.</div>
+      </div>
     </div>
 
     <div class="modal-footer">
@@ -775,6 +788,7 @@ function updateQuoteTotals() {
   document.getElementById('tSubtotal').textContent = 'R ' + sumEx.toFixed(2);
   document.getElementById('tVat').textContent      = 'R ' + sumVat.toFixed(2);
   document.getElementById('tTotal').textContent    = 'R ' + sumTotal.toFixed(2);
+  updateQuoteBillingPreview(sumTotal);
 }
 
 function collectLines() {
@@ -853,6 +867,8 @@ function clearQuoteForm() {
   document.getElementById('qExpiryDate').value = '';
   document.getElementById('qNotes').value      = '';
   document.getElementById('qTerms').value      = '';
+  document.getElementById('qBillingOpt').checked = false;
+  updateQuoteBillingPreview();
   document.getElementById('quoteLinesBody').innerHTML = '';
   document.getElementById('qVatExcl').checked  = true;
   vatMode = 'exclusive';
@@ -871,6 +887,8 @@ function populateQuoteForm(quote) {
   document.getElementById('qExpiryDate').value = quote.expiry_date || '';
   document.getElementById('qNotes').value      = quote.notes  || '';
   document.getElementById('qTerms').value      = quote.terms  || '';
+  document.getElementById('qBillingOpt').checked = quote.billing_option_enabled === true;
+  updateQuoteBillingPreview();
 
   if (quote.vat_mode === 'inclusive') {
     document.getElementById('qVatIncl').checked = true;
@@ -922,7 +940,7 @@ function populateQuoteForm(quote) {
 }
 
 function setFormReadOnly(readonly) {
-  const ids = ['qCustInput','qQuoteDate','qExpiryDate','qNotes','qTerms','qVatExcl','qVatIncl'];
+  const ids = ['qCustInput','qQuoteDate','qExpiryDate','qNotes','qTerms','qVatExcl','qVatIncl','qBillingOpt'];
   ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = readonly; });
   document.querySelectorAll('#quoteLinesBody input, #quoteLinesBody select').forEach(el => el.disabled = readonly);
   document.querySelectorAll('.line-del-btn').forEach(btn => btn.disabled = readonly);
@@ -949,8 +967,43 @@ function renderFooterButtons(quote) {
     btns.push(`<button class="btn btn-danger btn-sm"    onclick="statusAction('void')">Void</button>`);
   if (s === 'converted' && quote.converted_invoice_id)
     btns.push(`<a href="/accounting/invoices.html" class="btn btn-secondary btn-sm">View Invoice</a>`);
+  if (quote.id)
+    btns.push(`<button class="btn btn-secondary btn-sm" onclick="openQuotePdf(${quote.id})" title="Open the quotation PDF to show or send to the client">PDF</button>`);
 
   cont.innerHTML = btns.join('');
+}
+
+// ── Annual / monthly option preview (migration 178) — display only ──────────
+let _lastQuoteTotal = 0;
+function updateQuoteBillingPreview(total) {
+  if (typeof total === 'number') _lastQuoteTotal = total;
+  const on = document.getElementById('qBillingOpt').checked;
+  document.getElementById('qBillingPreview').style.display = on ? 'flex' : 'none';
+  document.getElementById('qBillingHint').style.display    = on ? 'block' : 'none';
+  const annual  = Math.round(_lastQuoteTotal * 100) / 100;
+  const monthly = Math.round((annual / 12) * 100) / 100;
+  document.getElementById('qBillAnnual').textContent  = 'R ' + annual.toFixed(2);
+  document.getElementById('qBillMonthly').textContent = 'R ' + monthly.toFixed(2) + ' x 12';
+}
+
+// ── Quotation PDF (fetched with auth, opened from a blob URL) ───────────────
+async function openQuotePdf(id) {
+  const win = window.open('', '_blank');
+  try {
+    const r = await fetch(`/api/accounting/quotes/${id}/pdf`, { headers: authHeaders() });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      if (win) win.close();
+      toast(d.error || 'Could not open the quote PDF.', 'err');
+      return;
+    }
+    const url = URL.createObjectURL(await r.blob());
+    if (win) win.location.href = url; else window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    if (win) win.close();
+    toast('Network error: ' + err.message, 'err');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1027,7 +1080,8 @@ async function saveQuote() {
     return;
   }
 
-  const payload = { customerName, customerId: customerId || null, quoteDate, expiryDate: expiryDate || null, vatMode: vatModeVal, notes: notes || null, terms: terms || null, lines };
+  const payload = { customerName, customerId: customerId || null, quoteDate, expiryDate: expiryDate || null, vatMode: vatModeVal, notes: notes || null, terms: terms || null, lines,
+    billingOptionEnabled: document.getElementById('qBillingOpt').checked };
 
   const btn = document.getElementById('btnSaveQuote');
   btn.disabled    = true;

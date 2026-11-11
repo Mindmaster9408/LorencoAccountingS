@@ -28,14 +28,20 @@ let pool;
 const TEST_COMPANY_ID = 999;
 const TEST_COMPANY_ID_2 = 998;
 
+// SAFETY (2026-11-11): this suite INSERTs and DELETEs real rows. It used to
+// fall back to DATABASE_URL — the production database. It now runs ONLY when
+// a dedicated DATABASE_URL_TEST is set, and is skipped otherwise.
+const HAS_TEST_DB = !!process.env.DATABASE_URL_TEST;
+
 beforeAll(async () => {
+  if (!HAS_TEST_DB) return;
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL_TEST || process.env.DATABASE_URL
+    connectionString: process.env.DATABASE_URL_TEST
   });
 });
 
 afterAll(async () => {
-  await pool.end();
+  if (pool) await pool.end();
 });
 
 /**
@@ -104,7 +110,7 @@ async function insertMasterEmployee(companyId, code, firstName, lastName, email,
 // TEST CASES
 // ============================================================================
 
-describe('Payroll Employee Sync Service', () => {
+(HAS_TEST_DB ? describe : describe.skip)('Payroll Employee Sync Service (needs DATABASE_URL_TEST)', () => {
 
   afterEach(async () => {
     await cleanupTestData();

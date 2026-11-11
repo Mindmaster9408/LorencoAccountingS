@@ -95,6 +95,18 @@
     }
     .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    /* Annual / monthly billing option (migration 178) */
+    .billing-opt { margin-top: 14px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.10); border-radius: 8px; background: rgba(255,255,255,0.03); }
+    .billing-opt label.billing-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    .billing-opt .billing-preview { display: none; margin-top: 10px; gap: 24px; flex-wrap: wrap; font-size: 12px; }
+    .billing-opt.on .billing-preview { display: flex; }
+    .billing-opt .billing-preview b { display: block; font-size: 15px; margin-top: 2px; }
+    .billing-opt .billing-hint { font-size: 11px; opacity: 0.55; margin-top: 8px; display: none; }
+    .billing-opt.on .billing-hint { display: block; }
+    .billing-opt .billing-locked { font-size: 12px; color: #a78bfa; }
+    .plan-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px; background: rgba(167,139,250,0.18); color: #c4b5fd; white-space: nowrap; }
+    .plan-tag.ask { background: rgba(251,191,36,0.16); color: #fcd34d; }
+    .plan-err { font-size: 11px; color: #f87171; max-width: 360px; }
     .form-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.5; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
 
     /* ── VAT mode ─────────────────────────────────────────────────────── */
@@ -218,6 +230,7 @@
     <div class="tab" onclick="switchTab('sent', this)">Sent</div>
     <div class="tab" onclick="switchTab('paid', this)">Paid</div>
     <div class="tab" onclick="switchTab('payments', this)">Payments</div>
+    <div class="tab" onclick="switchTab('plans', this)">Monthly Plans</div>
   </div>
 
   <!-- Invoice list tab -->
@@ -264,6 +277,33 @@
           </tr>
         </thead>
         <tbody id="payTbody"><tr><td colspan="6" class="empty-state"><p>Loading…</p></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Monthly plans tab (annual / monthly billing — migration 178) -->
+  <div id="tabPlans" class="tab-content">
+    <div class="filters" style="justify-content:space-between">
+      <span style="font-size:12px;opacity:0.6">Clients who chose to pay monthly. Each month's invoice is created, posted to the GL and emailed automatically.</span>
+      <button class="btn btn-secondary btn-sm" onclick="runPlansNow()">Run now</button>
+    </div>
+    <div id="plansEmailWarn" style="display:none;margin:0 0 12px;padding:10px 14px;border-radius:8px;border:1px solid rgba(251,191,36,0.35);background:rgba(251,191,36,0.08);color:#fcd34d;font-size:12px">
+      ⚠ Email is not set up on the server yet (RESEND_API_KEY / EMAIL_FROM). Monthly invoices are still created and posted, but they are <b>not emailed</b> to clients. Leo retries every hour once email is set up.
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th style="text-align:right">Annual</th>
+            <th style="text-align:right">Monthly</th>
+            <th>Progress</th>
+            <th>Next invoice</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="plansTbody"><tr><td colspan="7" class="empty-state"><p>Loading…</p></td></tr></tbody>
       </table>
     </div>
   </div>
@@ -347,6 +387,20 @@
       <div class="form-group" style="margin-top:14px">
         <label>Notes</label>
         <textarea id="invNotes" rows="2" placeholder="Optional notes for this invoice"></textarea>
+      </div>
+
+      <!-- Annual / monthly option (migration 178) — off by default -->
+      <div class="billing-opt" id="invBillingBox">
+        <label class="billing-toggle">
+          <input type="checkbox" id="invBillingOpt" onchange="updateBillingPreview()">
+          Offer the client an annual or monthly payment option
+        </label>
+        <div class="billing-preview">
+          <div>Annual (once-off)<b id="invBillAnnual">R 0.00</b></div>
+          <div>Monthly (12 months)<b id="invBillMonthly">R 0.00 x 12</b></div>
+        </div>
+        <div class="billing-hint">The invoice PDF shows the client both options. Before posting, record the client's choice in the invoice list: <b>Annual</b> posts this invoice as normal; <b>Monthly</b> turns it into 12 monthly invoices that are posted and emailed automatically.</div>
+        <div class="billing-locked" id="invBillingLocked" style="display:none"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -907,6 +961,9 @@ function switchTab(tab, el) {
   if (tab === 'payments') {
     document.getElementById('tabPayments').classList.add('active');
     loadPayments();
+  } else if (tab === 'plans') {
+    document.getElementById('tabPlans').classList.add('active');
+    loadPlans();
   } else {
     document.getElementById('tabAll').classList.add('active');
     renderInvoices();
@@ -934,8 +991,13 @@ function renderInvoices() {
     const isOverdue = inv.due_date && inv.due_date < today && inv.status !== 'paid' && inv.status !== 'void';
     const badge     = `<span class="badge badge-${inv.status}">${inv.status.replace('_', ' ')}</span>`;
     const actions   = buildInvActions(inv);
+    const planTag = inv.recurring_plan_id
+      ? `<span class="plan-tag" title="Monthly billing plan — created, posted and emailed automatically">Monthly ${inv.recurring_instalment_no || ''}/12</span>`
+      : (inv.billing_option_enabled && !inv.billing_choice && inv.status === 'draft')
+        ? `<span class="plan-tag ask" title="Waiting for the client's choice">Annual or monthly?</span>`
+        : (inv.billing_choice === 'annual' ? `<span class="plan-tag">Annual</span>` : '');
     return `<tr class="${isOverdue ? 'overdue-row' : ''}">
-      <td>${esc(inv.invoice_number)}</td>
+      <td>${esc(inv.invoice_number)}${planTag}</td>
       <td class="customer-name" onclick="alert('Invoice detail view — coming in next session')">${esc(inv.customer_name)}</td>
       <td>${fmtDate(inv.invoice_date)}</td>
       <td>${inv.due_date ? fmtDate(inv.due_date) : '—'}${isOverdue ? ' <span style="color:#f87171;font-size:10px;">OVERDUE</span>' : ''}</td>
@@ -951,9 +1013,20 @@ function renderInvoices() {
 function buildInvActions(inv) {
   const btns = [];
   if (inv.status === 'draft') {
-    btns.push(`<button class="btn btn-warning btn-sm" onclick="postInvoice(${inv.id})">Post to GL</button>`);
-    btns.push(`<button class="btn btn-secondary btn-sm" onclick="editInvoice(${inv.id})">Edit</button>`);
+    if (inv.recurring_plan_id) {
+      // Monthly plan instalment — the plan posts it automatically on its date; not editable.
+      btns.push(`<span style="font-size:11px;opacity:0.6">Posts automatically on ${fmtDate(inv.invoice_date)}</span>`);
+    } else if (inv.billing_option_enabled && !inv.billing_choice) {
+      // Annual / monthly offer — the client's choice must be recorded before posting.
+      btns.push(`<button class="btn btn-warning btn-sm" onclick="chooseBilling(${inv.id}, 'annual')">Client chose Annual</button>`);
+      btns.push(`<button class="btn btn-primary btn-sm" onclick="chooseBilling(${inv.id}, 'monthly')">Client chose Monthly</button>`);
+      btns.push(`<button class="btn btn-secondary btn-sm" onclick="editInvoice(${inv.id})">Edit</button>`);
+    } else {
+      btns.push(`<button class="btn btn-warning btn-sm" onclick="postInvoice(${inv.id})">Post to GL</button>`);
+      btns.push(`<button class="btn btn-secondary btn-sm" onclick="editInvoice(${inv.id})">Edit</button>`);
+    }
   }
+  btns.push(`<button class="btn btn-secondary btn-sm" onclick="openInvoicePdf(${inv.id})" title="Open the invoice PDF the client receives">PDF</button>`);
   if (inv.status === 'sent' || inv.status === 'part_paid') {
     btns.push(`<button class="btn btn-success btn-sm" onclick="openPaymentModalForCustomer('${esc(inv.customer_name)}')">Pay</button>`);
     btns.push(`<button class="btn btn-secondary btn-sm" onclick="window.location.href='/accounting/credit-notes.html?fromInvoice=${inv.id}'">Credit Note</button>`);
@@ -1008,6 +1081,21 @@ function openInvoiceModal(inv) {
     ? (inv.due_date?.split('T')[0] || '')
     : addDaysToDateStr(_todayStr, 30);
   document.getElementById('invNotes').value           = inv ? (inv.notes || '') : '';
+
+  // Annual / monthly option (migration 178). Off by default on a new invoice.
+  const _billChk    = document.getElementById('invBillingOpt');
+  const _billLocked = document.getElementById('invBillingLocked');
+  _billChk.checked  = !!(inv && inv.billing_option_enabled);
+  _billChk.disabled = false;
+  _billLocked.style.display = 'none';
+  if (inv && inv.recurring_plan_id) {
+    _billChk.disabled = true;
+    _billLocked.textContent = `This invoice is instalment ${inv.recurring_instalment_no || ''} of a monthly plan.`;
+    _billLocked.style.display = 'block';
+  } else if (inv && inv.billing_choice === 'annual') {
+    _billLocked.textContent = 'The client chose Annual. Switching the option off clears that choice.';
+    _billLocked.style.display = 'block';
+  }
 
   // Restore the toggle to whatever mode the invoice was actually saved
   // with — never hardcode Exclusive. The stored unit_price is the raw
@@ -1178,6 +1266,21 @@ function updateInvTotals() {
   document.getElementById('invTotSubEx').textContent = fmtR(subEx);
   document.getElementById('invTotVat').textContent   = fmtR(vatSum);
   document.getElementById('invTotInc').textContent   = fmtR(incVat);
+  updateBillingPreview(incVat);
+}
+
+// ── Annual / monthly option preview (migration 178) ─────────────────────────
+// Display only — the server works out the real monthly invoices.
+let _lastInvTotalInc = 0;
+function updateBillingPreview(totalInc) {
+  if (typeof totalInc === 'number') _lastInvTotalInc = totalInc;
+  const box = document.getElementById('invBillingBox');
+  const on  = document.getElementById('invBillingOpt').checked;
+  box.classList.toggle('on', on);
+  const annual  = Math.round(_lastInvTotalInc * 100) / 100;
+  const monthly = Math.round((annual / 12) * 100) / 100;
+  document.getElementById('invBillAnnual').textContent  = fmtR(annual);
+  document.getElementById('invBillMonthly').textContent = fmtR(monthly) + ' x 12';
 }
 
 async function saveInvoice(mode) {
@@ -1206,6 +1309,7 @@ async function saveInvoice(mode) {
     vatInclusive:  inclusive,
     lines,
     notes:         document.getElementById('invNotes').value || null,
+    billingOptionEnabled: document.getElementById('invBillingOpt').checked,
   };
 
   const btn = document.getElementById(mode === 'saveNew' ? 'invSaveNewBtn' : 'invSaveBtn');
@@ -1334,6 +1438,107 @@ async function sendInvoiceEmail(id) {
   } finally {
     _sendingInvoiceIds.delete(id);
   }
+}
+
+// ── Invoice PDF ─────────────────────────────────────────────────────────────
+// Fetched with the auth header, then opened from a blob URL in a new tab.
+async function openInvoicePdf(id) {
+  const win = window.open('', '_blank');
+  try {
+    const r = await fetch(`${BASE}/${id}/pdf`, { headers: authH() });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      if (win) win.close();
+      alert(d.error || 'Could not open the invoice PDF.');
+      return;
+    }
+    const url = URL.createObjectURL(await r.blob());
+    if (win) win.location.href = url; else window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    if (win) win.close();
+    alert('Network error: ' + err.message);
+  }
+}
+
+// ── Annual / monthly: record the client's choice (migration 178) ────────────
+const _choosingIds = new Set();
+async function chooseBilling(id, choice) {
+  if (_choosingIds.has(id)) return;
+  const inv = allInvoices.find(x => x.id === id);
+  const total = inv ? parseFloat(inv.total_inc_vat) || 0 : 0;
+  const msg = choice === 'monthly'
+    ? `Client chose MONTHLY.\n\nThis invoice becomes month 1 of 12 (${fmtR(Math.round(total / 12 * 100) / 100)} per month).\n` +
+      `Every month Leo will automatically create the invoice, POST it to the General Ledger and EMAIL it to the client, until all 12 are done.\n\n` +
+      `The annual amount will NOT be posted. Continue?`
+    : `Client chose ANNUAL.\n\nThe invoice stays at ${fmtR(total)}. You can then post it to the General Ledger as usual. Continue?`;
+  if (!confirm(msg)) return;
+  _choosingIds.add(id);
+  try {
+    const r = await apiPost(`${BASE}/${id}/billing-choice`, { choice });
+    if (!r.ok) { alert(r.data?.error || 'Could not record the choice.'); return; }
+    const errs = r.data?.run?.errors || [];
+    if (choice === 'monthly') {
+      alert(errs.length
+        ? 'Monthly plan created, but there is a problem:\n\n' + errs.join('\n') + '\n\nSee the Monthly Plans tab. Leo will retry automatically every hour.'
+        : 'Monthly plan created. Month 1 is handled now (or on its invoice date); the rest follow automatically each month.');
+    }
+    await loadInvoices();
+  } catch (err) {
+    alert('Network error: ' + err.message);
+  } finally {
+    _choosingIds.delete(id);
+  }
+}
+
+// ── Monthly plans tab ───────────────────────────────────────────────────────
+let allPlans = [];
+async function loadPlans() {
+  const tbody = document.getElementById('plansTbody');
+  tbody.innerHTML = '<tr><td colspan="7" style="opacity:0.5;padding:20px;">Loading…</td></tr>';
+  const data = await apiGet(`${BASE}/recurring-plans`);
+  if (!data || data.error) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>${esc(data?.error || 'Could not load monthly plans.')}</p></div></td></tr>`;
+    return;
+  }
+  allPlans = data.plans || [];
+  document.getElementById('plansEmailWarn').style.display = data.emailConfigured === false ? 'block' : 'none';
+  renderPlans();
+}
+
+function renderPlans() {
+  const tbody = document.getElementById('plansTbody');
+  if (!allPlans.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>No monthly plans</h3><p>Switch on "Offer the client an annual or monthly payment option" on an invoice, then click "Client chose Monthly".</p></div></td></tr>`;
+    return;
+  }
+  const statusBadge = { active: 'sent', completed: 'paid', cancelled: 'void' };
+  tbody.innerHTML = allPlans.map(p => `<tr>
+      <td>${esc(p.customer_name)}${p.last_error ? `<div class="plan-err">⚠ ${esc(p.last_error)}</div>` : ''}${p.status === 'cancelled' && p.cancel_reason ? `<div style="font-size:11px;opacity:0.55">Stopped: ${esc(p.cancel_reason)}</div>` : ''}</td>
+      <td class="amount-cell">${fmtR(p.annual_total)}</td>
+      <td class="amount-cell">${fmtR(p.monthly_amount)}</td>
+      <td>${p.instalments_posted}/${p.instalments_total} posted<br><span style="font-size:11px;opacity:0.6">${p.instalments_emailed} emailed</span></td>
+      <td>${p.next_date ? fmtDate(p.next_date) : '—'}</td>
+      <td><span class="badge badge-${statusBadge[p.status] || 'draft'}">${esc(p.status)}</span></td>
+      <td><div class="action-btns">${p.status === 'active' ? `<button class="btn btn-danger btn-sm" onclick="cancelPlan(${p.id})">Stop plan</button>` : ''}</div></td>
+    </tr>`).join('');
+}
+
+async function cancelPlan(id) {
+  const p = allPlans.find(x => x.id === id);
+  const reason = prompt(`Stop the monthly plan for ${p ? p.customer_name : 'this client'}?\n\nNo further monthly invoices will be created. Invoices already posted are NOT changed (use a credit note if needed).\n\nReason:`);
+  if (reason === null) return;
+  if (!reason.trim()) { alert('A reason is required.'); return; }
+  const r = await apiPost(`${BASE}/recurring-plans/${id}/cancel`, { reason: reason.trim() });
+  if (!r.ok) { alert(r.data?.error || 'Could not stop the plan.'); return; }
+  await loadPlans();
+}
+
+async function runPlansNow() {
+  const r = await apiPost(`${BASE}/recurring-plans/run`, {});
+  if (!r.ok) { alert(r.data?.error || 'Run failed.'); return; }
+  if (r.data?.skipped) alert('A run is already busy — try again in a minute.');
+  await Promise.all([loadPlans(), loadInvoices()]);
 }
 
 // ── Customer invoice void modal (ACC-HARDEN-026) ─────────────────────────────

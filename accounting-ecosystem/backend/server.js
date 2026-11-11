@@ -155,13 +155,24 @@ if (process.env.NODE_ENV !== 'test') {
 app.get('/api/health', async (req, res) => {
   const dbOk = await checkConnection();
   const enabledModules = getEnabledModules();
+  // `checks` (2026-11-11): secret-free yes/no on the accounting Postgres
+  // pool, email and the monthly-plan scheduler. Informational only — the
+  // HTTP status stays tied to the Supabase check, so a hosting health probe
+  // on this URL never starts restart-looping because of an optional service.
+  let checks = null;
+  try {
+    checks = await require('./config/runtimeChecks').getConfigChecks();
+  } catch (e) {
+    checks = { error: 'checks unavailable' };
+  }
   res.status(dbOk ? 200 : 503).json({
     status: dbOk ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
     version: BUILD_VERSION,
     database: dbOk ? 'connected' : 'disconnected',
     modules: enabledModules.map(m => m.key),
-    uptime: Math.floor(process.uptime())
+    uptime: Math.floor(process.uptime()),
+    checks,
   });
 });
 
@@ -986,6 +997,26 @@ async function start() {
   // 4. Display module status
   console.log('📦 Module Status:');
   // Module loading messages already printed above during route registration
+
+  // 4f2. Configuration report — prints ✅/❌ for the accounting DB pool and
+  // email into the hosting logs, so a missing/wrong variable is visible at
+  // every deploy (never prints a secret).
+  try {
+    await require('./config/runtimeChecks').logStartupConfigReport();
+  } catch (cfgErr) {
+    console.warn('  ⚠️  Configuration check failed to run:', cfgErr.message);
+  }
+
+  // 4g. Ledger Leo monthly billing plans (migration 178) — hourly runner that
+  // creates, posts and emails due monthly instalments. Advisory-locked, so it
+  // is safe with several instances. RECURRING_INVOICES_SCHEDULER=off disables it.
+  if (accountingRoutes && connected) {
+    try {
+      require('./modules/accounting/services/recurringInvoiceService').startRecurringInvoiceScheduler();
+    } catch (schedErr) {
+      console.warn('  ⚠️  Recurring invoice scheduler not started:', schedErr.message);
+    }
+  }
 
   // 5. Start listening
   server = app.listen(PORT, () => {

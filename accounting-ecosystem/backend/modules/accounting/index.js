@@ -72,6 +72,7 @@ router.use('/reports', require('./routes/reports'));
 // path /suppliers/invoice-ocr-drafts/* is resolved first without ambiguity.
 router.use('/suppliers/invoice-ocr-drafts', require('./routes/supplierOcrDrafts'));
 router.use('/suppliers', require('./routes/suppliers'));
+router.use('/customer-invoices', require('./routes/customer-invoice-billing')); // annual/monthly + plans (migration 178)
 router.use('/customer-invoices', require('./routes/customer-invoices'));
 router.use('/customer-statements', require('./routes/customer-statements'));
 router.use('/supplier-statements', require('./routes/supplier-statements'));

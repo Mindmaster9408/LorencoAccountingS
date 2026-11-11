@@ -65,6 +65,10 @@ function detectFormat(lines) {
   const firstLine = nonEmpty[0];
   if (firstLine.includes('|')) return 'table';
   if (firstLine.includes(',') && nonEmpty.length > 1) return 'csv';
+  // Single-column list with a header row ("Item Name" then one name per
+  // line) — treat as CSV so the header is not mistaken for an item.
+  // (Fix 2026-11-11: "Item Name" used to come out as a payroll item.)
+  if (nonEmpty.length > 1 && /^\s*(item(\s*name)?|name|description|payroll\s*item)\s*$/i.test(firstLine)) return 'csv';
   return 'bullet';
 }
 
@@ -192,6 +196,12 @@ function parseBulletLines(lines) {
     }
 
     if (!itemName) continue;
+
+    // Free text only counts as a payroll item when it carries at least one
+    // payroll signal (an IRP5 code, or a taxable / UIF statement). Without
+    // this, any sentence ("hello world …") became a proposed item.
+    // (Fix 2026-11-11.)
+    if (!irp5Code && taxable === null && affects_uif === null) continue;
 
     items.push({
       item_name:  itemName,

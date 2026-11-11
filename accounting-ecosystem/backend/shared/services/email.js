@@ -80,4 +80,9 @@ async function sendPayslipEmail(employee, payslipPdf) {
   });
 }
 
-module.exports = { sendEmail, sendPayslipEmail };
+/** True when outgoing email can actually be sent (key + sender + package). Never exposes the values. */
+function isEmailConfigured() {
+  return !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM && Resend);
+}
+
+module.exports = { sendEmail, sendPayslipEmail, isEmailConfigured };

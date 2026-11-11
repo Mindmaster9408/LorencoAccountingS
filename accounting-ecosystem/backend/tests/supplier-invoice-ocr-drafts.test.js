@@ -37,14 +37,14 @@ const mockSupabase = {
 };
 
 // Mock InvoiceOcrService
-jest.mock('../../../sean/invoice-ocr-service', () => ({
+jest.mock('../sean/invoice-ocr-service', () => ({
   isAllowedFile: (mime, name) => /\.(jpg|jpeg|png|webp|pdf)$/i.test(name),
   parseInvoiceImage: jest.fn(),
   parseInvoicePdf:   jest.fn(),
 }));
 
 // Mock AuditLogger
-jest.mock('../services/auditLogger', () => ({
+jest.mock('../modules/accounting/services/auditLogger', () => ({
   logUserAction: jest.fn().mockResolvedValue(undefined),
   log: jest.fn().mockResolvedValue(undefined),
 }));
@@ -81,7 +81,7 @@ describe('OCR Upload — Forensic Governance', () => {
 
   // TEST-OCRD-01: Upload creates draft only — no invoice
   test('TEST-OCRD-01: Upload returns a draft record, not a supplier invoice', async () => {
-    const InvoiceOcrService = require('../../../sean/invoice-ocr-service');
+    const InvoiceOcrService = require('../sean/invoice-ocr-service');
     InvoiceOcrService.parseInvoiceImage.mockResolvedValue({
       status:               'UNVERIFIED',
       extraction_confidence: 0.75,
@@ -104,7 +104,7 @@ describe('OCR Upload — Forensic Governance', () => {
 
   // TEST-OCRD-02: Upload does not post a GL journal
   test('TEST-OCRD-02: OCR upload produces no GL journal', async () => {
-    const InvoiceOcrService = require('../../../sean/invoice-ocr-service');
+    const InvoiceOcrService = require('../sean/invoice-ocr-service');
     InvoiceOcrService.parseInvoicePdf.mockResolvedValue({
       status: 'UNVERIFIED', extraction_confidence: 0.8,
       supplier_name: 'Acme', invoice_number: 'A100',
@@ -121,7 +121,7 @@ describe('OCR Upload — Forensic Governance', () => {
 
   // TEST-OCRD-03: File type validation — allowed types
   test('TEST-OCRD-03: Allowed file types accepted (.jpg, .jpeg, .png, .webp, .pdf)', () => {
-    const { isAllowedFile } = require('../../../sean/invoice-ocr-service');
+    const { isAllowedFile } = require('../sean/invoice-ocr-service');
     expect(isAllowedFile('image/jpeg',       'invoice.jpg')).toBe(true);
     expect(isAllowedFile('image/jpeg',       'invoice.jpeg')).toBe(true);
     expect(isAllowedFile('image/png',        'invoice.png')).toBe(true);
@@ -131,7 +131,7 @@ describe('OCR Upload — Forensic Governance', () => {
 
   // TEST-OCRD-04: File type validation — rejected types
   test('TEST-OCRD-04: Disallowed file types rejected (.xlsx, .csv, .docx)', () => {
-    const { isAllowedFile } = require('../../../sean/invoice-ocr-service');
+    const { isAllowedFile } = require('../sean/invoice-ocr-service');
     expect(isAllowedFile('application/vnd.ms-excel', 'data.xlsx')).toBe(false);
     expect(isAllowedFile('text/csv',                  'data.csv')).toBe(false);
     expect(isAllowedFile('application/msword',        'doc.docx')).toBe(false);

@@ -47,9 +47,8 @@ jest.mock('../config/database', () => ({
 // Mock direct pg pool
 const mockDbQuery = jest.fn();
 jest.mock(
-  path.resolve(__dirname, '../modules/accounting/config/database'),
-  () => ({ query: mockDbQuery }),
-  { virtual: true }
+  '../modules/accounting/config/database',
+  () => ({ query: (...a) => mockDbQuery(...a) })
 );
 
 const servicePath = path.resolve(
@@ -57,6 +56,10 @@ const servicePath = path.resolve(
   '../modules/accounting/services/historicalComparativesService'
 );
 const HistoricalComparativesService = require(servicePath);
+
+// Each test inspects mock.calls[0] and queues its own mockResolvedValueOnce —
+// without a reset, calls and unconsumed queued values leak between tests.
+beforeEach(() => { mockDbQuery.mockReset(); });
 
 // ─── Helper: build mock P&L rows (Income/Expense) ────────────────────────────
 function makeMonthlyRows(accountType, year, amount = 10000) {
