@@ -189,7 +189,10 @@ const AUTH = (function() {
                 }
             });
 
-            window.location.href = 'login.html';
+            // Back to the main Eco page (Ruan 2026-11-11), not Paytime's own login:
+            // '/' is the Eco login, which goes straight on to /dashboard while the
+            // user's Eco session (eco_token) is still valid.
+            window.location.href = '/';
         },
 
         // ─── Role Checks ────────────────────────────────────────────────
