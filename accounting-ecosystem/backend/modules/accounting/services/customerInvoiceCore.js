@@ -553,6 +553,10 @@ async function emailCustomerInvoice(ctx) {
     html: `<p>Dear ${escapeHtml(customer.name)},</p><p>Please find attached invoice ${escapeHtml(invoice.invoice_number)} for ${escapeHtml(String(invoice.total_amount))}.</p><p>Kind regards</p>`,
     body: `Dear ${customer.name},\n\nPlease find attached invoice ${invoice.invoice_number}.\n\nKind regards`,
     attachments: [{ filename: `Invoice-${invoice.invoice_number}.pdf`, content: pdfBuffer }],
+    // One sending mailbox serves every company: show this company as the sender and
+    // send the customer's replies to this company's own email (Company Profile).
+    fromName: company?.trading_name || company?.company_name || undefined,
+    replyTo: company?.contact_email || undefined,
   });
 
   if (!emailResult.success) {

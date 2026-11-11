@@ -138,6 +138,8 @@ router.post('/:customerId/statement/send', authenticate, hasPermission('ar.invoi
       subject: `Statement from ${company?.trading_name || company?.company_name || 'us'} — ${periodStart} to ${periodEnd}`,
       body: `Dear ${statement.customer.name},\n\nPlease find your account statement attached.\n\nKind regards`,
       attachments: [{ filename: `Statement-${statement.customer.name}-${periodEnd}.pdf`, content: pdfBuffer }],
+      fromName: company?.trading_name || company?.company_name || undefined,
+      replyTo: company?.contact_email || undefined,
     });
 
     if (!emailResult.success) {
