@@ -23,7 +23,7 @@
 // bot = the assistant's name the local AI uses in its prompt (Pip for Paytime).
 const APPS = {
   paytime: { domain: 'PAYTIME_HELP', module: 'payroll',    name: 'Paytime',    bot: 'Pip' },
-  leo:     { domain: 'LEO_HELP',     module: 'accounting', name: 'Ledger Leo', bot: 'Leo' }   // 2026-11-11
+  leo:     { domain: 'LEO_HELP',     module: 'accounting', name: 'Ledger Leo', bot: 'Lenny' } // 2026-11-11
 };
 
 const STOP = new Set((
