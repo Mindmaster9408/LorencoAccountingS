@@ -135,3 +135,24 @@ describe('API', () => {
     expect(mockDb.sevco_help_questions.find(q => q.id === r.body.question_id).status).toBe('advice');
   });
 });
+
+describe('real Paytime articles: common questions find the right article (top 3 shown to the user)', () => {
+  const j = require('../../docs/sevco/help/paytime-articles.json');
+  const arts = (L) => j.articles.map(a => ({ slug: a.slug, title: a[L].title, body: a[L].body, tags: a.tags }));
+  const cases = [
+    ['how do I add overtime', 'en', 'payslip/oortyd'], ['hoe sit ek oortyd op n payslip', 'af', 'payslip/oortyd'],
+    ['how do I download the bank file', 'en', 'payroll/bank-leer'], ['how do I make IRP5s', 'en', 'paye/easyfile-irp5'],
+    ['waar kry ek die emp201', 'af', 'payroll/statutere-opgawes'], ['hoe voeg ek verlof by', 'af', 'werknemer/verlof'],
+    ['how do I reverse a pay run', 'en', 'payroll/omkeer'], ['hoe finaliseer ek die maand', 'af', 'payroll/uitvoer-en-finaliseer'],
+    ['where do I enter the PAYE reference number', 'en', 'maatskappy/besonderhede'], ['add medical aid', 'en', 'werknemer/mediese-fonds'],
+    ['hoe beeindig ek n werknemer se diens', 'af', 'werknemer/diens-beeindig'], ['import previous payroll from old system', 'en', 'invoer/historiese-data']
+  ];
+  test.each(cases)('%s', (q, L, slug) => {
+    expect(K.rank(arts(L), q).map(r => r.slug)).toContain(slug);
+  });
+  test('every slug is valid for the SEVCO editor and unique', () => {
+    const slugs = j.articles.map(a => a.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+    slugs.forEach(s => expect(s).toMatch(/^[a-z0-9]+(?:[/-][a-z0-9]+)*$/));
+  });
+});

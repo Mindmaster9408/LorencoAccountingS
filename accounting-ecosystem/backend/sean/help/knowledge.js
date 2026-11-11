@@ -38,7 +38,7 @@ const SYNONYMS = [
   ['verlof', 'leave'], ['bank', 'eft', 'banklêer', 'bankfile'], ['verhoging', 'increase', 'raise'], ['agterstallig', 'backpay', 'back'],
   ['motor', 'car', 'vehicle', 'voertuig'], ['pensioen', 'pension', 'voorsorg', 'provident', 'aftree', 'retirement'],
   ['mediese', 'medical', 'medies'], ['bywoning', 'attendance', 'ure', 'hours'], ['verslag', 'report', 'verslae', 'reports'],
-  ['irp5', 'emp501', 'emp201', 'sars'], ['maand', 'month', 'maande', 'months', 'periode', 'period'], ['uitvoer', 'execute', 'run', 'loop', 'hardloop'], ['nuwe', 'new', 'byvoeg', 'add', 'voeg', 'sit', 'put']
+  ['irp5', 'it3a', 'sertifikaat', 'certificate', 'certificates'], ['maand', 'month', 'maande', 'months', 'periode', 'period'], ['uitvoer', 'execute', 'run', 'loop', 'hardloop'], ['nuwe', 'new', 'byvoeg', 'add', 'voeg', 'sit', 'put']
 ];
 const SYN = new Map();
 SYNONYMS.forEach(group => group.forEach(w => SYN.set(w, group)));

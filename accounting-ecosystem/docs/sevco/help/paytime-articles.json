@@ -1,136 +1,1423 @@
 {
   "app": "paytime",
-  "note": "First batch of Paytime help articles (2026-11-10), written from the current screens. Loaded as DRAFT by backend/scripts/seed-sevco-help.js; a super user approves each one in SEVCO → Paytime Help before the assistant uses it.",
+  "note": "Paytime help articles. Batch 1 2026-11-10 (13), batch 2 2026-11-11 (+44, all screens; 3 batch-1 fixes: tick Pay for Additional Hours). Labels checked against frontend-payroll/*.html. Loaded as DRAFT by backend/scripts/seed-sevco-help.js (--update makes new DRAFT versions of changed articles); a super user approves each in SEVCO → Paytime Help.",
   "articles": [
     {
       "slug": "payslip/oortyd",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["oortyd", "overtime", "ure", "hours", "dubbel", "double", "1.5"],
-      "af": { "title": "Oortyd op 'n payslip invoer",
-        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. Kies bo-aan die maand by Period.\n3. Onder Pay for Additional Hours, klik + Add langs ⏰ Overtime.\n4. Vul die Date en Hours in en kies die Rate Multiplier: 1.5x (gewone oortyd), 2.0x (dubbel, bv. Sondae of openbare vakansiedae), 2.5x of 3.0x.\n5. Klik Save. Die payslip word herbereken.\nLet wel: oortyd word teen die werknemer se uurtarief op sy volle salaris bereken. 'n Maand wat reeds gefinaliseer is, kan nie meer verander word nie." },
-      "en": { "title": "Add overtime to a payslip",
-        "body": "1. Go to Employees and open the employee.\n2. Choose the month at the top under Period.\n3. Under Pay for Additional Hours, click + Add next to ⏰ Overtime.\n4. Fill in the Date and Hours and choose the Rate Multiplier: 1.5x (normal overtime), 2.0x (double, e.g. Sundays or public holidays), 2.5x or 3.0x.\n5. Click Save. The payslip is recalculated.\nNote: overtime uses the employee's hourly rate on the full salary. A month that is already finalized cannot be changed." }
+      "tags": [
+        "oortyd",
+        "overtime",
+        "ure",
+        "hours",
+        "dubbel",
+        "double",
+        "1.5"
+      ],
+      "af": {
+        "title": "Oortyd op 'n payslip sit (invoer)",
+        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. Kies bo-aan die maand by Payroll for Period.\n3. Merk die blokkie Pay for Additional Hours (dan verskyn die oortyd-, korttyd- en ander-tarief-blokke).\n4. Klik + Add langs ⏰ Overtime.\n5. Vul die Hours in, kies die Rate Multiplier: 1.5x (gewone oortyd), 2.0x (dubbel, bv. Sondae of openbare vakansiedae), 2.5x of 3.0x, en opsioneel die Date en 'n Description.\n6. Klik Save. Die payslip word herbereken.\nLet wel: oortyd word teen die werknemer se uurtarief bereken. 'n Maand wat reeds gefinaliseer is, kan nie meer verander word nie."
+      },
+      "en": {
+        "title": "Add overtime to a payslip",
+        "body": "1. Go to Employees and open the employee.\n2. Choose the month at the top under Payroll for Period.\n3. Tick the box Pay for Additional Hours (the overtime, short time and different-rate blocks then appear).\n4. Click + Add next to ⏰ Overtime.\n5. Fill in the Hours, choose the Rate Multiplier: 1.5x (normal overtime), 2.0x (double, e.g. Sundays or public holidays), 2.5x or 3.0x, and optionally the Date and a Description.\n6. Click Save. The payslip is recalculated.\nNote: overtime uses the employee's hourly rate. A month that is already finalized cannot be changed."
+      }
     },
     {
       "slug": "payslip/korttyd",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["korttyd", "short time", "afwesig", "absent", "ure gemis", "hours missed"],
-      "af": { "title": "Korttyd (ure gemis) invoer",
-        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. Kies die maand by Period.\n3. Onder Pay for Additional Hours, klik + Add langs ⏱️ Short Time.\n4. Vul die Date, Hours Missed en 'n Reason in.\n5. Klik Save. Die salaris word verminder met die ure gemis teen die werknemer se uurtarief.\nLet wel: bywoning (Attendance) kan korttyd ook voorstel; dié inskrywings wys \"from attendance\"." },
-      "en": { "title": "Enter short time (hours missed)",
-        "body": "1. Go to Employees and open the employee.\n2. Choose the month under Period.\n3. Under Pay for Additional Hours, click + Add next to ⏱️ Short Time.\n4. Fill in the Date, Hours Missed and a Reason.\n5. Click Save. The salary is reduced by the hours missed at the employee's hourly rate.\nNote: Attendance can also propose short time; those entries show \"from attendance\"." }
+      "tags": [
+        "korttyd",
+        "short time",
+        "afwesig",
+        "absent",
+        "ure gemis",
+        "hours missed"
+      ],
+      "af": {
+        "title": "Korttyd (ure gemis) invoer",
+        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. Kies die maand by Payroll for Period.\n3. Merk die blokkie Pay for Additional Hours.\n4. Klik + Add langs ⏱️ Short Time.\n5. Vul die Hours Missed en 'n Reason in (Date is opsioneel).\n6. Klik Save. Die salaris word verminder met die ure gemis teen die werknemer se uurtarief.\nLet wel: Attendance kan ook korttyd voorstel; daardie inskrywings wys \"from attendance\"."
+      },
+      "en": {
+        "title": "Enter short time (hours missed)",
+        "body": "1. Go to Employees and open the employee.\n2. Choose the month under Payroll for Period.\n3. Tick the box Pay for Additional Hours.\n4. Click + Add next to ⏱️ Short Time.\n5. Fill in the Hours Missed and a Reason (Date is optional).\n6. Click Save. The salary is reduced by the hours missed at the employee's hourly rate.\nNote: Attendance can also propose short time; those entries show \"from attendance\"."
+      }
     },
     {
       "slug": "payslip/gereelde-item",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["item", "toelae", "allowance", "aftrekking", "deduction", "maandeliks", "monthly", "regular"],
-      "af": { "title": "'n Item elke maand op 'n payslip sit (bv. toelae of aftrekking)",
-        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. In die blok Regular Inputs (Monthly), klik + Add.\n3. Kies die soort (Allowance, Income, Benefit, Deduction of Other) en die item, en tik die bedrag.\n4. Klik ✓ Add to Monthly Payslip.\nDie item kom nou elke maand op die payslip totdat jy dit verwyder.\nLet wel: die items en hul belastinginstellings (belasbaar, UIF, IRP5-kode) word op die Payroll Items-skerm opgestel." },
-      "en": { "title": "Put an item on the payslip every month (e.g. an allowance or deduction)",
-        "body": "1. Go to Employees and open the employee.\n2. In the Regular Inputs (Monthly) block, click + Add.\n3. Choose the type (Allowance, Income, Benefit, Deduction or Other) and the item, and type the amount.\n4. Click ✓ Add to Monthly Payslip.\nThe item now appears on the payslip every month until you remove it.\nNote: items and their tax settings (taxable, UIF, IRP5 code) are set up on the Payroll Items screen." }
+      "tags": [
+        "item",
+        "toelae",
+        "allowance",
+        "aftrekking",
+        "deduction",
+        "maandeliks",
+        "monthly",
+        "regular"
+      ],
+      "af": {
+        "title": "'n Item elke maand op 'n payslip sit (bv. toelae of aftrekking)",
+        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. In die blok Regular Inputs (Monthly), klik + Add.\n3. Kies die soort (Allowance, Income, Benefit, Deduction of Other) en die item, en tik die bedrag.\n4. Klik ✓ Add to Monthly Payslip.\nDie item kom nou elke maand op die payslip totdat jy dit verwyder.\nLet wel: die items en hul belastinginstellings (belasbaar, UIF, IRP5-kode) word op die Payroll Items-skerm opgestel."
+      },
+      "en": {
+        "title": "Put an item on the payslip every month (e.g. an allowance or deduction)",
+        "body": "1. Go to Employees and open the employee.\n2. In the Regular Inputs (Monthly) block, click + Add.\n3. Choose the type (Allowance, Income, Benefit, Deduction or Other) and the item, and type the amount.\n4. Click ✓ Add to Monthly Payslip.\nThe item now appears on the payslip every month until you remove it.\nNote: items and their tax settings (taxable, UIF, IRP5 code) are set up on the Payroll Items screen."
+      }
     },
     {
       "slug": "payslip/eenmalige-inset",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["eenmalig", "once-off", "bonus", "kommissie", "commission", "hierdie maand", "this month", "current"],
-      "af": { "title": "Iets net vir hierdie maand byvoeg (bv. bonus of kommissie)",
-        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. Kies die maand by Period.\n3. In die blok Current Inputs (This Month), klik + Add.\n4. Kies die soort (bv. Bonus, Commission, Allowance of Deduction), gee 'n beskrywing en die bedrag.\n5. Klik ✓ Add to This Month's Payslip.\nDit geld net vir daardie maand. 'n Eenmalige bedrag word in die maand van betaling ten volle belas." },
-      "en": { "title": "Add something for this month only (e.g. a bonus or commission)",
-        "body": "1. Go to Employees and open the employee.\n2. Choose the month under Period.\n3. In the Current Inputs (This Month) block, click + Add.\n4. Choose the type (e.g. Bonus, Commission, Allowance or Deduction), give a description and the amount.\n5. Click ✓ Add to This Month's Payslip.\nIt only applies to that month. A once-off amount is taxed in full in the month it is paid." }
+      "tags": [
+        "eenmalig",
+        "once-off",
+        "bonus",
+        "kommissie",
+        "commission",
+        "hierdie maand",
+        "this month",
+        "current"
+      ],
+      "af": {
+        "title": "Iets net vir hierdie maand byvoeg (bv. bonus of kommissie)",
+        "body": "1. Gaan na Employees en maak die werknemer oop.\n2. Kies die maand by Period.\n3. In die blok Current Inputs (This Month), klik + Add.\n4. Kies die soort (bv. Bonus, Commission, Allowance of Deduction), gee 'n beskrywing en die bedrag.\n5. Klik ✓ Add to This Month's Payslip.\nDit geld net vir daardie maand. 'n Eenmalige bedrag word in die maand van betaling ten volle belas."
+      },
+      "en": {
+        "title": "Add something for this month only (e.g. a bonus or commission)",
+        "body": "1. Go to Employees and open the employee.\n2. Choose the month under Period.\n3. In the Current Inputs (This Month) block, click + Add.\n4. Choose the type (e.g. Bonus, Commission, Allowance or Deduction), give a description and the amount.\n5. Click ✓ Add to This Month's Payslip.\nIt only applies to that month. A once-off amount is taxed in full in the month it is paid."
+      }
     },
     {
       "slug": "payslip/ander-tarief",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["ander tarief", "different rate", "uurtarief", "hourly rate", "multi-rate"],
-      "af": { "title": "Ure teen 'n ander uurtarief betaal",
-        "body": "Gebruik dit as 'n werknemer ure teen 'n ander tarief werk, bv. hy doen iemand anders se werk teen R20,50 per uur.\n1. Maak die werknemer se payslip oop en kies die maand.\n2. Onder Pay for Additional Hours, klik + Add langs 💵 Paid at Different Rate.\n3. Vul die Description, Hourly Rate (R) en Hours in.\n4. Klik Save. Die bedrag (ure × tarief) word by die bruto loon getel en belas." },
-      "en": { "title": "Pay hours at a different hourly rate",
-        "body": "Use this when an employee works hours at another rate, e.g. doing someone else's job at R20.50 per hour.\n1. Open the employee's payslip and choose the month.\n2. Under Pay for Additional Hours, click + Add next to 💵 Paid at Different Rate.\n3. Fill in the Description, Hourly Rate (R) and Hours.\n4. Click Save. The amount (hours × rate) is added to gross pay and taxed." }
+      "tags": [
+        "ander tarief",
+        "different rate",
+        "uurtarief",
+        "hourly rate",
+        "multi-rate"
+      ],
+      "af": {
+        "title": "Ure teen 'n ander uurtarief betaal",
+        "body": "Gebruik dit wanneer 'n werknemer ure teen 'n ander tarief werk, bv. iemand anders se werk doen teen R20.50 per uur.\n1. Maak die werknemer se payslip-bladsy oop en kies die maand.\n2. Merk die blokkie Pay for Additional Hours.\n3. Klik + Add langs 💵 Paid at Different Rate.\n4. Vul die Description, Hourly Rate (R) en Hours in.\n5. Klik Save. Die bedrag (ure × tarief) word by die bruto betaling gevoeg en belas."
+      },
+      "en": {
+        "title": "Pay hours at a different hourly rate",
+        "body": "Use this when an employee works hours at another rate, e.g. doing someone else's job at R20.50 per hour.\n1. Open the employee's payslip page and choose the month.\n2. Tick the box Pay for Additional Hours.\n3. Click + Add next to 💵 Paid at Different Rate.\n4. Fill in the Description, Hourly Rate (R) and Hours.\n5. Click Save. The amount (hours × rate) is added to gross pay and taxed."
+      }
     },
     {
       "slug": "werknemer/nuwe-werknemer",
       "screen_url": "/payroll/employee-management.html",
       "screen_name": "Employees",
-      "tags": ["nuwe werknemer", "new employee", "byvoeg", "add", "aanstel", "appoint"],
-      "af": { "title": "'n Nuwe werknemer byvoeg",
-        "body": "1. Gaan na Employees en klik + Add Employee.\n2. Vul die werknemer se besonderhede in: First Name, Last Name, ID Number, SARS Tax Number (10 syfers), Date Appointed, Payment Method en bankbesonderhede.\n3. As die werknemer nog nie by SARS geregistreer is nie, merk Not yet registered with SARS in plaas daarvan om die belastingnommer leeg te los (die IRP5 word dan geblokkeer totdat die nommer ingevul is).\n4. Klik Save Employee.\n5. Maak die werknemer oop om die basiese salaris en gereelde items in te sit.\nLet wel: die ID- en belastingnommer word nagegaan; 'n verkeerde nommer word nie aanvaar nie." },
-      "en": { "title": "Add a new employee",
-        "body": "1. Go to Employees and click + Add Employee.\n2. Fill in the employee's details: First Name, Last Name, ID Number, SARS Tax Number (10 digits), Date Appointed, Payment Method and bank details.\n3. If the employee is not yet registered with SARS, tick Not yet registered with SARS instead of leaving the tax number empty (the IRP5 is then blocked until the number is filled in).\n4. Click Save Employee.\n5. Open the employee to enter the basic salary and regular items.\nNote: ID and tax numbers are checked; an invalid number is not accepted." }
+      "tags": [
+        "nuwe werknemer",
+        "new employee",
+        "byvoeg",
+        "add",
+        "aanstel",
+        "appoint"
+      ],
+      "af": {
+        "title": "'n Nuwe werknemer byvoeg",
+        "body": "1. Gaan na Employees en klik + Add Employee.\n2. Vul die werknemer se besonderhede in: First Name, Last Name, ID Number, SARS Tax Number (10 syfers), Date Appointed, Payment Method en bankbesonderhede.\n3. As die werknemer nog nie by SARS geregistreer is nie, merk Not yet registered with SARS in plaas daarvan om die belastingnommer leeg te los (die IRP5 word dan geblokkeer totdat die nommer ingevul is).\n4. Klik Save Employee.\n5. Maak die werknemer oop om die basiese salaris en gereelde items in te sit.\nLet wel: die ID- en belastingnommer word nagegaan; 'n verkeerde nommer word nie aanvaar nie."
+      },
+      "en": {
+        "title": "Add a new employee",
+        "body": "1. Go to Employees and click + Add Employee.\n2. Fill in the employee's details: First Name, Last Name, ID Number, SARS Tax Number (10 digits), Date Appointed, Payment Method and bank details.\n3. If the employee is not yet registered with SARS, tick Not yet registered with SARS instead of leaving the tax number empty (the IRP5 is then blocked until the number is filled in).\n4. Click Save Employee.\n5. Open the employee to enter the basic salary and regular items.\nNote: ID and tax numbers are checked; an invalid number is not accepted."
+      }
     },
     {
       "slug": "werknemer/diens-beeindig",
       "screen_url": "/payroll/employee-management.html",
       "screen_name": "Employees",
-      "tags": ["bedank", "resign", "diens beëindig", "end of service", "termination", "laaste dag", "last day"],
-      "af": { "title": "'n Werknemer se diens beëindig",
-        "body": "1. Gaan na Employees en soek die werknemer.\n2. Klik End Service.\n3. Kies die Service End Date (die laaste werksdag) en gee 'n rede indien nodig.\n4. Klik Confirm End of Service.\nIn die laaste maand word die salaris pro-rata bereken tot by die einddatum. Ná daardie maand word die werknemer nie meer in die payroll ingesluit nie. Gebruik Show Inactive om oud-werknemers weer te sien." },
-      "en": { "title": "End an employee's service",
-        "body": "1. Go to Employees and find the employee.\n2. Click End Service.\n3. Choose the Service End Date (the last working day) and give a reason if needed.\n4. Click Confirm End of Service.\nIn the last month the salary is pro-rated up to the end date. After that month the employee is no longer included in payroll. Use Show Inactive to see former employees again." }
+      "tags": [
+        "bedank",
+        "resign",
+        "diens beëindig",
+        "end of service",
+        "termination",
+        "laaste dag",
+        "last day"
+      ],
+      "af": {
+        "title": "'n Werknemer se diens beëindig",
+        "body": "1. Gaan na Employees en soek die werknemer.\n2. Klik End Service.\n3. Kies die Service End Date (die laaste werksdag) en gee 'n rede indien nodig.\n4. Klik Confirm End of Service.\nIn die laaste maand word die salaris pro-rata bereken tot by die einddatum. Ná daardie maand word die werknemer nie meer in die payroll ingesluit nie. Gebruik Show Inactive om oud-werknemers weer te sien."
+      },
+      "en": {
+        "title": "End an employee's service",
+        "body": "1. Go to Employees and find the employee.\n2. Click End Service.\n3. Choose the Service End Date (the last working day) and give a reason if needed.\n4. Click Confirm End of Service.\nIn the last month the salary is pro-rated up to the end date. After that month the employee is no longer included in payroll. Use Show Inactive to see former employees again."
+      }
     },
     {
       "slug": "salaris/verander",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["salaris", "salary", "verhoging", "increase", "basies", "basic", "terugwerkend", "back pay", "agterstallig"],
-      "af": { "title": "'n Werknemer se salaris verander of verhoog",
-        "body": "1. Maak die werknemer se payslip-blad oop.\n2. Klik op Basic Salary om dit te wysig.\n3. Tik die nuwe bedrag, kies Effective from (die maand vanaf wanneer dit geld) en gee 'n Reason.\n4. Klik Save.\n- Is die maand in die toekoms, word die verhoging geskeduleer en geld dit vanself vanaf daardie maand.\n- Is die maand reeds gefinaliseer, wys Paytime eers die agterstallige betaling (back pay). As jy bevestig, word dit as eenmalige \"Back pay\" by die eerste oop maand gevoeg. Gefinaliseerde payslips verander nie.\nDie geskiedenis van salarisveranderings wys onderaan die venster." },
-      "en": { "title": "Change or increase an employee's salary",
-        "body": "1. Open the employee's payslip page.\n2. Click Basic Salary to edit it.\n3. Type the new amount, choose Effective from (the month it applies from) and give a Reason.\n4. Click Save.\n- If the month is in the future, the increase is scheduled and applies automatically from that month.\n- If the month is already finalized, Paytime first shows the back pay. If you confirm, it is added as a once-off \"Back pay\" to the first open month. Finalized payslips do not change.\nThe salary history shows at the bottom of the window." }
+      "tags": [
+        "salaris",
+        "salary",
+        "verhoging",
+        "increase",
+        "basies",
+        "basic",
+        "terugwerkend",
+        "back pay",
+        "agterstallig"
+      ],
+      "af": {
+        "title": "'n Werknemer se salaris verander of verhoog",
+        "body": "1. Maak die werknemer se payslip-blad oop.\n2. Klik op Basic Salary om dit te wysig.\n3. Tik die nuwe bedrag, kies Effective from (die maand vanaf wanneer dit geld) en gee 'n Reason.\n4. Klik Save.\n- Is die maand in die toekoms, word die verhoging geskeduleer en geld dit vanself vanaf daardie maand.\n- Is die maand reeds gefinaliseer, wys Paytime eers die agterstallige betaling (back pay). As jy bevestig, word dit as eenmalige \"Back pay\" by die eerste oop maand gevoeg. Gefinaliseerde payslips verander nie.\nDie geskiedenis van salarisveranderings wys onderaan die venster."
+      },
+      "en": {
+        "title": "Change or increase an employee's salary",
+        "body": "1. Open the employee's payslip page.\n2. Click Basic Salary to edit it.\n3. Type the new amount, choose Effective from (the month it applies from) and give a Reason.\n4. Click Save.\n- If the month is in the future, the increase is scheduled and applies automatically from that month.\n- If the month is already finalized, Paytime first shows the back pay. If you confirm, it is added as a once-off \"Back pay\" to the first open month. Finalized payslips do not change.\nThe salary history shows at the bottom of the window."
+      }
     },
     {
       "slug": "payroll/uitvoer-en-finaliseer",
       "screen_url": "/payroll/payroll-execution.html",
       "screen_name": "Execute Payroll",
-      "tags": ["payroll", "uitvoer", "run", "finaliseer", "finalize", "maand sluit", "close month", "betaal", "pay"],
-      "af": { "title": "Die maand se payroll uitvoer en finaliseer",
-        "body": "1. Gaan na Execute Payroll.\n2. Kies die maand by Select Period (en die skedule by Select Schedule indien julle meer as een het).\n3. Kies die werknemers (Select All vir almal) en klik ▶ Run Payroll.\n4. Gaan die resultate en payslips na. Maak enige foute op die werknemers se payslip-blaaie reg en run weer.\n5. Klik Finalize Payroll. Lees die nagaan-verslag (groot veranderinge, ontbrekende belastingnommers, negatiewe netto) en klik dan ✓ Yes, Finalize.\nNa finalisering is die payslips gesluit. Daarna kan jy die Bank File aflaai en Bulk Print Payslips gebruik." },
-      "en": { "title": "Run and finalize the month's payroll",
-        "body": "1. Go to Execute Payroll.\n2. Choose the month under Select Period (and the schedule under Select Schedule if you have more than one).\n3. Choose the employees (Select All for everyone) and click ▶ Run Payroll.\n4. Check the results and payslips. Fix any mistakes on the employees' payslip pages and run again.\n5. Click Finalize Payroll. Read the review (large changes, missing tax numbers, negative net pay) and then click ✓ Yes, Finalize.\nAfter finalizing, the payslips are locked. You can then download the Bank File and use Bulk Print Payslips." }
+      "tags": [
+        "payroll",
+        "uitvoer",
+        "run",
+        "finaliseer",
+        "finalize",
+        "maand sluit",
+        "close month",
+        "betaal",
+        "pay"
+      ],
+      "af": {
+        "title": "Die maand se payroll uitvoer en finaliseer",
+        "body": "1. Gaan na Execute Payroll.\n2. Kies die maand by Select Period (en die skedule by Select Schedule indien julle meer as een het).\n3. Kies die werknemers (Select All vir almal) en klik ▶ Run Payroll.\n4. Gaan die resultate en payslips na. Maak enige foute op die werknemers se payslip-blaaie reg en run weer.\n5. Klik Finalize Payroll. Lees die nagaan-verslag (groot veranderinge, ontbrekende belastingnommers, negatiewe netto) en klik dan ✓ Yes, Finalize.\nNa finalisering is die payslips gesluit. Daarna kan jy die Bank File aflaai en Bulk Print Payslips gebruik."
+      },
+      "en": {
+        "title": "Run and finalize the month's payroll",
+        "body": "1. Go to Execute Payroll.\n2. Choose the month under Select Period (and the schedule under Select Schedule if you have more than one).\n3. Choose the employees (Select All for everyone) and click ▶ Run Payroll.\n4. Check the results and payslips. Fix any mistakes on the employees' payslip pages and run again.\n5. Click Finalize Payroll. Read the review (large changes, missing tax numbers, negative net pay) and then click ✓ Yes, Finalize.\nAfter finalizing, the payslips are locked. You can then download the Bank File and use Bulk Print Payslips."
+      }
     },
     {
       "slug": "payroll/omkeer",
       "screen_url": "/payroll/payroll-execution.html",
       "screen_name": "Execute Payroll",
-      "tags": ["omkeer", "reverse", "fout", "mistake", "ontsluit", "unlock", "regmaak", "correct"],
-      "af": { "title": "'n Gefinaliseerde maand omkeer om 'n fout reg te maak",
-        "body": "1. Gaan na Execute Payroll en maak die maand oop (of soek dit onder 📋 History).\n2. Klik 🔄 Reverse Pay Run.\n3. Gee 'n rede (verpligtend) en bevestig.\nDie payslips word ontsluit sodat jy dit kan regmaak en weer kan run en finaliseer. Die ou payslips bly as \"reversed\" in die geskiedenis.\nAs latere maande reeds gefinaliseer is, waarsku Paytime jou vooraf en bied aan om dié maande ook om te keer, want hul PAYE is op die ou syfers gebaseer." },
-      "en": { "title": "Reverse a finalized month to fix a mistake",
-        "body": "1. Go to Execute Payroll and open the month (or find it under 📋 History).\n2. Click 🔄 Reverse Pay Run.\n3. Give a reason (required) and confirm.\nThe payslips are unlocked so you can fix them, run and finalize again. The old payslips stay in the history as \"reversed\".\nIf later months are already finalized, Paytime warns you first and offers to reverse those months too, because their PAYE is based on the old figures." }
+      "tags": [
+        "omkeer",
+        "reverse",
+        "fout",
+        "mistake",
+        "ontsluit",
+        "unlock",
+        "regmaak",
+        "correct"
+      ],
+      "af": {
+        "title": "'n Gefinaliseerde pay run (maand) omkeer om 'n fout reg te maak",
+        "body": "1. Gaan na Execute Payroll en maak die maand oop (of soek dit onder 📋 History).\n2. Klik 🔄 Reverse Pay Run.\n3. Gee 'n rede (verpligtend) en bevestig.\nDie payslips word ontsluit sodat jy dit kan regmaak en weer kan run en finaliseer. Die ou payslips bly as \"reversed\" in die geskiedenis.\nAs latere maande reeds gefinaliseer is, waarsku Paytime jou vooraf en bied aan om dié maande ook om te keer, want hul PAYE is op die ou syfers gebaseer."
+      },
+      "en": {
+        "title": "Reverse a finalized pay run (month) to fix a mistake",
+        "body": "1. Go to Execute Payroll and open the month (or find it under 📋 History).\n2. Click 🔄 Reverse Pay Run.\n3. Give a reason (required) and confirm.\nThe payslips are unlocked so you can fix them, run and finalize again. The old payslips stay in the history as \"reversed\".\nIf later months are already finalized, Paytime warns you first and offers to reverse those months too, because their PAYE is based on the old figures."
+      }
     },
     {
       "slug": "items/nuwe-payroll-item",
       "screen_url": "/payroll/payroll-items.html",
       "screen_name": "Payroll Items",
-      "tags": ["payroll item", "nuwe item", "new item", "irp5", "kode", "code", "belasbaar", "taxable", "uif"],
-      "af": { "title": "'n Nuwe payroll-item opstel (bv. 'n toelae of aftrekking)",
-        "body": "1. Gaan na Payroll Items.\n2. Kies die blok: Income, Allowances, Deductions of Employer Contributions, en klik die + Add-knoppie daarvan.\n3. Vul in: Item Code, Item Name, Category en die IRP5 Code.\n4. Stel die belasting: Taxable? en Taxable % (bv. 80% vir 'n reistoelae), Affects UIF?, en vir aftrekkings die Tax Treatment (Pre-Tax vir pensioen/voorsorg, anders Normal Deduction).\n5. Kies by Show this item in of dit Regular, Once-Off of albei is, en die Monthly Behaviour.\n6. Klik Save.\nLet wel: 'n item sonder IRP5-kode gee 'n waarskuwing by elke payroll en blokkeer die werknemer se IRP5 by jaareinde." },
-      "en": { "title": "Set up a new payroll item (e.g. an allowance or deduction)",
-        "body": "1. Go to Payroll Items.\n2. Choose the block: Income, Allowances, Deductions or Employer Contributions, and click its + Add button.\n3. Fill in: Item Code, Item Name, Category and the IRP5 Code.\n4. Set the tax: Taxable? and Taxable % (e.g. 80% for a travel allowance), Affects UIF?, and for deductions the Tax Treatment (Pre-Tax for pension/provident, otherwise Normal Deduction).\n5. Under Show this item in, choose Regular, Once-Off or both, and the Monthly Behaviour.\n6. Click Save.\nNote: an item without an IRP5 code gives a warning on every payroll run and blocks the employee's IRP5 at year end." }
+      "tags": [
+        "payroll item",
+        "nuwe item",
+        "new item",
+        "irp5",
+        "kode",
+        "code",
+        "belasbaar",
+        "taxable",
+        "uif"
+      ],
+      "af": {
+        "title": "'n Nuwe payroll-item opstel (bv. 'n toelae of aftrekking)",
+        "body": "1. Gaan na Payroll Items.\n2. Kies die blok: Income, Allowances, Deductions of Employer Contributions, en klik die + Add-knoppie daarvan.\n3. Vul in: Item Code, Item Name, Category en die IRP5 Code.\n4. Stel die belasting: Taxable? en Taxable % (bv. 80% vir 'n reistoelae), Affects UIF?, en vir aftrekkings die Tax Treatment (Pre-Tax vir pensioen/voorsorg, anders Normal Deduction).\n5. Kies by Show this item in of dit Regular, Once-Off of albei is, en die Monthly Behaviour.\n6. Klik Save.\nLet wel: 'n item sonder IRP5-kode gee 'n waarskuwing by elke payroll en blokkeer die werknemer se IRP5 by jaareinde."
+      },
+      "en": {
+        "title": "Set up a new payroll item (e.g. an allowance or deduction)",
+        "body": "1. Go to Payroll Items.\n2. Choose the block: Income, Allowances, Deductions or Employer Contributions, and click its + Add button.\n3. Fill in: Item Code, Item Name, Category and the IRP5 Code.\n4. Set the tax: Taxable? and Taxable % (e.g. 80% for a travel allowance), Affects UIF?, and for deductions the Tax Treatment (Pre-Tax for pension/provident, otherwise Normal Deduction).\n5. Under Show this item in, choose Regular, Once-Off or both, and the Monthly Behaviour.\n6. Click Save.\nNote: an item without an IRP5 code gives a warning on every payroll run and blocks the employee's IRP5 at year end."
+      }
     },
     {
       "slug": "payslip/maatskappymotor",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["motor", "car", "maatskappymotor", "company car", "byvoordeel", "fringe benefit", "voertuig"],
-      "af": { "title": "'n Maatskappymotor (belasbare byvoordeel) byvoeg",
-        "body": "1. Maak die werknemer se payslip-blad oop.\n2. Onder Company car (taxable benefit), klik + Add.\n3. Tik die determined value (koopprys ingesluit BTW, sonder rente), merk of 'n onderhoudsplan ingesluit is, en of besigheidsgebruik minstens 80% is.\n4. Kies From month en klik Save.\nPaytime bereken elke maand 3,5% van die waarde (2,5% met 'n onderhoudsplan) en belas 80% daarvan (20% by 80%+ besigheidsgebruik). Dit word nie in kontant betaal nie. Wanneer die werknemer nie meer die motor het nie, klik End en kies die laaste maand." },
-      "en": { "title": "Add a company car (taxable benefit)",
-        "body": "1. Open the employee's payslip page.\n2. Under Company car (taxable benefit), click + Add.\n3. Type the determined value (purchase price incl. VAT, excl. finance charges), tick whether a maintenance plan is included and whether business use is at least 80%.\n4. Choose From month and click Save.\nEach month Paytime calculates 3.5% of the value (2.5% with a maintenance plan) and taxes 80% of it (20% at 80%+ business use). It is not paid in cash. When the employee no longer has the car, click End and choose the last month." }
+      "tags": [
+        "motor",
+        "car",
+        "maatskappymotor",
+        "company car",
+        "byvoordeel",
+        "fringe benefit",
+        "voertuig"
+      ],
+      "af": {
+        "title": "'n Maatskappymotor (belasbare byvoordeel) byvoeg",
+        "body": "1. Maak die werknemer se payslip-blad oop.\n2. Onder Company car (taxable benefit), klik + Add.\n3. Tik die determined value (koopprys ingesluit BTW, sonder rente), merk of 'n onderhoudsplan ingesluit is, en of besigheidsgebruik minstens 80% is.\n4. Kies From month en klik Save.\nPaytime bereken elke maand 3,5% van die waarde (2,5% met 'n onderhoudsplan) en belas 80% daarvan (20% by 80%+ besigheidsgebruik). Dit word nie in kontant betaal nie. Wanneer die werknemer nie meer die motor het nie, klik End en kies die laaste maand."
+      },
+      "en": {
+        "title": "Add a company car (taxable benefit)",
+        "body": "1. Open the employee's payslip page.\n2. Under Company car (taxable benefit), click + Add.\n3. Type the determined value (purchase price incl. VAT, excl. finance charges), tick whether a maintenance plan is included and whether business use is at least 80%.\n4. Choose From month and click Save.\nEach month Paytime calculates 3.5% of the value (2.5% with a maintenance plan) and taxes 80% of it (20% at 80%+ business use). It is not paid in cash. When the employee no longer has the car, click End and choose the last month."
+      }
     },
     {
       "slug": "payslip/pdf-en-druk",
       "screen_url": "/payroll/employee-detail.html",
       "screen_name": "Payslip page (employee)",
-      "tags": ["pdf", "druk", "print", "payslip aflaai", "download", "e-pos", "email"],
-      "af": { "title": "'n Payslip sien, aflaai of druk",
-        "body": "Een werknemer:\n1. Maak die werknemer se payslip-blad oop en kies die maand by Period.\n2. Klik Calculate Payslip (vir 'n oop maand) of Preview Payslip.\n3. Klik Download PDF of Print.\nAlmal saam (ná finalisering):\n1. Gaan na Execute Payroll en maak die gefinaliseerde maand oop.\n2. Klik Bulk Print Payslips.\nDie payslip wys ook die jaar-tot-datum-totale (YTD)." },
-      "en": { "title": "View, download or print a payslip",
-        "body": "One employee:\n1. Open the employee's payslip page and choose the month under Period.\n2. Click Calculate Payslip (for an open month) or Preview Payslip.\n3. Click Download PDF or Print.\nEveryone at once (after finalizing):\n1. Go to Execute Payroll and open the finalized month.\n2. Click Bulk Print Payslips.\nThe payslip also shows the year-to-date (YTD) totals." }
+      "tags": [
+        "pdf",
+        "druk",
+        "print",
+        "payslip aflaai",
+        "download",
+        "e-pos",
+        "email"
+      ],
+      "af": {
+        "title": "'n Payslip sien, aflaai of druk",
+        "body": "Een werknemer:\n1. Maak die werknemer se payslip-blad oop en kies die maand by Period.\n2. Klik Calculate Payslip (vir 'n oop maand) of Preview Payslip.\n3. Klik Download PDF of Print.\nAlmal saam (ná finalisering):\n1. Gaan na Execute Payroll en maak die gefinaliseerde maand oop.\n2. Klik Bulk Print Payslips.\nDie payslip wys ook die jaar-tot-datum-totale (YTD)."
+      },
+      "en": {
+        "title": "View, download or print a payslip",
+        "body": "One employee:\n1. Open the employee's payslip page and choose the month under Period.\n2. Click Calculate Payslip (for an open month) or Preview Payslip.\n3. Click Download PDF or Print.\nEveryone at once (after finalizing):\n1. Go to Execute Payroll and open the finalized month.\n2. Click Bulk Print Payslips.\nThe payslip also shows the year-to-date (YTD) totals."
+      }
+    },
+    {
+      "slug": "werknemer/wysig",
+      "screen_url": "/payroll/employee-management.html",
+      "screen_name": "Employees",
+      "tags": [
+        "wysig",
+        "edit",
+        "besonderhede",
+        "details",
+        "naam",
+        "name",
+        "werknemer",
+        "employee",
+        "opdateer",
+        "update"
+      ],
+      "af": {
+        "title": "Werknemer se besonderhede wysig",
+        "body": "Opsie 1 — van die lys:\n1. Gaan na Employees.\n2. Klik Edit langs die werknemer, verander die velde en klik Save Employee.\nOpsie 2 — van die werknemer se bladsy (meer velde, bv. adres en bankrekening-tipe):\n1. Maak die werknemer oop (klik op die naam of Open).\n2. Klik die oortjie ✏️ Edit Info en dan Edit Information.\n3. Verander wat nodig is en klik Save Changes.\nLet wel: die SARS Tax Number is verpligtend, tensy jy Not yet registered with SARS merk."
+      },
+      "en": {
+        "title": "Edit an employee's details",
+        "body": "Option 1 — from the list:\n1. Go to Employees.\n2. Click Edit next to the employee, change the fields and click Save Employee.\nOption 2 — from the employee's page (more fields, e.g. address and bank account type):\n1. Open the employee (click the name or Open).\n2. Click the ✏️ Edit Info tab and then Edit Information.\n3. Change what you need and click Save Changes.\nNote: the SARS Tax Number is required unless you tick Not yet registered with SARS."
+      }
+    },
+    {
+      "slug": "werknemer/bankbesonderhede",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "bank",
+        "rekening",
+        "account",
+        "bankbesonderhede",
+        "eft",
+        "tak",
+        "branch",
+        "betaal"
+      ],
+      "af": {
+        "title": "Werknemer se bankbesonderhede invoer",
+        "body": "1. Maak die werknemer oop en klik die oortjie ✏️ Edit Info.\n2. Klik Edit Information.\n3. Onder Bank Details: vul Bank Name, Account Holder, Account Number en Branch Code in.\n4. Kies die Account Type (bv. Current / Cheque of Savings) en by Account Holder Is: The employee (own account), Joint account of Third party.\n5. Klik Save Changes.\nDie bankbesonderhede word gebruik vir die Bank File ná finalisering en op die IRP5. Die Payment Method moet EFT wees."
+      },
+      "en": {
+        "title": "Enter an employee's bank details",
+        "body": "1. Open the employee and click the ✏️ Edit Info tab.\n2. Click Edit Information.\n3. Under Bank Details: fill in Bank Name, Account Holder, Account Number and Branch Code.\n4. Choose the Account Type (e.g. Current / Cheque or Savings) and under Account Holder Is: The employee (own account), Joint account or Third party.\n5. Click Save Changes.\nThe bank details are used for the Bank File after finalizing and on the IRP5. The Payment Method must be EFT."
+      }
+    },
+    {
+      "slug": "werknemer/adres",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "adres",
+        "address",
+        "woonadres",
+        "residential",
+        "irp5",
+        "paspoort",
+        "passport",
+        "geboortedatum",
+        "birth"
+      ],
+      "af": {
+        "title": "Werknemer se woonadres (nodig vir die IRP5)",
+        "body": "1. Maak die werknemer oop, klik ✏️ Edit Info en dan Edit Information.\n2. Vul onder Residential Address in: Unit No. en Complex (indien van toepassing), Street No., Street / Farm Name, Suburb, City / Town, Postal Code (4 syfers) en Country Code (ZA).\n3. As die werknemer nie 'n SA ID het nie: vul Passport Country (bv. ZWE) en Date of Birth in.\n4. Klik Save Changes.\nSonder 'n woonadres kan die werknemer se IRP5 nie by die e@syFile-lêer ingesluit word nie."
+      },
+      "en": {
+        "title": "Employee's residential address (needed for the IRP5)",
+        "body": "1. Open the employee, click ✏️ Edit Info and then Edit Information.\n2. Under Residential Address fill in: Unit No. and Complex (if any), Street No., Street / Farm Name, Suburb, City / Town, Postal Code (4 digits) and Country Code (ZA).\n3. If the employee has no SA ID: fill in Passport Country (e.g. ZWE) and Date of Birth.\n4. Click Save Changes.\nWithout a residential address the employee's IRP5 cannot be included in the e@syFile file."
+      }
+    },
+    {
+      "slug": "werknemer/mediese-fonds",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "mediese",
+        "medical",
+        "fonds",
+        "aid",
+        "lede",
+        "members",
+        "afhanklikes",
+        "dependants",
+        "krediet",
+        "credit"
+      ],
+      "af": {
+        "title": "Mediese fonds-lede invoer",
+        "body": "1. Maak die werknemer oop, klik ✏️ Edit Info en dan Edit Information.\n2. Tik by Medical Aid Members die aantal lede op die mediese fonds: die werknemer plus afhanklikes (0 = geen).\n3. Klik Save Changes.\nPaytime bereken dan self die Medical Tax Credit, wat op die payslip as afslag op PAYE wys.\nDie werknemer se bydrae tot die mediese fonds self sit jy as 'n Deduction-item op die payslip (Regular Inputs → + Add)."
+      },
+      "en": {
+        "title": "Enter medical aid members",
+        "body": "1. Open the employee, click ✏️ Edit Info and then Edit Information.\n2. Under Medical Aid Members type the number of members on the medical aid: the employee plus dependants (0 = none).\n3. Click Save Changes.\nPaytime then calculates the Medical Tax Credit, which shows on the payslip as a reduction of PAYE.\nThe employee's own medical aid contribution is added as a Deduction item on the payslip (Regular Inputs → + Add)."
+      }
+    },
+    {
+      "slug": "werknemer/belastingvoorskrif",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "direktief",
+        "directive",
+        "voorskrif",
+        "belastingvoorskrif",
+        "tax",
+        "persentasie",
+        "percentage",
+        "irp3"
+      ],
+      "af": {
+        "title": "'n Belastingvoorskrif (tax directive) invoer",
+        "body": "1. Maak die werknemer oop, klik ✏️ Edit Info en dan Edit Information.\n2. Tik by Tax Directive (%) die persentasie op die voorskrif van SARS (bv. 25).\n3. Klik Save Changes.\nPaytime trek dan PAYE af as bruto × daardie persentasie in plaas van die gewone belastingtabelle. Laat dit op 0 vir gewone PAYE."
+      },
+      "en": {
+        "title": "Enter a tax directive",
+        "body": "1. Open the employee, click ✏️ Edit Info and then Edit Information.\n2. Under Tax Directive (%) type the percentage on the SARS directive (e.g. 25).\n3. Click Save Changes.\nPaytime then deducts PAYE as gross × that percentage instead of using the normal tax tables. Leave it at 0 for normal PAYE."
+      }
+    },
+    {
+      "slug": "werknemer/klassifikasie",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "direkteur",
+        "director",
+        "kontrakteur",
+        "contractor",
+        "deeltyds",
+        "part",
+        "time",
+        "22",
+        "uif",
+        "vrygestel",
+        "exempt",
+        "klassifikasie",
+        "classification"
+      ],
+      "af": {
+        "title": "Direkteur, kontrakteur, deeltyds of UIF-vrygestel aandui",
+        "body": "1. Maak die werknemer oop en klik die oortjie ✏️ Edit Info.\n2. Klik Classification.\n3. Merk wat van toepassing is: Director, Independent Contractor, of UIF Exempt. Kies by When does the employee normally work? Full time of Less than 22 hours per week.\n4. Klik Continue.\nPaytime gebruik dit vir die regte berekening, bv. 'n Independent Contractor kry PAYE volgens die tabelle maar geen UIF of SDL nie."
+      },
+      "en": {
+        "title": "Mark an employee as director, contractor, part-time or UIF exempt",
+        "body": "1. Open the employee and click the ✏️ Edit Info tab.\n2. Click Classification.\n3. Tick what applies: Director, Independent Contractor, or UIF Exempt. Under When does the employee normally work? choose Full time or Less than 22 hours per week.\n4. Click Continue.\nPaytime uses this for the correct calculation, e.g. an Independent Contractor gets PAYE on the tax tables but no UIF and no SDL."
+      }
+    },
+    {
+      "slug": "werknemer/werksure",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "werksure",
+        "hours",
+        "ure",
+        "uurtarief",
+        "hourly",
+        "rate",
+        "skedule",
+        "schedule",
+        "werkdae",
+        "days",
+        "uurbetaal"
+      ],
+      "af": {
+        "title": "Werksure en uurtarief van 'n werknemer",
+        "body": "1. Maak die werknemer oop, klik ✏️ Edit Info en dan Regular Hours.\n2. Merk Hourly paid as die werknemer per uur betaal word.\n3. Vul Hours per day in, kies die Schedule (Fixed, Flexible of Roster) en stel die Regular Working Days (dag, tipe en ure).\n4. Klik Continue.\nDie Calculated Hourly Rate (Based on Schedule) op die Payroll-oortjie kom hiervandaan. Dit word gebruik vir oortyd en korttyd. Nul ure gee 'n uurtarief van nul."
+      },
+      "en": {
+        "title": "Working hours and hourly rate of an employee",
+        "body": "1. Open the employee, click ✏️ Edit Info and then Regular Hours.\n2. Tick Hourly paid if the employee is paid per hour.\n3. Fill in Hours per day, choose the Schedule (Fixed, Flexible or Roster) and set the Regular Working Days (day, type and hours).\n4. Click Continue.\nThe Calculated Hourly Rate (Based on Schedule) on the Payroll tab comes from this. It is used for overtime and short time. Zero hours gives a zero hourly rate."
+      }
+    },
+    {
+      "slug": "werknemer/eti",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "eti",
+        "employment",
+        "tax",
+        "incentive",
+        "aansporing",
+        "jeug",
+        "youth",
+        "sez"
+      ],
+      "af": {
+        "title": "ETI (Employment Tax Incentive) vir 'n werknemer opstel",
+        "body": "1. Maak die werknemer oop, klik ✏️ Edit Info en dan ETI.\n2. Kies die Status: Qualified - Claiming, Qualified - Not Claiming of Disqualified.\n3. Vul indien nodig die minimum loon (Employee minimum wage inputs), die Original Employment Date en die Disqualified months in, en merk die SEZ-blokkies as dit van toepassing is.\n4. Kies Effective from en klik Save.\nDie geskiedenis van veranderinge wys onder History."
+      },
+      "en": {
+        "title": "Set up ETI (Employment Tax Incentive) for an employee",
+        "body": "1. Open the employee, click ✏️ Edit Info and then ETI.\n2. Choose the Status: Qualified - Claiming, Qualified - Not Claiming or Disqualified.\n3. If needed fill in the minimum wage (Employee minimum wage inputs), the Original Employment Date and the Disqualified months, and tick the SEZ boxes if they apply.\n4. Choose Effective from and click Save.\nThe history of changes shows under History."
+      }
+    },
+    {
+      "slug": "werknemer/oplaai-lys",
+      "screen_url": "/payroll/employee-management.html",
+      "screen_name": "Employees",
+      "tags": [
+        "oplaai",
+        "upload",
+        "csv",
+        "excel",
+        "invoer",
+        "import",
+        "bulk",
+        "baie",
+        "many",
+        "werknemers",
+        "employees"
+      ],
+      "af": {
+        "title": "Baie werknemers gelyk oplaai (CSV/Excel)",
+        "body": "1. Gaan na Employees en klik Upload CSV/Excel.\n2. Klik Download Template vir 'n voorbeeld van die kolomme. Verpligtend: Employee Number, First Name en Last Name.\n3. Sleep jou lêer in, of klik Browse Files.\n4. Kontroleer watter kolom by watter veld pas en klik Preview Import.\n5. Kyk die voorskou na en klik Import Employees.\nDaarna maak jy elke werknemer oop om die salaris en ander items in te sit."
+      },
+      "en": {
+        "title": "Upload many employees at once (CSV/Excel)",
+        "body": "1. Go to Employees and click Upload CSV/Excel.\n2. Click Download Template for an example of the columns. Required: Employee Number, First Name and Last Name.\n3. Drag your file in, or click Browse Files.\n4. Check which column matches which field and click Preview Import.\n5. Review the preview and click Import Employees.\nAfterwards open each employee to enter the salary and other items."
+      }
+    },
+    {
+      "slug": "werknemer/soek",
+      "screen_url": "/payroll/employee-management.html",
+      "screen_name": "Employees",
+      "tags": [
+        "soek",
+        "search",
+        "vind",
+        "find",
+        "onaktief",
+        "inactive",
+        "vorige",
+        "former",
+        "volgende",
+        "next",
+        "lys",
+        "list"
+      ],
+      "af": {
+        "title": "'n Werknemer soek (ook vorige werknemers)",
+        "body": "1. Gaan na Employees en tik in Search employees… Kies of jy op Nr, Name of Surname soek.\n2. Klik Show Inactive om ook werknemers te sien wie se diens beëindig is.\nOp 'n werknemer se bladsy kan jy met ◀ en ▶ na die vorige of volgende werknemer spring, of bo in Search employee... tik. Sort: Surname, Name of Code bepaal die volgorde."
+      },
+      "en": {
+        "title": "Find an employee (also former employees)",
+        "body": "1. Go to Employees and type in Search employees… Choose whether you search on Nr, Name or Surname.\n2. Click Show Inactive to also see employees whose service has ended.\nOn an employee's page you can jump to the previous or next employee with ◀ and ▶, or type in Search employee... at the top. Sort: Surname, Name or Code sets the order."
+      }
+    },
+    {
+      "slug": "werknemer/betaalskedule",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "skedule",
+        "schedule",
+        "weekliks",
+        "weekly",
+        "tweeweekliks",
+        "biweekly",
+        "maandeliks",
+        "monthly",
+        "betaaldag",
+        "pay",
+        "day"
+      ],
+      "af": {
+        "title": "'n Werknemer aan 'n betaalskedule koppel",
+        "body": "1. Maak die werknemer oop.\n2. Kies op die Payroll-oortjie by Pay Schedule die regte skedule (bv. Weekly Wages).\n3. Klik Save Schedule.\nBestaan die skedule nog nie? Klik + Add langs Pay Schedule, gee 'n Schedule Name, kies die Pay Frequency (Monthly, Weekly of Bi-weekly) en die betaaldag, en klik Save Schedule.\nBy Execute Payroll kan jy dan net die werknemers van een skedule uitvoer."
+      },
+      "en": {
+        "title": "Assign an employee to a pay schedule",
+        "body": "1. Open the employee.\n2. On the Payroll tab, choose the right schedule under Pay Schedule (e.g. Weekly Wages).\n3. Click Save Schedule.\nSchedule does not exist yet? Click + Add next to Pay Schedule, give a Schedule Name, choose the Pay Frequency (Monthly, Weekly or Bi-weekly) and the pay day, and click Save Schedule.\nIn Execute Payroll you can then run only the employees of one schedule."
+      }
+    },
+    {
+      "slug": "werknemer/notas",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "nota",
+        "notas",
+        "note",
+        "notes",
+        "opmerking",
+        "comment"
+      ],
+      "af": {
+        "title": "'n Nota by 'n werknemer skryf",
+        "body": "1. Maak die werknemer oop en klik die oortjie 📝 Notes.\n2. Tik jou nota by Add a note.\n3. Klik Save Note.\nNotas wys met die datum onder mekaar. Klik Delete om 'n nota te verwyder."
+      },
+      "en": {
+        "title": "Add a note to an employee",
+        "body": "1. Open the employee and click the 📝 Notes tab.\n2. Type your note under Add a note.\n3. Click Save Note.\nNotes show with the date below each other. Click Delete to remove a note."
+      }
+    },
+    {
+      "slug": "werknemer/verlof",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "verlof",
+        "leave",
+        "siek",
+        "sick",
+        "jaarlikse",
+        "annual",
+        "gesinsverantwoordelikheid",
+        "family",
+        "kraam",
+        "maternity",
+        "onbetaal",
+        "unpaid",
+        "balans",
+        "balance"
+      ],
+      "af": {
+        "title": "Verlof byvoeg (aanteken) en verlofbalanse sien",
+        "body": "1. Maak die werknemer oop en klik die oortjie 🏖️ Leave.\n2. Bo sien jy die balanse: Annual Leave, Sick Leave (3-jaar-siklus) en Family Responsibility.\n3. Klik + Add Leave Request.\n4. Kies die Leave Type, die Start Date en End Date (die Days word self bereken, net weeksdae), gee 'n Reason en kies die Status (Approved, Pending of Rejected).\n5. Klik Save Leave.\nGoedgekeurde verlof word nie as afwesigheid in Attendance getel nie.\nBelangrik vir Unpaid Leave: Paytime trek dit tans nie self van die salaris af nie. Sit die ure as ⏱️ Short Time op die payslip vir daardie maand."
+      },
+      "en": {
+        "title": "Add (record) leave and see leave balances",
+        "body": "1. Open the employee and click the 🏖️ Leave tab.\n2. At the top you see the balances: Annual Leave, Sick Leave (3-year cycle) and Family Responsibility.\n3. Click + Add Leave Request.\n4. Choose the Leave Type, the Start Date and End Date (the Days are calculated, weekdays only), give a Reason and choose the Status (Approved, Pending or Rejected).\n5. Click Save Leave.\nApproved leave is not counted as absence in Attendance.\nImportant for Unpaid Leave: Paytime does not currently deduct it from the salary by itself. Add the hours as ⏱️ Short Time on that month's payslip."
+      }
+    },
+    {
+      "slug": "payslip/item-verwyder-of-wysig",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "verwyder",
+        "remove",
+        "delete",
+        "wysig",
+        "edit",
+        "item",
+        "bedrag",
+        "amount",
+        "veranderlik",
+        "variable",
+        "kommissie",
+        "commission"
+      ],
+      "af": {
+        "title": "'n Item op 'n payslip verwyder, of 'n veranderlike bedrag invoer",
+        "body": "Verwyder: klik die x langs die item (onder Regular Inputs of Current Inputs).\nVeranderlike item (🔄, bv. kommissie): klik op die item, tik die bedrag vir hierdie pay run by Amount for this pay run (mag R 0 wees), en klik ✓ Save Amount.\nLet wel: in 'n gefinaliseerde maand is die x en die wysig-opsies weg."
+      },
+      "en": {
+        "title": "Remove an item from a payslip, or enter a variable amount",
+        "body": "Remove: click the x next to the item (under Regular Inputs or Current Inputs).\nVariable item (🔄, e.g. commission): click the item, type the amount for this pay run under Amount for this pay run (may be R 0), and click ✓ Save Amount.\nNote: in a finalized month the x and edit options are gone."
+      }
+    },
+    {
+      "slug": "payslip/vrywillige-paye",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "vrywillig",
+        "voluntary",
+        "ekstra",
+        "extra",
+        "paye",
+        "belasting",
+        "tax",
+        "meer",
+        "more",
+        "teiken",
+        "target",
+        "aanpassing",
+        "adjustment"
+      ],
+      "af": {
+        "title": "Ekstra (vrywillige) PAYE aftrek",
+        "body": "1. Maak die werknemer se payslip-bladsy oop.\n2. Onder Voluntary PAYE Adjustment, kies by Add: Fixed Monthly (elke maand dieselfde), Variable (Period) (net een maand) of Target PAYE Amount (die finale PAYE wat jy wil hê).\n3. Kies die Direction ▲ Increase PAYE, tik die bedrag (en opsioneel From/To-maande).\n4. Klik Add Entry.\nElke inskrywing wys apart op die payslip. PAYE kan nooit laer as die statutêre bedrag wees nie. ▼ Reduce PAYE vra 'n rede, wat op die oudit-spoor wys."
+      },
+      "en": {
+        "title": "Deduct extra (voluntary) PAYE",
+        "body": "1. Open the employee's payslip page.\n2. Under Voluntary PAYE Adjustment, choose next to Add: Fixed Monthly (same every month), Variable (Period) (one month only) or Target PAYE Amount (the final PAYE you want).\n3. Choose the Direction ▲ Increase PAYE, type the amount (and optional From/To months).\n4. Click Add Entry.\nEach entry shows separately on the payslip. PAYE can never be lower than the statutory amount. ▼ Reduce PAYE asks for a reason, which shows on the audit trail."
+      }
+    },
+    {
+      "slug": "payslip/bonus-spreiding",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "bonus",
+        "sprei",
+        "spread",
+        "versprei",
+        "paye",
+        "desember",
+        "december",
+        "dertiende",
+        "13th"
+      ],
+      "af": {
+        "title": "Die PAYE op 'n bonus oor 'n paar maande sprei",
+        "body": "1. Maak die werknemer se payslip-bladsy oop.\n2. Onder Voluntary PAYE Adjustment, klik Bonus Spread.\n3. Tik die Bonus amount, die maand waarin dit betaal word (paid in), oor hoeveel maande (Spread over) en vanaf watter maand.\n4. Klik Calculate PAYE. Paytime wys die ekstra PAYE wat die bonus veroorsaak en die bedrag per maand.\n5. Gee 'n verwysing en klik Add Entry.\nDie spreiding moet teen Februarie klaar wees. Aanbeveel: laat dit in die bonusmaand eindig, dan trek die bonusmaand net af wat nog uitstaan."
+      },
+      "en": {
+        "title": "Spread the PAYE on a bonus over a few months",
+        "body": "1. Open the employee's payslip page.\n2. Under Voluntary PAYE Adjustment, click Bonus Spread.\n3. Type the Bonus amount, the month it is paid (paid in), over how many months (Spread over) and from which month.\n4. Click Calculate PAYE. Paytime shows the extra PAYE the bonus causes and the amount per month.\n5. Give a reference and click Add Entry.\nThe spread must end by February. Recommended: end it in the bonus month, so the bonus month only deducts what is still outstanding."
+      }
+    },
+    {
+      "slug": "payslip/verduideliking",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "verduideliking",
+        "explanation",
+        "verduidelik",
+        "explain",
+        "pdf",
+        "agterblad",
+        "back",
+        "page"
+      ],
+      "af": {
+        "title": "'n Verduideliking by die payslip-PDF voeg",
+        "body": "1. Maak die werknemer se payslip-bladsy oop en kies die maand.\n2. Merk Include Payslip Explanation in PDF.\n3. Kies by Placement: Bottom of Payslip of Back Page.\n4. Klik Download PDF.\nOnder 📖 Payslip Explanation kan jy die teks lees; klik 🔄 Regenerate om dit oor te skryf ná veranderinge."
+      },
+      "en": {
+        "title": "Add an explanation to the payslip PDF",
+        "body": "1. Open the employee's payslip page and choose the month.\n2. Tick Include Payslip Explanation in PDF.\n3. Under Placement choose Bottom of Payslip or Back Page.\n4. Click Download PDF.\nUnder 📖 Payslip Explanation you can read the text; click 🔄 Regenerate to rewrite it after changes."
+      }
+    },
+    {
+      "slug": "payslip/negatiewe-netto",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "negatief",
+        "negative",
+        "netto",
+        "net",
+        "minus",
+        "aftrekkings",
+        "deductions"
+      ],
+      "af": {
+        "title": "Die payslip wys NEGATIVE NET PAY",
+        "body": "Dit beteken die aftrekkings is meer as die bruto salaris.\n1. Kyk onder Regular Inputs en Current Inputs watter Deduction te groot is, of of 'n bedrag verkeerd ingetik is.\n2. Kyk of korttyd (⏱️ Short Time) nie te veel ure is nie.\n3. Maak reg en klik Calculate Payslip.\nBy Finalize Payroll wys werknemers met negatiewe netto betaling in die oorsig, sodat jy dit voor finalisering kan regmaak."
+      },
+      "en": {
+        "title": "The payslip shows NEGATIVE NET PAY",
+        "body": "It means the deductions are more than the gross salary.\n1. Check under Regular Inputs and Current Inputs which Deduction is too large, or whether an amount was typed wrong.\n2. Check that short time (⏱️ Short Time) is not too many hours.\n3. Fix it and click Calculate Payslip.\nAt Finalize Payroll, employees with negative net pay show in the review, so you can fix them before finalizing."
+      }
+    },
+    {
+      "slug": "payslip/bestuurder-magtiging",
+      "screen_url": "/payroll/employee-detail.html",
+      "screen_name": "Payslip page (employee)",
+      "tags": [
+        "magtiging",
+        "authorization",
+        "authorize",
+        "bestuurder",
+        "manager",
+        "wagwoord",
+        "password",
+        "gesluit",
+        "locked",
+        "ontsluit",
+        "unlock"
+      ],
+      "af": {
+        "title": "Paytime vra Manager Authorization",
+        "body": "Dit verskyn as daar reeds 'n pay run vir daardie maand bestaan en jy die payslip wil verander.\n1. 'n Bestuurder tik sy Manager Email en Manager Password in.\n2. Klik Authorize & Unlock.\nAs die maand gefinaliseer is, help dit nie: dan moet die pay run eers omgekeer word (Execute Payroll → 🔄 Reverse Pay Run)."
+      },
+      "en": {
+        "title": "Paytime asks for Manager Authorization",
+        "body": "It appears when a pay run already exists for that month and you want to change the payslip.\n1. A manager types their Manager Email and Manager Password.\n2. Click Authorize & Unlock.\nIf the month is finalized this does not help: the pay run must first be reversed (Execute Payroll → 🔄 Reverse Pay Run)."
+      }
+    },
+    {
+      "slug": "payroll/een-skedule",
+      "screen_url": "/payroll/payroll-execution.html",
+      "screen_name": "Execute Payroll",
+      "tags": [
+        "skedule",
+        "schedule",
+        "weekliks",
+        "weekly",
+        "sommige",
+        "some",
+        "kies",
+        "select",
+        "werknemers",
+        "employees"
+      ],
+      "af": {
+        "title": "Payroll vir net sommige werknemers of een skedule uitvoer",
+        "body": "1. Gaan na Execute Payroll en kies die Pay Period.\n2. Kies by 1b. Filter by Pay Schedule die skedule (of Show all employees).\n3. By 2. Select Employees: klik Select Schedule vir almal op die skedule, Select All vir almal, of merk werknemers een-een. Clear haal alle merke af. Filter by surname or employee code… help om iemand te vind.\n4. Klik ▶ Run Payroll."
+      },
+      "en": {
+        "title": "Run payroll for some employees or one schedule only",
+        "body": "1. Go to Execute Payroll and choose the Pay Period.\n2. Under 1b. Filter by Pay Schedule choose the schedule (or Show all employees).\n3. Under 2. Select Employees: click Select Schedule for everyone on the schedule, Select All for everyone, or tick employees one by one. Clear removes all ticks. Filter by surname or employee code… helps to find someone.\n4. Click ▶ Run Payroll."
+      }
+    },
+    {
+      "slug": "payroll/geskiedenis",
+      "screen_url": "/payroll/payroll-execution.html",
+      "screen_name": "Execute Payroll",
+      "tags": [
+        "geskiedenis",
+        "history",
+        "vorige",
+        "previous",
+        "ou",
+        "old",
+        "runs",
+        "opsomming",
+        "summary"
+      ],
+      "af": {
+        "title": "Vorige pay runs sien (History)",
+        "body": "1. Gaan na Execute Payroll en klik die oortjie 📋 History.\n2. Kies die Pay Period en klik Load History.\n3. Klik Load Full Run Summary vir die volledige opsomming.\nVan hier kan jy ook 🖨 Bulk Print Payslips, die 🏦 Bank File en die 📒 Ledger Leo Journal kry, of 🔄 Reverse This Run."
+      },
+      "en": {
+        "title": "See previous pay runs (History)",
+        "body": "1. Go to Execute Payroll and click the 📋 History tab.\n2. Choose the Pay Period and click Load History.\n3. Click Load Full Run Summary for the full summary.\nFrom here you can also get 🖨 Bulk Print Payslips, the 🏦 Bank File and the 📒 Ledger Leo Journal, or 🔄 Reverse This Run."
+      }
+    },
+    {
+      "slug": "payroll/bank-leer",
+      "screen_url": "/payroll/payroll-execution.html",
+      "screen_name": "Execute Payroll",
+      "tags": [
+        "bank",
+        "leer",
+        "file",
+        "eft",
+        "betaal",
+        "pay",
+        "fnb",
+        "absa",
+        "nedbank",
+        "standard",
+        "capitec",
+        "csv"
+      ],
+      "af": {
+        "title": "Die banklêer (Bank File) aflaai om salarisse te betaal",
+        "body": "1. Finaliseer eers die maand (Execute Payroll → ✓ Finalize Payroll).\n2. Gaan na die 📋 History-oortjie, kies die maand en klik Load History.\n3. Klik 🏦 Bank File.\n4. Kies die formaat: 1 = Generic CSV (enige bank), 2 = FNB, 3 = ABSA, 4 = Standard Bank, 5 = Nedbank. Vir Capitec Business gebruik 1.\n5. Laai die lêer op by jou bank se internetbank.\nNet werknemers met Payment Method EFT en bankbesonderhede word ingesluit. Vir FNB en ABSA moet die maatskappy se FNB Originator Code of ABSA User Code by Company Details ingevul wees."
+      },
+      "en": {
+        "title": "Download the bank file to pay salaries",
+        "body": "1. First finalize the month (Execute Payroll → ✓ Finalize Payroll).\n2. Go to the 📋 History tab, choose the month and click Load History.\n3. Click 🏦 Bank File.\n4. Choose the format: 1 = Generic CSV (any bank), 2 = FNB, 3 = ABSA, 4 = Standard Bank, 5 = Nedbank. For Capitec Business use 1.\n5. Upload the file in your bank's internet banking.\nOnly employees with Payment Method EFT and bank details are included. For FNB and ABSA the company's FNB Originator Code or ABSA User Code must be filled in under Company Details."
+      }
+    },
+    {
+      "slug": "payroll/ledger-leo-joernaal",
+      "screen_url": "/payroll/payroll-execution.html",
+      "screen_name": "Execute Payroll",
+      "tags": [
+        "ledger",
+        "leo",
+        "joernaal",
+        "journal",
+        "boekhouding",
+        "accounting",
+        "grootboek",
+        "gl"
+      ],
+      "af": {
+        "title": "Die payroll na Ledger Leo (boekhouding) stuur",
+        "body": "1. Finaliseer die maand.\n2. Gaan na Execute Payroll → 📋 History, kies die maand en klik Load History.\n3. Klik 📒 Ledger Leo Journal.\nPaytime skep die salarisjoernaal as 'n konsep in Ledger Leo vir dieselfde maatskappy. Jou rekenmeester kontroleer en pos dit daar; Paytime pos nooit self nie."
+      },
+      "en": {
+        "title": "Send the payroll to Ledger Leo (accounting)",
+        "body": "1. Finalize the month.\n2. Go to Execute Payroll → 📋 History, choose the month and click Load History.\n3. Click 📒 Ledger Leo Journal.\nPaytime creates the salary journal as a draft in Ledger Leo for the same company. Your accountant checks and posts it there; Paytime never posts by itself."
+      }
+    },
+    {
+      "slug": "payroll/statutere-opgawes",
+      "screen_url": "/payroll/payroll-execution.html",
+      "screen_name": "Execute Payroll",
+      "tags": [
+        "emp201",
+        "emp501",
+        "uif",
+        "wcf",
+        "opgawe",
+        "return",
+        "sars",
+        "statutêr",
+        "statutory",
+        "coid",
+        "arbeid",
+        "labour"
+      ],
+      "af": {
+        "title": "EMP201, UIF-, EMP501- en WCF-opgawes sien en druk",
+        "body": "1. Gaan na Execute Payroll en klik die oortjie 📊 Reports.\n2. Kies die Pay Period en klik Load Reports.\n3. Onder 📋 Statutory Returns sien jy EMP201 (maandelikse verklaring aan SARS), UIF Return, EMP501 en WCF Return, met die totale.\n4. Klik Preview by die opgawe wat jy nodig het, en dan 🖨 Print.\nDie syfers kom uit die gefinaliseerde payslips."
+      },
+      "en": {
+        "title": "See and print the EMP201, UIF, EMP501 and WCF returns",
+        "body": "1. Go to Execute Payroll and click the 📊 Reports tab.\n2. Choose the Pay Period and click Load Reports.\n3. Under 📋 Statutory Returns you see EMP201 (monthly declaration to SARS), UIF Return, EMP501 and WCF Return, with the totals.\n4. Click Preview on the return you need, then 🖨 Print.\nThe figures come from the finalized payslips."
+      }
+    },
+    {
+      "slug": "items/wysig-of-verwyder",
+      "screen_url": "/payroll/payroll-items.html",
+      "screen_name": "Payroll Items",
+      "tags": [
+        "wysig",
+        "edit",
+        "verwyder",
+        "remove",
+        "delete",
+        "herstel",
+        "restore",
+        "standaard",
+        "standard",
+        "item"
+      ],
+      "af": {
+        "title": "'n Payroll item wysig, verwyder of terugsit",
+        "body": "1. Gaan na Payroll Items en maak die blok oop (Income, Allowances, Deductions of Employer Contributions).\n2. Klik ✏️ Edit by die item, verander wat nodig is en klik Save. Of klik 🗑️ Delete om jou eie item te verwyder.\nStandaard-items (⭐ Standard Payroll Items): klik × Remove om dit uit die Add-lyste te versteek. Klik Show Removed en dan ↩ Restore om dit terug te bring."
+      },
+      "en": {
+        "title": "Edit, remove or restore a payroll item",
+        "body": "1. Go to Payroll Items and open the block (Income, Allowances, Deductions or Employer Contributions).\n2. Click ✏️ Edit on the item, change what you need and click Save. Or click 🗑️ Delete to remove your own item.\nStandard items (⭐ Standard Payroll Items): click × Remove to hide it from the Add lists. Click Show Removed and then ↩ Restore to bring it back."
+      }
+    },
+    {
+      "slug": "items/vas-of-veranderlik",
+      "screen_url": "/payroll/payroll-items.html",
+      "screen_name": "Payroll Items",
+      "tags": [
+        "vas",
+        "fixed",
+        "veranderlik",
+        "variable",
+        "gedrag",
+        "behaviour",
+        "maandeliks",
+        "monthly",
+        "kommissie",
+        "commission"
+      ],
+      "af": {
+        "title": "Vaste of veranderlike payroll item (Monthly Behaviour)",
+        "body": "Wanneer jy 'n item byvoeg of wysig (Payroll Items → + Add of ✏️ Edit), kies by Monthly Behaviour:\n- 🔒 Fixed — dieselfde bedrag elke maand (bv. behuisingstoelae). Dit word self op die payslip gesit.\n- 🔄 Variable — die bedrag verskil elke maand (bv. kommissie). Dit wys op elke payslip en jy tik die bedrag by elke pay run in, selfs R 0.\nDie Default Amount is net 'n voorstel. Klik Save."
+      },
+      "en": {
+        "title": "Fixed or variable payroll item (Monthly Behaviour)",
+        "body": "When you add or edit an item (Payroll Items → + Add or ✏️ Edit), choose under Monthly Behaviour:\n- 🔒 Fixed — same amount every month (e.g. housing allowance). It is put on the payslip automatically.\n- 🔄 Variable — the amount differs each month (e.g. commission). It shows on every payslip and you enter the amount each pay run, even R 0.\nThe Default Amount is only a suggestion. Click Save."
+      }
+    },
+    {
+      "slug": "items/lening",
+      "screen_url": "/payroll/payroll-items.html",
+      "screen_name": "Payroll Items",
+      "tags": [
+        "lening",
+        "loan",
+        "voorskot",
+        "advance",
+        "terugbetaling",
+        "repayment",
+        "balans",
+        "balance"
+      ],
+      "af": {
+        "title": "'n Lening of voorskot aan 'n werknemer opstel",
+        "body": "1. Gaan na Payroll Items.\n2. Klik + Add Deduction (vir die terugbetaling) of + Add Income (vir die lening wat uitbetaal word).\n3. Kies die Category: Increasing Balance (Loan Given) of Decreasing Balance (Loan Repayment).\n4. Vul Item Code, Item Name en die IRP5 Code in en klik Save.\n5. Sit die item op die werknemer se payslip (Regular Inputs → + Add) met die maandelikse bedrag."
+      },
+      "en": {
+        "title": "Set up a loan or advance to an employee",
+        "body": "1. Go to Payroll Items.\n2. Click + Add Deduction (for the repayment) or + Add Income (for the loan paid out).\n3. Choose the Category: Increasing Balance (Loan Given) or Decreasing Balance (Loan Repayment).\n4. Fill in Item Code, Item Name and the IRP5 Code and click Save.\n5. Put the item on the employee's payslip (Regular Inputs → + Add) with the monthly amount."
+      }
+    },
+    {
+      "slug": "items/paye-projeksie",
+      "screen_url": "/payroll/payroll-items.html",
+      "screen_name": "Payroll Items",
+      "tags": [
+        "projeksie",
+        "projection",
+        "paye",
+        "gemiddeld",
+        "average",
+        "eenmalig",
+        "once",
+        "off",
+        "vas",
+        "fixed",
+        "recurring"
+      ],
+      "af": {
+        "title": "Wat beteken PAYE Projection Type by 'n item?",
+        "body": "Dit sê vir Paytime hoe om die inkomste vir die jaar se belastingberekening te projekteer. Kies dit by Payroll Items → + Add of ✏️ Edit:\n- Fixed Recurring — dieselfde elke maand (basiese salaris, vaste toelae).\n- Variable / Average — wissel elke maand; Paytime gebruik die lopende gemiddelde (kommissie, skofttoelae).\n- Once-Off — gebeur een keer; word nooit vorentoe geprojekteer nie (jaarlikse bonus).\nKlik Save."
+      },
+      "en": {
+        "title": "What does PAYE Projection Type on an item mean?",
+        "body": "It tells Paytime how to project the income for the year's tax calculation. Choose it under Payroll Items → + Add or ✏️ Edit:\n- Fixed Recurring — same every month (basic salary, fixed allowance).\n- Variable / Average — changes monthly; Paytime uses the running average (commission, shift allowance).\n- Once-Off — happens once; never projected forward (annual bonus).\nClick Save."
+      }
+    },
+    {
+      "slug": "items/belastingtabelle",
+      "screen_url": "/payroll/payroll-items.html",
+      "screen_name": "Payroll Items",
+      "tags": [
+        "belastingtabelle",
+        "tax",
+        "tables",
+        "belastingjaar",
+        "year",
+        "tabel",
+        "brackets",
+        "kortings",
+        "rebate",
+        "uif",
+        "sdl",
+        "koers",
+        "rate"
+      ],
+      "af": {
+        "title": "Die SARS-belastingtabelle vir 'n nuwe belastingjaar",
+        "body": "1. Gaan na Payroll Items en maak 📋 Tax Configuration oop.\n2. Kies die jaar, of klik + Add Year vir 'n nuwe belastingjaar (1 Maart tot einde Februarie).\n3. Kontroleer die Annual Tax Brackets, Primary/Secondary/Tertiary Rebate, UIF Rate en UIF Monthly Cap, SDL Rate en die Medical Credit-bedrae teen www.sars.gov.za.\n4. Klik 💾 Save draft, en as alles klop ✅ Confirm (checked against SARS).\nElke pay-maand gebruik self die tabel van sy eie belastingjaar. Om 'n bevestigde jaar te wysig, klik 🔓 Unconfirm to edit."
+      },
+      "en": {
+        "title": "The SARS tax tables for a new tax year",
+        "body": "1. Go to Payroll Items and open 📋 Tax Configuration.\n2. Choose the year, or click + Add Year for a new tax year (1 March to end February).\n3. Check the Annual Tax Brackets, Primary/Secondary/Tertiary Rebate, UIF Rate and UIF Monthly Cap, SDL Rate and the Medical Credit amounts against www.sars.gov.za.\n4. Click 💾 Save draft, and when everything matches ✅ Confirm (checked against SARS).\nEach pay month uses the table of its own tax year automatically. To edit a confirmed year, click 🔓 Unconfirm to edit."
+      }
+    },
+    {
+      "slug": "bywoning/tyd-invoer",
+      "screen_url": "/payroll/attendance.html",
+      "screen_name": "Attendance",
+      "tags": [
+        "bywoning",
+        "attendance",
+        "tyd",
+        "time",
+        "inklok",
+        "clock",
+        "in",
+        "uit",
+        "out",
+        "inskrywing",
+        "entry"
+      ],
+      "af": {
+        "title": "Werkure (bywoning) met die hand invoer",
+        "body": "1. Gaan na Attendance en kies die maand en jaar bo-aan.\n2. Klik + Add Entry.\n3. Kies die Employee en Date, en tik die Clock In en Clock Out-tye (Notes is opsioneel).\n4. Klik Save Entry.\nDie inskrywing wys onder 📝 Time Entries en op die 📅 Calendar."
+      },
+      "en": {
+        "title": "Enter working hours (attendance) by hand",
+        "body": "1. Go to Attendance and choose the month and year at the top.\n2. Click + Add Entry.\n3. Choose the Employee and Date, and type the Clock In and Clock Out times (Notes is optional).\n4. Click Save Entry.\nThe entry shows under 📝 Time Entries and on the 📅 Calendar."
+      }
+    },
+    {
+      "slug": "bywoning/leer-invoer",
+      "screen_url": "/payroll/attendance.html",
+      "screen_name": "Attendance",
+      "tags": [
+        "bywoning",
+        "attendance",
+        "invoer",
+        "import",
+        "csv",
+        "excel",
+        "biometries",
+        "biometric",
+        "zkteco",
+        "timetec",
+        "klokmasjien"
+      ],
+      "af": {
+        "title": "Bywoning uit 'n klokmasjien invoer (CSV/Excel)",
+        "body": "1. Gaan na Attendance en klik 📁 Import Data.\n2. Klik 📥 Download Template vir die formaat. Kolomme: employee_number, date (YYYY-MM-DD of DD/MM/YYYY), clock_in (HH:MM), en opsioneel clock_out en notes.\n3. Sleep die lêer in of klik Browse Files.\n4. Kyk die voorskou na en klik ✅ Import All.\nDit werk met uitvoere van biometriese stelsels soos ZKTeco en TimeTec."
+      },
+      "en": {
+        "title": "Import attendance from a clock machine (CSV/Excel)",
+        "body": "1. Go to Attendance and click 📁 Import Data.\n2. Click 📥 Download Template for the format. Columns: employee_number, date (YYYY-MM-DD or DD/MM/YYYY), clock_in (HH:MM), and optionally clock_out and notes.\n3. Drag the file in or click Browse Files.\n4. Review the preview and click ✅ Import All.\nIt works with exports from biometric systems such as ZKTeco and TimeTec."
+      }
+    },
+    {
+      "slug": "bywoning/na-payslip",
+      "screen_url": "/payroll/attendance.html",
+      "screen_name": "Attendance",
+      "tags": [
+        "bywoning",
+        "attendance",
+        "payslip",
+        "payroll",
+        "oortyd",
+        "overtime",
+        "korttyd",
+        "short",
+        "afwesig",
+        "absent",
+        "toepas",
+        "apply"
+      ],
+      "af": {
+        "title": "Bywoning (oortyd en afwesigheid) op die payslips sit",
+        "body": "1. Gaan na Attendance, kies die maand en klik 📊 Summary.\n2. Die Monthly Summary wys per werknemer die gewerkte ure, oortyd en afwesige dae (BCEA-oortyd, verlof en openbare vakansiedae is reeds in ag geneem).\n3. Klik 💵 Apply to Payroll.\n4. Merk die werknemers wat jy wil goedkeur en klik ✅ Approve selected.\nDie oortyd en korttyd uit bywoning word op daardie maand se payslips gesit. Inskrywings wat met die hand op die payslip ingetik is, word nie aangeraak nie."
+      },
+      "en": {
+        "title": "Put attendance (overtime and absence) on the payslips",
+        "body": "1. Go to Attendance, choose the month and click 📊 Summary.\n2. The Monthly Summary shows per employee the hours worked, overtime and absent days (BCEA overtime, leave and public holidays already applied).\n3. Click 💵 Apply to Payroll.\n4. Tick the employees you want to approve and click ✅ Approve selected.\nThe overtime and short time from attendance are put on that month's payslips. Entries typed on the payslip by hand are not touched."
+      }
+    },
+    {
+      "slug": "verslae/verslag-trek",
+      "screen_url": "/payroll/reports.html",
+      "screen_name": "Reports",
+      "tags": [
+        "verslag",
+        "report",
+        "verslae",
+        "reports",
+        "uitvoer",
+        "export",
+        "excel",
+        "pdf",
+        "csv",
+        "jaar",
+        "ytd",
+        "variansie",
+        "variance",
+        "meesterlys",
+        "master"
+      ],
+      "af": {
+        "title": "'n Verslag trek en uitvoer (Excel, PDF, CSV)",
+        "body": "1. Gaan na Reports.\n2. Klik die verslag wat jy nodig het, bv. Payroll Summary, Employee Master List, Bank Details, Tax Report (SARS), Year-to-Date, Variance Report, Transaction History of Annual Analysis (12-Month).\n3. Stel die filters (bv. From Period en To Period, Employee of Department) en klik Generate Report.\n4. Klik bo by Export: CSV, Excel of PDF.\n← Back neem jou terug na die lys verslae."
+      },
+      "en": {
+        "title": "Run and export a report (Excel, PDF, CSV)",
+        "body": "1. Go to Reports.\n2. Click the report you need, e.g. Payroll Summary, Employee Master List, Bank Details, Tax Report (SARS), Year-to-Date, Variance Report, Transaction History or Annual Analysis (12-Month).\n3. Set the filters (e.g. From Period and To Period, Employee or Department) and click Generate Report.\n4. Click at the top next to Export: CSV, Excel or PDF.\n← Back takes you back to the list of reports."
+      }
+    },
+    {
+      "slug": "verslae/oudit",
+      "screen_url": "/payroll/reports.html",
+      "screen_name": "Reports",
+      "tags": [
+        "oudit",
+        "audit",
+        "wie",
+        "who",
+        "verander",
+        "changed",
+        "aktiwiteit",
+        "activity",
+        "spoor",
+        "trail"
+      ],
+      "af": {
+        "title": "Sien wie wat verander het (oudit-spoor)",
+        "body": "1. Gaan na Reports.\n2. Klik Audit Trail - User Activity (alles per gebruiker) of Audit Trail - Per Employee (alles op een werknemer).\n3. Stel Date From, Date To en opsioneel die Action Type of die Employee, en klik Generate Report.\n4. Voer uit met CSV, Excel of PDF."
+      },
+      "en": {
+        "title": "See who changed what (audit trail)",
+        "body": "1. Go to Reports.\n2. Click Audit Trail - User Activity (everything per user) or Audit Trail - Per Employee (everything on one employee).\n3. Set Date From, Date To and optionally the Action Type or the Employee, and click Generate Report.\n4. Export with CSV, Excel or PDF."
+      }
+    },
+    {
+      "slug": "paye/rekonsiliasie",
+      "screen_url": "/payroll/paye-reconciliation.html",
+      "screen_name": "PAYE Reconciliation",
+      "tags": [
+        "paye",
+        "rekonsiliasie",
+        "reconciliation",
+        "recon",
+        "emp501",
+        "sars",
+        "betalings",
+        "payments",
+        "verskil",
+        "difference",
+        "finaliseer",
+        "finalize"
+      ],
+      "af": {
+        "title": "Die PAYE-rekonsiliasie vir die belastingjaar doen",
+        "body": "1. Gaan na PAYE Reconciliation en kies die Tax Year.\n2. Section 1 en 2 wys die syfers uit die gefinaliseerde payroll (klik op 'n werknemer om sy maande te sien).\n3. Tik in Section 3 — SARS Submitted Values wat op die EMP201's ingedien is, en in Section 4 — Bank Payments wat aan SARS betaal is. Dit stoor self.\n4. Section 5 — Reconciliation Differences wys die verskille; rooi = uitsoek.\n5. As alles klop, klik 🔒 Finalize Year.\nUitvoer: 📥 Export CSV, 📥 Export Employee Totals of 🖨️ Print."
+      },
+      "en": {
+        "title": "Do the PAYE reconciliation for the tax year",
+        "body": "1. Go to PAYE Reconciliation and choose the Tax Year.\n2. Sections 1 and 2 show the figures from the finalized payroll (click an employee to see their months).\n3. Type in Section 3 — SARS Submitted Values what was declared on the EMP201s, and in Section 4 — Bank Payments what was paid to SARS. It saves by itself.\n4. Section 5 — Reconciliation Differences shows the differences; red = investigate.\n5. When everything matches, click 🔒 Finalize Year.\nExport: 📥 Export CSV, 📥 Export Employee Totals or 🖨️ Print."
+      }
+    },
+    {
+      "slug": "paye/easyfile-irp5",
+      "screen_url": "/payroll/paye-reconciliation.html",
+      "screen_name": "PAYE Reconciliation",
+      "tags": [
+        "irp5",
+        "it3a",
+        "easyfile",
+        "e@syfile",
+        "emp501",
+        "sertifikate",
+        "certificates",
+        "jaareinde",
+        "year",
+        "end",
+        "tussentyds",
+        "interim"
+      ],
+      "af": {
+        "title": "IRP5's maak: die e@syFile-lêer aflaai",
+        "body": "1. Gaan na PAYE Reconciliation, kies die Tax Year en klik 🧾 e@syFile Export.\n2. Kies by Reconciliation: Annual (March – February) of Interim (March – August), en by Submission LIVE (of TEST om te oefen).\n3. Paytime wys wat nog ontbreek (bv. 'n belastingnommer, woonadres, IRP5-kode op 'n item of die maatskappy se SIC7-kode). Maak dit reg en klik 🔄 Check again.\n4. Klik 📥 Download e@syFile file.\n5. In e@syFile Employer: kies Import, kies die lêer, en vang daar die EMP501-betalings vas.\nDie lêer word net uit gefinaliseerde payslips gebou."
+      },
+      "en": {
+        "title": "Make IRP5s: download the e@syFile file",
+        "body": "1. Go to PAYE Reconciliation, choose the Tax Year and click 🧾 e@syFile Export.\n2. Under Reconciliation choose Annual (March – February) or Interim (March – August), and under Submission LIVE (or TEST to practise).\n3. Paytime shows what is still missing (e.g. a tax number, residential address, an IRP5 code on an item or the company's SIC7 code). Fix it and click 🔄 Check again.\n4. Click 📥 Download e@syFile file.\n5. In e@syFile Employer: choose Import, select the file, and capture the EMP501 payments there.\nThe file is built only from finalized payslips."
+      }
+    },
+    {
+      "slug": "netto-na-bruto",
+      "screen_url": "/payroll/net-to-gross.html",
+      "screen_name": "Net-to-Gross",
+      "tags": [
+        "netto",
+        "net",
+        "bruto",
+        "gross",
+        "omgekeerd",
+        "reverse",
+        "basiese",
+        "basic",
+        "salaris",
+        "salary",
+        "bereken",
+        "calculate"
+      ],
+      "af": {
+        "title": "Watter basiese salaris gee 'n sekere netto betaling? (Net-to-Gross)",
+        "body": "1. Gaan na Net-to-Gross.\n2. Tik die Target Net Pay (R) — wat die werknemer in die bank moet kry — en opsioneel die Pay Period (YYYY-MM).\n3. Vul opsioneel Employee Age, Medical Aid Members en Tax Directive (%) in.\n4. Klik + Add Allowance or Deduction vir bekende items (Taxable Earning, Non-Taxable Earning of Deduction).\n5. Klik Calculate Required Basic Salary.\n6. Om dit te gebruik: klik Apply Basic Salary, kies die Employee en klik Apply Basic Salary. Dit stel net die basiese salaris; dit maak nie 'n payslip nie."
+      },
+      "en": {
+        "title": "Which basic salary gives a certain net pay? (Net-to-Gross)",
+        "body": "1. Go to Net-to-Gross.\n2. Type the Target Net Pay (R) — what the employee must receive in the bank — and optionally the Pay Period (YYYY-MM).\n3. Optionally fill in Employee Age, Medical Aid Members and Tax Directive (%).\n4. Click + Add Allowance or Deduction for known items (Taxable Earning, Non-Taxable Earning or Deduction).\n5. Click Calculate Required Basic Salary.\n6. To use it: click Apply Basic Salary, choose the Employee and click Apply Basic Salary. It only sets the basic salary; it does not create a payslip."
+      }
+    },
+    {
+      "slug": "invoer/historiese-data",
+      "screen_url": "/payroll/historical-import.html",
+      "screen_name": "Import",
+      "tags": [
+        "historiese",
+        "historical",
+        "vorige",
+        "previous",
+        "invoer",
+        "import",
+        "ou",
+        "old",
+        "stelsel",
+        "system",
+        "oorskakel",
+        "switch",
+        "ytd"
+      ],
+      "af": {
+        "title": "Vorige maande se payroll invoer (as jy van 'n ander stelsel oorskakel)",
+        "body": "Gaan na Import. Daar is drie maniere:\n- 📄 CSV/Excel Upload: klik Download Template, vul employee_number, period (YYYY-MM) en basic_salary in (paye, uif, net en allowance_/deduction_-kolomme is opsioneel), laai op en klik Confirm Import.\n- 📄 PDF Payslip Upload: sleep die PDF-payslips in, kontroleer die waardes en klik Confirm Import. Geskandeerde PDF's kan nie gelees word nie.\n- 📝 Manual Entry Grid: kies die maande en werknemers, klik Generate Grid, tik die syfers in en klik Save Historical Data.\nDie werknemers moet reeds bestaan (by PDF kan jy ➕ Add Employee gebruik). Die ou maande word dan vir die jaar-tot-datum PAYE-berekening gebruik. Voer verkieslik een maand op 'n slag in."
+      },
+      "en": {
+        "title": "Import previous months' payroll (when switching from another system)",
+        "body": "Go to Import. There are three ways:\n- 📄 CSV/Excel Upload: click Download Template, fill in employee_number, period (YYYY-MM) and basic_salary (paye, uif, net and allowance_/deduction_ columns are optional), upload and click Confirm Import.\n- 📄 PDF Payslip Upload: drag the PDF payslips in, check the values and click Confirm Import. Scanned PDFs cannot be read.\n- 📝 Manual Entry Grid: choose the months and employees, click Generate Grid, type the figures and click Save Historical Data.\nThe employees must already exist (with PDF you can use ➕ Add Employee). The old months are then used for the year-to-date PAYE calculation. Preferably import one month at a time."
+      }
+    },
+    {
+      "slug": "maatskappy/besonderhede",
+      "screen_url": "/payroll/company-details.html",
+      "screen_name": "Company Details",
+      "tags": [
+        "maatskappy",
+        "company",
+        "besonderhede",
+        "details",
+        "paye",
+        "verwysing",
+        "reference",
+        "uif",
+        "sdl",
+        "sic7",
+        "registrasie",
+        "registration",
+        "coid"
+      ],
+      "af": {
+        "title": "Maatskappybesonderhede en SARS-verwysingsnommers invoer",
+        "body": "1. Gaan na Company Details en klik Edit Company Details.\n2. Vul onder Tax & Statutory in: PAYE Reference Number, SARS UIF Reference Number, SDL Reference Number, COID Reference Number, Income Tax Number en die SIC7 Industry Code (5 syfers, nodig vir IRP5 / e@syFile).\n3. Kies by Registered for SDL? en Registered for UIF? of dit van toepassing is.\n4. Vul ook die algemene, kontak-, adres- en bankbesonderhede in.\n5. Klik Save Company Details."
+      },
+      "en": {
+        "title": "Enter company details and SARS reference numbers",
+        "body": "1. Go to Company Details and click Edit Company Details.\n2. Under Tax & Statutory fill in: PAYE Reference Number, SARS UIF Reference Number, SDL Reference Number, COID Reference Number, Income Tax Number and the SIC7 Industry Code (5 digits, needed for IRP5 / e@syFile).\n3. Under Registered for SDL? and Registered for UIF? choose whether they apply.\n4. Also fill in the general, contact, address and bank details.\n5. Click Save Company Details."
+      }
+    },
+    {
+      "slug": "maatskappy/sdl-uif",
+      "screen_url": "/payroll/company-details.html",
+      "screen_name": "Company Details",
+      "tags": [
+        "sdl",
+        "uif",
+        "vrygestel",
+        "exempt",
+        "geregistreer",
+        "registered",
+        "nul",
+        "zero",
+        "heffing",
+        "levy"
+      ],
+      "af": {
+        "title": "SDL of UIF word nie (of wel) afgetrek nie",
+        "body": "Of SDL en UIF bereken word, hang af van die maatskappy se instelling:\n1. Gaan na Company Details en klik Edit Company Details.\n2. Kies by Registered for SDL?: Yes – SDL applies (1% of gross) of No – SDL exempt (SDL = 0).\n3. Kies by Registered for UIF?: Yes – UIF applies of No – UIF exempt (UIF = 0).\n4. Klik Save Company Details en bereken die payslips weer.\nVir een werknemer wat UIF-vrygestel is: maak die werknemer oop → ✏️ Edit Info → Classification → UIF Exempt."
+      },
+      "en": {
+        "title": "SDL or UIF is (not) being deducted",
+        "body": "Whether SDL and UIF are calculated depends on the company setting:\n1. Go to Company Details and click Edit Company Details.\n2. Under Registered for SDL? choose Yes – SDL applies (1% of gross) or No – SDL exempt (SDL = 0).\n3. Under Registered for UIF? choose Yes – UIF applies or No – UIF exempt (UIF = 0).\n4. Click Save Company Details and calculate the payslips again.\nFor one employee who is UIF exempt: open the employee → ✏️ Edit Info → Classification → UIF Exempt."
+      }
+    },
+    {
+      "slug": "maatskappy/betaalskedules",
+      "screen_url": "/payroll/company-details.html",
+      "screen_name": "Company Details",
+      "tags": [
+        "skedule",
+        "schedule",
+        "betaalskedule",
+        "weekliks",
+        "weekly",
+        "maandeliks",
+        "monthly",
+        "betaaldag",
+        "payday"
+      ],
+      "af": {
+        "title": "Betaalskedules opstel (bv. maandeliks en weekliks)",
+        "body": "1. Gaan na Company Details en klik + Add Schedule onder Pay Schedules.\n2. Gee 'n Schedule Name (bv. Monthly Staff of Weekly Wages).\n3. Kies die Pay Frequency: Monthly, Weekly of Bi-weekly.\n4. Kies die betaaldag: Pay Day of Month (of Last day of month), of Pay Day of Week.\n5. Klik Save.\nKoppel dan elke werknemer by sy Pay Schedule op die werknemer se bladsy."
+      },
+      "en": {
+        "title": "Set up pay schedules (e.g. monthly and weekly)",
+        "body": "1. Go to Company Details and click + Add Schedule under Pay Schedules.\n2. Give a Schedule Name (e.g. Monthly Staff or Weekly Wages).\n3. Choose the Pay Frequency: Monthly, Weekly or Bi-weekly.\n4. Choose the pay day: Pay Day of Month (or Last day of month), or Pay Day of Week.\n5. Click Save.\nThen link each employee to their Pay Schedule on the employee's page."
+      }
+    },
+    {
+      "slug": "maatskappy/logo-en-payslip",
+      "screen_url": "/payroll/company-details.html",
+      "screen_name": "Company Details",
+      "tags": [
+        "logo",
+        "handelsmerk",
+        "branding",
+        "payslip",
+        "naam",
+        "name",
+        "adres",
+        "address",
+        "kop",
+        "header"
+      ],
+      "af": {
+        "title": "Die maatskappy se logo en naam op die payslips",
+        "body": "1. Gaan na Company Details.\n2. Klik onder Branding & Export Settings op Upload Logo en kies die prent (Remove haal dit weg).\n3. Klik Edit Company Details en vul onder Payslip Branding die Display Name on Payslips en Address Line 1 (for payslip header) in.\n4. Klik Save Company Details.\nDie logo, naam en adres verskyn bo-aan elke payslip-PDF."
+      },
+      "en": {
+        "title": "The company's logo and name on the payslips",
+        "body": "1. Go to Company Details.\n2. Under Branding & Export Settings click Upload Logo and choose the image (Remove takes it away).\n3. Click Edit Company Details and fill in under Payslip Branding the Display Name on Payslips and Address Line 1 (for payslip header).\n4. Click Save Company Details.\nThe logo, name and address appear at the top of every payslip PDF."
+      }
+    },
+    {
+      "slug": "maatskappy/wissel",
+      "screen_url": "/payroll/company-selection.html",
+      "screen_name": "Select Company",
+      "tags": [
+        "wissel",
+        "switch",
+        "ander",
+        "other",
+        "maatskappy",
+        "company",
+        "kliënt",
+        "client",
+        "kies",
+        "select"
+      ],
+      "af": {
+        "title": "Na 'n ander maatskappy wissel",
+        "body": "1. Klik in die kieslys links op ← Return to Dashboard.\n2. Op die Select Company-skerm, klik die maatskappy wat jy wil oopmaak.\nAlles wat jy daarna doen, geld net vir daardie maatskappy. 🏠 Return to Ecosystem neem jou terug na die hoof-Lorenco-dashboard."
+      },
+      "en": {
+        "title": "Switch to another company",
+        "body": "1. In the menu on the left click ← Return to Dashboard.\n2. On the Select Company screen, click the company you want to open.\nEverything you do after that applies only to that company. 🏠 Return to Ecosystem takes you back to the main Lorenco dashboard."
+      }
+    },
+    {
+      "slug": "gebruikers/byvoeg",
+      "screen_url": "/payroll/users.html",
+      "screen_name": "User Management",
+      "tags": [
+        "gebruiker",
+        "user",
+        "gebruikers",
+        "users",
+        "toegang",
+        "access",
+        "rol",
+        "role",
+        "wagwoord",
+        "password",
+        "vertroulik",
+        "confidential"
+      ],
+      "af": {
+        "title": "'n Gebruiker byvoeg en sy toegang beperk",
+        "body": "1. Klik op die Select Company-skerm op 👤 Users (net vir eienaars, bestuurders en admins).\n2. Klik + Add User. Vul Full Name, Email en Password in en kies die Role en Status.\n3. Onder Paytime Access Settings:\n   - Payroll Module Access: Full Access (Leave + Payroll) of Leave Only (no salary/payslip data).\n   - Employee Visibility: All Employees of Selected Employees Only.\n   - Can view confidential/executive employees: laat dit oop om sulke werknemers te versteek.\n4. Klik Save Paytime Settings en Save User.\nReset to Unrestricted gee weer volle toegang."
+      },
+      "en": {
+        "title": "Add a user and limit their access",
+        "body": "1. On the Select Company screen click 👤 Users (only for owners, managers and admins).\n2. Click + Add User. Fill in Full Name, Email and Password and choose the Role and Status.\n3. Under Paytime Access Settings:\n   - Payroll Module Access: Full Access (Leave + Payroll) or Leave Only (no salary/payslip data).\n   - Employee Visibility: All Employees or Selected Employees Only.\n   - Can view confidential/executive employees: leave it unticked to hide such employees.\n4. Click Save Paytime Settings and Save User.\nReset to Unrestricted gives full access again."
+      }
     }
   ]
 }
