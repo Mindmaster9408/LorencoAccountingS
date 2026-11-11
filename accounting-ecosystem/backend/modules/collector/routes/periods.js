@@ -14,7 +14,7 @@ const { renderRequestEmail } = require('../services/emailTemplates');
 const router = express.Router({ mergeParams: true });
 
 function buildUploadUrl(rawToken) {
-  const base = (process.env.APP_URL || 'https://lorenco.zeabur.app').replace(/\/$/, '');
+  const base = (process.env.APP_URL || 'https://app.lorencoecosystem.com').replace(/\/$/, '');
   return `${base}/collect/${rawToken}`;
 }
 
