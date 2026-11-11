@@ -150,6 +150,20 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 }
 
+// ─── Startup gate (2026-11-11) ───────────────────────────────────────────────
+// The port opens straight away (see start()) and the slow startup work — schema
+// checks, COA template seeding, ~1–2 min against Supabase — runs afterwards.
+// Before that, the host's port scan timed out ("no open HTTP ports detected")
+// and the deploy failed. Until the startup work is done, /api/* answers 503
+// "starting" (incl. /api/health, so a health-checked deploy keeps the old
+// instance serving until this one is really ready). Static pages are served.
+let appReady = false;
+app.use((req, res, next) => {
+  if (appReady || !req.path.startsWith('/api/')) return next();
+  res.set('Retry-After', '30');
+  return res.status(503).json({ status: 'starting', error: 'The server is starting up — please try again in a moment.' });
+});
+
 // ─── Health & Status Endpoints (no auth required) ────────────────────────────
 
 app.get('/api/health', async (req, res) => {
@@ -908,6 +922,16 @@ async function start() {
     console.warn('   Set JWT_SECRET in your .env file before deploying to production.\n');
   }
 
+  // 0b. Open the port first (startup gate above answers /api/* with 503 until ready),
+  //     so the host's port scan never times out on the slow startup work below.
+  server = app.listen(PORT, () => {
+    console.log(`🔓 Port ${PORT} open — finishing startup (API answers "starting" until ready)…`);
+  });
+  server.on('error', (err) => {
+    console.error('❌ Could not open the port:', err.message);
+    process.exit(1);
+  });
+
   // 1. Test database connection (retries up to 5 times)
   console.log('🔌 Connecting to Supabase...');
   const connected = await checkConnection(5, 3000);
@@ -1018,8 +1042,9 @@ async function start() {
     }
   }
 
-  // 5. Start listening
-  server = app.listen(PORT, () => {
+  // 5. Startup work done — let API traffic through (the port has been open since step 0b).
+  appReady = true;
+  {
     console.log(`\n🚀 Server running on http://localhost:${PORT}`);
     console.log(`   ─── Ecosystem ───`);
     console.log(`   🌐 Login:      http://localhost:${PORT}/`);
@@ -1052,7 +1077,7 @@ async function start() {
     console.log(`\n   Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`   Database:    Supabase`);
     console.log('─'.repeat(58) + '\n');
-  });
+  }
 
   // Handle graceful shutdown
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));

@@ -96,8 +96,8 @@ async function logStartupConfigReport() {
     : `  ❌ Accounting DB NOT reachable (${db.source || 'no URL'} → ${db.provider}): ${db.error}. Leo invoices, quotes and monthly plans will fail. Set ACCOUNTING_DATABASE_URL to the Supabase direct connection string.`);
   if (db.provider === 'zeabur') lines.push('  ⚠️  Accounting DB URL still points at Zeabur, which was retired on 2026-11-11.');
   lines.push(isEmailConfigured()
-    ? '  ✅ Email (Resend) configured'
-    : '  ⚠️  Email NOT configured (RESEND_API_KEY + EMAIL_FROM). Invoice/payslip emails and monthly-plan auto-emails will not be sent.');
+    ? '  ✅ Email configured (Zoho SMTP or Resend)'
+    : '  ⚠️  Email NOT configured (SMTP_HOST/SMTP_USER/SMTP_PASS, or RESEND_API_KEY + EMAIL_FROM). Invoice/payslip emails and monthly-plan auto-emails will not be sent.');
   console.log('🔎 Configuration check:\n' + lines.join('\n'));
 }
 
