@@ -94,6 +94,19 @@ userRouter.post('/ask', (req, res, next) => {
     // Answer in the language the question was asked in; the widget's last language only breaks ties.
     const language = K.detectLanguage(question, lang(req.body.language));
 
+    // Tax/advice questions are the paid Sean AI add-on — Pip (free) does not answer them.
+    if (K.isAdviceQuestion(question)) {
+      const base = { app, company_id: req.companyId, user_id: (req.user && req.user.userId) || null, language, question };
+      let { data: q, error } = await supabase.from('sevco_help_questions')
+        .insert(Object.assign({ status: 'advice' }, base)).select('id').single();
+      if (error && /status_check|violates check/i.test(error.message || '')) {   // migration 177 not run yet
+        ({ data: q, error } = await supabase.from('sevco_help_questions')
+          .insert(Object.assign({ status: 'unmatched', feedback_note: 'advice question' }, base)).select('id').single());
+      }
+      if (error) return res.status(missingTable(error) ? 503 : 500).json({ error: missingTable(error) ? NEEDS_176 : error.message });
+      return res.json({ question_id: q.id, language, advice: true, articles: [], ai: { status: 'none' } });
+    }
+
     const articles = await approvedArticles(app, language);
     const ranked = K.rank(articles, question);
     const matched = ranked.map(r => articles.find(a => a.slug === r.slug));
@@ -277,7 +290,7 @@ adminRouter.get('/questions', async (req, res) => {
     let q = supabase.from('sevco_help_questions')
       .select('id, company_id, language, question, matched_slugs, status, ai_status, ai_answer, feedback, feedback_note, reviewed_at, created_at')
       .eq('app', app).order('created_at', { ascending: false }).limit(200);
-    if (req.query.open === '1') q = q.is('reviewed_at', null).or('status.eq.unmatched,feedback.eq.down');
+    if (req.query.open === '1') q = q.is('reviewed_at', null).or('status.eq.unmatched,status.eq.advice,feedback.eq.down');
     const { data, error } = await q;
     if (error) return res.status(missingTable(error) ? 503 : 500).json({ error: missingTable(error) ? NEEDS_176 : error.message });
     res.json({ app, questions: data || [] });

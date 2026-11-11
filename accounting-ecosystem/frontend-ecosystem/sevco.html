@@ -641,7 +641,8 @@
                 if (!qs.length) { box.innerHTML = '<div class="empty-state">Nothing to deal with.</div>'; return; }
                 box.innerHTML = qs.map(q => `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:0.85rem;">
                     <b>${esc(q.question)}</b> <span style="color:var(--text-muted);font-size:0.75rem;">${esc(q.language)} · ${esc(new Date(q.created_at).toLocaleString())} ·
-                    ${q.status === 'unmatched' ? 'no article' : '👎 ' + esc(q.feedback_note || '')}</span>
+                    ${(q.status === 'advice' || q.feedback_note === 'advice question') ? '💰 tax/advice question (paid Sean AI lead)'
+                      : q.status === 'unmatched' ? 'no article' : '👎 ' + esc(q.feedback_note || '')}</span>
                     <div class="action-row" style="margin-top:4px;">
                         <button class="btn" onclick="editHelpArticle(null, ${JSON.stringify(q.question).replace(/"/g, '&quot;')})">Write article</button>
                         <button class="btn" onclick="markHelpReviewed(${q.id})">Mark reviewed</button>

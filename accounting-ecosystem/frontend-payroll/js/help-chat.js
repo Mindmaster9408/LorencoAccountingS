@@ -20,10 +20,12 @@
         AF: { title: 'PIP — Paytime\'s Intelligent Pal', hint: 'Hallo! Ek is Pip, jou Paytime-assistent.\nVra my hoe om iets in Paytime te doen, bv. "Hoe sit ek oortyd op \'n payslip?"',
               placeholder: 'Tik jou vraag…', send: 'Stuur', open: 'Maak die skerm oop', none: 'Ek het nog nie \'n hulpartikel hieroor nie. Jou vraag is aangeteken sodat ons dit kan byvoeg.',
               thinking: 'Pip skryf ook \'n kort antwoord…', offline: 'Pip se AI-helper is tans af — hier is die hulpartikel wat die beste pas.',
+              advice: 'Dit klink na \'n belasting- of adviesvraag. Ek help met hoe Paytime werk — waar om iets in te sit en watter knoppie om te druk.\nBelasting- en nakomingsadvies (bv. of iets belasbaar is of watter IRP5-kode om te gebruik) is deel van die betaalde Sean AI-byvoeging, of vra jou rekenmeester.',
               helpful: 'Was dit nuttig?', thanks: 'Dankie!', error: 'Kon nie nou antwoord nie. Probeer weer.', source: 'Bron' },
         EN: { title: 'PIP — Paytime\'s Intelligent Pal', hint: 'Hi! I\'m Pip, your Paytime assistant.\nAsk me how to do something in Paytime, e.g. "How do I add overtime to a payslip?"\nJy kan ook in Afrikaans vra.',
               placeholder: 'Type your question…', send: 'Send', open: 'Open the screen', none: 'I don\'t have a help article about this yet. Your question was noted so we can add one.',
               thinking: 'Pip is also writing a short answer…', offline: 'Pip\'s AI helper is offline right now — here is the help article that fits best.',
+              advice: 'That sounds like a tax or advice question. I help with how Paytime works — where to enter something and which button to click.\nTax and compliance advice (e.g. whether something is taxable or which IRP5 code to use) is part of the paid Sean AI add-on, or ask your accountant.',
               helpful: 'Was this helpful?', thanks: 'Thank you!', error: 'Could not answer right now. Please try again.', source: 'Source' }
     };
     var lang = 'EN';   // English first (Ruan 2026-11-11); no switch — each reply follows the language of the question
@@ -130,6 +132,7 @@
             var d = r.data;
             // The server works out the language of the question; follow it for the reply and the labels.
             if (d.language === 'AF' || d.language === 'EN') { lang = d.language; t = T[lang]; applyLang(); }
+            if (d.advice) { say('bot', textHtml(t.advice)); return; }
             if (!d.articles || !d.articles.length) { var m0 = say('bot', esc(t.none)); feedback(m0, d.question_id); return; }
             var lead = d.ai && d.ai.status === 'queued'
                 ? (d.ai.online ? '<div class="phc-note">' + esc(t.thinking) + '</div>' : '<div class="phc-note">' + esc(t.offline) + '</div>')

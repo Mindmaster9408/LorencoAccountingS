@@ -38,6 +38,23 @@ describe('detectLanguage (answer in the language asked)', () => {
   });
 });
 
+describe('isAdviceQuestion (paid Sean AI, not free Pip)', () => {
+  test('tax/advice questions are recognised', () => {
+    ['Is a cellphone allowance taxable?', "is 'n selfoontoelae belasbaar", 'Which IRP5 code must I use for commission?',
+     'watter kode gebruik ek vir kommissie', 'How much tax must I deduct on a bonus?', 'hoeveel belasting op n bonus',
+     'Should I deduct UIF from a director?', 'moet ek uif aftrek van n direkteur', 'Is it legal to pay below minimum wage?',
+     'what are the SARS rules for travel allowance', 'is a long service award tax free?']
+      .forEach(q => expect([q, K.isAdviceQuestion(q)]).toEqual([q, true]));
+  });
+  test('how-to-use-the-app questions are NOT advice', () => {
+    ['How do I add overtime?', 'hoe sit ek oortyd op n payslip', 'How do I set up an item with 80% taxable?',
+     'Where do I enter the IRP5 code for an item?', 'hoe stel ek die IRP5-kode van n item', 'how do i finalise the month',
+     'Hoe moet ek n werknemer se salaris verander', 'where is the bank file', 'hoe druk ek almal se payslips',
+     'How do I reverse a pay run?', 'Should I run payroll before I print payslips?']
+      .forEach(q => expect([q, K.isAdviceQuestion(q)]).toEqual([q, false]));
+  });
+});
+
 describe('API', () => {
   let server, base;
   beforeAll(async () => {
@@ -108,5 +125,13 @@ describe('API', () => {
     await call('POST', '/api/sevco/help/articles/approve', { app: 'paytime', slug: 'payslip/oortyd' });
     await call('POST', '/api/sevco/help/articles/archive', { app: 'paytime', slug: 'payslip/oortyd' });
     expect((await call('POST', '/api/help/ask', { app: 'paytime', question: 'how do I add overtime', language: 'EN' })).body.articles).toEqual([]);
+  });
+
+  test('a tax/advice question gets the paid add-on reply (no article, no AI) and is recorded as advice', async () => {
+    await call('PUT', '/api/sevco/help/articles', article());
+    await call('POST', '/api/sevco/help/articles/approve', { app: 'paytime', slug: 'payslip/oortyd' });
+    const r = await call('POST', '/api/help/ask', { app: 'paytime', question: 'Is overtime taxable?', language: 'AF' });
+    expect(r.body).toMatchObject({ advice: true, articles: [], language: 'EN', ai: { status: 'none' } });
+    expect(mockDb.sevco_help_questions.find(q => q.id === r.body.question_id).status).toBe('advice');
   });
 });

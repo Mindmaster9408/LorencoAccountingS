@@ -116,4 +116,32 @@ function detectLanguage(text, fallback = 'EN') {
   return fallback === 'AF' ? 'AF' : 'EN';
 }
 
-module.exports = { APPS, words, rank, groupArticles, SYNONYMS, detectLanguage };
+// ─── advice questions (Ruan 2026-11-11) ──────────────────────────────────────
+// Pip is free and explains HOW THE APP WORKS. Questions asking for a tax/compliance
+// judgement ("is X taxable?", "which IRP5 code?", "should I deduct UIF?") are the paid
+// Sean AI add-on, so Pip must not try to answer them from a how-to article.
+// "How do I set an item to 80% taxable?" is an app question and must NOT match here.
+const TAX = '(tax|taxed|taxable|paye|uif|sdl|sars|irp5|it3a|deduct\\w*|exempt\\w*|belasting\\w*|belasbaar|aftrek\\w*|vrygestel\\w*)';
+const ADVICE_PATTERNS = [
+  // "is a cellphone allowance taxable?" / "is 'n selfoontoelae belasbaar?"
+  /\b(is|are|was|word)\b[^?.!]{0,60}\b(taxable|non-taxable|tax[- ]?free|deductible|exempt|belasbaar|belastingvry|aftrekbaar|vrygestel)\b/,
+  // "which IRP5 code must I use for commission?" / "watter kode gebruik ek vir …"
+  /\b(which|what|watter|wat is die)\b[^?.!]{0,25}\b(irp5|sars|source|bron)?[- ]?(code|kode)s?\b/,
+  // "how much tax/UIF …" / "hoeveel belasting …"
+  new RegExp('\\b(how much|hoeveel)\\b[^?.!]{0,30}\\b' + TAX),
+  // "should I / do I have to / am I allowed / moet ek / mag ek … (tax word)"
+  new RegExp('\\b(should (i|we)|do (i|we) (have|need) to|must (i|we)|am i allowed|are we allowed|moet (ek|ons)|mag (ek|ons)|is ek verplig)\\b[^?.!]{0,80}\\b' + TAX),
+  // legality / rules
+  /\b(is (it|this|that) legal|is dit wettig|wat s[êe] (sars|die wet)|what does (sars|the law) say)\b/,
+  /\b(sars|tax) (rule|rules|rate|rates|limit|limits|reël|reëls|tarief|perk)\b/
+];
+// Questions that clearly ask where/how in the app stay app questions even with tax words.
+const APP_HOWTO = /^\s*(how (do|can|to)|where (do|can|is)|hoe (sit|doen|kan|maak|voeg|stel|verander|kry|druk)|waar (sit|kry|is|stel|druk))\b/;
+
+function isAdviceQuestion(text) {
+  const q = String(text || '').toLowerCase().replace(/[’`]/g, "'");
+  if (APP_HOWTO.test(q) && !/\b(taxable|belasbaar|deductible|aftrekbaar)\s*\?/.test(q)) return false;
+  return ADVICE_PATTERNS.some(re => re.test(q));
+}
+
+module.exports = { APPS, words, rank, groupArticles, SYNONYMS, detectLanguage, isAdviceQuestion };
