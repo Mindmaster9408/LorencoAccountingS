@@ -389,6 +389,21 @@
             background: rgba(255,255,255,0.06);
             color: var(--text-muted);
         }
+        /* "Testing" label for apps still being tested (APP_DEFS testing: true) */
+        .app-testing-badge {
+            display: inline-block;
+            margin-left: 8px;
+            vertical-align: middle;
+            font-size: 0.62rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(245, 158, 11, 0.16);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.45);
+        }
         .app-btn-launch {
             padding: 8px 18px;
             background: linear-gradient(135deg, var(--app-color), var(--app-color-dark));
@@ -2058,6 +2073,7 @@
                 desc: 'Photograph slips and invoices on your phone and keep the originals safely online for 7 years.',
                 path: '/slips',
                 cssClass: 'practice',
+                testing: true,   // shows a "Testing" label on the tile (Ruan 2026-11-11)
             },
             {
                 // Insights (2026-11-11) — read-only owner dashboard: Ledger Leo
@@ -2071,6 +2087,7 @@
                 desc: 'See how the business is doing at a glance: revenue, profit, cash and till sales, with trends.',
                 path: '/insights',
                 cssClass: 'insights',
+                testing: true,   // shows a "Testing" label on the tile (Ruan 2026-11-11)
             }
         ];
 
@@ -2603,7 +2620,7 @@
                         <div class="app-card-header">
                             <div class="app-icon">${app.logo ? `<img src="${app.logo}" alt="${app.name}" class="app-card-logo-image">` : app.icon}</div>
                             <div>
-                                <div class="app-title">${app.name}</div>
+                                <div class="app-title">${app.name}${app.testing ? '<span class="app-testing-badge" title="Still being tested">Testing</span>' : ''}</div>
                                 <div class="app-subtitle">${app.subtitle}</div>
                             </div>
                         </div>
@@ -2714,6 +2731,19 @@
                 localStorage.setItem('token', data.appToken);
                 localStorage.setItem('user', JSON.stringify(data.user));
                 localStorage.removeItem('company');   // no stale company object
+
+                // Paytime (Ruan 2026-11-11): a user with only ONE company that has Paytime
+                // goes straight into that company's Paytime (the 'company' key is what
+                // Paytime's index.html picks up). With more than one Paytime company —
+                // and always for super admins — Paytime's company list is shown as before.
+                if (appKey === 'payroll' && data.company && !isSuperAdmin) {
+                    const payrollCompanies = (companies || []).filter(c =>
+                        (c.modules_enabled || []).includes('payroll') &&
+                        (!c.apps_access || c.apps_access.includes('payroll')));
+                    if (payrollCompanies.length <= 1) {
+                        localStorage.setItem('company', JSON.stringify(data.company));
+                    }
+                }
 
                 // Set company context keys that the accounting app reads on load.
                 // The accounting app uses activeCompanyId (set here) to scope every
