@@ -53,8 +53,18 @@
                      'viewMode','language','lang_','_lastVisit','cache_',
                      'seanAI','notif'];
 
+    // Per-app SSO handoff keys. launchApp()/launchClientApp() in dashboard.html
+    // write `${appKey}_token` and `${appKey}_user` for every app; the target
+    // app reads them from native localStorage. These are auth/session data
+    // (CLAUDE.md Rule D2), never business data. Before 2026-11-11 only a few
+    // were listed above, so e.g. insights_token went to the KV bridge and the
+    // Insights page never received it ("Please open Insights from the Eco
+    // dashboard"). A suffix rule means a new app can't hit this again.
+    var LOCAL_SUFFIX = /^[a-z][a-z0-9]*_(token|user)$/;
+
     function _isLocal(k) {
         if (LOCAL_KEYS[k]) return true;
+        if (typeof k === 'string' && LOCAL_SUFFIX.test(k)) return true;
         for (var i = 0; i < LOCAL_PFX.length; i++)
             if (k.indexOf(LOCAL_PFX[i]) === 0) return true;
         return false;
