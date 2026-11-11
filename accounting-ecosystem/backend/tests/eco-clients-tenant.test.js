@@ -122,3 +122,18 @@ test('TEST-SEC-E11 super admin can still link an existing company', async () => 
   expect(r.status).toBe(201);
   expect(mockFake.find('eco_clients', c => c.name === 'Adopted').client_company_id).toBe(50);
 });
+
+// 2026-11-11 (Ruan): creating a client with Paytime / Charlie, or adding those apps later,
+// must NOT insert the client itself as an employee / customer of its own company.
+test('TEST-ECO-NOSTUB creating or adding payroll/pos never creates a self-employee or self-customer', async () => {
+  const r = await create(OWNER_A, { name: 'Fictional Mini Market (Pty) Ltd', company_id: 10, apps: ['payroll', 'pos'] });
+  expect(r.status).toBe(201);
+  const created = mockFake.find('eco_clients', c => c.name === 'Fictional Mini Market (Pty) Ltd');
+  expect(mockFake.find('employees', e => e.eco_client_id === created.id || e.company_id === created.client_company_id)).toBeUndefined();
+  expect(mockFake.find('customers', c => c.eco_client_id === created.id || c.company_id === created.client_company_id)).toBeUndefined();
+
+  const u = await callRoute(router, 'put', '/:id', { ...OWNER_A, params: { id: '100' }, body: { apps: ['payroll', 'pos'] } });
+  expect(u.status).toBe(200);
+  expect(mockFake.find('employees', e => e.eco_client_id === 100)).toBeUndefined();
+  expect(mockFake.find('customers', c => c.eco_client_id === 100)).toBeUndefined();
+});

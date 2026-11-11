@@ -90,95 +90,19 @@ async function syncToApps(ecoClient) {
   const synced = [];
   const errors = [];
   const apps = ecoClient.apps || [];
-  // Data always goes into the client's OWN company — not the managing practice
-  const dataCompanyId = ecoClient.client_company_id || ecoClient.company_id;
 
-  // POS → customers table
+  // POS / Payroll (2026-11-11, Ruan): NO records are created here any more.
+  // This used to insert the CLIENT ITSELF into its own company — as a POS
+  // customer of its own till, and as an "employee" of its own payroll (named
+  // after the company, no ID/tax number, inflating its employee count). A client
+  // is the business; its employees and customers are added by the user in the
+  // app. Enabling the app (companies.modules_enabled, step 4b of PUT /:id and
+  // the create route) is all that is needed.
   if (apps.includes('pos')) {
-    try {
-      const customerNumber = `EC-${Date.now().toString(36).toUpperCase()}`;
-      const customerData = {
-        company_id: dataCompanyId,
-        name: ecoClient.name,
-        email: ecoClient.email || null,
-        phone: ecoClient.phone || null,
-        contact_number: ecoClient.phone || null,
-        address_line_1: ecoClient.address || null,
-        id_number: ecoClient.id_number || null,
-        customer_number: customerNumber,
-        customer_group: 'retail',
-        loyalty_points: 0,
-        current_balance: 0,
-        is_active: true,
-        eco_client_id: ecoClient.id
-      };
-
-      let { data: customer, error } = await supabase
-        .from('customers')
-        .insert(customerData)
-        .select()
-        .single();
-
-      // If eco_client_id column doesn't exist yet, retry without it
-      if (error && error.message && error.message.includes('eco_client_id')) {
-        delete customerData.eco_client_id;
-        ({ data: customer, error } = await supabase
-          .from('customers')
-          .insert(customerData)
-          .select()
-          .single());
-      }
-
-      if (error) throw error;
-      synced.push({ app: 'pos', table: 'customers', id: customer.id });
-    } catch (err) {
-      console.error('Eco-client sync to POS failed:', err.message);
-      errors.push({ app: 'pos', error: err.message });
-    }
+    synced.push({ app: 'pos', note: 'App enabled — no records created' });
   }
-
-  // Payroll → employees table
   if (apps.includes('payroll')) {
-    try {
-      const empCode = `EMP-${Date.now().toString(36).toUpperCase()}`;
-      const nameParts = (ecoClient.name || '').trim().split(/\s+/);
-      const firstName = nameParts[0] || ecoClient.name;
-      const lastName = nameParts.slice(1).join(' ') || '';
-
-      const employeeData = {
-        company_id: dataCompanyId,
-        first_name: firstName,
-        last_name: lastName,
-        employee_code: empCode,
-        email: ecoClient.email || null,
-        phone: ecoClient.phone || null,
-        id_number: ecoClient.id_number || null,
-        is_active: true,
-        eco_client_id: ecoClient.id
-      };
-
-      let { data: employee, error } = await supabase
-        .from('employees')
-        .insert(employeeData)
-        .select()
-        .single();
-
-      // If eco_client_id column doesn't exist yet, retry without it
-      if (error && error.message && error.message.includes('eco_client_id')) {
-        delete employeeData.eco_client_id;
-        ({ data: employee, error } = await supabase
-          .from('employees')
-          .insert(employeeData)
-          .select()
-          .single());
-      }
-
-      if (error) throw error;
-      synced.push({ app: 'payroll', table: 'employees', id: employee.id });
-    } catch (err) {
-      console.error('Eco-client sync to Payroll failed:', err.message);
-      errors.push({ app: 'payroll', error: err.message });
-    }
+    synced.push({ app: 'payroll', note: 'App enabled — no records created' });
   }
 
   // Accounting — uses same employees table, no separate client table
@@ -246,10 +170,14 @@ async function syncUpdateToApps(ecoClient, changedFields) {
       if (changedFields.includes('address'))  patch.address_line_1 = ecoClient.address || null;
       if (changedFields.includes('id_number')) patch.id_number = ecoClient.id_number || null;
 
+      // Only the client's OWN company (old self-customer records). customers.eco_client_id
+      // is also used by company-link records in OTHER companies — never overwrite those.
+      const ownCompanyId = ecoClient.client_company_id || ecoClient.company_id;
       const { error } = await supabase
         .from('customers')
         .update(patch)
-        .eq('eco_client_id', ecoClient.id);
+        .eq('eco_client_id', ecoClient.id)
+        .eq('company_id', ownCompanyId);
 
       if (error) throw error;
       updated.push('POS');
@@ -259,32 +187,8 @@ async function syncUpdateToApps(ecoClient, changedFields) {
     }
   }
 
-  // Payroll → employees
-  if (apps.includes('payroll')) {
-    try {
-      const patch = {};
-      if (changedFields.includes('name')) {
-        patch.full_name = ecoClient.name;
-        const parts = (ecoClient.name || '').trim().split(/\s+/);
-        patch.first_name = parts[0] || ecoClient.name;
-        patch.last_name  = parts.slice(1).join(' ') || '';
-      }
-      if (changedFields.includes('email'))    { patch.email = ecoClient.email || null; }
-      if (changedFields.includes('phone'))    patch.phone = ecoClient.phone || null;
-      if (changedFields.includes('id_number')) patch.id_number = ecoClient.id_number || null;
-
-      const { error } = await supabase
-        .from('employees')
-        .update(patch)
-        .eq('eco_client_id', ecoClient.id);
-
-      if (error) throw error;
-      updated.push('Payroll');
-    } catch (err) {
-      console.error('syncUpdate → Payroll failed:', err.message);
-      errors.push({ app: 'payroll', error: err.message });
-    }
-  }
+  // Payroll (2026-11-11): nothing to update — the client is no longer created as an
+  // employee of its own payroll, and real employees never carry eco_client_id.
 
   return { updated, errors };
 }
