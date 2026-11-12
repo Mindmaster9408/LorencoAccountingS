@@ -482,10 +482,20 @@ async function postCustomerInvoice(ctx) {
 
 // ─── Build the invoice PDF (shared by Send and the PDF download) ─────────────
 
+// Buyer's address on the invoice (migration 180). Falls back to the old column
+// set if the migration has not run yet, so PDFs never break over it.
+async function loadInvoiceCustomer(companyId, customerId) {
+  const full = await supabase.from('customers')
+    .select('id, name, email, vat_number, registration_number, address_line_1, address_line_2, city, province, postal_code')
+    .eq('id', customerId).eq('company_id', companyId).maybeSingle();
+  if (!full.error) return full;
+  return supabase.from('customers').select('id, name, email, vat_number')
+    .eq('id', customerId).eq('company_id', companyId).maybeSingle();
+}
+
 async function buildInvoicePdf(companyId, invoice) {
   const [{ data: customer, error: custErr }, { data: lines, error: linesErr }, { data: company, error: companyErr }] = await Promise.all([
-    supabase.from('customers').select('id, name, email, vat_number')
-      .eq('id', invoice.customer_id).eq('company_id', companyId).maybeSingle(),
+    loadInvoiceCustomer(companyId, invoice.customer_id),
     supabase.from('customer_invoice_lines').select('*').eq('invoice_id', invoice.id).order('id'),
     supabase.from('companies')
       .select('company_name, trading_name, registration_number, vat_number, address_street, address_suburb, address_city, contact_email, contact_phone, logo_url, bank_name, bank_account_holder, bank_account_number, bank_branch_code')
@@ -593,7 +603,99 @@ async function emailCustomerInvoice(ctx) {
   };
 }
 
+// ─── Create a DRAFT invoice from code (no HTTP request) ──────────────────────
+//
+// Used by Eco billing (Platform Control → Invoice). Same header/lines shape and
+// atomic insert as POST /customer-invoices, but the number skips any INV-####
+// already taken (count+1 alone can collide after deletes/voids).
+// FOLLOW-UP: POST /customer-invoices and recurringInvoiceService still carry
+// their own copies of this insert — fold them onto this when next touched.
+//
+// ctx = { companyId, customerId, invoiceDate, dueDate, vatInclusive, lines:
+//         [{ description, quantity, unitPrice, vatRate, accountId }], notes,
+//         actorId, actorType, reason }
+async function createDraftCustomerInvoice(ctx) {
+  const db = require('../config/database');
+  const { companyId, customerId, invoiceDate, dueDate = null, vatInclusive = false, notes = null,
+          actorId = null, actorType = 'USER', reason = 'Customer invoice created' } = ctx;
+  if (!companyId || !customerId || !invoiceDate) throw new Error('companyId, customerId and invoiceDate are required');
+  if (!Array.isArray(ctx.lines) || !ctx.lines.length) throw new Error('At least one line item is required');
+
+  const lines = ctx.lines.map(l => {
+    const vatRate = l.vatRate != null ? parseFloat(l.vatRate) : 15;
+    const { subtotalExVat, vatAmount, totalIncVat } = calcLineVAT(l.quantity, l.unitPrice, vatRate, vatInclusive === true);
+    return {
+      description: l.description || '', accountId: l.accountId || null,
+      quantity: parseFloat(l.quantity) || 1, unitPrice: parseFloat(l.unitPrice) || 0, vatRate,
+      subtotalExVat, vatAmount, totalIncVat,
+    };
+  });
+  const totals = lines.reduce((a, l) => ({
+    subtotalExVat: a.subtotalExVat + l.subtotalExVat,
+    vatAmount: a.vatAmount + l.vatAmount,
+    totalIncVat: a.totalIncVat + l.totalIncVat,
+  }), { subtotalExVat: 0, vatAmount: 0, totalIncVat: 0 });
+
+  const client = await db.getClient();
+  let invoice;
+  try {
+    await client.query('BEGIN');
+    const { rows: cnt } = await client.query('SELECT COUNT(*)::int AS c FROM customer_invoices WHERE company_id = $1', [companyId]);
+    let n = (cnt[0]?.c || 0) + 1;
+    let invoiceNumber = null;
+    for (let i = 0; i < 500 && !invoiceNumber; i++, n++) {
+      const candidate = `INV-${String(n).padStart(4, '0')}`;
+      const { rows: hit } = await client.query(
+        'SELECT 1 FROM customer_invoices WHERE company_id = $1 AND invoice_number = $2 LIMIT 1', [companyId, candidate]);
+      if (!hit.length) invoiceNumber = candidate;
+    }
+    if (!invoiceNumber) throw new Error('Could not find a free invoice number');
+
+    const hdr = await client.query(
+      `INSERT INTO customer_invoices
+         (company_id, customer_id, invoice_number, date, due_date, status, vat_mode,
+          subtotal, vat_amount, total_amount, amount_paid, balance_due, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,'draft',$6,$7,$8,$9,0,$9,$10,$11)
+       RETURNING *`,
+      [companyId, customerId, invoiceNumber, invoiceDate, dueDate,
+       vatInclusive === true ? 'inclusive' : 'exclusive',
+       totals.subtotalExVat, totals.vatAmount, totals.totalIncVat, notes, actorId]
+    );
+    invoice = hdr.rows[0];
+
+    const vals = [];
+    const params = [];
+    let p = 1;
+    for (const l of lines) {
+      vals.push(`($${p++},$${p++},$${p++},'account',NULL,$${p++},$${p++},$${p++},$${p++})`);
+      params.push(invoice.id, l.description, l.accountId, l.quantity, l.unitPrice, l.vatRate, l.subtotalExVat);
+    }
+    await client.query(
+      `INSERT INTO customer_invoice_lines
+         (invoice_id, description, account_id, line_type, item_id, quantity, unit_price, vat_rate, line_total)
+       VALUES ${vals.join(',')}`,
+      params
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  await AuditLogger.log({
+    companyId, actorType, actorId,
+    actionType: 'CUSTOMER_INVOICE_CREATED', entityType: 'CUSTOMER_INVOICE', entityId: invoice.id,
+    beforeJson: null,
+    afterJson: { invoiceNumber: invoice.invoice_number, invoiceDate, totalIncVat: totals.totalIncVat, status: 'draft' },
+    reason,
+  });
+  return { invoice, lines, totals };
+}
+
 module.exports = {
+  createDraftCustomerInvoice,
   calcLineVAT,
   escapeHtml,
   findAccountByCode,

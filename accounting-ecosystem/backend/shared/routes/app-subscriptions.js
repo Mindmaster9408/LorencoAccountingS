@@ -38,6 +38,12 @@ async function managedClient(req, res) {
   if (!clientId) { res.status(400).json({ error: 'Invalid client id' }); return null; }
   const loaded = await loadManagedClient(req, clientId);
   if (loaded.error) { res.status(loaded.status).json({ error: loaded.error }); return null; }
+  // A linked company (migration 181) pays for its own apps; the practice only
+  // has the access the company approved. Ask the company via a link request.
+  if (loaded.client.access_link && req.method !== 'GET') {
+    res.status(409).json({ error: 'This is a linked company — it manages its own apps. Send a new link request to ask for access to other apps.', code: 'LINKED_COMPANY' });
+    return null;
+  }
   return loaded.client;
 }
 

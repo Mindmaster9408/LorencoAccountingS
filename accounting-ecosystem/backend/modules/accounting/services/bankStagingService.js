@@ -595,14 +595,24 @@ const BankStagingService = {
     }
 
     // Attach confirmed_txn_id now that we know each row's real bank_transactions id
-    // (order matches toActuallyInsert since bulk insert preserves row order)
-    for (let idx = 0; idx < (inserted || []).length; idx++) {
-      const txn = inserted[idx];
-      await supabase
-        .from('bank_transaction_staging')
-        .update({ confirmed_txn_id: txn.id })
-        .eq('id', toActuallyInsert[idx].staging_row.id)
-        .eq('company_id', companyId);
+    // (order matches toActuallyInsert since bulk insert preserves row order).
+    // Each row needs its own value, so this is one UPDATE per row — run in
+    // parallel batches. Done strictly one-by-one it took minutes for a few
+    // hundred rows and "Confirm All Visible" sat on "Confirming…" until the
+    // user gave up and reloaded (2026-11-12).
+    const links = (inserted || []).map((txn, idx) => ({
+      stagingId: toActuallyInsert[idx].staging_row.id,
+      txnId: txn.id,
+    }));
+    const LINK_BATCH = 25;
+    for (let i = 0; i < links.length; i += LINK_BATCH) {
+      await Promise.all(links.slice(i, i + LINK_BATCH).map(l =>
+        supabase
+          .from('bank_transaction_staging')
+          .update({ confirmed_txn_id: l.txnId })
+          .eq('id', l.stagingId)
+          .eq('company_id', companyId)
+      ));
     }
 
     return {

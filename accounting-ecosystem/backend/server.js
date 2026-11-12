@@ -280,6 +280,8 @@ app.use('/api/audit', authenticateToken, auditRoutes);
 app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
 // App requests / cancellations (clients request, Lorenco approves) — migration 179
 app.use('/api/app-subscriptions', authenticateToken, appSubscriptionRoutes);
+app.use('/api/eco-billing', authenticateToken, require('./shared/routes/eco-billing'));
+app.use('/api/link-requests', authenticateToken, require('./shared/routes/link-requests'));
 // Billing report — super admin only (requireSuperAdmin applied inside billingReportRoutes)
 app.use('/api/ecosystem/billing-report', authenticateToken, billingReportRoutes);
 app.use('/api/customers', authenticateToken, customersRoutes);
@@ -1054,6 +1056,17 @@ async function start() {
       require('./shared/services/appSubscriptions').startAppSubscriptionScheduler();
     } catch (schedErr) {
       console.warn('  ⚠️  App subscription scheduler not started:', schedErr.message);
+    }
+  }
+
+  // 4i. Eco billing (migration 180) — every 15 min keeps the Leo customers in
+  // Lorenco's billing company (40) in step with the Eco's company data.
+  // ECO_BILLING_SYNC=off disables it.
+  if (connected) {
+    try {
+      require('./shared/services/ecoBilling').startEcoBillingScheduler();
+    } catch (schedErr) {
+      console.warn('  ⚠️  Eco billing sync not started:', schedErr.message);
     }
   }
 

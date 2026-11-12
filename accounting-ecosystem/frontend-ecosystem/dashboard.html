@@ -1111,6 +1111,9 @@
             </div>
         </div>
 
+        <!-- Access requests from practices (migration 181) — filled by loadIncomingLinkRequests() -->
+        <div id="linkRequestsBanner"></div>
+
         <!-- Client Management (Partners/Business Owners only) -->
         <div id="clientManagementSection" class="hidden">
             <div class="section-label">Client Management</div>
@@ -1311,6 +1314,10 @@
                         <div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;color:#a78bfa;">📄 Import from Registration PDF</div>
                         <div style="font-size:0.82rem;color:var(--text-muted);">Upload a CIPC / company registration PDF to prefill client details automatically.</div>
                     </button>
+                    <button onclick="_closeImportChoice(); openLinkCompany();" style="padding:16px 20px;border-radius:12px;border:2px solid var(--border);background:transparent;cursor:pointer;text-align:left;color:var(--text);" onmouseover="this.style.borderColor='#10b981'" onmouseout="this.style.borderColor=''">
+                        <div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;color:#6ee7b7;">🔗 Link an existing company</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);">The company already uses the Eco. Ask for access to the apps you need — they approve each one.</div>
+                    </button>
                 </div>
             </div>
         </div>
@@ -1415,6 +1422,32 @@
     </div>
 
     <!-- ═══════ MANAGE APPS MODAL (non-admins: request / cancel — migration 179) ═══════ -->
+    <!-- ═══════ LINK AN EXISTING COMPANY (migration 181) ═══════ -->
+    <div class="modal-overlay" id="linkCompanyModal">
+        <div class="modal" style="max-width: 540px;">
+            <div class="modal-header">
+                <h2>🔗 Link an existing company</h2>
+                <button class="modal-close" onclick="closeLinkCompany()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-muted); margin-bottom: 14px; font-size: 0.86rem;">
+                    For a company that already uses the Eco. Enter its client code (CLT-…, on its client card) or its email address.
+                    Nothing is shared until the company approves — it can say yes or no to each app.
+                </p>
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="linkQuery" placeholder="CLT-XXXXXXXX or email" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.9rem;"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();linkLookup();}">
+                    <button type="button" class="btn-form save" id="linkFindBtn" onclick="linkLookup()" style="flex:0 0 auto;">Find</button>
+                </div>
+                <div id="linkResult" style="margin-top:14px;"></div>
+                <div id="linkOutgoing" style="margin-top:18px;"></div>
+                <div class="form-actions" style="margin-top: 18px;">
+                    <button type="button" class="btn-form cancel" onclick="closeLinkCompany()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="manageAppsModal">
         <div class="modal" style="max-width: 520px;">
             <div class="modal-header">
@@ -3422,9 +3455,13 @@
                 ).join('');
 
                 // Shared badge — shown when this client is visible via firm-access link
-                const sharedBadge = c.shared_access
+                const sharedBadge = (c.shared_access
                     ? `<span style="font-size:0.72rem;padding:2px 8px;background:rgba(102,126,234,0.15);border:1px solid rgba(102,126,234,0.3);border-radius:20px;color:#a5b4fc;margin-left:6px;">Shared</span>`
-                    : '';
+                    : '')
+                    // Linked company (migration 181): access the company approved; it runs its own apps
+                    + (c.access_link
+                    ? `<span title="Linked company — it approved access to these apps and manages its own subscription" style="font-size:0.72rem;padding:2px 8px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);border-radius:20px;color:#6ee7b7;margin-left:6px;">🔗 Linked</span>`
+                    : '');
 
                 // "Manage Firms" button — only shown to the managing company or super admin
                 const canManageFirms = !c.shared_access && (isSuperAdmin || (selectedCompany && selectedCompany.id === c.company_id));
@@ -3488,6 +3525,12 @@
         function openEditApps(clientId) {
             const client = allClients.find(c => c.id === clientId);
             if (!client) return;
+
+            // A linked company manages its own apps; more access = a new link request.
+            if (client.access_link) {
+                showToast('This is a linked company — it manages its own apps. Use Add Client → Link an existing company to ask for more access.', true);
+                return;
+            }
 
             // Since 2026-11-11 only Lorenco (super admins) switch apps directly.
             // Everyone else requests / cancels — the backend enforces this too.
@@ -3564,6 +3607,156 @@
             if (!d) return '';
             const [y, m, day] = String(d).slice(0, 10).split('-');
             return `${day}/${m}/${y}`;
+        }
+
+        // ═══ LINK AN EXISTING COMPANY (migration 181) ═══════════════════════
+        // Practice side: find a company by client code / email, ask for apps.
+        // Company side: banner with yes/no per app. Server state only.
+        let linkFound = null;
+
+        async function lrFetch(path, opts = {}) {
+            const token = localStorage.getItem('eco_token');
+            const res = await fetch(`${API_BASE}/api/link-requests${path}`, {
+                ...opts,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Something went wrong');
+            return data;
+        }
+
+        function openLinkCompany() {
+            linkFound = null;
+            document.getElementById('linkQuery').value = '';
+            document.getElementById('linkResult').innerHTML = '';
+            document.getElementById('linkCompanyModal').classList.add('show');
+            loadOutgoingLinkRequests();
+            setTimeout(() => document.getElementById('linkQuery').focus(), 50);
+        }
+        function closeLinkCompany() {
+            document.getElementById('linkCompanyModal').classList.remove('show');
+        }
+
+        async function linkLookup() {
+            const q = document.getElementById('linkQuery').value.trim();
+            const out = document.getElementById('linkResult');
+            const btn = document.getElementById('linkFindBtn');
+            if (!q) return;
+            btn.disabled = true;
+            out.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">Searching…</div>';
+            try {
+                linkFound = await lrFetch('/lookup', { method: 'POST', body: JSON.stringify({ query: q }) });
+                if (linkFound.already_linked) {
+                    out.innerHTML = `<div style="color:#fcd34d;font-size:0.88rem;">${escHtml(linkFound.name)} is already one of your clients.</div>`;
+                    return;
+                }
+                out.innerHTML = `
+                    <div style="border:1px solid var(--border);border-radius:12px;padding:14px;">
+                        <div style="font-weight:700;margin-bottom:10px;">${escHtml(linkFound.name)}</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;">Which apps do you need access to?</div>
+                        ${linkFound.apps.map(a => `
+                            <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:0.88rem;cursor:pointer;">
+                                <input type="checkbox" class="link-app" value="${a.key}"> ${escHtml(a.label)}
+                            </label>`).join('')}
+                        <textarea id="linkMessage" rows="2" maxlength="500" placeholder="Message to the company (optional)"
+                            style="width:100%;margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.85rem;"></textarea>
+                        <button type="button" class="btn-form save" id="linkSendBtn" onclick="linkSend()" style="margin-top:10px;width:100%;">Send request</button>
+                    </div>`;
+            } catch (err) {
+                out.innerHTML = `<div style="color:#fca5a5;font-size:0.88rem;">${escHtml(err.message)}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function linkSend() {
+            if (!linkFound) return;
+            const apps = [...document.querySelectorAll('#linkResult .link-app:checked')].map(i => i.value);
+            if (!apps.length) { showToast('Choose at least one app.', true); return; }
+            const btn = document.getElementById('linkSendBtn');
+            btn.disabled = true; btn.textContent = 'Sending…';
+            try {
+                await lrFetch('/', { method: 'POST', body: JSON.stringify({
+                    target_company_id: linkFound.company_id, apps,
+                    message: (document.getElementById('linkMessage').value || '').trim() || null,
+                }) });
+                document.getElementById('linkResult').innerHTML =
+                    `<div style="color:#6ee7b7;font-size:0.88rem;">✓ Request sent to ${escHtml(linkFound.name)}. They will be emailed and can approve each app; you get an email with their answer.</div>`;
+                linkFound = null;
+                loadOutgoingLinkRequests();
+            } catch (err) {
+                showToast(err.message, true);
+                btn.disabled = false; btn.textContent = 'Send request';
+            }
+        }
+
+        async function loadOutgoingLinkRequests() {
+            const box = document.getElementById('linkOutgoing');
+            try {
+                const { requests } = await lrFetch('/outgoing');
+                const recent = (requests || []).slice(0, 10);
+                if (!recent.length) { box.innerHTML = ''; return; }
+                const label = { pending: '⏳ waiting', approved: '✓ approved', declined: '✕ declined', withdrawn: 'withdrawn' };
+                box.innerHTML = `<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;">Your requests</div>` +
+                    recent.map(r => `
+                        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:0.84rem;">
+                            <span style="flex:1;">${escHtml(r.target_name)} <span style="color:var(--text-muted);">— ${(r.status === 'approved' ? (r.approved_apps || []) : r.requested_apps).map(a => APP_LABELS[a] || a).join(', ')}</span></span>
+                            <span style="color:${r.status === 'approved' ? '#6ee7b7' : r.status === 'declined' ? '#fca5a5' : 'var(--text-muted)'};">${label[r.status] || r.status}</span>
+                            ${r.status === 'pending' ? `<button type="button" class="btn-form cancel" style="padding:3px 10px;font-size:0.75rem;" onclick="linkWithdraw(${r.id})">Withdraw</button>` : ''}
+                        </div>`).join('');
+            } catch (e) { box.innerHTML = ''; }
+        }
+
+        async function linkWithdraw(id) {
+            if (!confirm('Withdraw this request?')) return;
+            try { await lrFetch(`/${id}/withdraw`, { method: 'POST' }); loadOutgoingLinkRequests(); }
+            catch (err) { showToast(err.message, true); }
+        }
+
+        // Company side — practices asking for access to a company I manage.
+        async function loadIncomingLinkRequests() {
+            const box = document.getElementById('linkRequestsBanner');
+            if (!box) return;
+            try {
+                const { requests } = await lrFetch('/incoming');
+                if (!requests || !requests.length) { box.innerHTML = ''; return; }
+                box.innerHTML = `<div class="section-label">Access requests</div>` + requests.map(r => `
+                    <div id="lr-${r.id}" style="border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.06);border-radius:14px;padding:16px;margin-bottom:12px;">
+                        <div style="font-weight:700;margin-bottom:4px;">🔗 ${escHtml(r.practice_name)} asks for access to ${escHtml(r.target_name)}</div>
+                        <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;">
+                            ${r.requested_by_name ? `Requested by ${escHtml(r.requested_by_name)} · ` : ''}${fmtDateZA(r.requested_at)}.
+                            They will be able to work in your data in the apps you tick. Nothing is shared for apps you leave unticked.
+                        </div>
+                        ${r.message ? `<div style="font-size:0.85rem;margin-bottom:10px;font-style:italic;">"${escHtml(r.message)}"</div>` : ''}
+                        ${r.apps.map(a => `
+                            <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.88rem;cursor:pointer;">
+                                <input type="checkbox" class="lr-app" value="${a.key}" checked> ${escHtml(a.label)}
+                            </label>`).join('')}
+                        <div style="display:flex;gap:8px;margin-top:10px;">
+                            <button type="button" class="btn-form save" onclick="linkDecide(${r.id}, true)">Approve ticked apps</button>
+                            <button type="button" class="btn-form cancel" onclick="linkDecide(${r.id}, false)">Decline</button>
+                        </div>
+                    </div>`).join('');
+            } catch (e) { box.innerHTML = ''; }
+        }
+
+        async function linkDecide(id, approve) {
+            const card = document.getElementById('lr-' + id);
+            const apps = approve ? [...card.querySelectorAll('.lr-app:checked')].map(i => i.value) : [];
+            if (approve && !apps.length) { showToast('Tick at least one app, or press Decline.', true); return; }
+            const msg = approve
+                ? `Give access to: ${apps.map(a => APP_LABELS[a] || a).join(', ')}?`
+                : 'Decline this request? Nothing will be shared.';
+            if (!confirm(msg)) return;
+            card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            try {
+                const r = await lrFetch(`/${id}/decide`, { method: 'POST', body: JSON.stringify({ approved_apps: apps }) });
+                showToast(r.status === 'approved' ? '✓ Access approved' : 'Request declined');
+                loadIncomingLinkRequests();
+            } catch (err) {
+                showToast(err.message, true);
+                card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+            }
         }
 
         async function maFetch(path, opts = {}) {
@@ -5490,7 +5683,7 @@
         }
 
         // ── Start ──
-        init();
+        init().finally(() => loadIncomingLinkRequests());
     </script>
 
     <script>

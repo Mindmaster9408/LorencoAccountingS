@@ -1245,15 +1245,29 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
           .eq('is_active', true);
         const practiceIds = (userPractices || []).map(r => r.company_id);
 
-        const { data: ecoClient } = practiceIds.length > 0
-          ? await supabase
-              .from('eco_clients')
-              .select('id, company_id')
-              .eq('client_company_id', resolvedCompanyId)
-              .in('company_id', practiceIds)   // Only eco_clients managed by THIS user's own firms
-              .eq('is_active', true)
-              .maybeSingle()
-          : { data: null };
+        // Only eco_clients managed by THIS user's own firms. access_link/apps are
+        // read for linked companies (migration 181); if that column is missing
+        // the original lookup runs unchanged.
+        const lookupEcoClient = cols => supabase
+          .from('eco_clients')
+          .select(cols)
+          .eq('client_company_id', resolvedCompanyId)
+          .in('company_id', practiceIds)
+          .eq('is_active', true)
+          .maybeSingle();
+        let ecoClient = null;
+        if (practiceIds.length > 0) {
+          const withLink = await lookupEcoClient('id, company_id, access_link, apps');
+          ecoClient = withLink.error ? (await lookupEcoClient('id, company_id')).data : withLink.data;
+        }
+
+        // "Link an existing company" (migration 181): the company approved
+        // specific apps only — no way into the others through this link.
+        // Additive: rows without access_link behave exactly as before.
+        if (ecoClient && ecoClient.access_link && targetApp
+            && !(Array.isArray(ecoClient.apps) && ecoClient.apps.includes(targetApp))) {
+          return res.status(403).json({ error: `This company has not given your practice access to the ${targetApp} app.` });
+        }
 
         if (ecoClient) {
           const { data: practiceAccess } = await supabase

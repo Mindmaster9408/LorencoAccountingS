@@ -677,6 +677,8 @@ router.post('/adopt-company', async (req, res) => {
       parentCompanyName:  parentName,
     });
 
+    require('../services/ecoBilling').syncSoon();
+
     res.status(201).json({
       client:  inserted,
       message: `"${clientName}" adopted as a client under "${parentName}"`,
@@ -885,6 +887,9 @@ router.post('/', async (req, res) => {
         .createAddRequestsForNewClient(req, inserted, appsToRequest);
     }
 
+    // Keep the Leo customer in Lorenco's billing company in step (background).
+    require('../services/ecoBilling').syncSoon();
+
     res.status(201).json({
       ...inserted,
       sync: syncResult,
@@ -910,6 +915,22 @@ router.put('/:id', async (req, res) => {
     if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
     const old = loaded.client;
 
+    // ── Linked company (migration 181): an access grant, not a client record ──
+    // Its details and apps belong to the company itself; changing apps here
+    // would also rewrite that company's own modules_enabled. Only switching the
+    // link off/on (and Lorenco's hide flag) is allowed — new apps = new request.
+    if (old.access_link) {
+      const allowedKeys = isAdminUser(req.user) ? ['is_active', 'billing_excluded'] : ['is_active'];
+      const other = Object.keys(req.body || {}).filter(k =>
+        !allowedKeys.includes(k) && JSON.stringify(req.body[k]) !== JSON.stringify(old[k] === undefined ? null : old[k]));
+      if (other.length) {
+        return res.status(409).json({
+          error: 'This is a linked company — its details and apps belong to the company itself. Send a new link request to ask for other apps.',
+          code: 'LINKED_COMPANY_READ_ONLY',
+        });
+      }
+    }
+
     // ── App subscriptions (2026-11-11): only Lorenco switches apps/addons on ──
     // A non-admin changing the app or addon list (or billing fields) is refused;
     // they go through /api/app-subscriptions (request → Ruan/Anton approve,
@@ -927,6 +948,9 @@ router.put('/:id', async (req, res) => {
     const result = await applyEcoClientUpdate(req, old, req.body);
     if (result.error) return res.status(result.status).json({ error: result.error });
 
+    // Keep the Leo customer in Lorenco's billing company in step (background).
+    require('../services/ecoBilling').syncSoon();
+
     res.json({ ...result.updated, sync: result.syncResult });
   } catch (err) {
     console.error('eco-clients PUT /:id error:', err.message);
@@ -936,7 +960,7 @@ router.put('/:id', async (req, res) => {
 
 // Fields only a super admin may change. Billing markers are Lorenco's own
 // bookkeeping of what was invoiced — a client must never be able to set them.
-const ADMIN_ONLY_FIELDS = ['package_name', 'billing_day',
+const ADMIN_ONLY_FIELDS = ['package_name', 'billing_day', 'billing_excluded',
                            'last_billed_employees', 'last_billed_period', 'last_billed_date'];
 
 const sameSet = (a, b) => {
@@ -1015,7 +1039,7 @@ async function validateAppAdditions(old, newApps) {
 async function applyEcoClientUpdate(req, old, body) {
     const clientId = old.id;
     const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'addons',
-                     'package_name', 'notes', 'is_active', 'billing_day',
+                     'package_name', 'notes', 'is_active', 'billing_day', 'billing_excluded',
                      'last_billed_employees', 'last_billed_period', 'last_billed_date'];
     const updates = { updated_at: new Date().toISOString() };
     const changedFields = [];

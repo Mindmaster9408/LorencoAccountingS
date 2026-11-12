@@ -320,7 +320,23 @@ router.post('/accounts', authenticate, hasPermission('bank.manage'), async (req,
  */
 router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (req, res) => {
   try {
-    const { name, bankName, accountNumberMasked, ledgerAccountId, isActive } = req.body;
+    const { name, bankName, accountNumberMasked, ledgerAccountId, isActive, openingBalance, openingBalanceDate } = req.body;
+
+    // Opening balance is editable after creation (it was create-only, so a
+    // typo could never be fixed). It only anchors the running balance and the
+    // bank recon's book balance — no journal is posted from it — so a change
+    // is a plain correction, recorded in the audit log below.
+    let newOpening;
+    if (openingBalance !== undefined) {
+      newOpening = Math.round(parseFloat(openingBalance) * 100) / 100;
+      if (!Number.isFinite(newOpening)) {
+        return res.status(400).json({ error: 'Opening balance must be a number' });
+      }
+    }
+    if (openingBalanceDate !== undefined && openingBalanceDate !== null && openingBalanceDate !== ''
+        && !/^\d{4}-\d{2}-\d{2}$/.test(openingBalanceDate)) {
+      return res.status(400).json({ error: 'Opening balance date must be YYYY-MM-DD' });
+    }
 
     // Fetch existing record and verify ownership
     const { data: existing, error: fetchErr } = await supabase
@@ -384,7 +400,9 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
         bank_name: bankName !== undefined ? bankName : before.bank_name,
         account_number_masked: accountNumberMasked !== undefined ? accountNumberMasked : before.account_number_masked,
         ledger_account_id: resolvedLedgerAccountId,
-        is_active: isActive !== undefined ? isActive : before.is_active
+        is_active: isActive !== undefined ? isActive : before.is_active,
+        opening_balance: newOpening !== undefined ? newOpening : before.opening_balance,
+        opening_balance_date: openingBalanceDate !== undefined ? (openingBalanceDate || null) : before.opening_balance_date
       })
       .eq('id', req.params.id)
       .eq('company_id', req.user.companyId);
@@ -396,8 +414,11 @@ router.put('/accounts/:id', authenticate, hasPermission('bank.manage'), async (r
       'UPDATE',
       'BANK_ACCOUNT',
       before.id,
-      { name: before.name, ledgerAccountId: before.ledger_account_id },
-      { name: name || before.name, ledgerAccountId: resolvedLedgerAccountId },
+      { name: before.name, ledgerAccountId: before.ledger_account_id,
+        openingBalance: before.opening_balance, openingBalanceDate: before.opening_balance_date },
+      { name: name || before.name, ledgerAccountId: resolvedLedgerAccountId,
+        openingBalance: newOpening !== undefined ? newOpening : before.opening_balance,
+        openingBalanceDate: openingBalanceDate !== undefined ? (openingBalanceDate || null) : before.opening_balance_date },
       subaccountCreated
         ? `Bank account updated; auto-created subaccount ${subaccountCreated.code}`
         : 'Bank account updated'
@@ -528,6 +549,32 @@ function chainOrder(group, knownStartBalance) {
  * GET /api/bank/transactions
  * List bank transactions
  */
+// Σ bank_transactions.amount dated strictly before `beforeDate`, per bank
+// account, in cents to avoid float drift. Paged because PostgREST caps a
+// response at 1000 rows.
+async function sumBankAmountsBefore(companyId, beforeDate, bankAccountId) {
+  const totals = {};
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase
+      .from('bank_transactions')
+      .select('id, bank_account_id, amount')
+      .eq('company_id', companyId)
+      .lt('date', beforeDate)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (bankAccountId) q = q.eq('bank_account_id', bankAccountId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    for (const r of data || []) {
+      totals[r.bank_account_id] = (totals[r.bank_account_id] || 0) + Math.round((parseFloat(r.amount) || 0) * 100);
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  for (const k of Object.keys(totals)) totals[k] = totals[k] / 100;
+  return totals;
+}
+
 router.get('/transactions', authenticate, hasPermission('bank.view'), async (req, res) => {
   try {
     const { bankAccountId, status, fromDate, toDate, limit = 100, offset = 0 } = req.query;
@@ -589,12 +636,26 @@ router.get('/transactions', authenticate, hasPermission('bank.view'), async (req
       bank_account_name: t.bank_accounts?.name ?? null
     })));
 
+    // With a "Date From" filter the page used to start its running balance at
+    // the account's opening balance, as if nothing happened before that date.
+    // priorTotals = Σ amount of every line (any status) dated before fromDate,
+    // per bank account, so the running balance starts at the right figure.
+    let priorTotals = null;
+    if (fromDate) {
+      try {
+        priorTotals = await sumBankAmountsBefore(req.user.companyId, fromDate, bankAccountId);
+      } catch (e) {
+        console.warn('[bank/transactions] priorTotals failed:', e.message);
+      }
+    }
+
     // count is the real total matching the filters, not just this page's row
     // length — dashboard.html's "Unmatched Transactions" stat tile reads this
     // and previously undercounted once a company passed the page limit.
     res.json({
       transactions,
-      count: count ?? transactions.length
+      count: count ?? transactions.length,
+      priorTotals
     });
 
   } catch (error) {
@@ -2147,9 +2208,47 @@ router.put('/transactions/transfer', authenticate, hasPermission('bank.manage'),
     const errors  = [];
     const moved   = [];
 
-    for (const txn of found) {
-      if (txn.bank_account_id === targetBankAccountId) {
-        skipped.push({ id: txn.id, reason: 'Already in the target account' });
+    const auditMove = (txn) => AuditLogger.logUserAction(
+      req, 'TRANSFER', 'BANK_TRANSACTION', txn.id,
+      { bank_account_id: txn.bank_account_id, status: txn.status },
+      { bank_account_id: targetBankAccountId, status: 'unmatched' },
+      `Bank transaction moved to ${targetAccount.name} (account ${targetBankAccountId})`
+    );
+
+    // Unallocated lines have nothing to reverse, so they move in ONE update.
+    // Before, every line was its own update + audit insert in sequence
+    // (~30s per 50 lines). The status condition makes sure a line that got
+    // allocated in the meantime is not moved here; it falls through to the
+    // careful per-line path below instead.
+    const toMove = found.filter(t => String(t.bank_account_id) !== String(targetBankAccountId));
+    found.filter(t => !toMove.includes(t))
+      .forEach(t => skipped.push({ id: t.id, reason: 'Already in the target account' }));
+
+    const plain = toMove.filter(t => t.status === 'unmatched');
+    const handledIds = new Set();
+    if (plain.length) {
+      const { data: bulkMoved, error: bulkErr } = await supabase
+        .from('bank_transactions')
+        .update({ bank_account_id: targetBankAccountId })
+        .in('id', plain.map(t => t.id))
+        .eq('company_id', companyId)
+        .eq('status', 'unmatched')
+        .select('id');
+      if (bulkErr) throw new Error(bulkErr.message);
+      (bulkMoved || []).forEach(r => handledIds.add(r.id));
+      const movedPlain = plain.filter(t => handledIds.has(t.id));
+      await Promise.all(movedPlain.map(auditMove));
+      movedPlain.forEach(t => moved.push(t.id));
+    }
+
+    // Allocated lines: reverse the journal first, one at a time (journal
+    // numbering must stay sequential).
+    for (const txn of toMove) {
+      if (handledIds.has(txn.id)) continue;
+      if (txn.status === 'unmatched') {
+        // Was unmatched when read but no longer by the time of the bulk move
+        // (allocated in another tab). Don't guess — let the user retry.
+        errors.push({ id: txn.id, error: 'Changed while moving — please try again' });
         continue;
       }
 
@@ -2166,12 +2265,7 @@ router.put('/transactions/transfer', authenticate, hasPermission('bank.manage'),
 
         if (updateErr) throw new Error(updateErr.message);
 
-        await AuditLogger.logUserAction(
-          req, 'TRANSFER', 'BANK_TRANSACTION', txn.id,
-          { bank_account_id: txn.bank_account_id, status: txn.status },
-          { bank_account_id: targetBankAccountId, status: 'unmatched' },
-          `Bank transaction moved to ${targetAccount.name} (account ${targetBankAccountId})`
-        );
+        await auditMove(txn);
 
         moved.push(txn.id);
       } catch (err) {

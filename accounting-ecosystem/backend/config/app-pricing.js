@@ -19,10 +19,22 @@ const APP_PRICES = {
   // sean:       { text: '', billing: 'monthly in advance' },
 };
 
+// Optional numbers per entry for Platform Control → Invoice (draft lines,
+// ex VAT, per month): amount (base), perEmployee (Paytime, × active
+// employees). Missing = R0.00 on the draft and Lorenco fills it in.
+//   payroll: { text: '…', billing: 'monthly in advance', amount: 350, perEmployee: 25 },
+
 /** The price text for an app, or null when no price has been set yet. */
 function priceFor(appKey) {
   const p = APP_PRICES[appKey];
   return p && p.text ? { text: p.text, billing: p.billing || 'monthly in advance' } : null;
 }
 
-module.exports = { APP_PRICES, priceFor };
+/** Monthly amounts (ex VAT) for invoicing; zeros when not set yet. */
+function amountsFor(appKey) {
+  const p = APP_PRICES[appKey] || {};
+  const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return { amount: num(p.amount), perEmployee: num(p.perEmployee) };
+}
+
+module.exports = { APP_PRICES, priceFor, amountsFor };

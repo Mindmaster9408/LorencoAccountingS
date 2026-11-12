@@ -159,14 +159,21 @@ function generateInvoicePdf(invoice, lines, company, customer, opts = {}) {
       const W = doc.page.width - L - doc.page.margins.right;
       let y = drawCompanyHeader(doc, company, 'TAX INVOICE');
 
-      // Customer + invoice meta, two columns
-      doc.rect(L, y, W / 2 - 6, 60).fill('#f9fafb').strokeColor(BORDER).lineWidth(0.5).stroke();
-      doc.rect(L + W / 2 + 6, y, W / 2 - 6, 60).fill('#f9fafb').strokeColor(BORDER).lineWidth(0.5).stroke();
+      // Customer + invoice meta, two columns. The bill-to box grows with the
+      // buyer's address (a full SA tax invoice needs it) — 60pt minimum as before.
+      const cityLine = [customer?.city, customer?.province, customer?.postal_code].filter(Boolean).join(', ');
+      const billLines = [customer?.address_line_1, customer?.address_line_2, cityLine, customer?.email,
+        customer?.vat_number ? `VAT: ${customer.vat_number}` : null,
+        customer?.registration_number ? `Reg: ${customer.registration_number}` : null].filter(Boolean);
+      const boxH = Math.max(60, 34 + billLines.length * 11 + 4);
+      doc.rect(L, y, W / 2 - 6, boxH).fill('#f9fafb').strokeColor(BORDER).lineWidth(0.5).stroke();
+      doc.rect(L + W / 2 + 6, y, W / 2 - 6, boxH).fill('#f9fafb').strokeColor(BORDER).lineWidth(0.5).stroke();
 
       doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('BILL TO', L + 10, y + 8);
       doc.fontSize(10).font('Helvetica-Bold').fillColor(DARKTEXT).text(customer?.name || 'Customer', L + 10, y + 20, { width: W / 2 - 30, lineBreak: false });
-      if (customer?.email) doc.fontSize(8).font('Helvetica').fillColor(MUTED).text(customer.email, L + 10, y + 34, { width: W / 2 - 30, lineBreak: false });
-      if (customer?.vat_number) doc.fontSize(8).font('Helvetica').fillColor(MUTED).text(`VAT: ${customer.vat_number}`, L + 10, y + 46, { width: W / 2 - 30, lineBreak: false });
+      billLines.forEach((t, i) => {
+        doc.fontSize(8).font('Helvetica').fillColor(MUTED).text(t, L + 10, y + 34 + i * 11, { width: W / 2 - 30, lineBreak: false });
+      });
 
       const rx = L + W / 2 + 16;
       doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('INVOICE #', rx, y + 8);
@@ -176,7 +183,7 @@ function generateInvoicePdf(invoice, lines, company, customer, opts = {}) {
       doc.fontSize(7).font('Helvetica-Bold').fillColor(MUTED).text('DUE', rx, y + 46);
       doc.fontSize(8).font('Helvetica').fillColor(DARKTEXT).text(fmtDate(invoice.due_date), rx + 40, y + 46);
 
-      y += 74;
+      y += boxH + 14;
 
       const cols = [
         { label: 'DESCRIPTION', width: W * 0.44 },

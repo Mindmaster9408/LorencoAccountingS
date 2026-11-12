@@ -2127,8 +2127,11 @@ Click OK to simulate uploading a file.`;
             document.getElementById('baBankProvider').value           = acct.bank_name || '';
             document.getElementById('baAcctNum').value                = acct.account_number_masked || '';
             document.getElementById('baIsActive').value               = acct.is_active ? 'true' : 'false';
-            document.getElementById('baOpeningBalanceGroup').style.display = 'none';
-            document.getElementById('baOpeningDateGroup').style.display    = 'none';
+            // Opening balance stays editable (was create-only — a typo could never be fixed)
+            document.getElementById('baOpeningBalance').value         = acct.opening_balance != null ? acct.opening_balance : '0';
+            document.getElementById('baOpeningDate').value            = acct.opening_balance_date ? String(acct.opening_balance_date).slice(0, 10) : '';
+            document.getElementById('baOpeningBalanceGroup').style.display = '';
+            document.getElementById('baOpeningDateGroup').style.display    = '';
             document.getElementById('baIsActiveGroup').style.display       = '';
             document.getElementById('bankModalError').style.display        = 'none';
             document.getElementById('saveBankAccountBtn').textContent      = 'Update Account';
@@ -2162,6 +2165,9 @@ Click OK to simulate uploading a file.`;
                 let res, data;
                 if (_editingBankAcctId) {
                     const isActive = document.getElementById('baIsActive').value === 'true';
+                    const openingRaw = document.getElementById('baOpeningBalance').value;
+                    const openingBalance = openingRaw === '' ? 0 : parseFloat(openingRaw);
+                    if (!Number.isFinite(openingBalance)) throw new Error('Opening balance must be a number.');
                     res = await fetch(`/api/accounting/bank/accounts/${_editingBankAcctId}`, {
                         method: 'PUT',
                         headers: getAuthHeaders(),
@@ -2170,7 +2176,9 @@ Click OK to simulate uploading a file.`;
                             bankName:             bankName  || null,
                             accountNumberMasked:  acctNum   || null,
                             ledgerAccountId:      ledgerId  ? parseInt(ledgerId) : null,
-                            isActive
+                            isActive,
+                            openingBalance,
+                            openingBalanceDate:   document.getElementById('baOpeningDate').value || null
                         })
                     });
                 } else {
@@ -2225,6 +2233,15 @@ Click OK to simulate uploading a file.`;
             return 'R\u00a0' + Math.abs(num).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        // Balances keep their sign: formatAmount() drops it on purpose (money
+        // in/out sit in their own columns), which made an overdrawn balance
+        // look positive.
+        function formatBalance(num) {
+            if (num == null) return '\u2014';
+            const n = Math.round(Number(num) * 100) / 100;
+            return (n < 0 ? '-' : '') + formatAmount(n);
+        }
+
         // Computes each transaction's running balance the accounting way — the
         // bank account's own opening balance (its TB starting point, from
         // bank_accounts.opening_balance) plus every money-in, minus every
@@ -2247,14 +2264,19 @@ Click OK to simulate uploading a file.`;
         // other when "All accounts" is selected. Mutates txns in place; assumes
         // txns already arrive in the correct chain order from the API (date
         // ascending) — does not re-sort.
-        function computeRunningBalances(txns) {
+        //
+        // priorTotals (from the API when a "Date From" is set): Σ amount of
+        // every line before that date, per account — added to the opening
+        // balance so the chain starts where it really stands on that date.
+        function computeRunningBalances(txns, priorTotals) {
             const byAccount = {};
             for (const t of txns) {
                 (byAccount[t.bank_account_id] = byAccount[t.bank_account_id] || []).push(t);
             }
             for (const [bankAccountId, acctTxns] of Object.entries(byAccount)) {
                 const acct = bankAccountsData.find(a => String(a.id) === String(bankAccountId));
-                let running = parseFloat(acct?.opening_balance) || 0;
+                const prior = priorTotals ? (parseFloat(priorTotals[bankAccountId]) || 0) : 0;
+                let running = Math.round(((parseFloat(acct?.opening_balance) || 0) + prior) * 100) / 100;
                 for (const t of acctTxns) {
                     running = Math.round((running + (parseFloat(t.amount) || 0)) * 100) / 100;
                     t._computedBalance = running;
@@ -2298,9 +2320,9 @@ Click OK to simulate uploading a file.`;
             // not the bank statement's own imported balance field — that raw
             // value is often missing entirely and, when present, is only used
             // above to flag a mismatch against this computed figure.
-            const bal = txn._computedBalance != null ? formatAmount(txn._computedBalance) : '—';
+            const bal = txn._computedBalance != null ? formatBalance(txn._computedBalance) : '—';
             const balCell = txn._balanceMismatch
-                ? `<td style="color:#d93025;" title="Statement shows ${formatAmount(txn.balance)} — our records compute ${formatAmount(txn._balanceExpected)} from the account's opening balance. Usually means a transaction is missing or duplicated.">⚠️ ${bal}</td>`
+                ? `<td style="color:#d93025;" title="Statement shows ${formatBalance(txn.balance)} — our records compute ${formatBalance(txn._balanceExpected)} from the account's opening balance. Usually means a transaction is missing or duplicated.">⚠️ ${bal}</td>`
                 : `<td>${bal}</td>`;
             return `
             <tr data-txn-id="${txn.id}">
@@ -2477,6 +2499,12 @@ Click OK to simulate uploading a file.`;
                 // Remove loading row
                 document.getElementById('txnLoadingRow')?.remove();
 
+                // Flag balance-chain mismatches BEFORE the money-in/out filter and
+                // the reviewed/unreviewed tab split below, so the check always
+                // walks the complete chronological chain per bank account —
+                // never just whichever rows happen to be visible.
+                computeRunningBalances(txns, data.priorTotals || null);
+
                 // Type filter (client-side)
                 const typeFilter = document.getElementById('typeFilter')?.value;
                 const filtered = txns.filter(txn => {
@@ -2484,11 +2512,6 @@ Click OK to simulate uploading a file.`;
                     if (typeFilter === 'out') return txn.amount < 0;
                     return true;
                 });
-                // Flag balance-chain mismatches BEFORE the reviewed/unreviewed tab
-                // split below, so the check always walks the true, complete
-                // chronological chain per bank account — never just whichever
-                // rows happen to be visible in the current tab.
-                computeRunningBalances(filtered);
 
                 // Keep full set for tab switching; _allTxnData holds current-tab slice
                 window._allTxnDataUnfiltered = filtered;
@@ -2511,7 +2534,7 @@ Click OK to simulate uploading a file.`;
                     const latestBal = latest._computedBalance != null ? latest._computedBalance : latest.balance;
                     if (latestBal != null) {
                         const balEl = document.getElementById('acctBal' + selectedBankAccountId);
-                        if (balEl) balEl.textContent = formatAmount(latestBal);
+                        if (balEl) balEl.textContent = formatBalance(latestBal);
                     }
                 }
 

@@ -63,6 +63,8 @@
         .req-btn.no { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
         .req-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .req-tag { font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: rgba(255,255,255,0.07); color: var(--text-muted); }
+        .btn-invoice { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); color: #6ee7b7; border-radius: 8px; padding: 5px 10px; font-size: 0.75rem; cursor: pointer; }
+        .btn-invoice:hover { background: rgba(16,185,129,0.22); }
         .btn-billing-day { background: rgba(102,126,234,0.1); border: 1px solid rgba(102,126,234,0.25); color: #a5b4fc; border-radius: 8px; padding: 5px 10px; font-size: 0.75rem; cursor: pointer; }
         .topbar-logo {
             width: 36px; height: 36px;
@@ -620,6 +622,9 @@
                 <span class="filter-chip"         id="faSean"       onclick="setAppFilter('sean',this)">&#129302; SEAN</span>
                 <span class="filter-chip"         id="faStorehouse" onclick="setAppFilter('inventory',this)">&#128230; Storehouse</span>
             </div>
+            <div class="filter-group">
+                <span class="filter-chip" id="fHidden" onclick="toggleHidden()" title="Test, demo, presentation and merged companies — hidden and never invoiced">👁 Show test/demo</span>
+            </div>
             <button class="btn-add-client" onclick="openAddModal()">+ Add Client</button>
             <span class="toolbar-count" id="toolbarCount">Loading...</span>
         </div>
@@ -908,7 +913,11 @@
         ];
 
         // ── State ────────────────────────────────────────────────────────────
-        let allClients         = [];
+        let allClients         = [];   // what the panel shows (test/demo hidden unless toggled)
+        let allClientsRaw      = [];   // everything the API returned
+        let showHidden         = false;
+        let hiddenCompanyIds   = new Set(); // companies of hidden (billing_excluded) clients
+        let ecoBilling         = { byCompany: {}, ecoToPayer: {} }; // /api/eco-billing/preview
         let companyMap         = {};
         let managingCompanyIds = new Set(); // companies that appear as eco_client.company_id
         let billingSummary     = {};   // { [company_id]: { active_employees: N } }
@@ -959,18 +968,7 @@
                 billingByClient = bData.by_client_id || {};
             }
 
-            if (clientsRes.ok) {
-                const data = await clientsRes.json();
-                allClients = data.clients || [];
-            } else {
-                allClients = [];
-            }
-
-            // Build set of companies that actively manage at least one eco-client.
-            // Used to distinguish real accounting practices from orphan/legacy company records.
-            managingCompanyIds = new Set(
-                allClients.filter(c => c.company_id).map(c => Number(c.company_id))
-            );
+            setClients(clientsRes.ok ? ((await clientsRes.json()).clients || []) : []);
 
             // Default: expand all real account holder groups.
             // A company is a real account holder if it is NOT a client_company_id data silo
@@ -979,8 +977,8 @@
             // as "data silo evidence" — those are standalone companies' own billable client
             // row (see auth.js /register), and must still render as their own holder group.
             const clientCompanyIdSet = new Set(
-                allClients
-                    .filter(c => c.client_company_id && Number(c.client_company_id) !== Number(c.company_id))
+                allClientsRaw
+                    .filter(c => c.client_company_id && !c.access_link && Number(c.client_company_id) !== Number(c.company_id))
                     .map(c => Number(c.client_company_id))
             );
             Object.keys(companyMap).forEach(id => {
@@ -996,6 +994,101 @@
             renderStats();
             applyFilters();
             loadAppRequests(); // never blocks the main panel
+            loadEcoBilling();  // never blocks the main panel
+        }
+
+        // ── Test/demo rows: hidden by default (eco_clients.billing_excluded) ──
+        // Hidden rows are never invoiced either. Rows created under a hidden
+        // company (e.g. the TEST company's own clients) are hidden with it.
+        function setClients(list) {
+            allClientsRaw = list || [];
+            hiddenCompanyIds = new Set(allClientsRaw
+                .filter(c => c.billing_excluded && c.client_company_id)
+                .map(c => Number(c.client_company_id)));
+            const isHidden = c => !!c.billing_excluded || hiddenCompanyIds.has(Number(c.company_id));
+            allClients = showHidden ? [...allClientsRaw] : allClientsRaw.filter(c => !isHidden(c));
+            // Companies that actively manage at least one eco-client — tells real
+            // practices apart from orphan/legacy company records.
+            managingCompanyIds = new Set(
+                allClients.filter(c => c.company_id).map(c => Number(c.company_id))
+            );
+            const n = allClientsRaw.filter(isHidden).length;
+            const chip = document.getElementById('fHidden');
+            if (chip) {
+                chip.textContent = (showHidden ? '🙈 Hide test/demo' : '👁 Show test/demo') + ` (${n})`;
+                chip.classList.toggle('active', showHidden);
+            }
+        }
+        function toggleHidden() {
+            showHidden = !showHidden;
+            setClients(allClientsRaw);
+            renderStats();
+            applyFilters();
+        }
+        async function toggleBillingExcluded(clientId, exclude) {
+            const c = allClientsRaw.find(x => x.id === clientId);
+            if (!c) return;
+            const msg = exclude
+                ? `Hide "${c.name}" as a test/demo company?\n\nIt disappears from this panel (use "Show test/demo" to see it) and is never invoiced.`
+                : `Show "${c.name}" again and invoice it like any other client?`;
+            if (!confirm(msg)) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients/${clientId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ billing_excluded: exclude }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                c.billing_excluded = exclude;
+                setClients(allClientsRaw);
+                renderStats();
+                applyFilters();
+                loadEcoBilling();
+                showToast(exclude ? `&#128584; ${esc(c.name)} hidden` : `&#128065; ${esc(c.name)} visible again`);
+            } catch (err) {
+                showToast('&#10060; ' + esc(err.message), true);
+            }
+        }
+
+        // ── Eco billing: invoice from Lorenco Ecosystum's Leo (draft only) ──
+        async function loadEcoBilling() {
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-billing/preview`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) return;
+                const d = await res.json();
+                const byCompany = {};
+                (d.payers || []).forEach(p => { byCompany[p.company_id] = p; });
+                ecoBilling = { byCompany, ecoToPayer: d.eco_client_to_payer || {} };
+                applyFilters();
+            } catch (e) { /* panel works without it */ }
+        }
+        function invoiceButtonHtml(companyId, label) {
+            const p = ecoBilling.byCompany[companyId];
+            if (!p) return '';
+            const name = esc(p.name).replace(/'/g, "\\'");
+            const tip = (p.client_count > 1 ? `One invoice for all ${p.client_count} clients` : 'Draft invoice in Ledger Leo')
+                + (p.missing.length ? ` — missing: ${p.missing.join(', ')}` : '');
+            return `<button class="btn-invoice" title="${esc(tip)}" onclick="event.stopPropagation(); invoiceCompany(${companyId}, '${name}')">&#129534; ${label}${p.missing.length ? ' &#9888;' : ''}</button>`;
+        }
+        async function invoiceCompany(companyId, name) {
+            const p = ecoBilling.byCompany[companyId] || {};
+            let msg = `Create a DRAFT invoice for ${name} in Lorenco Ecosystum's Ledger Leo?\n\n`
+                + (p.client_count > 1 ? `One invoice with a line per app for each of its ${p.client_count} clients.\n` : '')
+                + 'Nothing is sent — you check it in Leo and post/email it from there.';
+            if (p.missing && p.missing.length) msg += `\n\n⚠ The Eco has no ${p.missing.join(', ')} for this company — fill it in on the company's details so it appears on the invoice.`;
+            if (!confirm(msg)) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-billing/invoice/${companyId}`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+                showToast(`&#9989; Draft ${esc(data.invoice_number)} created in Lorenco Ecosystum's Leo (${data.line_count} line${data.line_count === 1 ? '' : 's'})`
+                    + (data.unpriced ? ' — prices still R0.00, fill them in in Leo' : ''));
+            } catch (err) {
+                showToast('&#10060; ' + esc(err.message), true);
+            }
         }
 
         // ── Stats ─────────────────────────────────────────────────────────────
@@ -1070,14 +1163,15 @@
             // Self-referencing rows (standalone companies' own billable client row) do not
             // count as data-silo evidence — see matching note in init().
             const clientCompanyIdSet = new Set(
-                allClients
-                    .filter(c => c.client_company_id && Number(c.client_company_id) !== Number(c.company_id))
+                allClientsRaw
+                    .filter(c => c.client_company_id && !c.access_link && Number(c.client_company_id) !== Number(c.company_id))
                     .map(c => Number(c.client_company_id))
             );
             const accountHolderIds = Object.keys(companyMap)
                 .map(Number)
                 .filter(id => {
                     if (clientCompanyIdSet.has(id)) return false;  // exclude data silos
+                    if (!showHidden && hiddenCompanyIds.has(id)) return false; // test/demo holder
                     const co      = companyMap[id];
                     const modules = Array.isArray(co && co.modules_enabled) ? co.modules_enabled : [];
                     return managingCompanyIds.has(id) || modules.length > 0;
@@ -1181,6 +1275,7 @@
                             onclick="openBillingReportModal(${firmId}, '${esc(firmName).replace(/'/g,"\\'")}')">
                             &#128202; Trek Verslag
                         </button>
+                        ${invoiceButtonHtml(firmId, 'Invoice')}
                     </span>
                     <span class="holder-arrow ${isExpanded ? 'open' : ''}">&#9660;</span>
                 </div>
@@ -1249,6 +1344,15 @@
                     <span class="client-footer-date">&#128197; ${dateStr}</span>
                     <button class="btn-billing-day" onclick="editBillingDay(${c.id})" title="Day of the month this client is invoiced — cancellations take effect on it">
                         &#129534; ${c.billing_day ? `Bills on day ${c.billing_day}` : 'Set billing day'}
+                    </button>
+                    ${/* Invoiced on its own (client of Lorenco's practice); a practice's
+                         clients are invoiced from the practice's header instead. */
+                      (Number(ecoBilling.ecoToPayer[c.id]) === Number(c.client_company_id)
+                        && Number(c.company_id) !== Number(c.client_company_id))
+                        ? invoiceButtonHtml(Number(c.client_company_id), 'Invoice') : ''}
+                    <button class="btn-billing-day" onclick="toggleBillingExcluded(${c.id}, ${!c.billing_excluded})"
+                        title="${c.billing_excluded ? 'Show again and invoice like any other client' : 'Test/demo company: hide from this panel and never invoice'}">
+                        ${c.billing_excluded ? '&#128065; Unhide' : '&#128584; Hide'}
                     </button>
                     <button class="btn-move-client"
                         onclick="openMoveClientModal(${c.id}, '${esc(c.name).replace(/'/g,"\\'")}', ${c.company_id || 'null'})">
@@ -1535,7 +1639,7 @@
             // Self-referencing rows do not count as data-silo evidence — see init().
             const clientCompanyIdSet = new Set(
                 allClients
-                    .filter(c => c.client_company_id && Number(c.client_company_id) !== Number(c.company_id))
+                    .filter(c => c.client_company_id && !c.access_link && Number(c.client_company_id) !== Number(c.company_id))
                     .map(c => Number(c.client_company_id))
             );
             const accountHolders = Object.values(companyMap).filter(co => {
@@ -1912,19 +2016,16 @@
                 ]);
                 if (clientsRes.ok) {
                     const data = await clientsRes.json();
-                    allClients = data.clients || [];
+                    setClients(data.clients || []); // also rebuilds managingCompanyIds
                 }
                 if (billingRes && billingRes.ok) {
                     const bData = await billingRes.json();
                     billingSummary  = bData.summary      || {};
                     billingByClient = bData.by_client_id || {};
                 }
-                // Rebuild derived state from fresh server data
-                managingCompanyIds = new Set(
-                    allClients.filter(c => c.company_id).map(c => Number(c.company_id))
-                );
                 renderStats();
                 applyFilters();
+                loadEcoBilling();
             } catch(err) {
                 console.error('reloadClientsData error:', err.message);
             }
@@ -2170,7 +2271,7 @@
         async function refreshClientsAfterRequest() {
             try {
                 const res = await fetch(`${API_BASE}/api/eco-clients?status=all`, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (res.ok) { allClients = (await res.json()).clients || []; renderStats(); applyFilters(); }
+                if (res.ok) { setClients((await res.json()).clients || []); renderStats(); applyFilters(); }
             } catch (_) {}
         }
 
