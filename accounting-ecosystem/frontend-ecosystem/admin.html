@@ -44,6 +44,26 @@
             z-index: 100;
         }
         .topbar-left { display: flex; align-items: center; gap: 14px; }
+
+        /* ── App requests panel (migration 179) ── */
+        .req-panel { background: rgba(251,191,36,0.05); border: 1px solid rgba(251,191,36,0.22); border-radius: 14px; padding: 16px 18px; margin-bottom: 20px; }
+        .req-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
+        .req-panel-title { font-weight: 700; font-size: 0.95rem; }
+        .req-count { background: rgba(251,191,36,0.2); color: #fcd34d; border-radius: 20px; padding: 1px 9px; font-size: 0.78rem; margin-left: 6px; }
+        .req-link { background: none; border: none; color: #a5b4fc; cursor: pointer; font-size: 0.8rem; }
+        .req-sub { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 12px 0 6px; }
+        .req-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,0.2); margin-bottom: 6px; }
+        .req-main { flex: 1; min-width: 220px; }
+        .req-main .r1 { font-weight: 600; font-size: 0.88rem; }
+        .req-main .r2 { font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; }
+        .req-err { font-size: 0.74rem; color: #fca5a5; margin-top: 3px; }
+        .req-bd { width: 64px; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: #fff; font-size: 0.8rem; }
+        .req-btn { padding: 6px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: #fff; }
+        .req-btn.ok { background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.35); color: #6ee7b7; }
+        .req-btn.no { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+        .req-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .req-tag { font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: rgba(255,255,255,0.07); color: var(--text-muted); }
+        .btn-billing-day { background: rgba(102,126,234,0.1); border: 1px solid rgba(102,126,234,0.25); color: #a5b4fc; border-radius: 8px; padding: 5px 10px; font-size: 0.75rem; cursor: pointer; }
         .topbar-logo {
             width: 36px; height: 36px;
             background: linear-gradient(135deg, #ef4444, #dc2626);
@@ -572,6 +592,17 @@
             </div>
         </div>
 
+        <!-- App requests + cancellations (migration 179) -->
+        <div class="req-panel" id="reqPanel" style="display:none;">
+            <div class="req-panel-head">
+                <div class="req-panel-title">&#128276; App requests <span class="req-count" id="reqCount"></span></div>
+                <button class="req-link" id="reqRecentToggle" onclick="toggleRecentRequests()">Show recent</button>
+            </div>
+            <div id="reqPending"></div>
+            <div id="reqCancellations"></div>
+            <div id="reqRecent" style="display:none;"></div>
+        </div>
+
         <!-- Toolbar -->
         <div class="toolbar">
             <input type="text" class="toolbar-search" id="searchInput"
@@ -964,6 +995,7 @@
 
             renderStats();
             applyFilters();
+            loadAppRequests(); // never blocks the main panel
         }
 
         // ── Stats ─────────────────────────────────────────────────────────────
@@ -1215,6 +1247,9 @@
 
                 <div class="client-footer">
                     <span class="client-footer-date">&#128197; ${dateStr}</span>
+                    <button class="btn-billing-day" onclick="editBillingDay(${c.id})" title="Day of the month this client is invoiced — cancellations take effect on it">
+                        &#129534; ${c.billing_day ? `Bills on day ${c.billing_day}` : 'Set billing day'}
+                    </button>
                     <button class="btn-move-client"
                         onclick="openMoveClientModal(${c.id}, '${esc(c.name).replace(/'/g,"\\'")}', ${c.company_id || 'null'})">
                         &#128260; Move
@@ -2045,6 +2080,144 @@
             } finally {
                 btn.disabled    = false;
                 btn.textContent = '⬇ Download Invoice (Payroll)';
+            }
+        }
+
+        // ── App requests (migration 179) ──────────────────────────────────────
+        // Clients request apps / cancel them; Ruan + Anton are emailed. Approve
+        // switches the app on (same sync as the toggles). Cancellations switch
+        // off automatically on the client's next billing date.
+        let showRecentRequests = false;
+
+        function fmtDay(d) {
+            if (!d) return '';
+            const [y, m, day] = String(d).slice(0, 10).split('-');
+            return `${day}/${m}/${y}`;
+        }
+
+        async function reqFetch(path, opts = {}) {
+            const res = await fetch(`${API_BASE}/api/app-subscriptions${path}`, {
+                ...opts,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Failed');
+            return data;
+        }
+
+        async function loadAppRequests() {
+            let q;
+            try { q = await reqFetch('/queue'); }
+            catch (err) { console.warn('[app-requests] queue not loaded:', err.message); return; }
+
+            const panel = document.getElementById('reqPanel');
+            const open = q.pending.length + q.cancellations.length;
+            panel.style.display = (open || q.recent.length) ? '' : 'none';
+            document.getElementById('reqCount').textContent = open ? open : '';
+
+            const who = r => `${esc(r.requested_by_name || 'unknown')}${r.requested_by_email ? ' · ' + esc(r.requested_by_email) : ''}`;
+            const where = r => `${esc(r.client_name)}${r.practice_name && r.practice_name !== r.client_name ? ' <span style="color:var(--text-muted);font-weight:400;">under ' + esc(r.practice_name) + '</span>' : ''}`;
+
+            document.getElementById('reqPending').innerHTML = q.pending.length ? `
+                <div class="req-sub">Waiting for approval</div>
+                ${q.pending.map(r => `
+                <div class="req-row">
+                    <div class="req-main">
+                        <div class="r1">${esc(r.app_label)} — ${where(r)}</div>
+                        <div class="r2">${who(r)} · ${fmtDay(r.requested_at)} · ${esc(r.price_shown || '')}</div>
+                        ${r.already_active ? '<div class="req-err">Already active (switched on directly) — approving just closes this request.</div>' : ''}
+                        ${r.last_error ? `<div class="req-err">Last attempt failed: ${esc(r.last_error)}</div>` : ''}
+                    </div>
+                    <label style="font-size:0.74rem;color:var(--text-muted);">Billing day
+                        <input class="req-bd" type="number" min="1" max="31" id="reqbd-${r.id}" value="${r.billing_day || ''}" placeholder="${new Date().getDate()}">
+                    </label>
+                    <button class="req-btn ok" onclick="approveRequest(${r.id}, this)">&#10003; Approve</button>
+                    <button class="req-btn no" onclick="declineRequest(${r.id}, this)">Decline</button>
+                </div>`).join('')}` : '';
+
+            document.getElementById('reqCancellations').innerHTML = q.cancellations.length ? `
+                <div class="req-sub">Cancelled — switching off automatically</div>
+                ${q.cancellations.map(r => `
+                <div class="req-row">
+                    <div class="req-main">
+                        <div class="r1">${esc(r.app_label)} — ${where(r)}</div>
+                        <div class="r2">${who(r)} · switches off on <strong>${fmtDay(r.effective_date)}</strong> · do not invoice it for the next period</div>
+                        ${r.last_error ? `<div class="req-err">Switch-off failed, will retry: ${esc(r.last_error)}</div>` : ''}
+                    </div>
+                </div>`).join('')}` : '';
+
+            const tag = { approved: 'Approved', declined: 'Declined', withdrawn: 'Withdrawn', applied: 'Switched off', undone: 'Cancel undone' };
+            document.getElementById('reqRecent').innerHTML = q.recent.length ? `
+                <div class="req-sub">Last 30 days</div>
+                ${q.recent.map(r => `
+                <div class="req-row">
+                    <div class="req-main">
+                        <div class="r1">${esc(r.app_label)} — ${where(r)}</div>
+                        <div class="r2">${r.kind === 'add' ? 'Request' : 'Cancellation'} by ${who(r)}${r.decision_note ? ' · reason: ' + esc(r.decision_note) : ''}</div>
+                    </div>
+                    <span class="req-tag">${tag[r.status] || esc(r.status)}</span>
+                </div>`).join('')}` : '';
+            document.getElementById('reqRecent').style.display = showRecentRequests ? '' : 'none';
+            document.getElementById('reqRecentToggle').style.display = q.recent.length ? '' : 'none';
+        }
+
+        function toggleRecentRequests() {
+            showRecentRequests = !showRecentRequests;
+            document.getElementById('reqRecent').style.display = showRecentRequests ? '' : 'none';
+            document.getElementById('reqRecentToggle').textContent = showRecentRequests ? 'Hide recent' : 'Show recent';
+        }
+
+        async function refreshClientsAfterRequest() {
+            try {
+                const res = await fetch(`${API_BASE}/api/eco-clients?status=all`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) { allClients = (await res.json()).clients || []; renderStats(); applyFilters(); }
+            } catch (_) {}
+        }
+
+        async function approveRequest(id, btn) {
+            const bdEl = document.getElementById(`reqbd-${id}`);
+            const billing_day = bdEl && bdEl.value ? parseInt(bdEl.value, 10) : null;
+            if (billing_day !== null && !(billing_day >= 1 && billing_day <= 31)) { showToast('Billing day must be 1–31', true); return; }
+            btn.disabled = true;
+            try {
+                await reqFetch(`/requests/${id}/approve`, { method: 'POST', body: JSON.stringify({ billing_day }) });
+                showToast('&#9989; Approved — the app is now active. Remember to invoice the client.');
+                await loadAppRequests();
+                await refreshClientsAfterRequest();
+            } catch (err) {
+                showToast('&#10060; ' + esc(err.message), true);
+                btn.disabled = false;
+            }
+        }
+
+        async function declineRequest(id, btn) {
+            const reason = prompt('Reason for declining (sent to the client — leave empty to just say Lorenco will contact them):', '');
+            if (reason === null) return;
+            btn.disabled = true;
+            try {
+                await reqFetch(`/requests/${id}/decline`, { method: 'POST', body: JSON.stringify({ reason }) });
+                showToast('Request declined.');
+                await loadAppRequests();
+            } catch (err) {
+                showToast('&#10060; ' + esc(err.message), true);
+                btn.disabled = false;
+            }
+        }
+
+        async function editBillingDay(clientId) {
+            const client = allClients.find(c => c.id === clientId);
+            if (!client) return;
+            const val = prompt(`Billing day for ${client.name} (1–31, the day of the month you invoice them; empty = not set):`, client.billing_day || '');
+            if (val === null) return;
+            const billing_day = String(val).trim() === '' ? null : parseInt(val, 10);
+            if (billing_day !== null && !(billing_day >= 1 && billing_day <= 31)) { showToast('Billing day must be 1–31', true); return; }
+            try {
+                await reqFetch(`/client/${clientId}/billing-day`, { method: 'PUT', body: JSON.stringify({ billing_day }) });
+                client.billing_day = billing_day;
+                showToast(billing_day ? `&#9989; ${esc(client.name)} bills on day ${billing_day}` : 'Billing day cleared');
+                applyFilters();
+            } catch (err) {
+                showToast('&#10060; ' + esc(err.message), true);
             }
         }
 

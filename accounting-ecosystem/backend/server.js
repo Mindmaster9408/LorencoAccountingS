@@ -51,6 +51,7 @@ const auditRoutes = require('./shared/routes/audit');
 const customersRoutes = require('./shared/routes/customers');
 const clientLinksRoutes  = require('./shared/routes/client-links');
 const ecoClientsRoutes    = require('./shared/routes/eco-clients');
+const appSubscriptionRoutes = require('./shared/routes/app-subscriptions');
 const billingReportRoutes = require('./shared/routes/billing-report');
 // Global KV store — all ecosystem frontend business data (NEVER in localStorage)
 const globalKvRoutes = require('./shared/routes/kv');
@@ -277,6 +278,8 @@ app.use('/api/users', authenticateToken, usersRoutes);
 app.use('/api/employees', authenticateToken, employeesRoutes);
 app.use('/api/audit', authenticateToken, auditRoutes);
 app.use('/api/eco-clients', authenticateToken, ecoClientsRoutes);
+// App requests / cancellations (clients request, Lorenco approves) — migration 179
+app.use('/api/app-subscriptions', authenticateToken, appSubscriptionRoutes);
 // Billing report — super admin only (requireSuperAdmin applied inside billingReportRoutes)
 app.use('/api/ecosystem/billing-report', authenticateToken, billingReportRoutes);
 app.use('/api/customers', authenticateToken, customersRoutes);
@@ -1039,6 +1042,18 @@ async function start() {
       require('./modules/accounting/services/recurringInvoiceService').startRecurringInvoiceScheduler();
     } catch (schedErr) {
       console.warn('  ⚠️  Recurring invoice scheduler not started:', schedErr.message);
+    }
+  }
+
+  // 4h. App subscriptions (migration 179) — hourly runner that switches off
+  // apps a client cancelled once their next billing date arrives. Each row is
+  // claimed with a conditional update, so several instances are safe.
+  // APP_SUBSCRIPTION_SCHEDULER=off disables it.
+  if (connected) {
+    try {
+      require('./shared/services/appSubscriptions').startAppSubscriptionScheduler();
+    } catch (schedErr) {
+      console.warn('  ⚠️  App subscription scheduler not started:', schedErr.message);
     }
   }
 

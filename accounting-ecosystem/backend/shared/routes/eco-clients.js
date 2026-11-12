@@ -374,6 +374,24 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Open app requests / scheduled cancellations (migration 179) so client
+    // cards can show "requested" and "ends on" badges. Never fails the list.
+    const listedIds = filtered.map(c => c.id);
+    if (listedIds.length > 0) {
+      try {
+        const { data: openReqs, error: reqErr } = await supabase
+          .from('app_subscription_requests')
+          .select('id, eco_client_id, app_key, kind, status, effective_date')
+          .in('eco_client_id', listedIds)
+          .in('status', ['pending', 'scheduled', 'applying']);
+        if (!reqErr && openReqs) {
+          const byClient = {};
+          openReqs.forEach(r => { (byClient[r.eco_client_id] = byClient[r.eco_client_id] || []).push(r); });
+          filtered = filtered.map(c => ({ ...c, open_app_requests: byClient[c.id] || [] }));
+        }
+      } catch (_) { /* table not migrated yet — cards simply show no badges */ }
+    }
+
     res.json({ clients: filtered, total: filtered.length });
   } catch (err) {
     console.error('eco-clients GET / error:', err.message);
@@ -775,19 +793,29 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // ── App subscriptions (2026-11-11): only a super admin switches apps on ──
+    // For anyone else the chosen apps become REQUESTS (Ruan/Anton are emailed
+    // and approve them); the client starts with no apps and no modules.
+    const callerIsAdmin = isAdminUser(req.user);
+    const directApps    = callerIsAdmin ? requestedApps : [];
+    const appsToRequest = callerIsAdmin ? [] : [...new Set(requestedApps)];
+
     // ── Resolve or auto-create the client's OWN company for data isolation ──
     let resolvedClientCompanyId = parseInt(client_company_id) || null;
 
     if (!resolvedClientCompanyId) {
       // Auto-create a dedicated company for this client
-      const clientApps = Array.isArray(apps) ? apps : [];
+      const clientApps = directApps;
 
       // Build company insert — include registration details if provided (e.g. from PDF import)
+      // The pos/payroll/accounting default when no app was ticked is the original
+      // super-admin behaviour; a non-admin's client starts with nothing switched on.
       const companyInsert = {
         company_name:      name,
         trading_name:      name,
         is_active:         true,
-        modules_enabled:   clientApps.length > 0 ? clientApps : ['pos', 'payroll', 'accounting'],
+        modules_enabled:   clientApps.length > 0 ? clientApps
+                           : (callerIsAdmin ? ['pos', 'payroll', 'accounting'] : []),
         subscription_status: 'active',
       };
       if (id_number)          companyInsert.registration_number = id_number;
@@ -821,7 +849,7 @@ router.post('/', async (req, res) => {
       id_number:   id_number   || null,
       address:     address     || null,
       client_type: client_type || 'business',
-      apps:        Array.isArray(apps) ? apps : [],
+      apps:        directApps,
       notes:       notes       || null,
       is_active:   true,
       // Random non-sequential client reference (CLT-XXXXXXXX). Unique index enforces global uniqueness.
@@ -847,12 +875,20 @@ router.post('/', async (req, res) => {
 
     await auditFromReq(req, 'CREATE', 'eco_client', inserted.id, {
       module: 'ecosystem',
-      metadata: { apps: inserted.apps, synced: syncResult.synced, syncErrors: syncResult.errors }
+      metadata: { apps: inserted.apps, synced: syncResult.synced, syncErrors: syncResult.errors, requested_apps: appsToRequest }
     });
+
+    // Apps a non-admin ticked → requests (never fails the create itself).
+    let appRequests = [];
+    if (appsToRequest.length > 0) {
+      appRequests = await require('../services/appSubscriptions')
+        .createAddRequestsForNewClient(req, inserted, appsToRequest);
+    }
 
     res.status(201).json({
       ...inserted,
-      sync: syncResult
+      sync: syncResult,
+      app_requests: appRequests,
     });
   } catch (err) {
     console.error('eco-clients POST / error:', err.message);
@@ -874,45 +910,119 @@ router.put('/:id', async (req, res) => {
     if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
     const old = loaded.client;
 
-    // ── Storehouse restriction: inventory may only be assigned under The Infinite Legacy ──
-    if (Array.isArray(req.body.apps)) {
-      const oldApps = old.apps || [];
-      const inventoryBeingAdded = req.body.apps.includes('inventory') && !oldApps.includes('inventory');
-      if (inventoryBeingAdded) {
-        const allowed = await isInfiniteLegacyCompany(old.company_id);
-        if (!allowed) {
-          return res.status(403).json({
-            error: 'Stockton can only be assigned under The Infinite Legacy.'
-          });
-        }
-      }
-
-      // ── Practice restriction: Practice Management only for accounting_practice companies ──
-      const practiceBeingAdded = req.body.apps.includes('practice') && !oldApps.includes('practice');
-      if (practiceBeingAdded && old.client_company_id) {
-        const { data: firmCo } = await supabase
-          .from('companies')
-          .select('account_holder_type')
-          .eq('id', old.client_company_id)
-          .single();
-        if (!firmCo || firmCo.account_holder_type !== 'accounting_practice') {
-          return res.status(403).json({
-            error: 'Firmflow can only be activated for accounting practices. ' +
-                   'Set this company\'s type to "Accounting Practice" first.'
-          });
-        }
-      }
+    // ── App subscriptions (2026-11-11): only Lorenco switches apps/addons on ──
+    // A non-admin changing the app or addon list (or billing fields) is refused;
+    // they go through /api/app-subscriptions (request → Ruan/Anton approve,
+    // cancel → switched off on the client's next billing date).
+    if (!isAdminUser(req.user)) {
+      const block = nonAdminUpdateBlock(old, req.body);
+      if (block) return res.status(403).json(block);
     }
 
+    if (Array.isArray(req.body.apps)) {
+      const invalid = await validateAppAdditions(old, req.body.apps);
+      if (invalid) return res.status(invalid.status).json({ error: invalid.error });
+    }
+
+    const result = await applyEcoClientUpdate(req, old, req.body);
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    res.json({ ...result.updated, sync: result.syncResult });
+  } catch (err) {
+    console.error('eco-clients PUT /:id error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Fields only a super admin may change. Billing markers are Lorenco's own
+// bookkeeping of what was invoiced — a client must never be able to set them.
+const ADMIN_ONLY_FIELDS = ['package_name', 'billing_day',
+                           'last_billed_employees', 'last_billed_period', 'last_billed_date'];
+
+const sameSet = (a, b) => {
+  const x = new Set(a || []), y = new Set(b || []);
+  return x.size === y.size && [...x].every(v => y.has(v));
+};
+
+/**
+ * Why a non-admin PUT must be refused, or null when it is fine. Sending the
+ * SAME app/addon list back (forms that post every field) is allowed.
+ */
+function nonAdminUpdateBlock(old, body) {
+  if (Array.isArray(body.apps) && !sameSet(old.apps, body.apps)) {
+    return {
+      error: 'Apps are switched on by request. Use "Manage apps" on the client card — ' +
+             'Lorenco is notified and activates the app after approval.',
+      code: 'APP_CHANGE_REQUIRES_REQUEST',
+    };
+  }
+  if (Array.isArray(body.addons) && !sameSet(old.addons, body.addons)) {
+    return { error: 'Add-ons can only be changed by Lorenco. Please contact us.', code: 'ADDON_CHANGE_REQUIRES_LORENCO' };
+  }
+  const touched = ADMIN_ONLY_FIELDS.find(f =>
+    body[f] !== undefined && JSON.stringify(body[f]) !== JSON.stringify(old[f] === undefined ? null : old[f]));
+  if (touched) {
+    return { error: 'Billing details can only be changed by Lorenco.', code: 'ADMIN_ONLY_FIELD' };
+  }
+  return null;
+}
+
+/**
+ * Business restrictions on which apps a client may have at all — applies to
+ * super admins as well (Stockton only under The Infinite Legacy; Firmflow only
+ * for accounting practices). Returns null or { status, error }.
+ */
+async function validateAppAdditions(old, newApps) {
+  const oldApps = old.apps || [];
+
+  // ── Storehouse restriction: inventory may only be assigned under The Infinite Legacy ──
+  const inventoryBeingAdded = newApps.includes('inventory') && !oldApps.includes('inventory');
+  if (inventoryBeingAdded) {
+    const allowed = await isInfiniteLegacyCompany(old.company_id);
+    if (!allowed) {
+      return { status: 403, error: 'Stockton can only be assigned under The Infinite Legacy.' };
+    }
+  }
+
+  // ── Practice restriction: Practice Management only for accounting_practice companies ──
+  const practiceBeingAdded = newApps.includes('practice') && !oldApps.includes('practice');
+  if (practiceBeingAdded && old.client_company_id) {
+    const { data: firmCo } = await supabase
+      .from('companies')
+      .select('account_holder_type')
+      .eq('id', old.client_company_id)
+      .single();
+    if (!firmCo || firmCo.account_holder_type !== 'accounting_practice') {
+      return {
+        status: 403,
+        error: 'Firmflow can only be activated for accounting practices. ' +
+               'Set this company\'s type to "Accounting Practice" first.'
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Apply an update to an eco_client and run every downstream sync (new app
+ * records, modules_enabled, addon flags, company contact fields) + audit.
+ * The ONE place this logic lives — used by PUT /:id and by the app
+ * subscription approve/cancel flow (shared/services/appSubscriptions.js).
+ * Caller is responsible for permission checks. `req` is only used for audit
+ * (the scheduler passes a synthetic system req).
+ * Returns { updated, syncResult } or { status, error }.
+ */
+async function applyEcoClientUpdate(req, old, body) {
+    const clientId = old.id;
     const allowed = ['name', 'email', 'phone', 'id_number', 'address', 'client_type', 'apps', 'addons',
-                     'package_name', 'notes', 'is_active',
+                     'package_name', 'notes', 'is_active', 'billing_day',
                      'last_billed_employees', 'last_billed_period', 'last_billed_date'];
     const updates = { updated_at: new Date().toISOString() };
     const changedFields = [];
     allowed.forEach(key => {
-      if (req.body[key] !== undefined) {
-        updates[key] = req.body[key];
-        if (JSON.stringify(old[key]) !== JSON.stringify(req.body[key])) {
+      if (body[key] !== undefined) {
+        updates[key] = body[key];
+        if (JSON.stringify(old[key]) !== JSON.stringify(body[key])) {
           changedFields.push(key);
         }
       }
@@ -927,7 +1037,7 @@ router.put('/:id', async (req, res) => {
 
     if (error) {
       console.error('eco-clients update error:', error.message);
-      return res.status(500).json({ error: 'Failed to update client' });
+      return { status: 500, error: 'Failed to update client' };
     }
 
     // 1. Sync newly-added apps (create new records in POS/Payroll)
@@ -1125,12 +1235,8 @@ router.put('/:id', async (req, res) => {
       metadata: { old_apps: old.apps, new_apps: updated.apps, changedFields, synced: syncResult.synced, updated: syncResult.updated }
     });
 
-    res.json({ ...updated, sync: syncResult });
-  } catch (err) {
-    console.error('eco-clients PUT /:id error:', err.message);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+    return { updated, syncResult };
+}
 
 // ─── Firm Access Routes ──────────────────────────────────────────────────────
 
@@ -1610,3 +1716,10 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+// Shared with shared/services/appSubscriptions.js (approve / scheduled cancel)
+// so enabling or disabling an app always runs the exact same sync logic.
+module.exports.applyEcoClientUpdate = applyEcoClientUpdate;
+module.exports.validateAppAdditions = validateAppAdditions;
+module.exports.loadManagedClient    = loadManagedClient;
+module.exports.isAdminUser          = isAdminUser;

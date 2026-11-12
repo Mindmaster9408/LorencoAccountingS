@@ -331,7 +331,11 @@
                 <div class="form-row full">
                     <div class="form-field">
                         <label>Linked Apps</label>
-                        <div class="app-checkboxes" id="fApps">
+                        <!-- Display only (2026-11-11): apps are requested / cancelled via "+ Add" on the
+                             client card. This form never sends `apps` — it used to post only these 3,
+                             silently dropping Stockton / Firmflow / SEAN on every save. -->
+                        <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;">Apps are managed with <strong>+ Add</strong> on the client card in the dashboard.</div>
+                        <div class="app-checkboxes" id="fApps" style="pointer-events:none;opacity:0.75;">
                             <label class="app-check" onclick="toggleAppCheck(this)">
                                 <input type="checkbox" name="apps" value="pos">
                                 <span class="app-check-icon">🛒</span>
@@ -489,9 +493,6 @@
             label.style.display = '';
             statusEl.className = 'sync-status';
 
-            const selectedApps = [];
-            document.querySelectorAll('#fApps input[name="apps"]:checked').forEach(cb => selectedApps.push(cb.value));
-
             const payload = {
                 name:        document.getElementById('fName').value.trim(),
                 email:       document.getElementById('fEmail').value.trim() || null,
@@ -499,7 +500,6 @@
                 id_number:   document.getElementById('fIdNumber').value.trim() || null,
                 address:     document.getElementById('fAddress').value.trim() || null,
                 client_type: document.getElementById('fType').value,
-                apps:        selectedApps,
                 notes:       document.getElementById('fNotes').value.trim() || null,
             };
 
@@ -535,6 +535,7 @@
                 showToast('Saved & synced successfully');
 
                 // Refresh sync badges
+                const selectedApps = data.apps || [];
                 if (selectedApps.length > 0) {
                     const APP_ICONS  = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖' };
                     const APP_LABELS = { pos: 'Checkout Charlie', payroll: 'Lorenco Paytime', accounting: 'Ledger Leo', sean: 'SEAN AI' };

@@ -809,6 +809,28 @@
             background: rgba(102,126,234,0.2);
             border-color: var(--accent);
         }
+        /* App requests (migration 179) — card badges + Manage apps modal */
+        .app-req-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-size:0.72rem; font-weight:600; }
+        .app-req-badge.pending { background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.3); color:#fcd34d; }
+        .app-req-badge.ending  { background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.3); color:#fca5a5; }
+        .ma-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:rgba(255,255,255,0.02); margin-bottom:8px; }
+        .ma-row .ma-name { font-weight:600; font-size:0.9rem; color:#fff; }
+        .ma-row .ma-sub { font-size:0.76rem; color:var(--text-muted); margin-top:2px; }
+        .ma-row .ma-info { flex:1; min-width:0; }
+        .ma-row .ma-icon { font-size:1.2rem; flex-shrink:0; }
+        .ma-btn { padding:6px 12px; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; border:1px solid var(--border); background:rgba(255,255,255,0.04); color:var(--text); white-space:nowrap; }
+        .ma-btn:hover { border-color:var(--accent); }
+        .ma-btn.primary { background:rgba(102,126,234,0.18); border-color:rgba(102,126,234,0.4); color:#c7d2fe; }
+        .ma-btn.danger  { background:rgba(248,113,113,0.1); border-color:rgba(248,113,113,0.3); color:#fca5a5; }
+        .ma-btn:disabled { opacity:0.5; cursor:not-allowed; }
+        .ma-state { font-size:0.74rem; font-weight:600; padding:3px 8px; border-radius:20px; white-space:nowrap; }
+        .ma-state.active   { background:rgba(52,211,153,0.12); color:#6ee7b7; }
+        .ma-state.pending  { background:rgba(251,191,36,0.12); color:#fcd34d; }
+        .ma-state.ending   { background:rgba(248,113,113,0.12); color:#fca5a5; }
+        .ma-confirm { margin-top:8px; padding:12px 14px; border:1px solid rgba(102,126,234,0.3); border-radius:10px; background:rgba(102,126,234,0.06); font-size:0.82rem; color:var(--text); }
+        .ma-confirm label { display:flex; gap:8px; align-items:flex-start; margin:10px 0; cursor:pointer; color:var(--text-muted); }
+        .ma-confirm .ma-actions { display:flex; gap:8px; justify-content:flex-end; }
+        @media (max-width: 480px) { .ma-row { flex-wrap:wrap; } }
 
         .clients-empty {
             text-align: center;
@@ -1387,6 +1409,27 @@
                 <div class="form-actions" style="margin-top: 24px;">
                     <button type="button" class="btn-form cancel" onclick="closeEditApps()">Cancel</button>
                     <button type="button" class="btn-form save" onclick="saveEditApps()">Update</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ MANAGE APPS MODAL (non-admins: request / cancel — migration 179) ═══════ -->
+    <div class="modal-overlay" id="manageAppsModal">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2>🔗 Manage apps</h2>
+                <button class="modal-close" onclick="closeManageApps()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-muted); margin-bottom: 14px; font-size: 0.86rem;">
+                    Apps for <strong id="manageAppsClientName" style="color:#fff;"></strong>.
+                    New apps are activated by Lorenco after your request. Apps are billed monthly in advance —
+                    if you cancel, the app stays on until your next billing date.
+                </p>
+                <div id="manageAppsList"><div style="color:var(--text-muted);font-size:0.85rem;">Loading…</div></div>
+                <div class="form-actions" style="margin-top: 18px;">
+                    <button type="button" class="btn-form cancel" onclick="closeManageApps()">Close</button>
                 </div>
             </div>
         </div>
@@ -3267,7 +3310,11 @@
                 closeAddClient();
                 _importedClientData = null; // clear import data after successful save
 
-                if (failedApps.length > 0) {
+                // Non-admins: ticked apps became requests (Lorenco approves them)
+                const requestedApps = (newClient.app_requests || []).filter(r => r.status === 'pending').map(r => APP_LABELS[r.app_key] || r.app_key);
+                if (requestedApps.length > 0) {
+                    showToast(`${newClient.name} created. Requested: ${requestedApps.join(', ')} — Lorenco will be in touch before activating.`);
+                } else if (failedApps.length > 0) {
                     showToast(`${newClient.name} created. Synced to: ${syncedApps.join(', ') || 'none'}. Failed: ${failedApps.join(', ')}`, true);
                 } else {
                     showToast(`${newClient.name} added to ${selectedApps.length} app(s)` + (syncedApps.length ? ` (synced: ${syncedApps.join(', ')})` : ''));
@@ -3368,6 +3415,12 @@
                     </button>`
                 ).join('');
 
+                // Open app requests (migration 179): "requested" and "ends on" badges
+                const appReqBadges = (c.open_app_requests || []).map(r => r.kind === 'add'
+                    ? `<span class="app-req-badge pending" title="Waiting for Lorenco to approve">⏳ ${APP_LABELS[r.app_key] || r.app_key} requested</span>`
+                    : `<span class="app-req-badge ending" title="Cancelled — switches off on this date">🔻 ${APP_LABELS[r.app_key] || r.app_key} ends ${fmtDateZA(r.effective_date)}</span>`
+                ).join('');
+
                 // Shared badge — shown when this client is visible via firm-access link
                 const sharedBadge = c.shared_access
                     ? `<span style="font-size:0.72rem;padding:2px 8px;background:rgba(102,126,234,0.15);border:1px solid rgba(102,126,234,0.3);border-radius:20px;color:#a5b4fc;margin-left:6px;">Shared</span>`
@@ -3404,6 +3457,7 @@
                         <div class="client-apps-row">
                             <span class="label">Open in:</span>
                             ${appLaunchBtns || '<span style="color:var(--text-muted); font-size:0.8rem;">No apps linked</span>'}
+                            ${appReqBadges}
                             ${!c.shared_access ? `<button type="button" class="btn-add-app" onclick="openEditApps(${c.id})">+ Add</button>` : ''}
                             ${manageFirmsBtn}
                             ${createOwnerBtn}
@@ -3434,6 +3488,10 @@
         function openEditApps(clientId) {
             const client = allClients.find(c => c.id === clientId);
             if (!client) return;
+
+            // Since 2026-11-11 only Lorenco (super admins) switch apps directly.
+            // Everyone else requests / cancels — the backend enforces this too.
+            if (!isSuperAdmin) { openManageApps(clientId); return; }
 
             editingClientId = clientId;
             document.getElementById('editAppsClientName').textContent = client.name;
@@ -3495,6 +3553,164 @@
         function closeEditApps() {
             document.getElementById('editAppsModal').classList.remove('show');
             editingClientId = null;
+        }
+
+        // ═══ MANAGE APPS (request / cancel — migration 179) ═══
+        const MA_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', inventory: '📦', practice: '🏛️', sean: '🤖' };
+        let manageAppsClientId = null;
+        let manageAppsState = null;
+
+        function fmtDateZA(d) {
+            if (!d) return '';
+            const [y, m, day] = String(d).slice(0, 10).split('-');
+            return `${day}/${m}/${y}`;
+        }
+
+        async function maFetch(path, opts = {}) {
+            const token = localStorage.getItem('eco_token');
+            const res = await fetch(`${API_BASE}/api/app-subscriptions${path}`, {
+                ...opts,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Something went wrong');
+            return data;
+        }
+
+        async function openManageApps(clientId) {
+            const client = allClients.find(c => c.id === clientId);
+            manageAppsClientId = clientId;
+            document.getElementById('manageAppsClientName').textContent = client ? client.name : '';
+            document.getElementById('manageAppsList').innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">Loading…</div>';
+            document.getElementById('manageAppsModal').classList.add('show');
+            await refreshManageApps();
+        }
+
+        function closeManageApps() {
+            document.getElementById('manageAppsModal').classList.remove('show');
+            manageAppsClientId = null;
+            manageAppsState = null;
+        }
+
+        async function refreshManageApps() {
+            if (!manageAppsClientId) return;
+            try {
+                manageAppsState = await maFetch(`/client/${manageAppsClientId}`);
+                renderManageApps();
+            } catch (err) {
+                document.getElementById('manageAppsList').innerHTML =
+                    `<div style="color:#fca5a5;font-size:0.85rem;">❌ ${escHtml(err.message)}</div>`;
+            }
+        }
+
+        function renderManageApps() {
+            const rows = (manageAppsState.apps || []).filter(a => a.state !== 'unavailable');
+            const html = rows.map(a => {
+                const icon = MA_ICONS[a.app_key] || '•';
+                let state = '', sub = '', action = '';
+                if (a.state === 'active') {
+                    state = '<span class="ma-state active">Active</span>';
+                    action = `<button type="button" class="ma-btn danger" onclick="maShowConfirm('${a.app_key}','cancel')">Cancel</button>`;
+                } else if (a.state === 'active_cancelling') {
+                    state = '<span class="ma-state ending">Ending</span>';
+                    sub = `Active until ${fmtDateZA(a.active_until)}, then switches off.`;
+                    action = `<button type="button" class="ma-btn" onclick="maWithdraw(${a.request_id}, 'undo')">Undo</button>`;
+                } else if (a.state === 'pending') {
+                    state = '<span class="ma-state pending">Requested</span>';
+                    sub = 'Waiting for Lorenco — we will contact you before activating.';
+                    action = `<button type="button" class="ma-btn" onclick="maWithdraw(${a.request_id}, 'withdraw')">Withdraw</button>`;
+                } else {
+                    sub = a.price ? `${escHtml(a.price.text)} · ${escHtml(a.price.billing)}` : 'Price confirmed by Lorenco before activation';
+                    action = `<button type="button" class="ma-btn primary" onclick="maShowConfirm('${a.app_key}','request')">Request</button>`;
+                }
+                return `
+                    <div id="ma-${a.app_key}">
+                        <div class="ma-row">
+                            <span class="ma-icon">${icon}</span>
+                            <div class="ma-info">
+                                <div class="ma-name">${escHtml(a.label)}</div>
+                                ${sub ? `<div class="ma-sub">${sub}</div>` : ''}
+                            </div>
+                            ${state}
+                            ${action}
+                        </div>
+                        <div id="ma-confirm-${a.app_key}"></div>
+                    </div>`;
+            }).join('');
+            document.getElementById('manageAppsList').innerHTML = html || '<div style="color:var(--text-muted);font-size:0.85rem;">No apps available.</div>';
+        }
+
+        function maShowConfirm(appKey, kind) {
+            document.querySelectorAll('[id^="ma-confirm-"]').forEach(el => { el.innerHTML = ''; });
+            const a = (manageAppsState.apps || []).find(x => x.app_key === appKey);
+            if (!a) return;
+            const box = document.getElementById(`ma-confirm-${appKey}`);
+            if (kind === 'request') {
+                const terms = a.price
+                    ? `I accept the price: <strong>${escHtml(a.price.text)}</strong> (${escHtml(a.price.billing)}).`
+                    : 'I understand this app is billed monthly in advance and Lorenco will confirm the price before activating it.';
+                box.innerHTML = `
+                    <div class="ma-confirm">
+                        Request <strong>${escHtml(a.label)}</strong>? Lorenco is notified straight away. The app is not active until it is approved.
+                        <label><input type="checkbox" id="ma-terms-${appKey}"> <span>${terms}</span></label>
+                        <div class="ma-actions">
+                            <button type="button" class="ma-btn" onclick="renderManageApps()">Back</button>
+                            <button type="button" class="ma-btn primary" id="ma-go-${appKey}" onclick="maRequest('${appKey}')">Send request</button>
+                        </div>
+                    </div>`;
+            } else {
+                box.innerHTML = `
+                    <div class="ma-confirm">
+                        Cancel <strong>${escHtml(a.label)}</strong>? It stays active until <strong>${fmtDateZA(a.cancel_active_until)}</strong>
+                        (already paid) and switches off on ${fmtDateZA(a.cancel_would_switch_off_on)}. Your data is kept — you can undo before then.
+                        <div class="ma-actions" style="margin-top:10px;">
+                            <button type="button" class="ma-btn" onclick="renderManageApps()">Keep app</button>
+                            <button type="button" class="ma-btn danger" id="ma-go-${appKey}" onclick="maCancel('${appKey}')">Yes, cancel</button>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        async function maAfterChange(msg) {
+            showToast(msg);
+            _clientsCache = null;
+            await refreshManageApps();
+            await loadClients();
+        }
+
+        async function maRequest(appKey) {
+            const terms = document.getElementById(`ma-terms-${appKey}`);
+            if (!terms || !terms.checked) { showToast('Please tick the box to accept the terms first.', true); return; }
+            const btn = document.getElementById(`ma-go-${appKey}`);
+            if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+            try {
+                await maFetch(`/client/${manageAppsClientId}/request`, { method: 'POST', body: JSON.stringify({ app_key: appKey, accepted_terms: true }) });
+                await maAfterChange(`✅ ${APP_LABELS[appKey] || appKey} requested — Lorenco will be in touch.`);
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+                if (btn) { btn.disabled = false; btn.textContent = 'Send request'; }
+            }
+        }
+
+        async function maCancel(appKey) {
+            const btn = document.getElementById(`ma-go-${appKey}`);
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+            try {
+                const r = await maFetch(`/client/${manageAppsClientId}/cancel`, { method: 'POST', body: JSON.stringify({ app_key: appKey }) });
+                await maAfterChange(`${APP_LABELS[appKey] || appKey} cancelled — active until ${fmtDateZA(r.active_until)}.`);
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+                if (btn) { btn.disabled = false; btn.textContent = 'Yes, cancel'; }
+            }
+        }
+
+        async function maWithdraw(requestId, mode) {
+            try {
+                await maFetch(`/client/${manageAppsClientId}/requests/${requestId}/withdraw`, { method: 'POST' });
+                await maAfterChange(mode === 'undo' ? '✅ Cancellation undone — the app stays active.' : 'Request withdrawn.');
+            } catch (err) {
+                showToast('❌ ' + err.message, true);
+            }
         }
 
         async function saveEditApps() {

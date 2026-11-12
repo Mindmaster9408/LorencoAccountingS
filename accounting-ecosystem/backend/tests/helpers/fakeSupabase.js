@@ -66,6 +66,9 @@ function createFakeSupabase(seed = {}) {
       eq(col, val) { filters.push(r => same(r[col], val)); return builder; },
       neq(col, val) { filters.push(r => !same(r[col], val)); return builder; },
       in(col, vals) { filters.push(r => vals.some(v => same(r[col], v))); return builder; },
+      // String comparison — fine for ISO dates (YYYY-MM-DD) and timestamps.
+      lte(col, val) { filters.push(r => r[col] != null && String(r[col]) <= String(val)); return builder; },
+      gte(col, val) { filters.push(r => r[col] != null && String(r[col]) >= String(val)); return builder; },
       is(col, val) { filters.push(r => (val === null ? r[col] === null || r[col] === undefined : r[col] === val)); return builder; },
       ilike(col, val) { filters.push(r => String(r[col] || '').toLowerCase() === String(val).toLowerCase()); return builder; },
       or(expr) {
