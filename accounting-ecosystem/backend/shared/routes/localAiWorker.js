@@ -28,9 +28,10 @@ const LEASE_SECONDS = 600;
 function handlerFor(kind) {
   if (kind === 'slip_read') return require('../../modules/slips/services/localAiSlipJob');
   if (kind === 'help_answer') return require('../../sean/help/helpJob');
+  if (kind === 'bank_format') return require('../../sean/bank-format/bankFormatJob');
   return null;
 }
-const KINDS = ['slip_read', 'help_answer'];
+const KINDS = ['slip_read', 'help_answer', 'bank_format'];
 
 function tokenOk(req) {
   const want = process.env.LOCAL_AI_WORKER_TOKEN || '';

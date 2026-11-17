@@ -995,6 +995,34 @@
             applyFilters();
             loadAppRequests(); // never blocks the main panel
             loadEcoBilling();  // never blocks the main panel
+            loadLastActivity(); // never blocks the main panel
+        }
+
+        // ── Last used: who last worked in each company, and when (migration 184) ──
+        // Super users' own visits are excluded server-side, so this shows real client use.
+        let lastActivity = { available: false, byCompany: {} };
+        async function loadLastActivity() {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/last-activity`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) return;
+                const d = await res.json();
+                lastActivity = { available: !!d.available, byCompany: d.by_company || {} };
+                applyFilters();
+            } catch (e) { /* panel works without it */ }
+        }
+        function fmtDateTime(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d)) return '';
+            return d.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+        function lastUsedHtml(companyId) {
+            if (!lastActivity.available) return '';
+            const a = lastActivity.byCompany[companyId];
+            if (!a) return '<div class="client-meta" style="color:var(--text-muted)" title="Nobody (other than super users) has worked in this company since tracking started">&#128338; Not used yet</div>';
+            const days = (Date.now() - new Date(a.at).getTime()) / 86400000;
+            const color = days <= 7 ? '#34d399' : days <= 30 ? '#fbbf24' : '#f87171';
+            return `<div class="client-meta" style="color:${color}" title="Last time someone of this company worked in it (super users not counted)">&#128338; Last used ${esc(fmtDateTime(a.at))} · ${esc(a.name)}</div>`;
         }
 
         // ── Test/demo rows: hidden by default (eco_clients.billing_excluded) ──
@@ -1331,6 +1359,7 @@
                     <div class="client-info">
                         <div class="client-name">${esc(c.name)}</div>
                         ${metaParts.length ? `<div class="client-meta">${esc(metaParts.join(' · '))}</div>` : ''}
+                        ${c.client_company_id ? lastUsedHtml(Number(c.client_company_id)) : ''}
                     </div>
                     <span class="client-id-badge">#${c.id}</span>
                     <span class="client-status-dot ${isActive ? 'dot-active' : 'dot-inactive'}"></span>
@@ -1758,8 +1787,10 @@
                 const roleOptions = ROLES.map(r =>
                     `<option value="${r.value}" ${u.role === r.value ? 'selected' : ''}>${r.label}</option>`
                 ).join('');
-                const lastLogin = u.last_login_at
-                    ? formatDate(parseStandardDate(u.last_login_at), 'ZA') : 'Never';
+                // In THIS company (migration 184); else their last login anywhere.
+                const lastLogin = u.last_access_at
+                    ? fmtDateTime(u.last_access_at)
+                    : (u.last_login_at ? fmtDateTime(u.last_login_at) + ' <span title="Last login anywhere — not yet seen in this company">*</span>' : 'Never');
                 return `
                 <tr>
                     <td>

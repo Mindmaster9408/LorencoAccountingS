@@ -2706,11 +2706,15 @@ Click OK to simulate uploading a file.`;
         function renderPdfReview(result) {
             // Bank detection badge
             const bankEl = document.getElementById('pdfBankDetected');
-            if (result.isGenericFallback) {
+            if (result.learnedFormat) {
+                // Read with a format Sean learned earlier (migration 183) — checked against the balance.
+                bankEl.innerHTML = `<div class="pdf-detected-bank">✓ Read with a format Sean learned${result.learnedFormat.bank ? ' (' + escapeHtml(result.learnedFormat.bank) + ')' : ''} — every line checked against the balance.</div>`;
+            } else if (result.isGenericFallback) {
                 bankEl.innerHTML = `<div class="pdf-generic-warning">⚠️ Bank not identified — generic parser used. Review carefully before importing.</div>`;
             } else {
                 bankEl.innerHTML = `<div class="pdf-detected-bank">✓ ${result.bank} detected (${(result.parserConfidence * 100).toFixed(0)}% confidence)</div>`;
             }
+            renderFormatLearning(result.formatLearning);
 
             // Warnings
             const filteredWarnings = (result.warnings || []).filter(w =>
@@ -2756,11 +2760,12 @@ Click OK to simulate uploading a file.`;
                 const moneyOut = t.moneyOut != null ? 'R ' + t.moneyOut.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) : '';
                 const balance = t.balance != null ? 'R ' + t.balance.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) : '';
                 const dupBadge = t.isDuplicate ? '<span class="duplicate-badge">DUPLICATE</span>' : '';
+                const checkBadge = t.unverified ? '<span class="duplicate-badge" title="This amount could not be confirmed by the balance — check it against the statement">CHECK</span>' : '';
                 return `
                     <tr class="${t.isDuplicate ? 'is-duplicate' : ''}">
                         <td><input type="checkbox" class="pdf-txn-check" data-index="${i}" checked style="cursor:pointer;"></td>
                         <td>${t.date}</td>
-                        <td>${escapeHtml(t.description)}${dupBadge}</td>
+                        <td>${escapeHtml(t.description)}${dupBadge}${checkBadge}</td>
                         <td style="color:#34a853; white-space:nowrap;">${moneyIn}</td>
                         <td style="color:#ea4335; white-space:nowrap;">${moneyOut}</td>
                         <td style="color:#5f6368; white-space:nowrap;">${balance}</td>
@@ -2771,6 +2776,48 @@ Click OK to simulate uploading a file.`;
             // duplicate-flagged ones) starts checked now, matching the
             // "Deselect them to skip" instruction above.
             document.getElementById('pdfSelectAll').checked = true;
+        }
+
+        // ── Sean learning a new statement format (migration 183) ──
+        // Shown under the bank badge. Learning runs on the local AI computer, so
+        // it can take a few minutes; the user checks back with one click.
+        function renderFormatLearning(fl) {
+            const bankEl = document.getElementById('pdfBankDetected');
+            const old = document.getElementById('pdfFormatLearning');
+            if (old) old.remove();
+            if (!fl || !fl.requestId) {
+                if (fl && fl.status === 'unavailable') {
+                    bankEl.insertAdjacentHTML('beforeend', '<div id="pdfFormatLearning" class="pdf-generic-warning" style="margin-top:8px;">Sean cannot learn this format right now (the local AI reader is not switched on).</div>');
+                }
+                return;
+            }
+            const box = document.createElement('div');
+            box.id = 'pdfFormatLearning';
+            box.className = 'pdf-generic-warning';
+            box.style.marginTop = '8px';
+            box.innerHTML = '🧠 <b>New statement format.</b> Sean is learning it on the local AI computer — usually a few minutes. ' +
+                'Once he has it, upload this statement again and it will be read and checked against the balance. ' +
+                '<button type="button" class="btn-secondary" style="margin-left:8px; padding:4px 10px; font-size:12px;" onclick="checkFormatLearning(' + Number(fl.requestId) + ')">Check now</button>' +
+                '<div id="pdfFormatLearningStatus" style="margin-top:6px; font-size:12px; opacity:0.85;"></div>';
+            bankEl.appendChild(box);
+        }
+
+        async function checkFormatLearning(requestId) {
+            const el = document.getElementById('pdfFormatLearningStatus');
+            if (el) el.textContent = 'Checking…';
+            try {
+                const resp = await fetch('/api/accounting/bank/format-learning/' + requestId, { headers: { 'Authorization': 'Bearer ' + token } });
+                const s = await resp.json();
+                if (!resp.ok) throw new Error(s.error || 'Could not check');
+                let msg;
+                if (s.status === 'learned') msg = '✓ Sean learned this format' + (s.format && s.format.bank_name ? ' (' + s.format.bank_name + ')' : '') + '. Go back and upload the statement again.';
+                else if (s.status === 'failed') msg = 'Sean could not work out this format after ' + s.attempts + ' tries. Import the rows above after checking them, or ask for help.';
+                else if (s.worker && !s.worker.online) msg = 'Waiting — the local AI computer is offline. It will continue when it is back on.';
+                else msg = 'Still learning' + (s.attempts ? ' (try ' + (s.attempts + 1) + ' of 3)' : '') + '…';
+                if (el) el.textContent = msg;
+            } catch (err) {
+                if (el) el.textContent = 'Could not check: ' + err.message;
+            }
         }
 
         function pdfToggleSelectAll(checkbox) {

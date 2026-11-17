@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const PdfStatementImportService = require('../../../sean/pdf-statement-import-service');
+const BankFormatStore = require('../../../sean/bank-format/formatStore');
 const ImageStatementImportService = require('../../../sean/image-statement-import-service');
 const bankLearning = require('../../../sean/bank-learning');
 const SeanBankAllocation = require('../../../sean/bank-allocation-engine');
@@ -844,7 +845,7 @@ router.post('/import/pdf',
       const result = await PdfStatementImportService.parsePdf(
         req.file.buffer,
         req.file.originalname,
-        { dbClient: null, bankAccountId: verifiedBankAccountId }
+        { dbClient: null, bankAccountId: verifiedBankAccountId, companyId: req.user.companyId, includeText: true }
       );
 
       if (!result.success) {
@@ -852,6 +853,16 @@ router.post('/import/pdf',
           error: result.error,
           isPdfScanned: result.isPdfScanned,
           warnings: result.warnings
+        });
+      }
+
+      // Unknown format that does not reconcile → ask Sean (local AI) to learn it.
+      // The statement text stays in our own DB, company-scoped, only while learning.
+      let formatLearning = null;
+      if (result.needsFormatLearning && result.statementText) {
+        formatLearning = await BankFormatStore.requestLearning({
+          companyId: req.user.companyId, text: result.statementText, fileHash,
+          filename: req.file.originalname, userId: req.user.id || req.user.userId,
         });
       }
 
@@ -928,9 +939,10 @@ router.post('/import/pdf',
       }
 
       return res.json({
-        ...result,
+        ...result,          // statementText is non-enumerable → never sent
         accountMatch,
         fileHash,
+        formatLearning,
         batchDuplicateWarning: batchDupCheck.isDuplicate ? {
           existingBatchId: batchDupCheck.existingBatchId,
           reason:          batchDupCheck.reason,
@@ -944,6 +956,26 @@ router.post('/import/pdf',
         return res.status(400).json({ error: err.message });
       }
       return res.status(500).json({ error: 'Failed to process PDF statement' });
+    }
+  }
+);
+
+/**
+ * GET /api/bank/format-learning/:id
+ * Status of "Sean, learn this statement format" (migration 183) for the
+ * import screen: queued / retry / learned / failed. Company-scoped.
+ */
+router.get('/format-learning/:id',
+  authenticate,
+  hasPermission('bank.import'),
+  async (req, res) => {
+    try {
+      const status = await BankFormatStore.requestStatus(req.user.companyId, parseInt(req.params.id, 10));
+      if (!status) return res.status(404).json({ error: 'Not found' });
+      res.json(status);
+    } catch (err) {
+      console.error('format-learning status error:', err.message);
+      res.status(500).json({ error: 'Could not check the format learning status' });
     }
   }
 );

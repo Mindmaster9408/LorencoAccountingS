@@ -18,6 +18,7 @@ const { getRolePermissions, canManageRole, hasPermission } = require('../../conf
 const { logPosEvent, POS_EVENTS } = require('../../modules/pos/services/posAuditLogger');
 const { PIN_ELIGIBLE_ROLES: PIN_ELIGIBLE_ROLES_SET } = require('../../modules/pos/routes/pin');
 const tfa = require('../../services/twoFactorAuth');
+const { recordActivity } = require('../services/loginActivity');
 
 const router = express.Router();
 
@@ -254,6 +255,9 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '12h' });
 
+    // "Last used" for the admin panel (fire-and-forget, migration 184).
+    recordActivity(user.id, tokenPayload.companyId, { login: true });
+
     // Audit login
     await auditFromReq(req, 'LOGIN', 'user', user.id, {
       module: 'shared',
@@ -370,6 +374,8 @@ router.post('/2fa/login-verify', async (req, res) => {
     }).eq('id', user.id);
 
     const token = jwt.sign(pending.tokenPayload, JWT_SECRET, { expiresIn: '12h' });
+
+    recordActivity(user.id, pending.tokenPayload.companyId, { login: true }); // fire-and-forget
 
     await auditFromReq(req, usedBackup ? '2FA_LOGIN_BACKUP_USED' : 'LOGIN_2FA_VERIFIED', 'user', user.id, {
       module: 'shared',
@@ -838,6 +844,8 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       isSuperAdmin: isSuperAdmin,
       hasCoachingAccess,
     }, JWT_SECRET, { expiresIn: '12h' });
+
+    recordActivity(req.user.userId, parsedCompanyId); // fire-and-forget
 
     res.json({
       success: true,
@@ -1408,6 +1416,8 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
       ssoSource: 'ecosystem',
       targetApp: targetApp,
     }, JWT_SECRET, { expiresIn: '12h' });
+
+    recordActivity(user.id, resolvedCompanyId); // fire-and-forget
 
     await auditFromReq(req, 'SSO_LAUNCH', 'user', user.id, {
       module: 'shared',
@@ -2097,7 +2107,7 @@ router.post('/pos/pin-login', async (req, res) => {
 
     // ── Success ───────────────────────────────────────────────────────────────
     logAttempt(true, null);
-    supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', userData.id).then(() => {});
+    recordActivity(userData.id, company.id, { login: true }); // fire-and-forget (was users.last_login_at only)
     // pin_unlocked_at fast-forwards the device-level lockout window's start
     // (see deviceWindowStart above) so prior failed attempts stop counting —
     // exactly the same field the manager "unlock device" button already sets

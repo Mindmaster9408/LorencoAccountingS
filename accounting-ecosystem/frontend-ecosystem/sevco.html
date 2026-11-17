@@ -198,7 +198,50 @@
         <div class="tab-bar">
             <button class="tab-btn active" id="tabBtnIrp5" onclick="switchTab('irp5')">Paytime IRP5 Learning</button>
             <button class="tab-btn" id="tabBtnBank" onclick="switchTab('bank')">Bank Allocation Learning</button>
+            <button class="tab-btn" id="tabBtnSlips" onclick="switchTab('slips')">Slip Layout Learning</button>
+            <button class="tab-btn" id="tabBtnBankfmt" onclick="switchTab('bankfmt')">Bank Statement Formats</button>
             <button class="tab-btn" id="tabBtnHelp" onclick="switchTab('help')">App Help (chatbot knowledge)</button>
+        </div>
+
+        <!-- Bank statement formats (2026-11-14, migration 183): learned by Sean on the local AI computer.
+             Usable in the company it was learned in at once; for everyone only after approval here. -->
+        <div id="tabBankfmt" class="tab-panel">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Learned Bank Statement Formats</h2>
+                    <span class="hint">When someone uploads a statement in a format Leo does not know, Sean works out the format and Leo checks it line by line against the balance. Approving a format lets every company's statements in that format be read with it. A format holds no transactions or client details — only how the statement is laid out.</span>
+                    <div><button class="btn" onclick="loadBankFormats()">Refresh</button></div>
+                </div>
+                <div id="bankFmtBody"><div class="loading">Loading formats…</div></div>
+            </div>
+        </div>
+
+        <!-- Slip layout learning (2026-11-13, migration 182): what supplier slips LOOK like.
+             Only the layout is global, never amounts, dates or the slip itself. -->
+        <div id="tabSlips" class="tab-panel">
+            <div id="slipStatsGrid" class="stats-grid">
+                <div class="loading">Loading stats…</div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Proposals Awaiting Review</h2>
+                    <span class="hint">Approving lets every company's slips from this supplier be read with this layout. Only the layout is shared (where the total is printed, how the date is written), never amounts, dates or the slips themselves. A company's own confirmed layout always wins.</span>
+                </div>
+                <div id="slipProposalsBody"><div class="loading">Loading proposals…</div></div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Discovered Layouts</h2>
+                    <span class="hint">Learned from slips people saved. A layout is only proposed once at least 2 different companies agree.</span>
+                    <div>
+                        <button class="btn" onclick="loadSlipPatterns()">Refresh</button>
+                        <button class="btn btn-primary" onclick="runSlipAnalyze()">Analyze Now</button>
+                    </div>
+                </div>
+                <div id="slipPatternsBody"><div class="loading">Loading layouts…</div></div>
+            </div>
         </div>
 
         <!-- SEVCO help knowledge (2026-11-10): what every app's chatbot answers from -->
@@ -580,12 +623,14 @@
 
         // ── Tabs ──
         function switchTab(name) {
-            ['irp5', 'bank', 'help'].forEach(t => {
+            ['irp5', 'bank', 'slips', 'bankfmt', 'help'].forEach(t => {
                 const cap = t.charAt(0).toUpperCase() + t.slice(1);
                 document.getElementById('tab' + cap).classList.toggle('active', name === t);
                 document.getElementById('tabBtn' + cap).classList.toggle('active', name === t);
             });
             if (name === 'help') { loadHelpArticles(); loadHelpQuestions(); }
+            if (name === 'slips') { loadSlipStats(); loadSlipProposals(); loadSlipPatterns(); }
+            if (name === 'bankfmt') { loadBankFormats(); }
         }
 
         // ── App Help — each app chatbot's knowledge (SEVCO = the brain) ──
@@ -778,6 +823,192 @@
                     await apiPost(`/api/sean/bank-learning/proposals/${id}/authorize`);
                 }
                 await Promise.all([loadBankProposals(), loadBankStats()]);
+            } catch (e) {
+                alert(`Could not ${action} proposal: ` + e.message);
+            }
+        }
+
+        // ── Bank Statement Formats ──
+        function bankFmtRecipe(r) {
+            r = r || {};
+            const neg = { DR: 'DR after the amount', '-': 'minus sign', none: 'not shown' }[r.negative_balance_marker] || r.negative_balance_marker;
+            const th = r.thousands_separator === ' ' ? 'space' : r.thousands_separator === '' ? 'none' : r.thousands_separator;
+            return `Date <b>${esc(r.date_format)}</b> · thousands <b>${esc(th)}</b> · decimal <b>${esc(r.decimal_separator)}</b> · overdrawn: ${esc(neg)}` +
+                (r.opening_balance_label ? ` · opening "<b>${esc(r.opening_balance_label)}</b>"` : '') +
+                (r.closing_balance_label ? ` · closing "<b>${esc(r.closing_balance_label)}</b>"` : '');
+        }
+        async function loadBankFormats() {
+            const body = document.getElementById('bankFmtBody');
+            body.innerHTML = '<div class="loading">Loading formats…</div>';
+            try {
+                const data = await apiGet('/api/sean/bank-formats');
+                const list = data.formats || [];
+                if (!list.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No formats learned yet. They appear when someone uploads a statement in a format Leo does not know.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = `<table>
+                    <tr><th>Bank</th><th>Format</th><th>Lines checked</th><th>For everyone?</th><th></th></tr>
+                    ${list.map(f => `<tr>
+                        <td>${esc(f.bank_name || 'Unknown bank')}</td>
+                        <td style="font-size:0.8rem;">${bankFmtRecipe(f.recipe)}</td>
+                        <td>${esc(f.rows_verified)}</td>
+                        <td><span class="badge badge-correct">${esc({ pending: 'own company only', approved: 'approved', rejected: 'rejected' }[f.global_status] || f.global_status)}</span></td>
+                        <td>${f.global_status === 'pending' ? `
+                            <button class="btn btn-success" onclick="decideBankFormat(${f.id}, 'approve')">Approve for all</button>
+                            <button class="btn btn-danger" onclick="decideBankFormat(${f.id}, 'reject')">Reject</button>` : ''}</td>
+                    </tr>`).join('')}
+                </table>`;
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load formats: ${esc(e.message)}</div>`;
+            }
+        }
+        async function decideBankFormat(id, action) {
+            try {
+                if (action === 'reject') {
+                    if (!confirm('Reject this format for other companies? The company it was learned in keeps using it.')) return;
+                    const reason = prompt('Reason (optional):') || '';
+                    await apiPost(`/api/sean/bank-formats/${id}/reject`, { reason });
+                } else {
+                    await apiPost(`/api/sean/bank-formats/${id}/approve`);
+                }
+                await loadBankFormats();
+            } catch (e) {
+                alert(`Could not ${action}: ` + e.message);
+            }
+        }
+
+        // ── Slip Layout Learning ──
+        function slipWho(chainKey, branchKey, supplier) {
+            const vat = String(chainKey || '').replace(/^vat:/, '');
+            const branch = branchKey ? ` · store ${String(branchKey).replace(/^store:/, '')}` : ' · all branches';
+            return `${esc(supplier || 'Supplier')} <span style="opacity:0.6">(VAT ${esc(vat)}${esc(branch)})</span>`;
+        }
+        function slipWhat(subject, value) {
+            const facet = String(subject || '').split('|')[2];
+            const v = String(value || '');
+            if (facet === 'total_line') {
+                const i = v.indexOf(':');
+                const pos = v.slice(0, i), label = v.slice(i + 1);
+                return pos === 'next'
+                    ? `Total is on the line after <b>"${esc(label)}"</b>`
+                    : `Total is on the line <b>"${esc(label)}"</b>`;
+            }
+            if (facet === 'date_format') {
+                const names = { dmy: 'day/month/year', mdy: 'month/day/year', ymd: 'year-month-day', text: 'with the month in words' };
+                return `Date is written <b>${esc(names[v] || v)}</b>`;
+            }
+            return esc(v);
+        }
+
+        async function loadSlipStats() {
+            const grid = document.getElementById('slipStatsGrid');
+            try {
+                const stats = await apiGet('/api/sean/slip-layout-learning/stats');
+                const cards = [
+                    ['Confirmations', stats.totalEvents ?? '—'],
+                    ['Layouts Found', stats.totalPatterns ?? '—'],
+                    ['Pending Proposals', stats.pendingProposals ?? '—'],
+                    ['Approved (global)', stats.approvedProposals ?? '—'],
+                ];
+                grid.innerHTML = cards.map(([label, value]) => `
+                    <div class="stat-card">
+                        <div class="stat-value">${esc(value)}</div>
+                        <div class="stat-label">${esc(label)}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                grid.innerHTML = `<div class="error-msg">Could not load stats: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function loadSlipPatterns() {
+            const body = document.getElementById('slipPatternsBody');
+            body.innerHTML = '<div class="loading">Loading layouts…</div>';
+            try {
+                const data = await apiGet('/api/sean/slip-layout-learning/patterns');
+                const patterns = data.patterns || [];
+                if (!patterns.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No layouts discovered yet. They appear as people save slips from suppliers that print a VAT number.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = `
+                    <table>
+                        <tr><th>Supplier</th><th>Layout</th><th>Confidence</th><th>Companies</th><th>Status</th></tr>
+                        ${patterns.map(p => `
+                            <tr>
+                                <td>${slipWho(p.chain_key, p.branch_key, p.supplier_name)}</td>
+                                <td>${slipWhat(p.layout_subject, p.layout_value)}</td>
+                                <td>
+                                    <span class="confidence-bar"><span class="confidence-fill" style="width:${Math.round(p.confidence_score ?? 0)}%"></span></span>
+                                    ${Math.round(p.confidence_score ?? 0)}%
+                                </td>
+                                <td>${esc(p.clients_observed ?? '—')}</td>
+                                <td><span class="badge badge-correct">${esc(p.status)}</span></td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `;
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load layouts: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function runSlipAnalyze() {
+            try {
+                await apiPost('/api/sean/slip-layout-learning/analyze');
+                await Promise.all([loadSlipPatterns(), loadSlipProposals(), loadSlipStats()]);
+            } catch (e) {
+                alert('Analyze failed: ' + e.message);
+            }
+        }
+
+        async function loadSlipProposals() {
+            const body = document.getElementById('slipProposalsBody');
+            body.innerHTML = '<div class="loading">Loading proposals…</div>';
+            try {
+                const data = await apiGet('/api/sean/slip-layout-learning/proposals');
+                const proposals = data.proposals || [];
+                if (!proposals.length) {
+                    body.innerHTML = '<table><tr class="empty-row"><td>No proposals awaiting review.</td></tr></table>';
+                    return;
+                }
+                body.innerHTML = proposals.map(p => {
+                    const pat = p.slip_layout_patterns || {};
+                    return `
+                        <div class="section" style="margin-bottom:14px; background:rgba(255,255,255,0.03);">
+                            <div class="section-header">
+                                <h2 style="font-size:0.95rem;">${slipWho(pat.chain_key, pat.branch_key, p.snapshot_supplier || pat.supplier_name)}</h2>
+                                <span class="badge badge-correct">${esc(p.status || 'pending')}</span>
+                            </div>
+                            <div style="margin-bottom:8px;">${slipWhat(p.snapshot_subject || pat.layout_subject, p.snapshot_value || pat.layout_value)}</div>
+                            <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.78rem; margin-bottom:10px;">
+                                <span>Confidence: <strong>${esc(p.snapshot_confidence ?? pat.confidence_score ?? '—')}%</strong></span>
+                                <span>Companies that agree: <strong>${esc(p.snapshot_clients ?? pat.clients_observed ?? '—')}</strong></span>
+                                <span>Slips confirmed: <strong>${esc(pat.occurrence_count ?? '—')}</strong></span>
+                            </div>
+                            <div class="action-row">
+                                <button class="btn btn-success" onclick="decideSlipProposal(${p.id}, 'authorize')">Approve</button>
+                                <button class="btn btn-danger" onclick="decideSlipProposal(${p.id}, 'reject')">Reject</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                body.innerHTML = `<div class="error-msg">Could not load proposals: ${esc(e.message)}</div>`;
+            }
+        }
+
+        async function decideSlipProposal(id, action) {
+            try {
+                if (action === 'reject') {
+                    if (!confirm('Reject this layout? It will not be proposed again.')) return;
+                    const reason = prompt('Reason (optional):') || '';
+                    await apiPost(`/api/sean/slip-layout-learning/proposals/${id}/reject`, { reason });
+                } else {
+                    await apiPost(`/api/sean/slip-layout-learning/proposals/${id}/authorize`);
+                }
+                await Promise.all([loadSlipProposals(), loadSlipPatterns(), loadSlipStats()]);
             } catch (e) {
                 alert(`Could not ${action} proposal: ` + e.message);
             }

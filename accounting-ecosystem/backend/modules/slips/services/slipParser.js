@@ -41,11 +41,15 @@ function toNumber(raw) {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
+// Repair numeric-looking tokens (e.g. "45O.OO" → "450.00").
+function repairAmounts(line) {
+  return line.replace(/\b[\dOoIlSB|][\dOoIlSB|,.]*[.,][\dOoIlSB|]{2}\b/g, m =>
+    (/\d/.test(m) ? fixDigits(m) : m));
+}
+
 /** All money amounts on one line, left to right. */
 function amountsInLine(line) {
-  // Repair numeric-looking tokens before matching (e.g. "45O.OO" → "450.00").
-  const repaired = line.replace(/\b[\dOoIlSB|][\dOoIlSB|,.]*[.,][\dOoIlSB|]{2}\b/g, m =>
-    (/\d/.test(m) ? fixDigits(m) : m));
+  const repaired = repairAmounts(line);
   const out = [];
   let m;
   AMOUNT_RE.lastIndex = 0;
@@ -57,6 +61,19 @@ function amountsInLine(line) {
 }
 
 const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol;
+
+/**
+ * The words on a line without its amounts — the "label" a supplier prints,
+ * e.g. "TOTAL DUE R 1 234.50" → "total due". Used to learn and match a
+ * supplier's layout (layout learning, migration 182). Max 4 words.
+ */
+function normalizeLabel(line) {
+  AMOUNT_RE.lastIndex = 0;
+  const words = repairAmounts(String(line || '')).replace(AMOUNT_RE, ' ')
+    .toLowerCase().replace(/[^a-z]+/g, ' ').trim()
+    .split(' ').filter(w => w.length >= 2);
+  return words.slice(0, 4).join(' ').slice(0, 30);
+}
 
 // ── Line classification ──────────────────────────────────────────────────────
 
@@ -70,21 +87,43 @@ const RE_EXCL_LINE = /\b(vatable|excl?\.?\s*(vat|tax|btw)|total\s*excl?)\b/i;
 
 // ── Field extractors ─────────────────────────────────────────────────────────
 
-function findTotal(lines) {
-  const candidates = [];
+/**
+ * Total from a learned layout: the line(s) carrying the label this supplier
+ * always prints the total on. Only used when exactly one value comes out.
+ * @param {string} totalLine 'same:<label>' | 'next:<label>'
+ */
+function findLearnedTotal(lines, totalLine, paid) {
+  const sep = String(totalLine || '').indexOf(':');
+  if (sep < 0) return null;
+  const pos = totalLine.slice(0, sep);
+  const label = totalLine.slice(sep + 1);
+  if (!label) return null;
+  const values = [];
   lines.forEach((line, i) => {
-    if (!RE_TOTAL.test(line) || RE_NOT_TOTAL.test(line)) return;
-    const amounts = amountsInLine(line);
-    if (!amounts.length) {
-      // "TOTAL" alone, amount on the next line
-      const next = lines[i + 1] ? amountsInLine(lines[i + 1]) : [];
-      if (next.length && !RE_TOTAL.test(lines[i + 1])) candidates.push({ value: next[next.length - 1], line: i, strong: false });
-      return;
+    if (normalizeLabel(line) !== label) return;
+    const here = amountsInLine(line);
+    if (pos === 'same' && here.length) values.push(here[here.length - 1]);
+    if (pos === 'next' && !here.length && lines[i + 1]) {
+      const next = amountsInLine(lines[i + 1]);
+      if (next.length) values.push(next[next.length - 1]);
     }
-    const strong = /\b(grand\s*total|total\s*(due|payable|incl)|amount\s*due|balance\s*due|to\s*pay|te\s*betaal)\b/i.test(line);
-    candidates.push({ value: amounts[amounts.length - 1], line: i, strong });
   });
+  const distinct = [...new Set(values)];
+  if (distinct.length !== 1 || distinct[0] <= 0) return null;
+  const value = distinct[0];
+  // A payment on the slip that disagrees still wins over the learned layout.
+  const contradicted = paid.length > 0 && !paid.some(p => near(p, value));
+  return {
+    value,
+    confidence: contradicted ? 'medium' : 'high',
+    reason: contradicted
+      ? 'line where this supplier prints the total (learned), but the payment differs — check'
+      : 'line where this supplier prints the total (learned)',
+    paymentEvidence: paid,
+  };
+}
 
+function findTotal(lines, layout) {
   // Payment evidence: tendered - change, or a card line amount.
   const tenders = [];
   let change = null;
@@ -99,6 +138,25 @@ function findTotal(lines) {
     paid.push(t);
     if (change !== null && change >= 0) paid.push(Math.round((t - change) * 100) / 100);
   }
+
+  if (layout && layout.total_line) {
+    const learned = findLearnedTotal(lines, layout.total_line, paid);
+    if (learned) return learned;
+  }
+
+  const candidates = [];
+  lines.forEach((line, i) => {
+    if (!RE_TOTAL.test(line) || RE_NOT_TOTAL.test(line)) return;
+    const amounts = amountsInLine(line);
+    if (!amounts.length) {
+      // "TOTAL" alone, amount on the next line
+      const next = lines[i + 1] ? amountsInLine(lines[i + 1]) : [];
+      if (next.length && !RE_TOTAL.test(lines[i + 1])) candidates.push({ value: next[next.length - 1], line: i, strong: false });
+      return;
+    }
+    const strong = /\b(grand\s*total|total\s*(due|payable|incl)|amount\s*due|balance\s*due|to\s*pay|te\s*betaal)\b/i.test(line);
+    candidates.push({ value: amounts[amounts.length - 1], line: i, strong });
+  });
 
   for (const c of candidates) {
     c.confirmedByPayment = paid.some(p => near(p, c.value));
@@ -223,32 +281,53 @@ function isoOrNull(y, m, d) {
   return dt.toISOString().slice(0, 10);
 }
 
-function findDate(lines, today) {
+/**
+ * Raw date matches on one line, before deciding day/month order.
+ * kind 'ymd' | 'text' carry { y, m, d }; kind 'numeric' carries { y, a, b }
+ * for "a/b/y" where a/b could be day/month or month/day.
+ */
+function dateMatches(raw) {
+  const line = String(raw || '').replace(/[Oo](?=\d)|(?<=\d)[Oo]/g, '0');
+  const out = [];
+  let m;
+  const ymd = /\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/g;
+  while ((m = ymd.exec(line))) out.push({ kind: 'ymd', y: +m[1], m: +m[2], d: +m[3] });
+  const dmy = /\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})\b/g;
+  while ((m = dmy.exec(line))) out.push({ kind: 'numeric', y: +m[3], a: +m[1], b: +m[2] });
+  const dMonY = /\b(\d{1,2})[\s\-.]*([A-Za-z]{3,9})[\s\-.,]*(\d{4}|\d{2})\b/g;
+  while ((m = dMonY.exec(line))) {
+    const mo = MONTHS[m[2].toLowerCase().slice(0, 4)] || MONTHS[m[2].toLowerCase().slice(0, 3)];
+    if (mo) out.push({ kind: 'text', y: +m[3], m: mo, d: +m[1] });
+  }
+  const monDY = /\b([A-Za-z]{3,9})[\s.]+(\d{1,2}),?\s+(\d{4})\b/g;
+  while ((m = monDY.exec(line))) {
+    const mo = MONTHS[m[1].toLowerCase().slice(0, 4)] || MONTHS[m[1].toLowerCase().slice(0, 3)];
+    if (mo) out.push({ kind: 'text', y: +m[3], m: mo, d: +m[2] });
+  }
+  return out;
+}
+
+/** Resolve one raw match to { iso, fmt }. monthFirst = learned 'mdy' layout. */
+function resolveDate(dm, monthFirst) {
+  if (dm.kind !== 'numeric') return { iso: isoOrNull(dm.y, dm.m, dm.d), fmt: dm.kind };
+  // South African order is day/month; a learned 'mdy' layout flips the default.
+  // Either way, only swap when the default order is impossible.
+  let d = monthFirst ? dm.b : dm.a;
+  let mo = monthFirst ? dm.a : dm.b;
+  if (mo > 12 && d <= 12) { const t = d; d = mo; mo = t; }
+  return { iso: isoOrNull(dm.y, mo, d), fmt: d === dm.a ? 'dmy' : 'mdy' };
+}
+
+function findDate(lines, today, layout) {
   const todayIso = (today || new Date()).toISOString().slice(0, 10);
   const maxIso = new Date(Date.parse(todayIso) + 86400000).toISOString().slice(0, 10);
+  const learnedFmt = layout && layout.date_format;
   const found = [];
   lines.forEach((raw, i) => {
-    const line = raw.replace(/[Oo](?=\d)|(?<=\d)[Oo]/g, '0');
-    const labelled = /\b(date|datum)\b/i.test(line);
-    let m;
-    const ymd = /\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/g;
-    while ((m = ymd.exec(line))) found.push({ iso: isoOrNull(+m[1], +m[2], +m[3]), i, labelled });
-    const dmy = /\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})\b/g;
-    while ((m = dmy.exec(line))) {
-      // South African order is day/month; only flip when day/month is impossible otherwise.
-      let d = +m[1], mo = +m[2];
-      if (mo > 12 && d <= 12) { const t = d; d = mo; mo = t; }
-      found.push({ iso: isoOrNull(+m[3], mo, d), i, labelled });
-    }
-    const dMonY = /\b(\d{1,2})[\s\-.]*([A-Za-z]{3,9})[\s\-.,]*(\d{4}|\d{2})\b/g;
-    while ((m = dMonY.exec(line))) {
-      const mo = MONTHS[m[2].toLowerCase().slice(0, 4)] || MONTHS[m[2].toLowerCase().slice(0, 3)];
-      if (mo) found.push({ iso: isoOrNull(+m[3], mo, +m[1]), i, labelled });
-    }
-    const monDY = /\b([A-Za-z]{3,9})[\s.]+(\d{1,2}),?\s+(\d{4})\b/g;
-    while ((m = monDY.exec(line))) {
-      const mo = MONTHS[m[1].toLowerCase().slice(0, 4)] || MONTHS[m[1].toLowerCase().slice(0, 3)];
-      if (mo) found.push({ iso: isoOrNull(+m[3], mo, +m[2]), i, labelled });
+    const labelled = /\b(date|datum)\b/i.test(raw);
+    for (const dm of dateMatches(raw)) {
+      const r = resolveDate(dm, learnedFmt === 'mdy');
+      found.push({ iso: r.iso, fmt: r.fmt, i, labelled });
     }
   });
   const valid = found.filter(f => f.iso && f.iso >= '2000-01-01' && f.iso <= maxIso);
@@ -256,6 +335,9 @@ function findDate(lines, today) {
   valid.sort((a, b) => (b.labelled - a.labelled) || (a.i - b.i));
   const best = valid[0];
   const ageDays = (Date.parse(todayIso) - Date.parse(best.iso)) / 86400000;
+  if (ageDays <= 400 && learnedFmt && best.fmt === learnedFmt) {
+    return { value: best.iso, confidence: 'high', reason: 'date in the format this supplier uses (learned)' };
+  }
   return {
     value: best.iso,
     confidence: ageDays <= 400 ? (best.labelled || valid.every(v => v.iso === best.iso) ? 'high' : 'medium') : 'low',
@@ -290,7 +372,8 @@ function findSupplier(lines) {
 
 /**
  * @param {string} text   OCR text
- * @param {object} [opts] { vatRate = 0.15, today = new Date() }
+ * @param {object} [opts] { vatRate = 0.15, today = new Date(),
+ *                          layout = { total_line?, date_format? } learned for this supplier }
  * @returns {{ fields: object, checks: object[], score: number, needsReview: boolean }}
  */
 function parseSlipText(text, opts = {}) {
@@ -300,10 +383,10 @@ function parseSlipText(text, opts = {}) {
     .map(l => l.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
 
-  const total = findTotal(lines);
+  const total = findTotal(lines, opts.layout);
   const vat = findVat(lines, total && total.value, vatRate);
   const vatNumber = findVatNumber(lines);
-  const date = findDate(lines, opts.today);
+  const date = findDate(lines, opts.today, opts.layout);
   const supplier = findSupplier(lines);
 
   const fields = {};
@@ -361,4 +444,8 @@ function needsReview(fields) {
     || !fields.supplier_name || fields.supplier_name.confidence === 'low';
 }
 
-module.exports = { parseSlipText, amountsInLine, toNumber, scoreFields, needsReview, ocrGoodEnough, buildChecks, DEFAULT_VAT_RATE };
+module.exports = {
+  parseSlipText, amountsInLine, toNumber, scoreFields, needsReview, ocrGoodEnough, buildChecks, DEFAULT_VAT_RATE,
+  // layout learning (slipLayout.js)
+  normalizeLabel, dateMatches, isoOrNull, RE_TOTAL, RE_NOT_TOTAL, RE_TENDER, RE_CHANGE,
+};

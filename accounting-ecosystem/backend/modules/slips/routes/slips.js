@@ -32,6 +32,7 @@ const { auditFromReq } = require('../../../middleware/audit');
 const { sha256Hex, uploadSlipFile, getSignedDownloadUrl } = require('../services/storageService');
 const readings = require('../services/readingService');
 const supplierMemory = require('../services/supplierMemory');
+const slipLayout = require('../services/slipLayout');
 
 const router = express.Router();
 
@@ -367,14 +368,19 @@ router.patch('/:id', async (req, res) => {
 
   // Layer 1 learns ONLY from what a person saved. Also remember the name as
   // the slip printed it, so the same slip is recognised next time.
+  const reading = await readings.latestReading(req.companyId, slip.id).catch(() => null);
   if (updated.supplier_name) {
     await supplierMemory.learn(req.companyId, updated);
-    const reading = await readings.latestReading(req.companyId, slip.id);
     const printed = reading && reading.suggestion && reading.suggestion.supplier_name;
     if (printed && printed.source === 'ocr'
       && supplierMemory.nameKey(printed.value) !== supplierMemory.nameKey(updated.supplier_name)) {
       await supplierMemory.learn(req.companyId, updated, printed.value);
     }
+  }
+  // Layout learning (migration 182): where this supplier prints the total and
+  // how it writes the date — never the amounts or the slip itself.
+  if (updated.amount || updated.slip_date) {
+    await slipLayout.learnFromSave(req.companyId, updated, reading, req.user && req.user.userId);
   }
 
   const [withName] = await attachUploaderNames([updated]);

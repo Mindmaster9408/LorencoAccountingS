@@ -894,6 +894,114 @@ router.post('/bank-learning/proposals/:id/reject', requireSuperAdmin, async (req
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BANK STATEMENT FORMATS — learned by Sean / local AI (migration 183)
+// A format is usable in the company it was learned in at once; for every
+// company only after a super user approves it here (Rule B2). Recipes hold
+// format only (no transactions or client details).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const bankFormatStore = require('./bank-format/formatStore');
+
+router.get('/bank-formats', requireSuperAdmin, async (req, res) => {
+  try {
+    const formats = await bankFormatStore.listForReview();
+    res.json({ count: formats.length, formats });
+  } catch (err) {
+    console.error('SEAN /bank-formats error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve bank formats' });
+  }
+});
+
+router.post('/bank-formats/:id/approve', requireSuperAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'User identity required' });
+    res.json(await bankFormatStore.decide(parseInt(req.params.id), userId, true));
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to approve format' });
+  }
+});
+
+router.post('/bank-formats/:id/reject', requireSuperAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'User identity required' });
+    res.json(await bankFormatStore.decide(parseInt(req.params.id), userId, false, req.body?.reason));
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to reject format' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SLIP LAYOUT LEARNING — what supplier slips look like (migration 182)
+// Global, anonymised patterns; usable across companies only after a super
+// user approves (Rule B2). Every route is Super Admin only: patterns and
+// proposals summarise what several companies confirmed.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const slipLayoutLearning = require('./slip-layout-learning');
+
+router.get('/slip-layout-learning/stats', requireSuperAdmin, async (req, res) => {
+  try {
+    res.json(await slipLayoutLearning.getStats());
+  } catch (err) {
+    console.error('SEAN /slip-layout-learning/stats error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve slip layout stats' });
+  }
+});
+
+router.post('/slip-layout-learning/analyze', requireSuperAdmin, async (req, res) => {
+  try {
+    res.json(await slipLayoutLearning.analyzePatterns());
+  } catch (err) {
+    console.error('SEAN /slip-layout-learning/analyze error:', err.message);
+    res.status(500).json({ error: 'Failed to analyze slip layouts' });
+  }
+});
+
+router.get('/slip-layout-learning/patterns', requireSuperAdmin, async (req, res) => {
+  try {
+    const patterns = await slipLayoutLearning.getPatterns({ status: req.query.status || null });
+    res.json({ count: patterns.length, patterns });
+  } catch (err) {
+    console.error('SEAN /slip-layout-learning/patterns error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve slip layout patterns' });
+  }
+});
+
+router.get('/slip-layout-learning/proposals', requireSuperAdmin, async (req, res) => {
+  try {
+    const proposals = await slipLayoutLearning.getProposals();
+    res.json({ count: proposals.length, proposals });
+  } catch (err) {
+    console.error('SEAN /slip-layout-learning/proposals error:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve slip layout proposals' });
+  }
+});
+
+router.post('/slip-layout-learning/proposals/:id/authorize', requireSuperAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'User identity required' });
+    res.json(await slipLayoutLearning.authorizeProposal(parseInt(req.params.id), userId));
+  } catch (err) {
+    console.error('SEAN /slip-layout-learning/proposals/:id/authorize error:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to authorize proposal' });
+  }
+});
+
+router.post('/slip-layout-learning/proposals/:id/reject', requireSuperAdmin, async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ error: 'User identity required' });
+    res.json(await slipLayoutLearning.rejectProposal(parseInt(req.params.id), userId, req.body?.reason));
+  } catch (err) {
+    console.error('SEAN /slip-layout-learning/proposals/:id/reject error:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to reject proposal' });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PAYTIME MODULE — Aggregation endpoints for the Sean Paytime UI
 //

@@ -36,6 +36,9 @@ if (typeof pdfParse !== 'function') {
 
 const ParserRegistry = require('./pdf-statement-parsers/parser-registry');
 const OcrService     = require('./ocr-service');
+const RecipeReader   = require('./bank-format/recipeReader');
+// Lazy: needs the database; parsing must still work without it (tests, scripts).
+const BankFormatStore = { readWithLearned: (...a) => require('./bank-format/formatStore').readWithLearned(...a) };
 
 // Minimum number of extracted characters to consider PDF text-parseable
 const MIN_TEXT_LENGTH = 100;
@@ -161,7 +164,16 @@ class PdfStatementImportService {
     // ─── STEP B: Select parser ───────────────────────────────────────────────
     const selection = ParserRegistry.selectParser(text, filename || '');
 
-    if (selection.isGenericFallback) {
+    // ─── STEP B2: Learned formats (migration 183) ────────────────────────────
+    // Unknown bank → try the formats Sean learned (this company's own, plus
+    // those a super user approved for everyone). The balance chain decides.
+    let learned = null;
+    if (selection.isGenericFallback && options.companyId) {
+      learned = await (options.readWithLearned || BankFormatStore.readWithLearned)(text, options.companyId)
+        .catch(() => null);
+    }
+
+    if (selection.isGenericFallback && !learned) {
       warnings.push(
         `Bank not identified from statement. Using generic parser — results may be less accurate. ` +
         `All scores: ${selection.allScores.map(s => `${s.bank}=${(s.confidence * 100).toFixed(0)}%`).join(', ')}`
@@ -170,10 +182,28 @@ class PdfStatementImportService {
 
     // ─── STEP C: Parse transactions ──────────────────────────────────────────
     let parseResult;
-    try {
-      parseResult = selection.parser.parse(text, filename);
-    } catch (err) {
-      return this._error(`Parser error (${selection.parser.PARSER_ID}): ${err.message}`);
+    if (learned) {
+      const unverified = learned.res.unverified;
+      parseResult = {
+        bank: learned.format.bank_name || 'Learned format',
+        parserId: `learned-format-${learned.format.id}`,
+        accountNumber: null,
+        statementPeriod: { from: null, to: null },
+        transactions: learned.res.rows.map(r => ({
+          date: r.date, description: r.description || '(no description)', reference: null,
+          amount: r.amount, balance: r.balance, unverified: !r.verified,
+        })),
+        warnings: unverified
+          ? [`${unverified} line(s) could not be checked against the balance — marked CHECK. Review them before importing.`]
+          : [],
+        skippedLines: learned.res.skipped,
+      };
+    } else {
+      try {
+        parseResult = selection.parser.parse(text, filename);
+      } catch (err) {
+        return this._error(`Parser error (${selection.parser.PARSER_ID}): ${err.message}`);
+      }
     }
 
     warnings.push(...parseResult.warnings);
@@ -206,14 +236,21 @@ class PdfStatementImportService {
     );
 
     // ─── STEP F: Build result ────────────────────────────────────────────────
+    // Unknown statement read by the generic parser: does it at least reconcile?
+    // If not, the caller may ask Sean to learn the format (needsFormatLearning).
+    const genericUsed = selection.isGenericFallback && !learned;
+    const chain = genericUsed ? RecipeReader.chainCheck(validTransactions) : null;
+
     const result = {
       success: true,
       error: null,
       isPdfScanned: false,
       bank: parseResult.bank,
       parserId: parseResult.parserId,
-      parserConfidence: selection.confidence,
-      isGenericFallback: selection.isGenericFallback,
+      parserConfidence: learned ? 1 : selection.confidence,
+      isGenericFallback: genericUsed,
+      learnedFormat: learned ? { id: learned.format.id, bank: learned.format.bank_name || null, global: learned.format.global_status === 'approved' } : null,
+      needsFormatLearning: genericUsed && !(chain && chain.reconciles && validTransactions.length >= 2),
       accountNumber: parseResult.accountNumber,
       statementPeriod: parseResult.statementPeriod,
       transactions: reviewTransactions,
@@ -227,6 +264,12 @@ class PdfStatementImportService {
     // for identifying layout issues without having to read server logs.
     if (reviewTransactions.length < 10) {
       result.rawTextSample = text.slice(0, 2500);
+    }
+
+    // Full text only for the server-side caller that queues format learning.
+    // Callers must remove it before sending the result to a browser.
+    if (options.includeText && result.needsFormatLearning) {
+      Object.defineProperty(result, 'statementText', { value: text, enumerable: false });
     }
 
     return result;
@@ -365,6 +408,7 @@ class PdfStatementImportService {
         moneyIn: txn.amount > 0 ? txn.amount : null,
         moneyOut: txn.amount < 0 ? Math.abs(txn.amount) : null,
         balance: txn.balance,
+        unverified: !!txn.unverified,   // learned format: amount not confirmed by the balance
         isDuplicate,
         duplicateId,
         externalId

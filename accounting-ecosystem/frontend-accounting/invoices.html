@@ -407,7 +407,7 @@
       <span id="invSuccessMsg" class="inv-success-msg">&#10003; Invoice saved. Ready for next invoice.</span>
       <button class="btn btn-secondary" onclick="closeModal('modalInvoice')">Cancel</button>
       <button class="btn btn-warning" id="invSaveBtn" onclick="saveInvoice('save')">Save</button>
-      <button class="btn btn-primary" id="invSaveNewBtn" onclick="saveInvoice('saveNew')">Save &amp; New</button>
+      <button class="btn btn-primary" id="invSendNewBtn" onclick="saveInvoice('sendNew')" title="Saves the invoice, posts it to the General Ledger, emails it to the client and opens a new invoice">Send &amp; New</button>
     </div>
   </div>
 </div>
@@ -1312,13 +1312,24 @@ async function saveInvoice(mode) {
     billingOptionEnabled: document.getElementById('invBillingOpt').checked,
   };
 
-  const btn = document.getElementById(mode === 'saveNew' ? 'invSaveNewBtn' : 'invSaveBtn');
+  // Send & New = save → post to GL → email → blank invoice. The backend will
+  // not email a draft, so posting is part of sending. Posting can only be
+  // undone by voiding, hence the explicit confirm.
+  if (mode === 'sendNew') {
+    if (payload.billingOptionEnabled) {
+      alert("This invoice offers the client an annual or monthly option, so it can't be posted and sent yet.\n\nUse Save, record the client's choice (Annual or Monthly) in the invoice list, then post and send it from there.");
+      return;
+    }
+    if (!confirm(`Send this invoice to ${customerName}?\n\nIt will be saved, posted to the General Ledger and emailed to the client. Once posted it can only be voided, not edited.`)) return;
+  }
+
+  const btn = document.getElementById(mode === 'sendNew' ? 'invSendNewBtn' : 'invSaveBtn');
+  const btnLabel = mode === 'sendNew' ? 'Send & New' : 'Save';
   btn.disabled = true;
   btn.textContent = 'Saving…';
 
+  let invoiceId = invId ? parseInt(invId) : null;
   try {
-    let invoiceId = invId ? parseInt(invId) : null;
-
     if (invoiceId) {
       const r = await apiPut(`${BASE}/${invoiceId}`, payload);
       if (!r.ok) throw new Error(r.data.error || 'Update failed');
@@ -1327,27 +1338,60 @@ async function saveInvoice(mode) {
       if (!r.ok) throw new Error(r.data.error || 'Create failed');
       invoiceId = r.data.invoice?.id;
     }
-
-    await loadInvoices();
-
-    if (mode === 'saveNew') {
-      openInvoiceModal();
-      showInvSuccess();
-      document.getElementById('invCustomerName').focus();
-    } else {
-      closeModal('modalInvoice');
-    }
   } catch (err) {
     alert('Error: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = btnLabel;
+    return;
+  }
+
+  if (mode !== 'sendNew') {
+    await loadInvoices();
+    closeModal('modalInvoice');
+    btn.disabled = false;
+    btn.textContent = btnLabel;
+    return;
+  }
+
+  // From here the invoice exists. Any failure closes the modal and says
+  // exactly how far it got, so a retry never creates a duplicate invoice.
+  try {
+    btn.textContent = 'Posting…';
+    let r;
+    try {
+      r = await apiPost(`${BASE}/${invoiceId}/post`, {});
+    } catch (err) {
+      r = { ok: false, data: { error: 'Network error: ' + err.message } };
+    }
+    if (!r.ok) {
+      await loadInvoices();
+      closeModal('modalInvoice');
+      alert(`The invoice was saved as a draft, but it was NOT posted or sent:\n\n${r.data?.error || 'Post failed.'}\n\nFix the issue, then post and send it from the invoice list.`);
+      return;
+    }
+
+    btn.textContent = 'Sending…';
+    const sent = await sendInvoiceEmail(invoiceId);
+    if (!sent) {
+      await loadInvoices();
+      closeModal('modalInvoice');
+      alert('The invoice was saved and posted to the General Ledger, but it was NOT emailed.\n\nUse the 📧 Send button in the invoice list to send it.');
+      return;
+    }
+
+    openInvoiceModal();
+    showInvSuccess('✓ Invoice posted and sent. Ready for next invoice.');
+    document.getElementById('invCustomerName').focus();
   } finally {
     btn.disabled = false;
-    btn.textContent = mode === 'saveNew' ? 'Save & New' : 'Save';
+    btn.textContent = btnLabel;
   }
 }
 
-function showInvSuccess() {
+function showInvSuccess(text) {
   const el = document.getElementById('invSuccessMsg');
   if (!el) return;
+  el.textContent = text || '✓ Invoice saved. Ready for next invoice.';
   el.style.display = 'block';
   setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
@@ -1413,8 +1457,9 @@ function postInvoice(id) { openPostInvoiceModal(id); }
 // times, so this never blocks on "already sent", it just records each send.
 const _sendingInvoiceIds = new Set();
 
+// Returns true only when the email actually went out (used by Send & New).
 async function sendInvoiceEmail(id) {
-  if (_sendingInvoiceIds.has(id)) return;
+  if (_sendingInvoiceIds.has(id)) return false;
   _sendingInvoiceIds.add(id);
   try {
     const r = await apiPost(`${BASE}/${id}/send`, {});
@@ -1423,18 +1468,20 @@ async function sendInvoiceEmail(id) {
         const override = prompt(r.data.error + '\n\nEnter an email address to send to just this once:');
         if (override && override.trim()) {
           const r2 = await apiPost(`${BASE}/${id}/send`, { email: override.trim() });
-          if (!r2.ok) { alert(r2.data?.error || 'Failed to send invoice.'); return; }
+          if (!r2.ok) { alert(r2.data?.error || 'Failed to send invoice.'); return false; }
           await loadInvoices();
-          return;
+          return true;
         }
-        return;
+        return false;
       }
       alert(r.data?.error || 'Failed to send invoice.');
-      return;
+      return false;
     }
     await loadInvoices();
+    return true;
   } catch (err) {
     alert('Network error: ' + err.message);
+    return false;
   } finally {
     _sendingInvoiceIds.delete(id);
   }

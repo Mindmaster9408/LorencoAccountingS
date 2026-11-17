@@ -7,10 +7,12 @@
  *              - text PDFs: read the text layer directly (no OCR needed)
  *              - photos: cleaned copy (imagePrep.js), several OCR passes,
  *                best-scoring pass wins (slipParser.js)
- *   Layer 3  external AI reader — DELIBERATELY NOT BUILT.
- *              Blocked until Ruan approves it and an API key exists.
- *              When it is added, it plugs in here and acts only on
- *              results where needsReview is true.
+ *   Layout   learned supplier layout (slipLayout.js, migration 182):
+ *              where the total sits and how the date is written, per
+ *              company, or global after a super user approved it
+ *   Layer 3  local AI reader (Ollama on Ruan's computer) — queued by
+ *              readingService.js only when needsReview is still true.
+ *              No external AI service is used.
  *
  * The result is a SUGGESTION. Nothing here writes into a slip's fields.
  * ============================================================================
@@ -38,6 +40,7 @@ function defaultDeps() {
       return res.text || '';
     },
     memoryLookup: memory.lookup,
+    layoutLookup: require('./slipLayout').lookup,
   };
 }
 
@@ -64,6 +67,7 @@ async function readSlip({ buffer, contentType, companyId, vatRate }, deps = defa
   const timeLeft = () => TIME_BUDGET_MS - (Date.now() - started);
   let best = null; // { parsed, text, confidence, detail }
   let engine = 'tesseract';
+  let layout = null; // learned supplier layout (slipLayout.js), if any
 
   try {
     if (contentType === 'application/pdf') {
@@ -80,6 +84,23 @@ async function readSlip({ buffer, contentType, companyId, vatRate }, deps = defa
     } else if (OCR_IMAGE_TYPES.has(contentType)) {
       const avail = deps.ocrAvailable();
       if (!avail.imageOcr) return withTime(result('unavailable', { error: 'OCR is not available on this server' }), started);
+
+      // Layout learning: once a pass yields a VAT number, look up how this
+      // supplier's slips look and parse every pass with that layout — a
+      // known layout often makes pass 1 good enough (fewer passes, no AI).
+      let layoutTried = false;
+      const parseWithLayout = async (text) => {
+        let parsed = parseSlipText(text, { vatRate });
+        if (!layoutTried && deps.layoutLookup && parsed.fields.supplier_vat_number) {
+          layoutTried = true;
+          layout = await deps.layoutLookup(companyId, { text, vatNumber: parsed.fields.supplier_vat_number.value });
+        }
+        if (layout) {
+          const withLayout = parseSlipText(text, { vatRate, layout });
+          if (withLayout.score >= parsed.score) parsed = withLayout;
+        }
+        return parsed;
+      };
 
       const prepared = await deps.prepareForOcr(buffer);
       // Pass order: likely-best first; stop as soon as total + date are confident.
@@ -99,7 +120,7 @@ async function readSlip({ buffer, contentType, companyId, vatRate }, deps = defa
           if (!best) throw err;
           break;
         }
-        const parsed = parseSlipText(out.text, { vatRate });
+        const parsed = await parseWithLayout(out.text);
         const score = parsed.score + (out.confidence || 0) / 100;
         if (!best || score > best.score) best = { parsed, text: out.text, confidence: out.confidence, detail: pass.detail, score };
       }
@@ -111,11 +132,26 @@ async function readSlip({ buffer, contentType, companyId, vatRate }, deps = defa
     let fields = best.parsed.fields;
     const vatNo = fields.supplier_vat_number && fields.supplier_vat_number.value;
     const match = await deps.memoryLookup(companyId, best.text, vatNo || null);
-    fields = memory.applyMemory(fields, match);
 
+    // No layout yet (PDF, or no VAT number read): try with what supplier
+    // memory knows about this supplier (its VAT number / name).
+    if (!layout && deps.layoutLookup && (vatNo || match)) {
+      layout = await deps.layoutLookup(companyId, {
+        text: best.text,
+        vatNumber: vatNo || (match && match.row.supplier_vat_number) || null,
+        supplierName: match ? match.row.supplier_name : null,
+      });
+      if (layout) {
+        const withLayout = parseSlipText(best.text, { vatRate, layout });
+        if (withLayout.score >= best.parsed.score) best.parsed = withLayout;
+      }
+    }
+    fields = memory.applyMemory(best.parsed.fields, match);
+
+    const layoutNote = layout ? ` + layout(${Object.values(layout.sources).join(',')})` : '';
     return withTime(result('done', {
       engine,
-      engine_detail: best.detail + (match ? ` + memory(${match.how})` : ''),
+      engine_detail: best.detail + (match ? ` + memory(${match.how})` : '') + layoutNote,
       raw_text: String(best.text || '').slice(0, 20000),
       ocr_confidence: best.confidence,
       suggestion: fields,

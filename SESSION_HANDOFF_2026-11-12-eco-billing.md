@@ -2,7 +2,7 @@
 
 **Status:** committed as one batch (Ruan: one big commit to save Render builds).
 - **Migration 180 RUN 2026-11-12.** 11 rows excluded; 18 billing customers were created in company 40 (a second sync was idempotent). A draft-invoice E2E in sandbox company 51 passed 7/7 and was cleaned up.
-- **Migration 181 NOT run.** The code is safe without it (fallbacks), but Link-a-company only works once it has run.
+- **Migration 181 RUN 2026-11-12 (by Ruan in Supabase), verified: column, table, 3 indexes.**
 
 ## A. Eco billing (Ruan's spec, 2026-11-12)
 - Every company that uses the Eco becomes a customer in **Lorenco Ecosystum's Leo (company 40)**, filled from Eco company data and re-synced automatically.
@@ -60,7 +60,7 @@
 
 | File | Purpose |
 |---|---|
-| `backend/config/migrations/181_company_link_requests.sql` | `eco_clients.access_link` + `company_link_requests`. **NOT RUN: the run was blocked by the permission filter. Ruan must run it or allow it.** |
+| `backend/config/migrations/181_company_link_requests.sql` | `eco_clients.access_link` + `company_link_requests`. **RUN 2026-11-12 (by Ruan), verified.** |
 | `backend/shared/services/linkRequests.js`, `shared/routes/link-requests.js` (new) | `/api/link-requests`: lookup, request, outgoing, withdraw, incoming, decide |
 | `backend/shared/routes/auth.js` (HIGH, shared) | sso-launch: an access_link row only opens approved apps. Additive; falls back to the old lookup if the column is missing |
 | `backend/shared/routes/eco-clients.js`, `app-subscriptions.js` | Linked rows read-only (only is_active; admin also billing_excluded) |

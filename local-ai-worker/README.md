@@ -18,6 +18,14 @@ outgoing HTTPS requests to the app.
 
 Computer off? Jobs wait and are read when it is back.
 
+**Examples (2026-11-13):** when the slip's supplier is known, the job also
+carries up to 2 earlier slips from that supplier — same company only — as OCR
+text plus the values a person saved. The prompt tells the model to learn the
+layout from them and never copy their values. Measured on a fictional
+month/day/year slip: date wrong without examples, right with them; about
++10 s per slip on this CPU. After updating `worker.js`, restart the worker
+(or re-run `install-task.ps1` if it runs as the scheduled task).
+
 ## Set up (once)
 
 1. Ollama installed, and the model pulled: `ollama pull qwen2.5vl:3b`

@@ -19,12 +19,38 @@ const { supabase } = require('../../config/database');
 const { authenticateToken, requireSuperAdmin, invalidateUserSessions } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { canManageRole } = require('../../config/permissions');
+const { latestByCompany } = require('../services/loginActivity');
 
 const router = express.Router();
 
 // All admin-panel routes require authentication + super admin flag
 router.use(authenticateToken);
 router.use(requireSuperAdmin);
+
+/**
+ * GET /api/admin/last-activity
+ * Per company: who last used it and when (migration 184), so super users can
+ * see whether clients actually use the program. Super users' own visits are
+ * left out. { available: false } until the migration has run.
+ */
+router.get('/last-activity', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('user_company_access')
+      .select('company_id, last_access_at, users:user_id (id, username, email, full_name, is_super_admin)')
+      .eq('is_active', true)
+      .not('last_access_at', 'is', null)
+      .limit(10000);
+    if (error) {
+      if (/last_access_at/.test(error.message || '')) return res.json({ available: false, by_company: {} });
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ available: true, by_company: latestByCompany(data) });
+  } catch (err) {
+    console.error('admin GET /last-activity error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 /**
  * GET /api/admin/companies/:companyId/users
@@ -44,15 +70,23 @@ router.get('/companies/:companyId/users', async (req, res) => {
       .single();
     if (!company) return res.status(404).json({ error: 'Company not found' });
 
-    const { data: access, error } = await supabase
+    // last_access_at (migration 184) = last time this user entered THIS company.
+    // Fall back to the old select if the column is not there yet.
+    const usersSelect = 'users:user_id (id, username, email, full_name, is_active, last_login_at, created_at)';
+    let { data: access, error } = await supabase
       .from('user_company_access')
-      .select(`
-        role, is_primary, is_active, granted_at,
-        users:user_id (id, username, email, full_name, is_active, last_login_at, created_at)
-      `)
+      .select(`role, is_primary, is_active, granted_at, last_access_at, ${usersSelect}`)
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('granted_at');
+    if (error && /last_access_at/.test(error.message || '')) {
+      ({ data: access, error } = await supabase
+        .from('user_company_access')
+        .select(`role, is_primary, is_active, granted_at, ${usersSelect}`)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('granted_at'));
+    }
 
     if (error) return res.status(500).json({ error: error.message });
 
@@ -65,6 +99,7 @@ router.get('/companies/:companyId/users', async (req, res) => {
         full_name: a.users.full_name,
         is_active: a.users.is_active,
         last_login_at: a.users.last_login_at,
+        last_access_at: a.last_access_at || null,
         created_at: a.users.created_at,
         role: a.role,
         is_primary: a.is_primary,

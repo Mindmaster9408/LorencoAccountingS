@@ -43,7 +43,7 @@ function loadConfig() {
     ollamaUrl: get('OLLAMA_URL', 'http://127.0.0.1:11434').replace(/\/+$/, ''),
     model: get('OLLAMA_MODEL', 'qwen2.5vl:3b'),          // slips (vision)
     textModel: get('OLLAMA_TEXT_MODEL', 'qwen2.5:3b'),    // help chatbot answers (text)
-    kinds: get('JOB_KINDS', 'slip_read,help_answer').split(',').map(s => s.trim()).filter(Boolean),
+    kinds: get('JOB_KINDS', 'slip_read,help_answer,bank_format').split(',').map(s => s.trim()).filter(Boolean),
     ollamaExe: get('OLLAMA_EXE', 'ollama'),
     idleSeconds: Number(get('IDLE_SECONDS', '20')),
     workerId: get('WORKER_ID', os.hostname()),
@@ -165,6 +165,69 @@ async function answerHelp(cfg, payload) {
   return { fields: { answer }, duration_ms: Date.now() - started, model: cfg.textModel };
 }
 
+/**
+ * Earlier slips from the same supplier (same company only — the server picks
+ * them), with the values a person confirmed. They show the model how this
+ * supplier prints its slips; it must not copy their values.
+ */
+function examplesText(examples) {
+  const list = Array.isArray(examples) ? examples.slice(0, 2) : [];
+  if (!list.length) return '';
+  const NL = String.fromCharCode(10);
+  return NL + NL + 'Earlier slips from this SAME supplier, as text read from their photos, with the correct answers a person confirmed. ' +
+    'This supplier prints every slip the same way: use them to see which line holds the total and how the date is written. ' +
+    'They are DIFFERENT slips — never copy their amounts or dates.' +
+    list.map((e, i) => NL + NL + 'Example ' + (i + 1) + ' text:' + NL + String(e.ocr_text || '').slice(0, 1200) +
+      NL + 'Example ' + (i + 1) + ' correct answer: ' + JSON.stringify(e.answer || {})).join('');
+}
+
+function slipPrompt(payload) {
+  return PROMPT + examplesText(payload.examples) +
+    (payload.ocr_text ? '\n\nText another reader found on THIS slip (may contain errors):\n' + payload.ocr_text.slice(0, 2500) : '');
+}
+
+// ── bank statement FORMAT (2026-11-13) ──────────────────────────────────────
+// The model only describes the format; the app checks it against the whole
+// statement with the balance chain and sends feedback when it does not fit.
+function bankFormatPrompt(payload) {
+  const formats = Array.isArray(payload.date_formats) && payload.date_formats.length
+    ? payload.date_formats : ['DD/MM/YYYY', 'DD/MM/YY', 'YYYY/MM/DD', 'DD MMM YYYY', 'DD MMM YY', 'DD MMM'];
+  return 'You look at the text of a bank statement (extracted from a PDF, so columns may be glued together without spaces) and describe its FORMAT. Answer ONLY with JSON:\n' +
+    '{"bank_name": string,\n' +
+    ' "date_format": one of ' + JSON.stringify(formats) + ' — the format of the date at the START of each transaction line,\n' +
+    ' "thousands_separator": "," or " " or "",\n' +
+    ' "decimal_separator": "." or ",",\n' +
+    ' "negative_balance_marker": "DR" or "-" or "none" — how an overdrawn (negative) balance is shown,\n' +
+    ' "opening_balance_label": the exact words on the opening balance line (e.g. "Opening balance", "Balance brought forward"), or "",\n' +
+    ' "closing_balance_label": the exact words on the closing balance line, or ""}\n' +
+    'Do not list transactions. Only describe the format.' +
+    (payload.feedback ? '\n\n' + String(payload.feedback).slice(0, 1500) : '') +
+    '\n\nSTATEMENT TEXT:\n' + String(payload.sample || '').slice(0, 5000);
+}
+
+async function learnBankFormat(cfg, payload) {
+  const started = Date.now();
+  const res = await fetch(cfg.ollamaUrl + '/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: cfg.textModel,
+      stream: false,
+      format: 'json',
+      keep_alive: cfg.keepAlive || '24h',
+      options: { temperature: 0 },
+      messages: [{ role: 'user', content: bankFormatPrompt(payload) }]
+    }),
+    signal: AbortSignal.timeout(cfg.timeoutSeconds * 1000)
+  });
+  if (!res.ok) throw new Error('Ollama HTTP ' + res.status + ': ' + (await res.text()).slice(0, 200));
+  const data = await res.json();
+  let fields;
+  try { fields = JSON.parse(data.message && data.message.content || '{}'); }
+  catch (_) { throw new Error('Model did not answer with JSON'); }
+  return { fields, duration_ms: Date.now() - started, model: cfg.textModel };
+}
+
 async function readSlip(cfg, payload) {
   const started = Date.now();
   const res = await fetch(cfg.ollamaUrl + '/api/chat', {
@@ -178,7 +241,7 @@ async function readSlip(cfg, payload) {
       options: { temperature: 0 },
       messages: [{
         role: 'user',
-        content: PROMPT + (payload.ocr_text ? '\n\nText another reader found on this slip (may contain errors):\n' + payload.ocr_text.slice(0, 2500) : ''),
+        content: slipPrompt(payload),
         images: [payload.image_base64]
       }]
     }),
@@ -212,7 +275,9 @@ async function main() {
       const job = claim.job;
       log(`Job ${job.id} (${job.kind}, attempt ${job.attempt}) — reading…`);
       try {
-        const out = job.kind === 'help_answer' ? await answerHelp(cfg, claim.payload) : await readSlip(cfg, claim.payload);
+        const out = job.kind === 'help_answer' ? await answerHelp(cfg, claim.payload)
+          : job.kind === 'bank_format' ? await learnBankFormat(cfg, claim.payload)
+          : await readSlip(cfg, claim.payload);
         const res = await api(cfg, `/jobs/${job.id}/result`, { model: out.model || cfg.model, duration_ms: out.duration_ms, fields: out.fields });
         log(`Job ${job.id} done in ${Math.round(out.duration_ms / 1000)} s — needs review: ${res.needs_review}`);
       } catch (err) {
@@ -230,4 +295,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { loadConfig, readSlip, answerHelp, PROMPT, HELP_PROMPT };
+module.exports = { loadConfig, readSlip, answerHelp, learnBankFormat, bankFormatPrompt, slipPrompt, examplesText, PROMPT, HELP_PROMPT };
