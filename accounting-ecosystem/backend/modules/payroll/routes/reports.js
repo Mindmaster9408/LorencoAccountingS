@@ -24,6 +24,7 @@
 
 const express = require('express');
 const { supabase } = require('../../../config/database');
+const { fetchAllRows } = require('../services/fetchAllRows');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 
 const router = express.Router();
@@ -97,12 +98,13 @@ router.get('/annual-analysis', requirePermission('PAYROLL.VIEW'), async (req, re
     for (const e of (empRows || [])) empLookup[e.id] = e;
 
     // ── Finalized snapshots only — draft/unfinalized periods are excluded ────
-    const { data: snapData, error: snapErr } = await supabase
+    // Audit 2026-11-18 H2: page through — Supabase returns at most 1000 rows per request.
+    const { data: snapData, error: snapErr } = await fetchAllRows(() => supabase
       .from('payroll_snapshots')
       .select('employee_id, period_key, calculation_output, calculation_input, created_at')
       .eq('company_id', companyId)
       .eq('is_locked', true)
-      .in('period_key', periods);
+      .in('period_key', periods));
 
     if (snapErr) throw new Error(snapErr.message);
 

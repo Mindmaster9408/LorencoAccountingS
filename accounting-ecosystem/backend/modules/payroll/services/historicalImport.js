@@ -32,6 +32,7 @@ const PeriodSequence = require('./periodSequence');
 const PayrollHistoryService = require('./PayrollHistoryService');
 const PayrollDataService = require('./PayrollDataService');
 const { payrollEligibility } = require('./payrollEligibility');
+const { fetchAllRows } = require('./fetchAllRows');   // Supabase caps reads at 1000 rows (audit H2)
 
 const SOURCE_TAG = 'screen_import';
 const ENGINE_VERSION = 'external-import-screen-v1';
@@ -374,9 +375,9 @@ async function runImport(supabase, { companyId, userId, rows, mapping, fileName,
   const yearKeys = [...new Set(periodKeys.flatMap(p => PeriodSequence.taxYearPeriodKeys(p)))];
   let existing = [];
   if (empIds.length && yearKeys.length) {
-    const { data, error } = await supabase.from('payroll_snapshots')
+    const { data, error } = await fetchAllRows(() => supabase.from('payroll_snapshots')
       .select('id, employee_id, period_key, is_locked, status, source')
-      .eq('company_id', companyId).in('employee_id', empIds).in('period_key', yearKeys).neq('status', 'reversed');
+      .eq('company_id', companyId).in('employee_id', empIds).in('period_key', yearKeys).neq('status', 'reversed'));
     if (error) throw new Error('Could not check existing payslips: ' + error.message);
     existing = data || [];
   }
@@ -478,10 +479,9 @@ async function runImport(supabase, { companyId, userId, rows, mapping, fileName,
 
 /** Import batches of a company (newest first), from the snapshots themselves. */
 async function listBatches(supabase, companyId) {
-  const { data, error } = await supabase.from('payroll_snapshots')
+  const { data, error } = await fetchAllRows(() => supabase.from('payroll_snapshots')
     .select('employee_id, period_key, status, calculation_input->_import, calculation_output->gross, calculation_output->paye, calculation_output->net')
-    .eq('company_id', companyId).eq('source', SOURCE_TAG)
-    .order('created_at', { ascending: false }).limit(5000);
+    .eq('company_id', companyId).eq('source', SOURCE_TAG));
   if (error) throw new Error('Could not load imports: ' + error.message);
   const byId = {};
   (data || []).forEach(s => {
@@ -507,19 +507,20 @@ async function listBatches(supabase, companyId) {
  * year is finalized — that month's PAYE relied on the imported figures.
  */
 async function undoBatch(supabase, { companyId, userId, batchId }) {
-  const { data: snaps, error } = await supabase.from('payroll_snapshots')
+  const { data: snaps, error } = await fetchAllRows(() => supabase.from('payroll_snapshots')
     .select('id, employee_id, period_key')
     .eq('company_id', companyId).eq('source', SOURCE_TAG).neq('status', 'reversed')
-    .eq('calculation_input->_import->>batch_id', batchId);
+    .eq('calculation_input->_import->>batch_id', batchId));
   if (error) throw new Error('Could not load the import: ' + error.message);
   if (!(snaps || []).length) return { reversed: [], blocked: [], notFound: true };
 
   const empIds = [...new Set(snaps.map(s => s.employee_id))];
   const yearKeys = [...new Set(snaps.flatMap(s => PeriodSequence.taxYearPeriodKeys(s.period_key)))];
-  const { data: locked, error: lErr } = await supabase.from('payroll_snapshots')
+  // Only Paytime-calculated (source IS NULL) finalized months can depend on the import.
+  const { data: locked, error: lErr } = await fetchAllRows(() => supabase.from('payroll_snapshots')
     .select('employee_id, period_key, source')
-    .eq('company_id', companyId).eq('is_locked', true).neq('status', 'reversed')
-    .in('employee_id', empIds).in('period_key', yearKeys);
+    .eq('company_id', companyId).eq('is_locked', true).neq('status', 'reversed').is('source', null)
+    .in('employee_id', empIds).in('period_key', yearKeys));
   if (lErr) throw new Error('Could not check later months: ' + lErr.message);
 
   const reverseIds = [], blocked = [];
@@ -530,13 +531,16 @@ async function undoBatch(supabase, { companyId, userId, batchId }) {
     else reverseIds.push(s.id);
   });
 
-  let reversed = [];
-  if (reverseIds.length) {
+  // In chunks: a long id list would make the request URL too long (and stay under the row cap).
+  const reversed = [];
+  const at = new Date().toISOString();
+  for (let i = 0; i < reverseIds.length; i += 200) {
+    const chunk = reverseIds.slice(i, i + 200);
     const { data: upd, error: uErr } = await supabase.from('payroll_snapshots')
-      .update({ status: 'reversed', is_locked: false, reversed_at: new Date().toISOString(), reversed_by: userId || null })
-      .eq('company_id', companyId).eq('source', SOURCE_TAG).in('id', reverseIds).select('id, employee_id, period_key');
-    if (uErr) throw new Error('Undo failed: ' + uErr.message);
-    reversed = upd || [];
+      .update({ status: 'reversed', is_locked: false, reversed_at: at, reversed_by: userId || null })
+      .eq('company_id', companyId).eq('source', SOURCE_TAG).in('id', chunk).select('id, employee_id, period_key');
+    if (uErr) throw new Error(`Undo failed after ${reversed.length} payslip(s) were reversed: ` + uErr.message);
+    reversed.push(...(upd || []));
   }
   return { reversed, blocked, notFound: false };
 }

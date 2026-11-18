@@ -675,8 +675,11 @@ async function markSupersededRuns(supabase, companyId, periodKey, newRunId) {
  * @param {number} finalizerId
  * @returns {Promise<object>} Updated run row
  */
-async function finalizePayrollRun(supabase, runId, finalizerId) {
-  const { data, error } = await supabase
+async function finalizePayrollRun(supabase, runId, finalizerId, companyId) {
+  // Only a DRAFT run of this company becomes finalized (one atomic UPDATE). The DB error
+  // code is kept on the thrown error so the caller can recognise a unique-index conflict
+  // (23505) or "no row" (PGRST116 — the run is no longer a draft).
+  let q = supabase
     .from('payroll_runs')
     .update({
       status:       'finalized',
@@ -684,11 +687,30 @@ async function finalizePayrollRun(supabase, runId, finalizerId) {
       finalized_at: new Date().toISOString()
     })
     .eq('id', runId)
-    .select()
-    .single();
+    .eq('status', 'draft');
+  if (companyId != null) q = q.eq('company_id', companyId);
+  const { data, error } = await q.select().single();
 
-  if (error) throw new Error(`Failed to finalize payroll run: ${error.message}`);
+  if (error) {
+    const e = new Error(`Failed to finalize payroll run: ${error.message}`);
+    e.code = error.code;
+    throw e;
+  }
   return data;
+}
+
+/**
+ * Compensation for finalize: put a run that was just marked finalized back to draft
+ * (used when locking its payslips failed, so nothing ends up half-finalized).
+ */
+async function revertRunToDraft(supabase, runId, companyId) {
+  const { error } = await supabase
+    .from('payroll_runs')
+    .update({ status: 'draft', finalized_by: null, finalized_at: null })
+    .eq('id', runId)
+    .eq('company_id', companyId)
+    .eq('status', 'finalized');
+  if (error) throw new Error(`Failed to revert payroll run to draft: ${error.message}`);
 }
 
 /**
@@ -797,6 +819,7 @@ module.exports = {
   createPayrollRun,
   updatePayrollRunTotals,
   finalizePayrollRun,
+  revertRunToDraft,
   markSupersededRuns,
   getPayrollRun,
   // Reversal (Migration 024)

@@ -1320,6 +1320,12 @@
             showToast(res.data.error, 'warning');
             return;
         }
+        // Audit 2026-11-18 H1: another finalized run exists for this month and the DB does
+        // not yet allow a supplemental one — nothing was locked, so this run is NOT finalized.
+        if (res.status === 409 && res.data && res.data.code === 'PERIOD_ALREADY_FINALIZED') {
+            showToast(res.data.error, 'warning');
+            return;
+        }
         if (res.status === 409) {
             showToast('This payroll run is already finalized.', 'warning');
             markAsFinalized();

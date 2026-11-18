@@ -1,0 +1,23 @@
+-- ============================================================================
+-- Migration 038 — allow supplemental pay runs to be finalized
+-- ============================================================================
+-- Purpose (audit OUDIT_2026-11-18, H1; docs/paytime/H1_FINALIZE_CHANGE_IMPACT_NOTE.md):
+--   Ruan asked for supplemental runs in April 2026 (commit e84228f): employees missed
+--   in a month's run can be run and finalized afterwards. Migration 014's index
+--   idx_payroll_runs_finalized_unique still allowed only ONE finalized run per
+--   company + month, so a supplemental run could never be finalized (it failed half-way
+--   before the H1 code fix).
+--
+-- Why this is safe:
+--   An employee can still have only one active payslip per month —
+--   idx_payroll_snapshots_active_unique (company_id, employee_id, period_key)
+--   WHERE status <> 'reversed' stays. Every reader works per payslip or per run id.
+--
+-- Rollback (only possible while no month has two finalized runs):
+--   CREATE UNIQUE INDEX idx_payroll_runs_finalized_unique
+--     ON payroll_runs (company_id, period_key) WHERE (status = 'finalized');
+--
+-- Idempotent.
+-- ============================================================================
+
+DROP INDEX IF EXISTS idx_payroll_runs_finalized_unique;

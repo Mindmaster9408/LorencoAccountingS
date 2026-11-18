@@ -84,6 +84,9 @@ class Query {
   ilike(c, v) { this.filters.push(r => String(r[c] || '').toLowerCase() === String(v).toLowerCase()); return this; }
   order(c, opts) { this.sortKey = c; this.sortAsc = !opts || opts.ascending !== false; return this; }
   limit(n) { this.max = n; return this; }
+  // Like PostgREST: inclusive range. When db.__maxRows is set, every read is capped at it,
+  // as Supabase caps at 1000 — lets a test prove that a query pages instead of truncating.
+  range(from, to) { this.rangeFrom = from; this.rangeTo = to; return this; }
   insert(row) { this.op = 'insert'; this.payload = row; return this; }
   update(patch) { this.op = 'update'; this.payload = patch; return this; }
   delete() { this.op = 'delete'; return this; }
@@ -98,6 +101,13 @@ class Query {
     }
     if (this.op === 'update' || this.op === 'delete') {
       const hit = rows.filter(r => this.filters.every(f => f(r)));
+      // Test-only: db.__beforeUpdate[table](hitRows, patch, db) may return an error object
+      // to simulate a DB constraint (e.g. a unique index) — nothing is changed then.
+      const hook = this.op === 'update' && this.db.__beforeUpdate && this.db.__beforeUpdate[this.table];
+      if (hook) {
+        const err = hook(hit, this.payload, this.db);
+        if (err) return { data: null, error: err };
+      }
       if (this.op === 'update') hit.forEach(r => Object.assign(r, this.payload));
       else this.db[this.table] = rows.filter(r => !hit.includes(r));
       return { data: hit.map(r => project(r, this.cols)), error: null };
@@ -118,15 +128,19 @@ class Query {
       out = out.slice().sort((a, b) => (a[k] > b[k] ? s : a[k] < b[k] ? -s : 0));
     }
     if (this.max !== null) out = out.slice(0, this.max);
+    if (this.rangeFrom !== undefined) out = out.slice(this.rangeFrom, this.rangeTo + 1);
+    if (this.db.__maxRows) out = out.slice(0, this.db.__maxRows);
     return { data: out.map(r => project(r, this.cols)), error: null };
   }
   maybeSingle() {
-    const { data } = this._run();
+    const { data, error } = this._run();
+    if (error) return Promise.resolve({ data: null, error });
     if (data.length > 1) return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'multiple rows' } });
     return Promise.resolve({ data: data[0] || null, error: null });
   }
   single() {
-    const { data } = this._run();
+    const { data, error } = this._run();
+    if (error) return Promise.resolve({ data: null, error });
     if (data.length !== 1) return Promise.resolve({ data: null, error: { code: 'PGRST116', message: data.length + ' rows' } });
     return Promise.resolve({ data: data[0], error: null });
   }

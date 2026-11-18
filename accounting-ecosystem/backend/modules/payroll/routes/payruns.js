@@ -139,10 +139,12 @@ router.post(
         // Duplicates were removed — proceed with deduplicated list (no error)
       }
 
-      // NOTE: The period-level finalization guard was removed.
+      // NOTE: The period-level finalization guard was removed (Ruan, April 2026).
       // The per-employee guard below already skips employees with locked snapshots,
       // so supplemental runs (adding employees missed in the original run) are allowed.
-      // The finalize endpoint still prevents double-finalizing a specific run_id.
+      // Each supplemental run is finalized on its own (migration 038 allows several
+      // finalized runs per month; one active payslip per employee is still enforced
+      // by idx_payroll_snapshots_active_unique). Finalize never double-finalizes a run_id.
 
       // ── Employee visibility filter ────────────────────────────────────────
       const filter = await getEmployeeFilter(
@@ -601,7 +603,33 @@ router.post(
         }
       }
 
-      // Lock all draft snapshots in this run
+      // Audit 2026-11-18 H1: mark the run finalized FIRST, then lock its payslips.
+      // The old order (lock, then mark) left payslips locked under a draft run whenever
+      // marking failed — e.g. a supplemental run while the DB still allowed only one
+      // finalized run per month (idx_payroll_runs_finalized_unique, dropped by migration 038).
+      try {
+        await PayrollHistoryService.finalizePayrollRun(
+          supabase, run_id, req.user.userId, req.companyId
+        );
+      } catch (finalErr) {
+        if (finalErr.code === '23505') {
+          return res.status(409).json({
+            success: false,
+            code:    'PERIOD_ALREADY_FINALIZED',
+            error:   `${period_key} already has a finalized pay run, and the database still allows only one per month ` +
+                     `(database update 038 has not run yet). Nothing was locked. To add these employees now, reverse the ` +
+                     `finalized run, run all employees together and finalize again.`
+          });
+        }
+        if (finalErr.code === 'PGRST116') {
+          return res.status(409).json({ success: false, error: `Payroll run ${run_id} is no longer a draft — reload the page.` });
+        }
+        console.error('[finalize] finalizePayrollRun failed:', finalErr);
+        return res.status(500).json({ success: false, error: 'Failed to finalize run — nothing was locked', detail: finalErr.message });
+      }
+
+      // Lock all draft snapshots in this run. If that fails, put the run back to draft so
+      // nothing is left half-finalized.
       let locked;
       try {
         locked = await PayrollHistoryService.lockSnapshotsForPeriod(
@@ -609,17 +637,19 @@ router.post(
         );
       } catch (lockErr) {
         console.error('[finalize] lockSnapshotsForPeriod failed:', lockErr);
-        return res.status(500).json({ success: false, error: 'Failed to lock snapshots', detail: lockErr.message });
+        try { await PayrollHistoryService.revertRunToDraft(supabase, run_id, req.companyId); }
+        catch (revErr) { console.error('[finalize] CRITICAL: run finalized but payslips not locked, revert failed:', revErr.message); }
+        return res.status(500).json({ success: false, error: 'Failed to lock the payslips — nothing was finalized', detail: lockErr.message });
       }
-
-      // Mark the run as finalized
-      try {
-        await PayrollHistoryService.finalizePayrollRun(
-          supabase, run_id, req.user.userId
-        );
-      } catch (finalErr) {
-        console.error('[finalize] finalizePayrollRun failed:', finalErr);
-        return res.status(500).json({ success: false, error: 'Failed to finalize run', detail: finalErr.message });
+      if (!locked.length) {
+        // The run's payslips were moved to a newer run between the check above and now.
+        try { await PayrollHistoryService.revertRunToDraft(supabase, run_id, req.companyId); }
+        catch (revErr) { console.error('[finalize] revert after empty lock failed:', revErr.message); }
+        return res.status(409).json({
+          success: false,
+          code:    'RUN_SUPERSEDED',
+          error:   'This pay run has no open payslips left — they were recalculated in a newer run for ' + period_key + '. Finalize the newest run instead.'
+        });
       }
 
       // Audit log

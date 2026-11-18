@@ -19,6 +19,8 @@ const { employeeTaxIssues } = require('../../../shared/utils/saIdentity');
 const { supabase } = require('../../../config/database');
 const Irp5ItemCheck = require('../services/irp5ItemCheck');
 const Easyfile = require('../services/easyfileExport');
+// Audit 2026-11-18 H2: Supabase returns at most 1000 rows per request — page through.
+const { fetchAllRows } = require('../services/fetchAllRows');
 const { authenticateToken, requireCompany, requirePermission } = require('../../../middleware/auth');
 
 const router = express.Router();
@@ -78,10 +80,10 @@ router.get('/tax-years', requirePermission('PAYROLL.VIEW'), async (req, res) => 
     const companyId = req.companyId;
 
     // Get distinct periods from payroll_historical
-    const { data: histRows } = await supabase
+    const { data: histRows } = await fetchAllRows(() => supabase
       .from('payroll_historical')
       .select('period_key')
-      .eq('company_id', companyId);
+      .eq('company_id', companyId));
 
     // Get distinct periods from payroll_transactions (via payroll_periods join)
     const { data: txRows } = await supabase
@@ -90,11 +92,11 @@ router.get('/tax-years', requirePermission('PAYROLL.VIEW'), async (req, res) => 
       .eq('company_id', companyId);
 
     // Get distinct periods from payroll_snapshots (finalized live payroll runs)
-    const { data: snapTaxRows } = await supabase
+    const { data: snapTaxRows } = await fetchAllRows(() => supabase
       .from('payroll_snapshots')
       .select('period_key')
       .eq('company_id', companyId)
-      .eq('is_locked', true);
+      .eq('is_locked', true));
 
     const seen = new Set();
     (histRows || []).forEach(r => { if (r.period_key) seen.add(taxYearForPeriod(r.period_key)); });
@@ -167,12 +169,12 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     // payroll_transactions is a legacy table never written by the batch run system.
     // NOTE: No FK exists between payroll_snapshots and employees, so join is done
     //       via the separate empLookup map above.
-    const { data: snapData, error: snapErr } = await supabase
+    const { data: snapData, error: snapErr } = await fetchAllRows(() => supabase
       .from('payroll_snapshots')
       .select('employee_id, period_key, calculation_output, calculation_input, created_at')
       .eq('company_id', companyId)
       .eq('is_locked', true)
-      .in('period_key', periods);
+      .in('period_key', periods));
 
     if (snapErr) throw new Error(snapErr.message);
 
@@ -190,11 +192,11 @@ router.get('/summary', requirePermission('PAYROLL.VIEW'), async (req, res) => {
 
     // ── 2. Aggregate from payroll_historical (imported/CSV data) ─────────────
     // select('*') so an sdl column is used when it exists (spec 09 RS-05).
-    const { data: histData, error: hErr } = await supabase
+    const { data: histData, error: hErr } = await fetchAllRows(() => supabase
       .from('payroll_historical')
       .select('*')
       .eq('company_id', companyId)
-      .in('period_key', periods);
+      .in('period_key', periods));
 
     if (hErr) throw new Error(hErr.message);
 
@@ -390,12 +392,12 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     // Aggregate from payroll_snapshots (authoritative source — replaces payroll_transactions)
     // NOTE: No FK exists between payroll_snapshots and employees, so join is done
     //       via the separate empLookup501 map above.
-    const { data: snapRows501, error: snap501Err } = await supabase
+    const { data: snapRows501, error: snap501Err } = await fetchAllRows(() => supabase
       .from('payroll_snapshots')
       .select('employee_id, period_key, calculation_output, calculation_input, created_at')
       .eq('company_id', companyId)
       .eq('is_locked', true)
-      .in('period_key', periods);
+      .in('period_key', periods));
 
     if (snap501Err) throw new Error(snap501Err.message);
 
@@ -472,11 +474,11 @@ router.get('/emp501', requirePermission('PAYROLL.VIEW'), async (req, res) => {
     });
 
     // Also include historical import data as a separate list (no IRP5 breakdown available)
-    const { data: histData501 } = await supabase
+    const { data: histData501 } = await fetchAllRows(() => supabase
       .from('payroll_historical')
       .select('*')
       .eq('company_id', companyId)
-      .in('period_key', periods);
+      .in('period_key', periods));
 
     const histAgg = {};
     for (const h of (histData501 || [])) {
@@ -529,9 +531,9 @@ async function loadEasyfileData(companyId, taxYear, period) {
   const [{ data: company, error: cErr }, { data: employees, error: eErr }, { data: snaps, error: sErr }] = await Promise.all([
     supabase.from('companies').select('*').eq('id', companyId).maybeSingle(),
     supabase.from('employees').select('*').eq('company_id', companyId),
-    supabase.from('payroll_snapshots')
+    fetchAllRows(() => supabase.from('payroll_snapshots')
       .select('employee_id, period_key, calculation_input, calculation_output, created_at')
-      .eq('company_id', companyId).eq('is_locked', true).in('period_key', win.periods)
+      .eq('company_id', companyId).eq('is_locked', true).in('period_key', win.periods))
   ]);
   if (cErr || eErr || sErr) throw new Error((cErr || eErr || sErr).message);
   if (!company) throw new Error('Company not found');
