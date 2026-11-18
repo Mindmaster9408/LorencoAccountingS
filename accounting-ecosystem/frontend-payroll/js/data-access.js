@@ -230,6 +230,11 @@ var DataAccess = (function() {
             return result;
         },
 
+        // Reverses an End of Service (server clears termination_date, audits the reason).
+        reinstateEmployee: async function(id, reason) {
+            return await POST('/employees/' + id + '/reinstate', { reason: reason });
+        },
+
         getEmployeeById: async function(companyId, empId) {
             try {
                 const result = await GET('/employees/' + empId);

@@ -1011,7 +1011,7 @@
                             <td>
                                 <button class="btn-small" style="background:#667eea;color:white;" onclick="window.location.href='employee-detail.html?id=${emp.id}'">Open</button>
                                 <button class="btn-small btn-edit" onclick="editEmployee('${emp.id}')">Edit</button>
-                                ${emp.is_active !== false ? `<button class="btn-small btn-end-service" data-permission="DELETE_EMPLOYEES" onclick="openEndServiceModal('${emp.id}')">End Service</button>` : '<span class="inactive-badge">Ended</span>'}
+                                ${emp.is_active !== false ? `<button class="btn-small btn-end-service" data-permission="DELETE_EMPLOYEES" onclick="openEndServiceModal('${emp.id}')">End Service</button>` : `<span class="inactive-badge">Ended${emp.termination_date ? ' ' + String(emp.termination_date).slice(0, 10) : ''}</span> <button class="btn-small" style="background:#28a745;color:white;" data-permission="DELETE_EMPLOYEES" onclick="reinstateEmployee('${emp.id}')">Reinstate</button>`}
                             </td>
                         </tr>
                     `;
@@ -1266,6 +1266,23 @@
                 errEl.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = 'Confirm End of Service';
+            }
+        }
+
+        // Reverses an End of Service. Payroll history is untouched; the reason is audited.
+        async function reinstateEmployee(id) {
+            var emp = (typeof employees !== 'undefined' && Array.isArray(employees))
+                ? employees.find(function(e) { return String(e.id) === String(id); }) : null;
+            var name = emp ? (emp.first_name + ' ' + emp.last_name) : 'this employee';
+            var reason = prompt('Reinstate ' + name + '?\n\nThe end-of-service date will be cleared and the employee becomes active again. Payroll history is not changed.\n\nReason (required):');
+            if (reason === null) return;
+            reason = reason.trim();
+            if (reason.length < 3) { alert('Please give a reason.'); return; }
+            try {
+                await DataAccess.reinstateEmployee(id, reason);
+                await loadEmployeesFromBackend();
+            } catch (err) {
+                alert('Could not reinstate: ' + (err.message || 'Server error'));
             }
         }
 

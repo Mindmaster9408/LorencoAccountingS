@@ -411,6 +411,71 @@ router.post('/:id/end-service', requirePermission('EMPLOYEES.DELETE'), async (re
 });
 
 /**
+ * POST /api/employees/:id/reinstate
+ * Reverses an End of Service (e.g. ended by mistake, or re-employed).
+ * Clears termination_date, sets active again. Payroll history is untouched.
+ * Same permission as End of Service. Reason required; previous dates kept in the audit log.
+ *
+ * Body: { reason }
+ */
+router.post('/:id/reinstate', requirePermission('EMPLOYEES.DELETE'), async (req, res) => {
+  try {
+    const empId = req.params.id;
+    const reason = String((req.body && req.body.reason) || '').trim();
+    if (reason.length < 3) return res.status(400).json({ error: 'A reason is required to reinstate an employee' });
+
+    const { data: existing, error: fetchErr } = await supabase
+      .from('employees')
+      .select('id, first_name, last_name, employee_code, is_active, employment_status, termination_date')
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .single();
+
+    if (fetchErr || !existing) return res.status(404).json({ error: 'Employee not found' });
+    if (existing.is_active && !existing.termination_date) {
+      return res.status(409).json({ error: 'Employee is already active' });
+    }
+
+    const { data, error } = await supabase
+      .from('employees')
+      .update({
+        is_active:         true,
+        employment_status: 'active',
+        termination_date:  null,
+        updated_at:        new Date().toISOString(),
+      })
+      .eq('id', empId)
+      .eq('company_id', req.companyId)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await supabase.from('employee_notes').insert({
+      company_id:  req.companyId,
+      employee_id: parseInt(empId),
+      note_type:   'reinstatement',
+      content:     `Reinstated (previous end of service: ${existing.termination_date || 'none'}). Reason: ${reason}`,
+      created_by:  req.user.userId,
+    });
+
+    const empName = `${existing.first_name || ''} ${existing.last_name || ''}`.trim();
+    await auditFromReq(req, 'UPDATE', 'employee', empId, {
+      action:                    'reinstate',
+      employee_code:             existing.employee_code,
+      name:                      empName,
+      previous_termination_date: existing.termination_date || null,
+      previous_status:           existing.employment_status || null,
+      reason,
+    });
+
+    res.json({ success: true, employee: data });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
  * DELETE /api/employees/:id (soft delete)
  */
 router.delete('/:id', requirePermission('EMPLOYEES.DELETE'), async (req, res) => {

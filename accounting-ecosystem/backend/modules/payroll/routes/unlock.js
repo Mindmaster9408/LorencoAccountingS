@@ -100,7 +100,7 @@ router.post('/', requirePermission('PAYSLIPS.UNLOCK'), async (req, res) => {
         // ── the payslip must be locked and not part of a finalized run ──
         const { data: snap, error: snapErr } = await supabase
             .from('payroll_snapshots')
-            .select('id, payroll_run_id, is_locked')
+            .select('id, payroll_run_id, is_locked, source')
             .eq('company_id', companyId)
             .eq('employee_id', empIdInt)
             .eq('period_key', String(period))
@@ -109,6 +109,15 @@ router.post('/', requirePermission('PAYSLIPS.UNLOCK'), async (req, res) => {
             .maybeSingle();
         if (snapErr) throw new Refused(503, 'CHECK_FAILED', 'Could not check the payslip — nothing was unlocked.');
         if (!snap) throw new Refused(404, 'NOT_LOCKED', 'This payslip is not finalized — nothing to unlock.');
+        // Spec 12 HI-05: an imported month came from another payroll system and was already
+        // declared to SARS. Unlocking would let Execute Payroll recalculate it. Corrections
+        // go through "Undo import" on the Historical Import page (reason + audit trail).
+        if (snap.source && /_import$/.test(String(snap.source))) {
+            return res.status(422).json({
+                error: 'This payslip was imported from a previous payroll system and cannot be unlocked. To correct it, undo the import on the Historical Import page and import it again.',
+                code: 'IMPORTED_PAYSLIP'
+            });
+        }
         if (snap.payroll_run_id) {
             const { data: run, error: runErr } = await supabase
                 .from('payroll_runs').select('id, status')

@@ -285,28 +285,33 @@
                             <tr><th>Column</th><th>Description</th><th>Required</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>employee_number</td><td>Must match existing employee</td><td class="required-yes">Yes</td></tr>
-                            <tr><td>period</td><td>YYYY-MM format (e.g., 2024-06)</td><td class="required-yes">Yes</td></tr>
+                            <tr><td>employee_number</td><td>Must match an existing employee (also employees whose service has ended)</td><td class="required-yes">Yes</td></tr>
+                            <tr><td>period</td><td>YYYY-MM (e.g. 2026-09). Text or date cells both work</td><td class="required-yes">Yes</td></tr>
                             <tr><td>basic_salary</td><td>Monthly basic salary (Rands)</td><td class="required-yes">Yes</td></tr>
-                            <tr><td>gross</td><td>Gross pay (if different from calculated)</td><td>No</td></tr>
-                            <tr><td>paye</td><td>PAYE tax withheld (historical value)</td><td>No</td></tr>
-                            <tr><td>uif</td><td>UIF contribution (historical value)</td><td>No</td></tr>
-                            <tr><td>net</td><td>Net pay (historical value)</td><td>No</td></tr>
-                            <tr><td>allowance_*</td><td>Columns starting with "allowance_" (e.g., allowance_travel)</td><td>No</td></tr>
-                            <tr><td>deduction_*</td><td>Columns starting with "deduction_" (e.g., deduction_medical)</td><td>No</td></tr>
-                            <tr><td>overtime_hours</td><td>Hours of overtime worked</td><td>No</td></tr>
-                            <tr><td>overtime_rate</td><td>Overtime multiplier (default 1.5)</td><td>No</td></tr>
+                            <tr><td>paye</td><td>PAYE withheld, as on the old payslip</td><td class="required-yes">Yes</td></tr>
+                            <tr><td>uif</td><td>Employee UIF, as on the old payslip</td><td class="required-yes">Yes</td></tr>
+                            <tr><td>gross</td><td>Gross pay. If empty: basic + all earnings columns</td><td>No</td></tr>
+                            <tr><td>net</td><td>Net pay. Checked: gross − PAYE − UIF − deductions must equal net</td><td>No</td></tr>
+                            <tr><td>uif_employer</td><td>Employer UIF (default: same as employee UIF)</td><td>No</td></tr>
+                            <tr><td>sdl</td><td>SDL (default: 1% of gross if the company is SDL-registered)</td><td>No</td></tr>
+                            <tr><td>taxable_gross</td><td>Taxable income (default: worked out from the payroll items)</td><td>No</td></tr>
+                            <tr><td>allowance_*</td><td>Earnings, one column each (e.g. allowance_travel, allowance_overtime, allowance_short_time — negative amounts allowed)</td><td>No</td></tr>
+                            <tr><td>deduction_*</td><td>Deductions, one column each (e.g. deduction_pension, deduction_salary_advance)</td><td>No</td></tr>
+                            <tr><td>employer_*</td><td>Employer contributions (e.g. employer_provident_fund)</td><td>No</td></tr>
+                            <tr><td>overtime_hours</td><td>Hours, shown on the overtime line (the amount comes from the overtime column)</td><td>No</td></tr>
                         </tbody>
                     </table>
                 </div>
 
                 <!-- CSV Preview Area -->
                 <div id="csvPreviewArea" style="display:none; margin-top:20px;">
+                    <div id="csvMappingArea" style="margin-bottom:20px; overflow-x:auto;"></div>
                     <div id="csvPreviewSummary"></div>
                     <div style="overflow-x:auto; max-height:450px; overflow-y:auto;">
                         <table id="csvPreviewTable" class="data-table"></table>
                     </div>
                     <div style="display:flex; gap:10px; margin-top:15px; justify-content:flex-end;">
+                        <label style="margin-right:auto; font-size:0.9rem; color:#666; display:flex; align-items:center; gap:6px;"><input type="checkbox" id="csvAcceptMismatch" onchange="validateCsv()"> Import rows that do not add up (difference shown as &quot;Not allocated&quot;)</label>
                         <button class="btn btn-secondary" onclick="resetCsvUpload()">Cancel</button>
                         <button class="btn btn-success" id="csvConfirmBtn" onclick="confirmCsvImport()">Confirm Import</button>
                     </div>
@@ -446,33 +451,7 @@
         // ========== GLOBALS ==========
         var currentCompanyId = null;
         var employees = [];
-        var csvParsedData = null;
         var pdfExtractedRows = [];
-
-        // ========== SQL SYNC HELPER ==========
-        // Pushes each imported historical record to the SQL backend after KV write succeeds.
-        // Fire-and-forget — never blocks the UI or rolls back the KV transaction.
-        function _syncHistoricalToSQL(records) {
-            if (!records || records.length === 0) return;
-            var token = safeLocalStorage.getItem('token');
-            if (!token) return;
-            var base = window.location.origin + '/api/payroll/employees/';
-            var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
-            records.forEach(function(r) {
-                fetch(base + encodeURIComponent(r.empId) + '/historical', {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({
-                        period_key: r.period,
-                        gross: r.gross || 0,
-                        paye:  r.paye  || 0,
-                        uif:   r.uif   || 0,
-                        net:   r.net   || 0,
-                        source: r.source || 'import'
-                    })
-                }).catch(function() {});
-            });
-        }
 
         // ========== PDF.JS WORKER ==========
         if (typeof pdfjsLib !== 'undefined') {
@@ -559,7 +538,8 @@
         // Pay Runs, and Payroll Execution. NOT the old safeLocalStorage KV key.
         async function loadEmployees() {
             try {
-                employees = await DataAccess.getEmployees(currentCompanyId);
+                // Include employees whose service has ended — their earlier months can still be imported.
+                employees = await DataAccess.getEmployees(currentCompanyId, { includeInactive: true });
             } catch(e) {
                 employees = [];
                 console.error('Import: could not load employees from server:', e.message);
@@ -646,20 +626,70 @@
 
 
         // ================================================================
-        //  TAB 1: CSV/EXCEL UPLOAD
+        //  TAB 1: CSV/EXCEL UPLOAD  (spec 12 — imported months become locked
+        //  payroll_snapshots on the server; nothing is kept in the browser)
         // ================================================================
 
         var HISTORICAL_FIELD_ALIASES = {
-            'employee_number': ['employee_number', 'emp_number', 'EmpNo', 'emp_no', 'empno', 'Employee Number', 'EmployeeNumber', 'emp_id', 'staff_number', 'StaffNo'],
+            'employee_number': ['employee_number', 'emp_number', 'EmpNo', 'emp_no', 'empno', 'Employee Number', 'EmployeeNumber', 'emp_id', 'staff_number', 'StaffNo', 'employee_code'],
             'period': ['period', 'Period', 'pay_period', 'PayPeriod', 'month', 'Month', 'pay_month', 'date'],
             'basic_salary': ['basic_salary', 'BasicSalary', 'basic', 'Basic', 'basic_pay', 'base_salary', 'Basic Salary'],
             'gross': ['gross', 'Gross', 'gross_pay', 'GrossPay', 'Gross Pay', 'total_earnings', 'TotalEarnings'],
+            'taxable_gross': ['taxable_gross', 'TaxableGross', 'taxable', 'Taxable', 'taxable_income', 'Gross Taxable'],
             'paye': ['paye', 'PAYE', 'income_tax', 'IncomeTax', 'tax', 'Tax', 'Income Tax'],
             'uif': ['uif', 'UIF', 'uif_employee', 'UIF Employee'],
+            'uif_employer': ['uif_employer', 'UIF Employer', 'UIFEmployer', 'uif_er'],
+            'sdl': ['sdl', 'SDL', 'sdl_employer', 'SDL Employer'],
             'net': ['net', 'Net', 'net_pay', 'NetPay', 'nett', 'Nett', 'Net Pay', 'take_home', 'TakeHome'],
-            'overtime_hours': ['overtime_hours', 'OvertimeHours', 'ot_hours', 'OT Hours', 'overtime', 'OT_Hours'],
+            'overtime_hours': ['overtime_hours', 'OvertimeHours', 'ot_hours', 'OT Hours', 'OT_Hours'],
             'overtime_rate': ['overtime_rate', 'OvertimeRate', 'ot_rate', 'OT Rate', 'OT_Rate']
         };
+
+        var csvState = null;   // { fileName, rows, lineCols, items, mapping, lastResult }
+
+        // Auth token only (permitted in browser storage — CLAUDE.md D2).
+        async function histApi(method, path, body) {
+            var headers = { 'Content-Type': 'application/json' };
+            var token = safeLocalStorage.getItem('token');
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            var opts = { method: method, headers: headers };
+            if (body) opts.body = JSON.stringify(body);
+            var res = await fetch(window.location.origin + '/api/payroll' + path, opts);
+            var data = null;
+            try { data = await res.json(); } catch (e) { data = {}; }
+            if (res.status === 401) { window.location.href = 'login.html'; throw new Error('Session expired'); }
+            if (!res.ok || (data && data.success === false)) throw new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+            return data;
+        }
+
+        function escHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        // "6 023,10" · "6,023.10" · "6023.10" · "-86.51" · "R 300" → number (null when blank).
+        function parseAmount(v) {
+            if (v === null || v === undefined) return null;
+            if (typeof v === 'number') return isFinite(v) ? Math.round(v * 100) / 100 : null;
+            var s = String(v).replace(/[R\s ]/g, '');
+            if (s === '' || s === '-') return null;
+            var neg = /^\(.*\)$/.test(s);
+            s = s.replace(/[()]/g, '');
+            var lastDot = s.lastIndexOf('.'), lastComma = s.lastIndexOf(',');
+            if (lastDot >= 0 && lastComma >= 0) {
+                if (lastComma > lastDot) s = s.replace(/\./g, '').replace(',', '.');
+                else s = s.replace(/,/g, '');
+            } else if (lastComma >= 0) {
+                s = /,\d{1,2}$/.test(s) && (s.match(/,/g) || []).length === 1 ? s.replace(',', '.') : s.replace(/,/g, '');
+            }
+            var n = parseFloat(s);
+            if (!isFinite(n)) return NaN;
+            n = Math.round(n * 100) / 100;
+            return neg ? -n : n;
+        }
+
+        function isLineColumn(h) { return /^(allowance|deduction|employer)/i.test(String(h).trim()); }
 
         function handleCsvFile(file) {
             if (typeof XLSX === 'undefined') {
@@ -668,309 +698,289 @@
             }
             BulkImportUtils.parseFile(file, function(data, error) {
                 if (error) { alert(error); return; }
-                processCsvData(data);
-            });
+                processCsvData(data, file.name).catch(function(e) { alert('Could not read the file: ' + e.message); });
+            }, { csvAsText: true });
         }
 
-        function processCsvData(jsonData) {
+        async function processCsvData(jsonData, fileName) {
             var headers = Object.keys(jsonData[0]);
             var mapping = BulkImportUtils.autoMapColumns(headers, HISTORICAL_FIELD_ALIASES);
-
-            var empNumberCol = mapping.employee_number;
-            var periodCol = mapping.period;
-            var basicCol = mapping.basic_salary;
-            var grossCol = mapping.gross;
-            var payeCol = mapping.paye;
-            var uifCol = mapping.uif;
-            var netCol = mapping.net;
-            var otHoursCol = mapping.overtime_hours;
-            var otRateCol = mapping.overtime_rate;
-
-            if (!empNumberCol) { alert('Could not find an employee_number column. Please check your file.'); return; }
-            if (!periodCol) { alert('Could not find a period column. Please check your file.'); return; }
-            if (!basicCol) { alert('Could not find a basic_salary column. Please check your file.'); return; }
-
-            // Detect allowance and deduction columns
-            var allowanceCols = headers.filter(function(h) { return h.toLowerCase().indexOf('allowance') === 0; });
-            var deductionCols = headers.filter(function(h) { return h.toLowerCase().indexOf('deduction') === 0; });
-
-            var preview = [];
-            var errorCount = 0;
-            var periodsFound = {};
-            var matchedEmps = {};
-
-            jsonData.forEach(function(row, idx) {
-                var empNum = String(row[empNumberCol] || '').trim();
-                var rawPeriod = String(row[periodCol] || '').trim();
-                var period = BulkImportUtils.normalizePeriod(rawPeriod);
-                var basic = BulkImportUtils.parseMoney(row[basicCol]) || 0;
-                var emp = findEmployeeByNumber(empNum);
-
-                var rowErrors = [];
-                if (!emp) rowErrors.push('Employee not found');
-                if (!period) rowErrors.push('Invalid period: ' + rawPeriod);
-                if (basic <= 0) rowErrors.push('Invalid basic salary');
-
-                // Deduplication check
-                var isDuplicate = false;
-                if (emp && period) {
-                    isDuplicate = PayrollEngine.hasHistoricalRecord(currentCompanyId, emp.id, period);
-                    if (isDuplicate) rowErrors.push('Duplicate: record already exists');
-                }
-
-                // Conflict detection: compare imported basic with current employee salary
-                if (emp && basic > 0) {
-                    var currentPayroll = JSON.parse(safeLocalStorage.getItem('emp_payroll_' + currentCompanyId + '_' + emp.id) || '{}');
-                    if (currentPayroll.basic_salary && Math.abs(currentPayroll.basic_salary - basic) > 1) {
-                        // Not an error, just a warning flag
-                    }
-                }
-
-                if (period) periodsFound[period] = true;
-                if (emp) matchedEmps[emp.id] = emp;
-
-                // Parse allowances and deductions
-                var allowances = [];
-                var deductions = [];
-                allowanceCols.forEach(function(col) {
-                    var amt = BulkImportUtils.parseMoney(row[col]);
-                    if (amt && amt > 0) {
-                        var name = col.replace(/^allowance_?/i, '').replace(/_/g, ' ').trim() || 'Allowance';
-                        allowances.push({ description: name, amount: amt });
-                    }
-                });
-                deductionCols.forEach(function(col) {
-                    var amt = BulkImportUtils.parseMoney(row[col]);
-                    if (amt && amt > 0) {
-                        var name = col.replace(/^deduction_?/i, '').replace(/_/g, ' ').trim() || 'Deduction';
-                        deductions.push({ description: name, amount: amt });
-                    }
-                });
-
-                // Parse optional fields
-                var gross = grossCol ? BulkImportUtils.parseMoney(row[grossCol]) : null;
-                var paye = payeCol ? BulkImportUtils.parseMoney(row[payeCol]) : null;
-                var uif = uifCol ? BulkImportUtils.parseMoney(row[uifCol]) : null;
-                var net = netCol ? BulkImportUtils.parseMoney(row[netCol]) : null;
-                var otHours = otHoursCol ? parseFloat(row[otHoursCol]) || 0 : 0;
-                var otRate = otRateCol ? parseFloat(row[otRateCol]) || 1.5 : 1.5;
-
-                // If PAYE/UIF/net are not provided, calculate them
-                var calculated = false;
-                if (basic > 0 && (paye === null || uif === null || net === null)) {
-                    var regularInputs = [];
-                    allowances.forEach(function(a) { regularInputs.push({ type: 'allowance', description: a.description, amount: a.amount }); });
-                    deductions.forEach(function(d) { regularInputs.push({ type: 'deduction', description: d.description, amount: d.amount }); });
-                    var overtime = otHours > 0 ? [{ hours: otHours, rate_multiplier: otRate }] : [];
-                    var calc = PayrollEngine.calculateFromData({ basic_salary: basic, regular_inputs: regularInputs }, [], overtime, [], []);
-                    if (gross === null) gross = calc.gross;
-                    if (paye === null) paye = calc.paye;
-                    if (uif === null) uif = calc.uif;
-                    if (net === null) net = calc.net;
-                    calculated = true;
-                }
-
-                if (gross === null) gross = basic;
-                if (paye === null) paye = 0;
-                if (uif === null) uif = 0;
-                if (net === null) net = gross - paye - uif;
-
-                // Validate gross >= basic
-                if (gross > 0 && basic > 0 && gross < basic) {
-                    rowErrors.push('Gross (' + gross + ') < Basic (' + basic + ')');
-                }
-
-                if (rowErrors.length > 0) errorCount++;
-
-                preview.push({
-                    _row: idx + 1,
-                    employee_number: empNum,
-                    employee_name: emp ? (emp.first_name + ' ' + emp.last_name) : 'NOT FOUND',
-                    period: period || rawPeriod,
-                    basic: basic,
-                    gross: gross,
-                    paye: paye,
-                    uif: uif,
-                    net: net,
-                    sdl: gross > 0 ? PayrollEngine.calculateSDL(gross) : 0,
-                    allowances: allowances,
-                    deductions: deductions,
-                    overtime_hours: otHours,
-                    overtime_rate: otRate,
-                    calculated: calculated,
-                    _errors: rowErrors,
-                    _empId: emp ? emp.id : null
-                });
-            });
-
-            csvParsedData = preview;
-
-            // Render summary
-            var uniquePeriods = Object.keys(periodsFound).sort();
-            var matchedCount = Object.keys(matchedEmps).length;
-            var validCount = preview.filter(function(r) { return r._errors.length === 0; }).length;
-
-            var summaryHtml = '<h3 style="color:#667eea; margin-bottom:15px;">Import Preview</h3>';
-            summaryHtml += '<div class="summary-cards">';
-            summaryHtml += '<div class="summary-card" style="background:#d4edda; color:#155724;"><div class="summary-card-label">Valid Rows</div><div class="summary-card-value">' + validCount + '</div></div>';
-            summaryHtml += '<div class="summary-card" style="background:' + (errorCount > 0 ? '#f8d7da' : '#e2e3e5') + '; color:' + (errorCount > 0 ? '#721c24' : '#383d41') + ';"><div class="summary-card-label">Errors</div><div class="summary-card-value">' + errorCount + '</div></div>';
-            summaryHtml += '<div class="summary-card" style="background:#e3f2fd; color:#1565c0;"><div class="summary-card-label">Periods Found</div><div class="summary-card-value">' + uniquePeriods.length + '</div></div>';
-            summaryHtml += '<div class="summary-card" style="background:#f3e5f5; color:#6a1b9a;"><div class="summary-card-label">Employees Matched</div><div class="summary-card-value">' + matchedCount + '</div></div>';
-            summaryHtml += '</div>';
-
-            if (uniquePeriods.length > 0) {
-                summaryHtml += '<p style="color:#666; font-size:0.9rem; margin-bottom:15px;">Periods: ' + uniquePeriods.map(function(p) { return formatPeriod(p); }).join(', ') + '</p>';
-            }
-
-            // PT-13: Warn when multiple periods are detected in a single upload
-            if (uniquePeriods.length > 1) {
-                summaryHtml += '<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#856404;">' +
-                    '<strong>&#9888; Multiple periods detected (' + uniquePeriods.length + '):</strong> ' +
-                    uniquePeriods.map(function(p) { return formatPeriod(p); }).join(', ') + '. ' +
-                    'For accuracy, import one period at a time so PAYE YTD calculations accumulate correctly.</div>';
-            }
-
-            // PT-11: List unrecognised employee numbers with a call-to-action
-            var unmatchedNums = preview
-                .filter(function(r) { return !r._empId; })
-                .map(function(r) { return r.employee_number; })
-                .filter(function(v, i, a) { return a.indexOf(v) === i; }); // unique
-            if (unmatchedNums.length > 0) {
-                summaryHtml += '<div style="background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#721c24;">' +
-                    '<strong>&#10060; ' + unmatchedNums.length + ' unrecognised employee number(s):</strong> ' +
-                    unmatchedNums.map(function(n) { return '<code>' + n + '</code>'; }).join(', ') + '.' +
-                    ' <a href="employees.html" style="color:#721c24; font-weight:700;">Create these employees first</a>, then re-upload this file. ' +
-                    'These rows will be skipped during import.</div>';
-            }
-
-            document.getElementById('csvPreviewSummary').innerHTML = summaryHtml;
-
-            // Render table
-            var tableHtml = '<thead><tr style="background:linear-gradient(135deg, #667eea, #764ba2); color:white;">';
-            tableHtml += '<th style="padding:10px 8px;">Row</th><th style="padding:10px 8px;">Emp #</th><th style="padding:10px 8px;">Name</th>';
-            tableHtml += '<th style="padding:10px 8px;">Period</th><th style="padding:10px 8px; text-align:right;">Basic</th>';
-            tableHtml += '<th style="padding:10px 8px; text-align:right;">Gross</th><th style="padding:10px 8px; text-align:right;">PAYE</th>';
-            tableHtml += '<th style="padding:10px 8px; text-align:right;">UIF</th><th style="padding:10px 8px; text-align:right;">Net</th>';
-            tableHtml += '<th style="padding:10px 8px;">Status</th></tr></thead><tbody>';
-
-            preview.forEach(function(row) {
-                var bg = row._errors.length > 0 ? '#f8d7da' : '';
-                tableHtml += '<tr style="background:' + bg + '; border-bottom:1px solid #eee;">';
-                tableHtml += '<td style="padding:8px;">' + row._row + '</td>';
-                tableHtml += '<td style="padding:8px;">' + row.employee_number + '</td>';
-                tableHtml += '<td style="padding:8px;">' + row.employee_name + '</td>';
-                tableHtml += '<td style="padding:8px;">' + (row.period ? formatPeriod(row.period) : row.period) + '</td>';
-                tableHtml += '<td style="padding:8px; text-align:right;">' + formatMoney(row.basic) + '</td>';
-                tableHtml += '<td style="padding:8px; text-align:right;">' + formatMoney(row.gross) + '</td>';
-                tableHtml += '<td style="padding:8px; text-align:right;">' + formatMoney(row.paye) + '</td>';
-                tableHtml += '<td style="padding:8px; text-align:right;">' + formatMoney(row.uif) + '</td>';
-                tableHtml += '<td style="padding:8px; text-align:right; font-weight:600;">' + formatMoney(row.net) + '</td>';
-                if (row._errors.length > 0) {
-                    tableHtml += '<td style="padding:8px; color:#dc3545; font-weight:600;">' + row._errors.join(', ') + '</td>';
-                } else {
-                    tableHtml += '<td style="padding:8px; color:#28a745; font-weight:600;">' + (row.calculated ? 'Calculated' : 'Historical') + '</td>';
-                }
-                tableHtml += '</tr>';
-            });
-            tableHtml += '</tbody>';
-            document.getElementById('csvPreviewTable').innerHTML = tableHtml;
-
-            if (validCount === 0) {
-                document.getElementById('csvConfirmBtn').disabled = true;
-                document.getElementById('csvConfirmBtn').style.opacity = '0.5';
-            } else {
-                document.getElementById('csvConfirmBtn').disabled = false;
-                document.getElementById('csvConfirmBtn').style.opacity = '1';
-            }
-
-            document.getElementById('csvDropZone').style.display = 'none';
-            document.getElementById('csvPreviewArea').style.display = 'block';
-        }
-
-        function confirmCsvImport() {
-            if (!csvParsedData) return;
-            var validRows = csvParsedData.filter(function(r) { return r._errors.length === 0; });
-            if (validRows.length === 0) return;
-
-            // Transaction rollback: collect all keys we'll write
-            var keysWritten = [];
-            var sqlBatch = [];
-            var importedCount = 0;
-            var periodsCreated = {};
-            var periodStats = {};
-            var importTimestamp = new Date().toISOString();
-
-            try {
-                validRows.forEach(function(row) {
-                    var histKey = 'emp_historical_' + currentCompanyId + '_' + row._empId + '_' + row.period;
-                    var histData = {
-                        basic_salary: row.basic,        // consistent with finalizePayslip format
-                        gross: row.gross,
-                        taxableGross: row.gross,        // best approximation; enables YTD PAYE for future periods
-                        paye: row.paye,
-                        uif: row.uif,
-                        sdl: row.sdl,
-                        net: row.net,
-                        allowances: row.allowances,
-                        deductions: row.deductions.length > 0
-                            ? row.deductions
-                            : [{ description: 'Total Deductions', amount: 0 }],
-                        overtime_hours: row.overtime_hours,
-                        overtime_rate: row.overtime_rate,
-                        source: 'csv_import',
-                        imported_date: importTimestamp
-                    };
-                    safeLocalStorage.setItem(histKey, JSON.stringify(histData));
-                    keysWritten.push(histKey);
-                    sqlBatch.push({ empId: row._empId, period: row.period, gross: row.gross, paye: row.paye, uif: row.uif, net: row.net, source: 'csv_import' });
-
-                    // Accumulate stats per period
-                    if (!periodStats[row.period]) {
-                        periodStats[row.period] = { count: 0, gross: 0, paye: 0, uif: 0, net: 0 };
-                    }
-                    periodStats[row.period].count++;
-                    periodStats[row.period].gross += row.gross || 0;
-                    periodStats[row.period].paye += row.paye || 0;
-                    periodStats[row.period].uif += row.uif || 0;
-                    periodStats[row.period].net += row.net || 0;
-
-                    periodsCreated[row.period] = true;
-                    importedCount++;
-                });
-
-                // Create pay run entries with proper stats
-                createHistoricalPayruns(periodsCreated, periodStats);
-                logHistoricalImport('CSV/Excel Import', importedCount, Object.keys(periodsCreated));
-
-            } catch (err) {
-                // Rollback: remove all keys written in this batch
-                keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
-                alert('Import failed and was rolled back: ' + err.message);
+            var missing = [];
+            if (!mapping.employee_number) missing.push('employee_number');
+            if (!mapping.period) missing.push('period');
+            if (!mapping.basic_salary) missing.push('basic_salary');
+            if (!mapping.paye) missing.push('paye');
+            if (!mapping.uif) missing.push('uif');
+            if (missing.length) {
+                alert('These required columns were not found: ' + missing.join(', ') + '.\n\nHistorical payslips are stored exactly as in your old system, so PAYE and UIF must be in the file.');
                 return;
             }
+            var coreCols = Object.keys(mapping).map(function(k) { return mapping[k]; }).filter(Boolean);
+            var lineCols = headers.filter(function(h) { return isLineColumn(h) && coreCols.indexOf(h) === -1; });
 
-            _syncHistoricalToSQL(sqlBatch);
+            var rows = [];
+            var badNumbers = [];
+            jsonData.forEach(function(r, idx) {
+                var empNum = String(r[mapping.employee_number] == null ? '' : r[mapping.employee_number]).trim();
+                if (!empNum && Object.keys(r).every(function(k) { return String(r[k]).trim() === ''; })) return; // blank line
+                var rawPeriod = r[mapping.period];
+                var row = {
+                    row: idx + 2,                                   // spreadsheet row (header = 1)
+                    employee_number: empNum,
+                    period: BulkImportUtils.normalizePeriod(rawPeriod) || '',
+                    period_raw: String(rawPeriod == null ? '' : rawPeriod),
+                    lines: [],
+                    raw: {}
+                };
+                ['basic_salary', 'gross', 'taxable_gross', 'paye', 'uif', 'uif_employer', 'sdl', 'net', 'overtime_hours'].forEach(function(f) {
+                    if (!mapping[f]) return;
+                    var v = parseAmount(r[mapping[f]]);
+                    if (v !== v) { badNumbers.push('row ' + row.row + ' ' + mapping[f]); v = null; }   // NaN
+                    row[f] = v;
+                });
+                lineCols.forEach(function(c) {
+                    var v = parseAmount(r[c]);
+                    if (v !== v) { badNumbers.push('row ' + row.row + ' ' + c); return; }
+                    if (v) row.lines.push({ column: c, amount: v });
+                });
+                headers.forEach(function(h) { var v = r[h]; if (v !== '' && v != null) row.raw[h] = String(v); });
+                rows.push(row);
+            });
+            if (!rows.length) { alert('The file has no data rows.'); return; }
+            if (badNumbers.length) {
+                alert('Some amounts could not be read and were left blank:\n' + badNumbers.slice(0, 15).join('\n') + (badNumbers.length > 15 ? '\n…' : ''));
+            }
 
-            resetCsvUpload();
-            loadImportLog();
-            alert('Successfully imported ' + importedCount + ' historical record(s) across ' + Object.keys(periodsCreated).length + ' period(s).');
+            // Payroll Items (the GET also moves a company's old item list into the database once).
+            try { await histApi('GET', '/items'); } catch (e) { /* setup below reports real errors */ }
+            var setup = await histApi('GET', '/historical-import/setup?columns=' + encodeURIComponent(lineCols.join(',')));
+            var colMap = {};
+            lineCols.forEach(function(c) {
+                var s = setup.suggestions[c] || { target: 'none' };
+                colMap[c] = s.target === 'item' ? { target: 'item', master_item_id: s.master_item_id } : { target: s.target };
+            });
+
+            csvState = { fileName: fileName || null, rows: rows, lineCols: lineCols, items: setup.items || [], suggestions: setup.suggestions || {}, mapping: colMap, lastResult: null };
+            document.getElementById('csvDropZone').style.display = 'none';
+            document.getElementById('csvPreviewArea').style.display = 'block';
+            renderCsvMapping();
+            await validateCsv();
+        }
+
+        function columnSideOf(c) {
+            var s = String(c).toLowerCase();
+            return s.indexOf('deduction') === 0 ? 'deduction' : s.indexOf('employer') === 0 ? 'employer' : 'earning';
+        }
+        function itemSideOf(type) {
+            var t = String(type || '').toLowerCase();
+            return t === 'deduction' ? 'deduction' : (t === 'employer_contribution' || t === 'company_contribution') ? 'employer' : 'earning';
+        }
+
+        function renderCsvMapping() {
+            var box = document.getElementById('csvMappingArea');
+            if (!csvState.lineCols.length) { box.innerHTML = ''; return; }
+            var html = '<h3 style="color:#667eea; margin-bottom:6px;">Link each column to a payroll item</h3>' +
+                '<p style="color:#888; font-size:0.85rem; margin-bottom:10px;">Every column becomes its own line on the payslip. Linking it to a payroll item gives it the item\'s name and IRP5 code for the EMP501. ' +
+                'Overtime and short time go to Paytime\'s own overtime / short time lines. Negative amounts are kept as they are.</p>';
+            html += '<table class="data-table"><thead><tr><th>Column in file</th><th>Type</th><th style="text-align:right;">Total in file</th><th>Payroll item</th></tr></thead><tbody>';
+            csvState.lineCols.forEach(function(c) {
+                var side = columnSideOf(c);
+                var total = csvState.rows.reduce(function(t, r) {
+                    var l = r.lines.find(function(x) { return x.column === c; });
+                    return t + (l ? l.amount : 0);
+                }, 0);
+                var cur = csvState.mapping[c] || { target: 'none' };
+                var curVal = cur.target === 'item' ? 'item:' + cur.master_item_id : cur.target;
+                var opts = '';
+                if (side !== 'employer') {
+                    if (side === 'earning') opts += '<option value="overtime">Overtime (Paytime overtime line)</option>';
+                    opts += '<option value="short_time">Short time (reduces pay)</option>';
+                }
+                csvState.items.filter(function(it) { return itemSideOf(it.item_type) === side; }).forEach(function(it) {
+                    opts += '<option value="item:' + it.id + '">' + escHtml(it.item_name) + (it.irp5_code ? ' — IRP5 ' + escHtml(it.irp5_code) : ' — no IRP5 code') + '</option>';
+                });
+                opts += '<option value="none">Keep as its own line (no payroll item)</option>';
+                opts += '<option value="__new">+ Create a new payroll item…</option>';
+                opts = opts.replace('value="' + curVal + '"', 'value="' + curVal + '" selected');
+                var sug = csvState.suggestions[c] || {};
+                var hint = sug.from === 'last_import' ? '<div style="font-size:11px; color:#888;">as in your last import</div>' : '';
+                html += '<tr><td><code>' + escHtml(c) + '</code></td><td>' + (side === 'deduction' ? 'Deduction' : side === 'employer' ? 'Employer contribution' : 'Earning') + '</td>' +
+                    '<td style="text-align:right;">' + formatMoney(total) + '</td>' +
+                    '<td><select data-col="' + escHtml(c) + '" onchange="onCsvMapChange(this)" style="min-width:260px; padding:6px;">' + opts + '</select>' + hint + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            box.innerHTML = html;
+        }
+
+        async function onCsvMapChange(sel) {
+            var c = sel.getAttribute('data-col');
+            var v = sel.value;
+            if (v === '__new') {
+                var created = await createItemForColumn(c);
+                if (!created) { renderCsvMapping(); return; }
+                csvState.items.push(created);
+                csvState.mapping[c] = { target: 'item', master_item_id: created.id };
+                renderCsvMapping();
+            } else if (v.indexOf('item:') === 0) {
+                csvState.mapping[c] = { target: 'item', master_item_id: v.slice(5) };
+            } else {
+                csvState.mapping[c] = { target: v };
+            }
+            await validateCsv();
+        }
+
+        // Uses the normal Payroll Items endpoint (validation + Sean IRP5 learning event live there).
+        async function createItemForColumn(c) {
+            var side = columnSideOf(c);
+            var label = (csvState.suggestions[c] && csvState.suggestions[c].label) || c;
+            var name = prompt('Name of the new payroll item for column "' + c + '":', label);
+            if (name === null || !name.trim()) return null;
+            var code = prompt('IRP5 code for "' + name.trim() + '" (e.g. 3601, 3713, 4003).\nLeave empty if it has none (net-only deductions such as a salary advance need none):', '');
+            if (code === null) return null;
+            code = code.trim();
+            if (code && !/^\d{4}$/.test(code)) { alert('An IRP5 code has 4 digits.'); return null; }
+            var body = {
+                item_code: ('IMP_' + name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_')).slice(0, 30) + '_' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+                item_name: name.trim(),
+                item_type: side === 'deduction' ? 'deduction' : side === 'employer' ? 'employer_contribution' : 'allowance',
+                is_taxable: side !== 'deduction',
+                is_recurring: true,
+                irp5_code: code || null,
+                category: 'imported'
+            };
+            if (side === 'deduction') body.tax_treatment = 'net_only';
+            try {
+                var res = await histApi('POST', '/items', body);
+                return res.item || res.data || res;
+            } catch (e) {
+                alert('Could not create the payroll item: ' + e.message);
+                return null;
+            }
+        }
+
+        async function validateCsv() {
+            var btn = document.getElementById('csvConfirmBtn');
+            btn.disabled = true; btn.style.opacity = '0.5';
+            document.getElementById('csvPreviewSummary').innerHTML = '<p style="color:#888;">Checking the file…</p>';
+            try {
+                var res = await histApi('POST', '/historical-import', {
+                    rows: csvState.rows, mapping: csvState.mapping, file_name: csvState.fileName,
+                    accept_mismatch: document.getElementById('csvAcceptMismatch').checked, dry_run: true
+                });
+                csvState.lastResult = res;
+                renderCsvResult(res, false);
+                if (res.summary.ok > 0) { btn.disabled = false; btn.style.opacity = '1'; }
+            } catch (e) {
+                document.getElementById('csvPreviewSummary').innerHTML = '<div style="background:#f8d7da; color:#721c24; padding:10px 14px; border-radius:6px;">Could not check the file: ' + escHtml(e.message) + '</div>';
+            }
+        }
+
+        function renderCsvResult(res, done) {
+            var s = res.summary;
+            var okLabel = done ? 'Imported' : 'Ready to import';
+            var html = '<h3 style="color:#667eea; margin-bottom:15px;">' + (done ? 'Import result' : 'Import Preview') + '</h3>';
+            html += '<div class="summary-cards">';
+            html += '<div class="summary-card" style="background:#d4edda; color:#155724;"><div class="summary-card-label">' + okLabel + '</div><div class="summary-card-value">' + s.ok + '</div></div>';
+            html += '<div class="summary-card" style="background:#e2e3e5; color:#383d41;"><div class="summary-card-label">Already in Paytime</div><div class="summary-card-value">' + s.skipped + '</div></div>';
+            html += '<div class="summary-card" style="background:' + (s.errors ? '#f8d7da' : '#e2e3e5') + '; color:' + (s.errors ? '#721c24' : '#383d41') + ';"><div class="summary-card-label">Errors</div><div class="summary-card-value">' + s.errors + '</div></div>';
+            html += '<div class="summary-card" style="background:#e3f2fd; color:#1565c0;"><div class="summary-card-label">Periods</div><div class="summary-card-value">' + s.periods.length + '</div></div>';
+            html += '</div>';
+            if (s.periods.length) {
+                html += '<p style="color:#666; font-size:0.9rem; margin-bottom:6px;">Periods: ' + s.periods.map(formatPeriod).join(', ') + '</p>';
+                html += '<p style="color:#666; font-size:0.9rem; margin-bottom:12px;">Totals — Gross ' + formatMoney(s.totals.gross) + ' · PAYE ' + formatMoney(s.totals.paye) +
+                    ' · UIF ' + formatMoney(s.totals.uif) + ' (+ employer ' + formatMoney(s.totals.uif_employer) + ') · SDL ' + formatMoney(s.totals.sdl) + ' · Net ' + formatMoney(s.totals.net) + '</p>';
+            }
+            if (s.mismatches) {
+                html += '<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#856404;">' +
+                    '<strong>&#9888; ' + s.mismatches + ' row(s) do not add up</strong> (gross − PAYE − UIF − deductions ≠ net). ' +
+                    'Check the file, or tick "Import rows that do not add up" — the difference is then shown on the payslip as a "Not allocated" deduction.</div>';
+            }
+            var unknown = res.results.filter(function(r) { return (r.errors || []).indexOf('Unrecognised employee number') !== -1; })
+                .map(function(r) { return r.employee_number; }).filter(function(v, i, a) { return a.indexOf(v) === i; });
+            if (unknown.length) {
+                html += '<div style="background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px; padding:10px 14px; margin-bottom:12px; color:#721c24;">' +
+                    '<strong>&#10060; ' + unknown.length + ' unrecognised employee number(s):</strong> ' + unknown.map(function(n) { return '<code>' + escHtml(n) + '</code>'; }).join(', ') +
+                    '. <a href="employee-management.html" style="color:#721c24; font-weight:700;">Create these employees first</a> (employees whose service has ended are recognised too).</div>';
+            }
+            document.getElementById('csvPreviewSummary').innerHTML = html;
+
+            var byRow = {};
+            csvState.rows.forEach(function(r) { byRow[r.row] = r; });
+            var t = '<thead><tr style="background:linear-gradient(135deg, #667eea, #764ba2); color:white;">' +
+                '<th style="padding:10px 8px;">Row</th><th style="padding:10px 8px;">Emp #</th><th style="padding:10px 8px;">Name</th><th style="padding:10px 8px;">Period</th>' +
+                '<th style="padding:10px 8px; text-align:right;">Basic</th><th style="padding:10px 8px; text-align:right;">Gross</th><th style="padding:10px 8px; text-align:right;">PAYE</th>' +
+                '<th style="padding:10px 8px; text-align:right;">UIF</th><th style="padding:10px 8px; text-align:right;">Deductions</th><th style="padding:10px 8px; text-align:right;">Net</th>' +
+                '<th style="padding:10px 8px;">Status</th></tr></thead><tbody>';
+            res.results.forEach(function(r) {
+                var src = byRow[r.row] || {};
+                var tot = r.totals || {};
+                var okStatus = r.status === 'ok' || r.status === 'imported';
+                var bg = okStatus ? (r.warnings && r.warnings.length ? '#fff8e1' : '') : (r.status === 'skipped' ? '#eceff1' : '#f8d7da');
+                var status = okStatus
+                    ? '<span style="color:#28a745; font-weight:600;">' + (r.status === 'imported' ? 'Imported' : 'OK') + '</span>'
+                    : '<span style="color:' + (r.status === 'skipped' ? '#666' : '#dc3545') + '; font-weight:600;">' + escHtml((r.errors || []).join('; ')) + '</span>';
+                if (r.warnings && r.warnings.length) status += '<div style="font-size:11px; color:#856404;">' + escHtml(r.warnings.join('; ')) + '</div>';
+                t += '<tr style="background:' + bg + '; border-bottom:1px solid #eee;">' +
+                    '<td style="padding:8px;">' + r.row + '</td>' +
+                    '<td style="padding:8px;">' + escHtml(r.employee_number) + '</td>' +
+                    '<td style="padding:8px;">' + escHtml(r.employee_name || '—') + '</td>' +
+                    '<td style="padding:8px;">' + (r.period ? formatPeriod(r.period) : escHtml(src.period_raw || '')) + '</td>' +
+                    '<td style="padding:8px; text-align:right;">' + formatMoney(src.basic_salary || 0) + '</td>' +
+                    '<td style="padding:8px; text-align:right;">' + (tot.gross != null ? formatMoney(tot.gross) : '—') + '</td>' +
+                    '<td style="padding:8px; text-align:right;">' + (tot.paye != null ? formatMoney(tot.paye) : '—') + '</td>' +
+                    '<td style="padding:8px; text-align:right;">' + (tot.uif != null ? formatMoney(tot.uif) : '—') + '</td>' +
+                    '<td style="padding:8px; text-align:right;">' + (tot.deductions != null ? formatMoney(tot.deductions) : '—') + '</td>' +
+                    '<td style="padding:8px; text-align:right; font-weight:600;">' + (tot.net != null ? formatMoney(tot.net) : '—') + '</td>' +
+                    '<td style="padding:8px;">' + status + '</td></tr>';
+            });
+            t += '</tbody>';
+            document.getElementById('csvPreviewTable').innerHTML = t;
+        }
+
+        async function confirmCsvImport() {
+            if (!csvState || !csvState.lastResult || !csvState.lastResult.summary.ok) return;
+            var s = csvState.lastResult.summary;
+            if (!confirm('Import ' + s.ok + ' payslip(s) for ' + s.periods.map(formatPeriod).join(', ') + '?\n\n' +
+                'They are stored exactly as in the file and locked (treated as already declared to SARS). ' +
+                'To correct them later, use Undo on the import below.')) return;
+            var btn = document.getElementById('csvConfirmBtn');
+            btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = 'Importing…';
+            try {
+                var res = await histApi('POST', '/historical-import', {
+                    rows: csvState.rows, mapping: csvState.mapping, file_name: csvState.fileName,
+                    accept_mismatch: document.getElementById('csvAcceptMismatch').checked, dry_run: false
+                });
+                renderCsvResult(res, true);
+                loadImportLog();
+                var failed = res.results.filter(function(r) { return r.status === 'error'; }).length;
+                alert('Imported ' + res.summary.ok + ' payslip(s).' + (res.summary.skipped ? '\n' + res.summary.skipped + ' already existed and were skipped.' : '') +
+                    (failed ? '\n' + failed + ' row(s) were not imported — see the table.' : ''));
+                csvState.lastResult = null;   // a second click must re-check first
+            } catch (e) {
+                alert('Import failed: ' + e.message + '\n\nNothing was imported for rows that show an error. Rows that show "Imported" are saved.');
+            } finally {
+                btn.textContent = 'Confirm Import';
+            }
         }
 
         function resetCsvUpload() {
-            csvParsedData = null;
+            csvState = null;
             document.getElementById('csvDropZone').style.display = 'block';
             document.getElementById('csvPreviewArea').style.display = 'none';
+            document.getElementById('csvMappingArea').innerHTML = '';
             document.getElementById('csvFileInput').value = '';
+            var btn = document.getElementById('csvConfirmBtn');
+            btn.disabled = false; btn.style.opacity = '1';
         }
 
         function downloadHistoricalTemplate() {
             BulkImportUtils.downloadCSVTemplate(
                 'historical_import_template.csv',
-                ['employee_number', 'period', 'basic_salary', 'gross', 'paye', 'uif', 'net', 'allowance_travel', 'allowance_housing', 'deduction_medical', 'deduction_pension', 'overtime_hours', 'overtime_rate'],
+                ['employee_number', 'period', 'basic_salary', 'gross', 'paye', 'uif', 'net', 'allowance_travel', 'allowance_housing', 'allowance_overtime', 'deduction_medical', 'deduction_pension', 'overtime_hours'],
                 [
-                    ['EMP001', '2024-01', '25000', '30500', '4250', '177.12', '22572.88', '3500', '2000', '1800', '1500', '8', '1.5'],
-                    ['EMP001', '2024-02', '25000', '28000', '3750', '177.12', '21072.88', '3000', '0', '1800', '1500', '0', '1.5'],
-                    ['EMP002', '2024-01', '18000', '20000', '2100', '177.12', '15722.88', '2000', '0', '1200', '900', '4', '1.5']
+                    ['EMP001', '2024-01', '25000', '31000', '4250', '177.12', '23272.88', '3500', '2000', '500', '1800', '1500', '4'],
+                    ['EMP001', '2024-02', '25000', '28000', '3750', '177.12', '20772.88', '3000', '0', '0', '1800', '1500', '0'],
+                    ['EMP002', '2024-01', '18000', '20000', '2100', '177.12', '15622.88', '2000', '0', '0', '1200', '900', '0']
                 ]
             );
         }
@@ -1500,101 +1510,92 @@
             }
         }
 
-        function confirmPdfImport() {
-            var importedCount = 0;
-            var errors = [];
-            var periodsCreated = {};
-            var periodStats = {};
-            var keysWritten = [];
-            var sqlBatch = [];
-            var importTimestamp = new Date().toISOString();
-
-            try {
-                pdfExtractedRows.forEach(function(row, idx) {
-                    var empId = document.getElementById('pdf_emp_' + idx).value;
-                    var period = BulkImportUtils.normalizePeriod(document.getElementById('pdf_period_' + idx).value);
-                    var basic = parseFloat(document.getElementById('pdf_basic_' + idx).value) || 0;
-                    var gross = parseFloat(document.getElementById('pdf_gross_' + idx).value) || 0;
-                    var paye = parseFloat(document.getElementById('pdf_paye_' + idx).value) || 0;
-                    var uif = parseFloat(document.getElementById('pdf_uif_' + idx).value) || 0;
-                    var net = parseFloat(document.getElementById('pdf_net_' + idx).value) || 0;
-
-                    if (!empId) { errors.push('Row ' + (idx + 1) + ': No employee selected'); return; }
-                    if (!period) { errors.push('Row ' + (idx + 1) + ': Invalid period'); return; }
-                    if (basic <= 0 && gross <= 0) { errors.push('Row ' + (idx + 1) + ': No salary data'); return; }
-                    if (basic <= 0) basic = gross;
-                    if (gross <= 0) gross = basic;
-                    if (gross > 0 && basic > 0 && gross < basic) { errors.push('Row ' + (idx + 1) + ': Gross < Basic'); return; }
-
-                    // Deduplication check
-                    if (PayrollEngine.hasHistoricalRecord(currentCompanyId, empId, period)) {
-                        errors.push('Row ' + (idx + 1) + ': Duplicate record (skipped)');
-                        return;
-                    }
-
-                    var histKey = 'emp_historical_' + currentCompanyId + '_' + empId + '_' + period;
-                    // Collect extra income items added by user
-                    var extraAllowances = [];
-                    var itemsContainer = document.getElementById('pdf_items_' + idx);
-                    if (itemsContainer) {
-                        itemsContainer.querySelectorAll('div').forEach(function(itemDiv) {
-                            var inputs = itemDiv.querySelectorAll('input');
-                            if (inputs.length >= 2) {
-                                var desc = inputs[0].value.trim();
-                                var amt  = parseFloat(inputs[1].value) || 0;
-                                if (desc && amt > 0) extraAllowances.push({ description: desc, amount: amt });
-                            }
-                        });
-                    }
-                    var histData = {
-                        basic: basic,
-                        gross: gross,
-                        paye: paye,
-                        uif: uif,
-                        sdl: PayrollEngine.calculateSDL(gross),
-                        net: net,
-                        allowances: extraAllowances,
-                        deductions: [],
-                        source: 'pdf_import',
-                        imported_date: importTimestamp
-                    };
-                    safeLocalStorage.setItem(histKey, JSON.stringify(histData));
-                    keysWritten.push(histKey);
-                    sqlBatch.push({ empId: empId, period: period, gross: gross, paye: paye, uif: uif, net: net, source: 'pdf_import' });
-
-                    if (!periodStats[period]) {
-                        periodStats[period] = { count: 0, gross: 0, paye: 0, uif: 0, net: 0 };
-                    }
-                    periodStats[period].count++;
-                    periodStats[period].gross += gross;
-                    periodStats[period].paye += paye;
-                    periodStats[period].uif += uif;
-                    periodStats[period].net += net;
-
-                    periodsCreated[period] = true;
-                    importedCount++;
+        // Shared by the PDF and Manual Entry tabs: check on the server, confirm, import.
+        // Same endpoint as the CSV tab, so every tab produces locked snapshots (HI-02).
+        // Extra items become allowance_* lines, linked to payroll items by name.
+        async function importRowsViaServer(rows, label) {
+            if (!rows.length) { alert('No rows to import.'); return null; }
+            var cols = [];
+            rows.forEach(function(r) { (r.lines || []).forEach(function(l) { if (cols.indexOf(l.column) === -1) cols.push(l.column); }); });
+            var mapping = {};
+            if (cols.length) {
+                try { await histApi('GET', '/items'); } catch (e) {}
+                var setup = await histApi('GET', '/historical-import/setup?columns=' + encodeURIComponent(cols.join(',')));
+                cols.forEach(function(c) {
+                    var s = setup.suggestions[c] || { target: 'none' };
+                    mapping[c] = s.target === 'item' ? { target: 'item', master_item_id: s.master_item_id } : { target: s.target };
                 });
-
-                if (importedCount > 0) {
-                    createHistoricalPayruns(periodsCreated, periodStats);
-                    logHistoricalImport('PDF Payslip Import', importedCount, Object.keys(periodsCreated));
-                }
-            } catch (err) {
-                keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
-                alert('Import failed and was rolled back: ' + err.message);
-                return;
             }
-
-            _syncHistoricalToSQL(sqlBatch);
-            resetPdfUpload();
+            var body = { rows: rows, mapping: mapping, file_name: label, accept_mismatch: true, dry_run: true };
+            var check = await histApi('POST', '/historical-import', body);
+            var s = check.summary;
+            var problems = check.results.filter(function(r) { return r.status !== 'ok'; })
+                .map(function(r) { return 'Row ' + r.row + ' (' + (r.employee_name || r.employee_number) + ', ' + r.period + '): ' + (r.errors || []).join('; '); });
+            if (!s.ok) {
+                alert('Nothing can be imported:\n\n' + problems.slice(0, 10).join('\n') + (problems.length > 10 ? '\n…' : ''));
+                return null;
+            }
+            var msg = 'Import ' + s.ok + ' payslip(s) for ' + s.periods.map(formatPeriod).join(', ') + '?\n\n' +
+                'Totals: gross ' + formatMoney(s.totals.gross) + ', PAYE ' + formatMoney(s.totals.paye) + ', net ' + formatMoney(s.totals.net) + '.\n' +
+                'They are stored exactly as entered and locked (already declared to SARS).';
+            if (s.mismatches) msg += '\n\n⚠ ' + s.mismatches + ' row(s) do not add up (gross − PAYE − UIF − deductions ≠ net). The difference is shown on the payslip as "Not allocated".';
+            if (problems.length) msg += '\n\nNot imported:\n' + problems.slice(0, 6).join('\n') + (problems.length > 6 ? '\n…' : '');
+            if (!confirm(msg)) return null;
+            body.dry_run = false;
+            var res = await histApi('POST', '/historical-import', body);
             loadImportLog();
+            alert('Imported ' + res.summary.ok + ' payslip(s).' + (res.summary.skipped ? '\n' + res.summary.skipped + ' already existed and were skipped.' : '') +
+                (res.summary.errors ? '\n' + res.summary.errors + ' row(s) were not imported.' : ''));
+            return res;
+        }
 
-            var msg = 'Successfully imported ' + importedCount + ' historical record(s).';
-            if (errors.length > 0) {
-                msg += '\n\nSkipped ' + errors.length + ' row(s):\n' + errors.slice(0, 5).join('\n');
-                if (errors.length > 5) msg += '\n... and ' + (errors.length - 5) + ' more';
+        function employeeNumberById(empId) {
+            var e = employees.find(function(x) { return String(x.id) === String(empId); });
+            return e ? String(e.employee_number || e.employee_code || '') : '';
+        }
+
+        async function confirmPdfImport() {
+            var rows = [];
+            var errors = [];
+            pdfExtractedRows.forEach(function(row, idx) {
+                var empId = document.getElementById('pdf_emp_' + idx).value;
+                var period = BulkImportUtils.normalizePeriod(document.getElementById('pdf_period_' + idx).value);
+                var val = function(id) { var v = document.getElementById(id + idx).value; return v === '' ? null : parseFloat(v); };
+                var basic = val('pdf_basic_'), gross = val('pdf_gross_');
+                if (!empId) { errors.push('Row ' + (idx + 1) + ': no employee selected'); return; }
+                if (!period) { errors.push('Row ' + (idx + 1) + ': invalid period'); return; }
+                if (!(basic > 0) && !(gross > 0)) { errors.push('Row ' + (idx + 1) + ': no salary data'); return; }
+                var lines = [];
+                var itemsContainer = document.getElementById('pdf_items_' + idx);
+                if (itemsContainer) {
+                    itemsContainer.querySelectorAll('div').forEach(function(itemDiv) {
+                        var inputs = itemDiv.querySelectorAll('input');
+                        if (inputs.length >= 2) {
+                            var desc = inputs[0].value.trim();
+                            var amt = parseFloat(inputs[1].value);
+                            if (desc && amt) lines.push({ column: 'allowance_' + desc, amount: amt });
+                        }
+                    });
+                }
+                rows.push({
+                    row: idx + 1,
+                    employee_number: employeeNumberById(empId),
+                    period: period,
+                    basic_salary: basic > 0 ? basic : gross,
+                    gross: gross > 0 ? gross : null,
+                    paye: val('pdf_paye_') || 0,
+                    uif: val('pdf_uif_') || 0,
+                    net: val('pdf_net_'),
+                    lines: lines
+                });
+            });
+            if (errors.length && !confirm(errors.length + ' row(s) cannot be imported:\n' + errors.slice(0, 6).join('\n') + '\n\nContinue with the other rows?')) return;
+            try {
+                var res = await importRowsViaServer(rows, 'PDF payslips');
+                if (res && res.summary.ok) resetPdfUpload();
+            } catch (e) {
+                alert('Import failed: ' + e.message);
             }
-            alert(msg);
         }
 
         function resetPdfUpload() {
@@ -1636,8 +1637,8 @@
             var html = '';
             employees.forEach(function(emp) {
                 html += '<div class="multi-select-item">';
-                html += '<input type="checkbox" id="emp_check_' + emp.id + '" value="' + emp.id + '" checked>';
-                html += '<label for="emp_check_' + emp.id + '">' + emp.employee_number + ' - ' + emp.first_name + ' ' + emp.last_name + '</label>';
+                html += '<input type="checkbox" id="emp_check_' + emp.id + '" value="' + emp.id + '"' + (emp.is_active === false ? '' : ' checked') + '>';
+                html += '<label for="emp_check_' + emp.id + '">' + emp.employee_number + ' - ' + emp.first_name + ' ' + emp.last_name + (emp.is_active === false ? ' <span style="color:#999;">(ended' + (emp.termination_date ? ' ' + String(emp.termination_date).slice(0, 10) : '') + ')</span>' : '') + '</label>';
                 html += '</div>';
             });
             container.innerHTML = html;
@@ -1716,9 +1717,9 @@
 
                 periods.forEach(function(period) {
                     // Check for existing historical data
-                    var histKey = 'emp_historical_' + currentCompanyId + '_' + emp.id + '_' + period;
+                    // Imported months live on the server (locked snapshots); the grid starts empty.
+                    // Months that already exist are reported as "already imported" when saving.
                     var existing = null;
-                    try { existing = JSON.parse(safeLocalStorage.getItem(histKey)); } catch(e) {}
 
                     var basic = existing ? (existing.basic || '') : '';
                     var gross = existing ? (existing.gross || '') : '';
@@ -1762,19 +1763,7 @@
             var uifEl = document.getElementById(rid + '_uif');
             var netEl = document.getElementById(rid + '_net');
 
-            // Only auto-calculate if the other fields are empty
-            if (!grossEl.value && !payeEl.value && !uifEl.value && !netEl.value) {
-                var calc = PayrollEngine.calculateFromData({ basic_salary: basic, regular_inputs: [] }, [], [], [], []);
-                grossEl.value = calc.gross.toFixed(2);
-                payeEl.value = calc.paye.toFixed(2);
-                uifEl.value = calc.uif.toFixed(2);
-                netEl.value = calc.net.toFixed(2);
-
-                grossEl.classList.add('has-value');
-                payeEl.classList.add('has-value');
-                uifEl.classList.add('has-value');
-                netEl.classList.add('has-value');
-            }
+            // No auto-calculation: historical figures are entered exactly as on the old payslip (spec 12).
 
             input.classList.toggle('has-value', !!input.value);
         }
@@ -1871,215 +1860,98 @@
             }
         }
 
-        function saveManualGrid() {
-            var rows = document.querySelectorAll('#manualGridTable tbody tr[data-emp-id]');
-            var savedCount = 0;
-            var skippedDuplicates = 0;
-            var periodsCreated = {};
-            var periodStats = {};
-            var keysWritten = [];
-            var sqlBatch = [];
-            var importTimestamp = new Date().toISOString();
-
+        async function saveManualGrid() {
+            var trs = document.querySelectorAll('#manualGridTable tbody tr[data-emp-id]');
+            var rows = [];
+            for (var i = 0; i < trs.length; i++) {
+                var tr = trs[i];
+                var empId = tr.getAttribute('data-emp-id');
+                var period = tr.getAttribute('data-period');
+                var rid = 'grid_' + empId + '_' + period.replace('-', '_');
+                var val = function(f) { var v = document.getElementById(rid + '_' + f).value; return v === '' ? null : parseFloat(v); };
+                var basic = val('basic'), gross = val('gross');
+                if (!(basic > 0) && !(gross > 0)) continue;           // only rows with data
+                rows.push({
+                    row: i + 1,
+                    employee_number: employeeNumberById(empId),
+                    period: period,
+                    basic_salary: basic > 0 ? basic : gross,
+                    gross: gross > 0 ? gross : null,
+                    paye: val('paye') || 0,
+                    uif: val('uif') || 0,
+                    net: val('net'),
+                    lines: []
+                });
+            }
+            if (!rows.length) { alert('No data to save. Enter at least a basic salary or gross for a month.'); return; }
             try {
-                for (var i = 0; i < rows.length; i++) {
-                    var tr = rows[i];
-                    var empId = tr.getAttribute('data-emp-id');
-                    var period = tr.getAttribute('data-period');
-                    var rid = 'grid_' + empId + '_' + period.replace('-', '_');
-
-                    var basic = parseFloat(document.getElementById(rid + '_basic').value) || 0;
-                    var gross = parseFloat(document.getElementById(rid + '_gross').value) || 0;
-                    var paye = parseFloat(document.getElementById(rid + '_paye').value) || 0;
-                    var uif = parseFloat(document.getElementById(rid + '_uif').value) || 0;
-                    var net = parseFloat(document.getElementById(rid + '_net').value) || 0;
-
-                    // Only save rows that have data
-                    if (basic <= 0 && gross <= 0) continue;
-                    if (basic <= 0) basic = gross;
-                    if (gross <= 0) gross = basic;
-
-                    // Validate gross >= basic
-                    if (gross > 0 && basic > 0 && gross < basic) {
-                        alert('Row for period ' + period + ': Gross (R' + gross + ') cannot be less than Basic (R' + basic + '). Please correct and try again.');
-                        keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
-                        return;
-                    }
-
-                    // Deduplication: skip if record exists (unless grid pre-populated it)
-                    if (PayrollEngine.hasHistoricalRecord(currentCompanyId, empId, period)) {
-                        skippedDuplicates++;
-                        continue;
-                    }
-
-                    var histKey = 'emp_historical_' + currentCompanyId + '_' + empId + '_' + period;
-                    var histData = {
-                        basic: basic,
-                        gross: gross,
-                        paye: paye,
-                        uif: uif,
-                        sdl: PayrollEngine.calculateSDL(gross),
-                        net: net,
-                        allowances: [],
-                        deductions: [],
-                        source: 'manual_entry',
-                        imported_date: importTimestamp
-                    };
-                    safeLocalStorage.setItem(histKey, JSON.stringify(histData));
-                    keysWritten.push(histKey);
-                    sqlBatch.push({ empId: empId, period: period, gross: gross, paye: paye, uif: uif, net: net, source: 'manual_entry' });
-
-                    if (!periodStats[period]) {
-                        periodStats[period] = { count: 0, gross: 0, paye: 0, uif: 0, net: 0 };
-                    }
-                    periodStats[period].count++;
-                    periodStats[period].gross += gross;
-                    periodStats[period].paye += paye;
-                    periodStats[period].uif += uif;
-                    periodStats[period].net += net;
-
-                    periodsCreated[period] = true;
-                    savedCount++;
-                }
-
-                if (savedCount === 0) {
-                    var msg = 'No new data to save.';
-                    if (skippedDuplicates > 0) msg += ' ' + skippedDuplicates + ' duplicate record(s) were skipped.';
-                    alert(msg);
-                    return;
-                }
-
-                createHistoricalPayruns(periodsCreated, periodStats);
-                logHistoricalImport('Manual Entry', savedCount, Object.keys(periodsCreated));
-
-            } catch (err) {
-                keysWritten.forEach(function(key) { safeLocalStorage.removeItem(key); });
-                alert('Save failed and was rolled back: ' + err.message);
-                return;
+                var res = await importRowsViaServer(rows, 'Manual entry');
+                if (res && res.summary.ok) document.querySelectorAll('#manualGridTable input.grid-input').forEach(function(el) { el.value = ''; el.classList.remove('has-value'); });
+            } catch (e) {
+                alert('Save failed: ' + e.message);
             }
-
-            _syncHistoricalToSQL(sqlBatch);
-            loadImportLog();
-
-            var resultMsg = 'Successfully saved ' + savedCount + ' historical record(s) across ' + Object.keys(periodsCreated).length + ' period(s).';
-            if (skippedDuplicates > 0) resultMsg += '\n' + skippedDuplicates + ' duplicate(s) were skipped.';
-            alert(resultMsg);
         }
 
 
         // ================================================================
-        //  SHARED: PAY RUN CREATION & IMPORT LOGGING
+        //  SHARED: IMPORT HISTORY (server — imports are locked snapshots)
         // ================================================================
 
-        function createHistoricalPayruns(periodsObj, periodStats) {
-            var payrunsKey = 'payruns_' + currentCompanyId;
-            var payruns = [];
-            try { payruns = JSON.parse(safeLocalStorage.getItem(payrunsKey) || '[]'); } catch(e) { payruns = []; }
-
-            var periods = Object.keys(periodsObj);
-            periods.forEach(function(period) {
-                var stats = (periodStats && periodStats[period]) || { count: 0, gross: 0, paye: 0, uif: 0, net: 0 };
-                // Check if a pay run already exists for this period
-                var existing = null;
-                for (var i = 0; i < payruns.length; i++) {
-                    if (payruns[i].period === period) { existing = payruns[i]; break; }
-                }
-                if (existing) {
-                    // Update existing pay run stats (add to existing totals)
-                    existing.employee_count = (existing.employee_count || 0) + stats.count;
-                    existing.total_gross = (existing.total_gross || 0) + stats.gross;
-                    existing.total_paye = (existing.total_paye || 0) + stats.paye;
-                    existing.total_uif = (existing.total_uif || 0) + stats.uif;
-                    existing.total_net = (existing.total_net || 0) + stats.net;
-                } else {
-                    payruns.push({
-                        id: 'pr-' + Math.random().toString(36).substr(2, 9),
-                        period: period,
-                        frequency: 'Monthly',
-                        period_label: formatPeriodLong(period),
-                        status: 'paid',
-                        source: 'historical_import',
-                        created_date: new Date().toISOString(),
-                        finalized_date: new Date().toISOString(),
-                        paid_date: new Date().toISOString(),
-                        employee_count: stats.count,
-                        total_gross: stats.gross,
-                        total_paye: stats.paye,
-                        total_uif: stats.uif,
-                        total_net: stats.net
-                    });
-                }
-            });
-
-            safeLocalStorage.setItem(payrunsKey, JSON.stringify(payruns));
-        }
-
-        function logHistoricalImport(source, count, periods) {
-            var logKey = 'historical_import_log_' + currentCompanyId;
-            var log = [];
-            try { log = JSON.parse(safeLocalStorage.getItem(logKey) || '[]'); } catch(e) { log = []; }
-
-            var session = AUTH.getSession();
-            log.push({
-                id: 'himp-' + Math.random().toString(36).substr(2, 9),
-                timestamp: new Date().toISOString(),
-                user: session ? (session.name || session.email) : 'Unknown',
-                source: source,
-                records_imported: count,
-                periods: periods,
-                company_id: currentCompanyId
-            });
-
-            safeLocalStorage.setItem(logKey, JSON.stringify(log));
-
-            // Also log to audit trail
-            if (typeof BulkImportUtils !== 'undefined') {
-                BulkImportUtils.logAudit(currentCompanyId, 'HISTORICAL_IMPORT', source + ': Imported ' + count + ' records for periods ' + periods.join(', '));
-            }
-        }
-
-        function loadImportLog() {
-            var logKey = 'historical_import_log_' + currentCompanyId;
-            var log = [];
-            try { log = JSON.parse(safeLocalStorage.getItem(logKey) || '[]'); } catch(e) { log = []; }
-
+        async function loadImportLog() {
             var container = document.getElementById('importLogArea');
-            if (log.length === 0) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128203;</div><div class="empty-text">No imports yet</div></div>';
+            var batches = [];
+            try {
+                var res = await histApi('GET', '/historical-import/batches');
+                batches = res.batches || [];
+            } catch (e) {
+                container.innerHTML = '<div style="color:#dc3545;">Could not load the import history: ' + escHtml(e.message) + '</div>';
                 return;
             }
-
-            // Sort newest first
-            log.sort(function(a, b) { return b.timestamp.localeCompare(a.timestamp); });
-
-            var html = '<table class="data-table"><thead><tr><th>Date</th><th>Source</th><th>Records</th><th>Periods</th><th>User</th><th>Actions</th></tr></thead><tbody>';
-            log.forEach(function(entry) {
-                var date = new Date(entry.timestamp);
-                var formattedDate = formatDateTime(date);
-                var periodList = (entry.periods || []).map(function(p) { return formatPeriod(p); }).join(', ');
-                var rowStyle = entry.undone ? 'opacity:0.5; text-decoration:line-through;' : '';
-                html += '<tr style="' + rowStyle + '">';
-                html += '<td style="padding:8px; font-size:12px;">' + formattedDate + '</td>';
-                html += '<td style="padding:8px;">' + entry.source + '</td>';
-                html += '<td style="padding:8px; font-weight:600;">' + entry.records_imported + '</td>';
-                html += '<td style="padding:8px; font-size:12px;">' + periodList + '</td>';
-                html += '<td style="padding:8px; font-size:12px;">' + (entry.user || '-') + '</td>';
-                if (entry.undone) {
-                    html += '<td style="padding:8px; font-size:12px; color:#999;">Undone</td>';
-                } else {
-                    html += '<td style="padding:8px;"><button class="btn btn-danger btn-sm" onclick="undoImport(\'' + entry.id + '\')">Undo</button></td>';
-                }
-                html += '</tr>';
-            });
-            html += '</tbody></table>';
+            var html = '';
+            if (!batches.length) {
+                html += '<div class="empty-state"><div class="empty-icon">&#128203;</div><div class="empty-text">No imports yet</div></div>';
+            } else {
+                html += '<table class="data-table"><thead><tr><th>Date</th><th>File</th><th>Payslips</th><th>Periods</th><th style="text-align:right;">Gross</th><th style="text-align:right;">PAYE</th><th style="text-align:right;">Net</th><th>Actions</th></tr></thead><tbody>';
+                batches.forEach(function(b) {
+                    var undone = b.count === 0;
+                    html += '<tr style="' + (undone ? 'opacity:0.5; text-decoration:line-through;' : '') + '">';
+                    html += '<td style="padding:8px; font-size:12px;">' + (b.imported_at ? formatDateTime(new Date(b.imported_at)) : '-') + '</td>';
+                    html += '<td style="padding:8px; font-size:12px;">' + escHtml(b.file_name || '-') + '</td>';
+                    html += '<td style="padding:8px; font-weight:600;">' + b.count + (b.reversed ? ' <span style="font-weight:400; color:#999;">(' + b.reversed + ' undone)</span>' : '') + '</td>';
+                    html += '<td style="padding:8px; font-size:12px;">' + (b.periods || []).map(formatPeriod).join(', ') + '</td>';
+                    html += '<td style="padding:8px; text-align:right;">' + formatMoney(b.gross) + '</td>';
+                    html += '<td style="padding:8px; text-align:right;">' + formatMoney(b.paye) + '</td>';
+                    html += '<td style="padding:8px; text-align:right;">' + formatMoney(b.net) + '</td>';
+                    html += undone || b.batch_id === 'unknown'
+                        ? '<td style="padding:8px; font-size:12px; color:#999;">' + (undone ? 'Undone' : '-') + '</td>'
+                        : '<td style="padding:8px;"><button class="btn btn-danger btn-sm" onclick="undoImport(\'' + escHtml(b.batch_id) + '\')">Undo</button></td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+            }
             container.innerHTML = html;
         }
 
-        function undoImport(importLogId) {
-            if (!confirm('Are you sure you want to undo this import? This will delete all historical records from this import batch.')) return;
-            var deletedCount = PayrollEngine.undoImportBatch(currentCompanyId, importLogId);
+        async function undoImport(batchId) {
+            var reason = prompt('Undo this import?\n\nIts payslips are reversed (kept in the audit trail, no longer counted in payslips, YTD, recon or EMP501). ' +
+                'You can then import corrected figures.\n\nReason (required):');
+            if (reason === null) return;
+            if (reason.trim().length < 5) { alert('Please give a reason (at least 5 characters).'); return; }
+            try {
+                var res = await histApi('POST', '/historical-import/batches/' + encodeURIComponent(batchId) + '/undo', { reason: reason.trim() });
+                var msg = 'Undone: ' + res.reversed + ' payslip(s) reversed.';
+                if (res.blocked && res.blocked.length) {
+                    msg += '\n\n' + res.blocked.length + ' payslip(s) were NOT undone, because a later month in the same tax year was already finalized in Paytime and its PAYE used these figures:\n' +
+                        res.blocked.slice(0, 8).map(function(b) {
+                            var e = employees.find(function(x) { return String(x.id) === String(b.employee_id); });
+                            return (e ? e.first_name + ' ' + e.last_name : 'Employee ' + b.employee_id) + ' ' + b.period_key + ' (later: ' + b.later.join(', ') + ')';
+                        }).join('\n') + '\nReverse those pay runs first, then undo again.';
+                }
+                alert(msg);
+            } catch (e) {
+                alert('Undo failed: ' + e.message);
+            }
             loadImportLog();
-            alert('Undo complete. ' + deletedCount + ' historical record(s) were deleted.');
         }
 
         function openAddCompanyModal() {

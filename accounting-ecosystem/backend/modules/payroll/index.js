@@ -44,6 +44,10 @@ const router = express.Router();
 // Calculation service endpoint (backend authority for payroll calculations)
 router.use('/calculate', calculateRoutes);
 
+// Historical payslip import → locked snapshots (spec 12). Mounted before the root
+// payruns router so its paths are never shadowed.
+router.use('/historical-import', require('./routes/historical-import'));
+
 // Payroll run, finalize, and history endpoints (all mounted at root — routes defined internally)
 // Provides: POST /run, POST /finalize, GET /history, GET /history/run/:id
 router.use('/', payrunsRoutes);

@@ -39,6 +39,18 @@ var BulkImportUtils = {
 
     normalizePeriod: function(periodStr) {
         if (!periodStr) return null;
+        // A cell the spreadsheet stored as a date: a JS Date, or an Excel date serial
+        // (e.g. "2026-03" in a CSV is read as 1 March 2026 = serial 46082).
+        if (periodStr instanceof Date && !isNaN(periodStr.getTime())) {
+            return periodStr.getFullYear() + '-' + String(periodStr.getMonth() + 1).padStart(2, '0');
+        }
+        if (/^\d{5}(\.\d+)?$/.test(String(periodStr).trim())) {
+            var serial = Math.floor(parseFloat(periodStr));
+            if (serial >= 20000 && serial <= 80000) {          // 1954 … 2119 — a plausible pay month
+                var d = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+                return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+            }
+        }
         periodStr = String(periodStr).trim();
 
         // Already YYYY-MM
@@ -299,12 +311,17 @@ var BulkImportUtils = {
 
     // ========== FILE PARSING ==========
 
-    parseFile: function(file, callback) {
+    // opts.csvAsText: read .csv/.txt cells as the exact text in the file (no date or
+    // number guessing — "2026-03" stays "2026-03", "007" stays "007").
+    parseFile: function(file, callback, opts) {
         var reader = new FileReader();
+        var isText = /\.(csv|txt)$/i.test((file && file.name) || '');
         reader.onload = function(e) {
             try {
                 var data = new Uint8Array(e.target.result);
-                var workbook = XLSX.read(data, { type: 'array' });
+                var readOpts = { type: 'array' };
+                if (opts && opts.csvAsText && isText) readOpts.raw = true;
+                var workbook = XLSX.read(data, readOpts);
                 var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 var jsonData = XLSX.utils.sheet_to_json(firstSheet, { raw: true, defval: '' });
                 if (jsonData.length === 0) {
