@@ -268,6 +268,7 @@
 
             <!-- ==================== TAB 1: CSV/EXCEL UPLOAD ==================== -->
             <div id="csv-view" class="tab-view active">
+                <div id="csvMessage" style="display:none;"></div>
                 <div id="csvDropZone" class="import-zone">
                     <div class="import-zone-icon">&#128193;</div>
                     <p class="import-zone-title">Drag and drop your CSV or Excel file here</p>
@@ -306,6 +307,7 @@
                 <!-- CSV Preview Area -->
                 <div id="csvPreviewArea" style="display:none; margin-top:20px;">
                     <div id="csvMappingArea" style="margin-bottom:20px; overflow-x:auto;"></div>
+                    <div id="csvStatus" style="display:none;"></div>
                     <div id="csvPreviewSummary"></div>
                     <div style="overflow-x:auto; max-height:450px; overflow-y:auto;">
                         <table id="csvPreviewTable" class="data-table"></table>
@@ -315,6 +317,7 @@
                         <button class="btn btn-secondary" onclick="resetCsvUpload()">Cancel</button>
                         <button class="btn btn-success" id="csvConfirmBtn" onclick="confirmCsvImport()">Confirm Import</button>
                     </div>
+                    <div id="csvConfirmBox" style="display:none; margin-top:12px;"></div>
                 </div>
 
                 <!-- Import Log -->
@@ -693,12 +696,13 @@
 
         function handleCsvFile(file) {
             if (typeof XLSX === 'undefined') {
-                alert('File parser not loaded. Please refresh the page and try again.');
+                showCsvMessage('File parser not loaded. Please refresh the page and try again.', 'error');
                 return;
             }
             BulkImportUtils.parseFile(file, function(data, error) {
-                if (error) { alert(error); return; }
-                processCsvData(data, file.name).catch(function(e) { alert('Could not read the file: ' + e.message); });
+                if (error) { showCsvMessage(escHtml(error), 'error'); return; }
+                showCsvMessage('');
+                processCsvData(data, file.name).catch(function(e) { showCsvMessage('Could not read the file: ' + escHtml(e.message), 'error'); });
             }, { csvAsText: true });
         }
 
@@ -712,7 +716,7 @@
             if (!mapping.paye) missing.push('paye');
             if (!mapping.uif) missing.push('uif');
             if (missing.length) {
-                alert('These required columns were not found: ' + missing.join(', ') + '.\n\nHistorical payslips are stored exactly as in your old system, so PAYE and UIF must be in the file.');
+                showCsvMessage('These required columns were not found: ' + escHtml(missing.join(', ')) + '.\nHistorical payslips are stored exactly as in your old system, so PAYE and UIF must be in the file.', 'error');
                 return;
             }
             var coreCols = Object.keys(mapping).map(function(k) { return mapping[k]; }).filter(Boolean);
@@ -746,9 +750,9 @@
                 headers.forEach(function(h) { var v = r[h]; if (v !== '' && v != null) row.raw[h] = String(v); });
                 rows.push(row);
             });
-            if (!rows.length) { alert('The file has no data rows.'); return; }
+            if (!rows.length) { showCsvMessage('The file has no data rows.', 'error'); return; }
             if (badNumbers.length) {
-                alert('Some amounts could not be read and were left blank:\n' + badNumbers.slice(0, 15).join('\n') + (badNumbers.length > 15 ? '\n…' : ''));
+                showCsvMessage('Some amounts could not be read and were left blank:\n' + escHtml(badNumbers.slice(0, 15).join('\n')) + (badNumbers.length > 15 ? '\n…' : ''), 'warn');
             }
 
             // Payroll Items (the GET also moves a company's old item list into the database once).
@@ -937,14 +941,61 @@
             document.getElementById('csvPreviewTable').innerHTML = t;
         }
 
-        async function confirmCsvImport() {
-            if (!csvState || !csvState.lastResult || !csvState.lastResult.summary.ok) return;
+        // No native confirm()/alert() in the import flow: a browser dialog blocks the page,
+        // and automated browsers (and some popup blockers) cannot see or answer it — the
+        // page then looks frozen and the import is never sent. Confirmation and results
+        // are shown on the page itself.
+        function showCsvMessage(html, kind) {
+            var colors = { ok: ['#d4edda', '#155724', '#c3e6cb'], error: ['#f8d7da', '#721c24', '#f5c6cb'],
+                           busy: ['#e3f2fd', '#1565c0', '#bbdefb'], warn: ['#fff3cd', '#856404', '#ffeeba'] }[kind || 'warn'];
+            // Show in the box the user can see: inside the preview once a file is loaded,
+            // above the drop zone before that. The other box is cleared.
+            var previewOpen = document.getElementById('csvPreviewArea').style.display === 'block';
+            var target = previewOpen ? 'csvStatus' : 'csvMessage';
+            ['csvMessage', 'csvStatus'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                if (!html || id !== target) { el.style.display = 'none'; el.innerHTML = ''; return; }
+                el.style.cssText = 'display:block; background:' + colors[0] + '; color:' + colors[1] + '; border:1px solid ' + colors[2] +
+                    '; border-radius:6px; padding:10px 14px; margin:12px 0; white-space:pre-line;';
+                el.setAttribute('data-kind', kind || 'warn');
+                el.innerHTML = html;
+            });
+        }
+
+        function confirmCsvImport() {
+            if (!csvState || !csvState.lastResult || !csvState.lastResult.summary.ok || csvState.busy) return;
             var s = csvState.lastResult.summary;
-            if (!confirm('Import ' + s.ok + ' payslip(s) for ' + s.periods.map(formatPeriod).join(', ') + '?\n\n' +
-                'They are stored exactly as in the file and locked (treated as already declared to SARS). ' +
-                'To correct them later, use Undo on the import below.')) return;
+            var box = document.getElementById('csvConfirmBox');
+            box.innerHTML =
+                '<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:14px 16px; color:#856404;">' +
+                '<strong>Import ' + s.ok + ' payslip(s) for ' + escHtml(s.periods.map(formatPeriod).join(', ')) + '?</strong><br>' +
+                'Gross ' + formatMoney(s.totals.gross) + ' · PAYE ' + formatMoney(s.totals.paye) + ' · Net ' + formatMoney(s.totals.net) + '.<br>' +
+                'They are stored exactly as in the file and locked (treated as already declared to SARS). To correct them later, use Undo on the import below.' +
+                '<div style="display:flex; gap:10px; margin-top:12px;">' +
+                '<button type="button" class="btn btn-success" id="csvDoImportBtn" onclick="doCsvImport()">Yes, import now</button>' +
+                '<button type="button" class="btn btn-secondary" id="csvCancelImportBtn" onclick="cancelCsvConfirm()">Cancel</button>' +
+                '</div></div>';
+            box.style.display = 'block';
+            document.getElementById('csvConfirmBtn').style.display = 'none';
+            try { box.scrollIntoView({ block: 'center' }); } catch (e) {}
+        }
+
+        function cancelCsvConfirm() {
+            var box = document.getElementById('csvConfirmBox');
+            box.style.display = 'none'; box.innerHTML = '';
+            document.getElementById('csvConfirmBtn').style.display = '';
+        }
+
+        async function doCsvImport() {
+            if (!csvState || !csvState.lastResult || csvState.busy) return;
+            csvState.busy = true;                       // one import per click, never twice
+            var n = csvState.lastResult.summary.ok;
+            var box = document.getElementById('csvConfirmBox');
+            box.style.display = 'none'; box.innerHTML = '';
             var btn = document.getElementById('csvConfirmBtn');
-            btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = 'Importing…';
+            btn.style.display = ''; btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = 'Importing…';
+            showCsvMessage('Importing ' + n + ' payslip(s)… please wait, do not close this page.', 'busy');
             try {
                 var res = await histApi('POST', '/historical-import', {
                     rows: csvState.rows, mapping: csvState.mapping, file_name: csvState.fileName,
@@ -953,12 +1004,16 @@
                 renderCsvResult(res, true);
                 loadImportLog();
                 var failed = res.results.filter(function(r) { return r.status === 'error'; }).length;
-                alert('Imported ' + res.summary.ok + ' payslip(s).' + (res.summary.skipped ? '\n' + res.summary.skipped + ' already existed and were skipped.' : '') +
-                    (failed ? '\n' + failed + ' row(s) were not imported — see the table.' : ''));
-                csvState.lastResult = null;   // a second click must re-check first
+                showCsvMessage('✅ Imported ' + res.summary.ok + ' payslip(s) for ' + escHtml(res.summary.periods.map(formatPeriod).join(', ')) +
+                    ' — gross ' + formatMoney(res.summary.totals.gross) + '.' +
+                    (res.summary.skipped ? '\n' + res.summary.skipped + ' already existed and were skipped.' : '') +
+                    (failed ? '\n' + failed + ' row(s) were not imported — see the table.' : ''), failed ? 'warn' : 'ok');
+                csvState.lastResult = null;             // a second click must re-check first
             } catch (e) {
-                alert('Import failed: ' + e.message + '\n\nNothing was imported for rows that show an error. Rows that show "Imported" are saved.');
+                showCsvMessage('❌ Import failed: ' + escHtml(e.message) + '\nRows that show "Imported" in the table are saved; nothing else was written.', 'error');
+                btn.disabled = false; btn.style.opacity = '1';
             } finally {
+                csvState.busy = false;
                 btn.textContent = 'Confirm Import';
             }
         }
@@ -968,6 +1023,8 @@
             document.getElementById('csvDropZone').style.display = 'block';
             document.getElementById('csvPreviewArea').style.display = 'none';
             document.getElementById('csvMappingArea').innerHTML = '';
+            cancelCsvConfirm();
+            showCsvMessage('');
             document.getElementById('csvFileInput').value = '';
             var btn = document.getElementById('csvConfirmBtn');
             btn.disabled = false; btn.style.opacity = '1';
