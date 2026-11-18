@@ -3,8 +3,10 @@
  * SEVCO help chatbot — API (Ruan 2026-11-10)
  * ============================================================================
  *   /api/help        every user of the app (module access like the app itself)
- *     POST /ask                  {app, question, language} → matched articles now,
- *                                 local AI answer later (queued) when available
+ *     POST /ask                  {app, question, language} → matched articles only (no AI)
+ *     POST /questions/:id/explain {message?, language?, at_step?} → the local AI helps
+ *                                 with THAT article where the client is stuck (2026-11-17,
+ *                                 see explain.js — four locks; kill switch HELP_AI_EXPLAIN=off)
  *     GET  /questions/:id        poll for the AI answer (own questions only)
  *     POST /questions/:id/feedback {feedback: 'up'|'down', note?}
  *     GET  /available?app=       is the assistant ready (table + at least one approved article)?
@@ -27,6 +29,11 @@ const { requireModule } = require('../../middleware/module-check');
 const { auditFromReq } = require('../../middleware/audit');
 const localAi = require('../../shared/services/localAiQueue');
 const K = require('./knowledge');
+const E = require('./explain');
+
+// "Explain step by step" is on unless HELP_AI_EXPLAIN=off (kill switch on Render).
+// It also needs the local AI worker (LOCAL_AI_WORKER_TOKEN) — without it the queue is off.
+const explainEnabled = () => process.env.HELP_AI_EXPLAIN !== 'off' && localAi.enabled();
 
 const userRouter = express.Router();
 const adminRouter = express.Router();
@@ -118,19 +125,13 @@ userRouter.post('/ask', (req, res, next) => {
     }).select('id').single();
     if (error) return res.status(missingTable(error) ? 503 : 500).json({ error: missingTable(error) ? NEEDS_176 : error.message });
 
-    let ai = { status: 'none' };
-    if (matched.length) {
-      const queued = await localAi.enqueue('help_answer', req.companyId, q.id);
-      if (queued.queued) {
-        await supabase.from('sevco_help_questions').update({ ai_status: 'queued' }).eq('id', q.id);
-        const st = await localAi.status();
-        ai = { status: 'queued', online: !!st.online };
-      }
-    }
+    // The first answer is the approved article only — no AI (Ruan 2026-11-17).
+    // The AI only explains further when the client asks: POST /questions/:id/explain.
     res.json({
       question_id: q.id, language,
       articles: matched.map(a => ({ slug: a.slug, title: a.title, body: a.body, screen_url: a.screen_url, screen_name: a.screen_name, language: a.language })),
-      ai
+      ai: { status: 'none' },
+      can_explain: matched.length > 0 && explainEnabled()
     });
   } catch (err) {
     console.error('[help] ask failed:', err.message);
@@ -152,9 +153,77 @@ userRouter.get('/questions/:id', async (req, res) => {
     if (!q) return res.status(404).json({ error: 'Not found' });
     let online = null;
     if (q.ai_status === 'queued') online = !!(await localAi.status()).online;
-    res.json({ ai_status: q.ai_status, ai_answer: q.ai_answer, online });
+    // Only a checked, finished answer ever leaves the server ('blocked' ones stay for SEVCO).
+    const done = q.ai_status === 'done';
+    res.json({
+      ai_status: q.ai_status === 'blocked' ? 'failed' : q.ai_status,
+      ai_answer: done ? q.ai_answer : null,
+      not_covered: done && !q.ai_answer && q.kind === 'explain',
+      online
+    });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/help/questions/:id/explain  { message?, language? }
+ * :id = the client's first question. The local AI explains its article step by
+ * step (see explain.js for the four locks). Answer arrives via GET /questions/:childId.
+ */
+userRouter.post('/questions/:id/explain', async (req, res, next) => {
+  try {
+    const root = await ownQuestion(req);
+    if (!root || root.kind === 'explain') return res.status(404).json({ error: 'Not found' });
+    if (!K.APPS[root.app]) return res.status(400).json({ error: 'Unknown app' });
+    req._helpRoot = root;
+    return requireModule(K.APPS[root.app].module)(req, res, next);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+}, async (req, res) => {
+  try {
+    const root = req._helpRoot;
+    if (!explainEnabled()) return res.json({ ai: { status: 'off' } });
+    if (root.status !== 'matched' || !(root.matched_slugs || []).length) return res.status(409).json({ error: 'Nothing to explain' });
+
+    const message = String(req.body.message || '').trim().slice(0, 1000);
+    const language = message.length >= 2 ? K.detectLanguage(message, root.language) : root.language;
+    const base = { app: root.app, company_id: req.companyId, user_id: (req.user && req.user.userId) || null,
+      language, question: message.length >= 2 ? message : E.DEFAULT_MESSAGE[language], kind: 'explain', parent_id: root.id };
+    const atStep = Math.max(0, Math.min(50, parseInt(req.body.at_step, 10) || 0));
+    if (atStep) base.at_step = atStep;
+
+    // Lock 1 holds in follow-ups too.
+    if (message && K.isAdviceQuestion(message)) {
+      const { data: q, error } = await supabase.from('sevco_help_questions')
+        .insert(Object.assign({ status: 'advice' }, base)).select('id').single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.json({ question_id: q.id, language, advice: true, ai: { status: 'none' } });
+    }
+
+    const { count: inThread } = await supabase.from('sevco_help_questions')
+      .select('id', { count: 'exact', head: true }).eq('parent_id', root.id);
+    if ((inThread || 0) >= E.MAX_PER_THREAD) return res.json({ language, ai: { status: 'limit' } });
+    const hourAgo = new Date(Date.now() - 3600e3).toISOString();
+    const { count: inHour } = await supabase.from('sevco_help_questions')
+      .select('id', { count: 'exact', head: true }).eq('company_id', req.companyId).eq('kind', 'explain').gte('created_at', hourAgo);
+    if ((inHour || 0) >= E.MAX_PER_COMPANY_HOUR) return res.json({ language, ai: { status: 'limit' } });
+
+    // The computer that runs the model is off: say so now instead of an answer hours later.
+    const st = await localAi.status();
+    if (!st.online) return res.json({ language, ai: { status: 'offline' } });
+
+    const { data: q, error } = await supabase.from('sevco_help_questions')
+      .insert(Object.assign({ status: 'matched', matched_slugs: root.matched_slugs }, base)).select('id').single();
+    if (error) return res.status(500).json({ error: error.message });
+    const queued = await localAi.enqueue('help_answer', req.companyId, q.id);
+    if (!queued.queued) return res.json({ question_id: q.id, language, ai: { status: 'offline' } });
+    await supabase.from('sevco_help_questions').update({ ai_status: 'queued' }).eq('id', q.id);
+    res.json({ question_id: q.id, language, ai: { status: 'queued', online: true } });
+  } catch (err) {
+    console.error('[help] explain failed:', err.message);
+    res.status(500).json({ error: 'The help assistant could not answer right now' });
   }
 });
 
@@ -288,9 +357,9 @@ adminRouter.get('/questions', async (req, res) => {
     const app = appFromReq(req, res);
     if (!app) return;
     let q = supabase.from('sevco_help_questions')
-      .select('id, company_id, language, question, matched_slugs, status, ai_status, ai_answer, feedback, feedback_note, reviewed_at, created_at')
+      .select('*')   // kind/parent_id exist after migration 185; '*' works before and after
       .eq('app', app).order('created_at', { ascending: false }).limit(200);
-    if (req.query.open === '1') q = q.is('reviewed_at', null).or('status.eq.unmatched,status.eq.advice,feedback.eq.down');
+    if (req.query.open === '1') q = q.is('reviewed_at', null).or('status.eq.unmatched,status.eq.advice,feedback.eq.down,ai_status.eq.blocked');
     const { data, error } = await q;
     if (error) return res.status(missingTable(error) ? 503 : 500).json({ error: missingTable(error) ? NEEDS_176 : error.message });
     res.json({ app, questions: data || [] });

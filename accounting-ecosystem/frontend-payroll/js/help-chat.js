@@ -6,6 +6,9 @@
  * back at once (no AI needed — works even when the AI computer is off); when the
  * local AI (Ollama on Ruan's computer) is online it also writes a short answer
  * from those articles, which this widget picks up a little later.
+ * 2026-11-17: the first answer is the article only. "Explain step by step" (or
+ * typing where you are stuck) asks the local AI to explain THAT article in small
+ * steps, as a conversation (POST /api/help/questions/:id/explain). Never advice.
  * The conversation lives in page memory only (CLAUDE.md Part D).
  * ============================================================================
  */
@@ -21,12 +24,26 @@
               placeholder: 'Tik jou vraag…', send: 'Stuur', open: 'Maak die skerm oop', none: 'Ek het nog nie \'n hulpartikel hieroor nie. Jou vraag is aangeteken sodat ons dit kan byvoeg.',
               thinking: 'Pip skryf ook \'n kort antwoord…', offline: 'Pip se AI-helper is tans af — hier is die hulpartikel wat die beste pas.',
               advice: 'Dit klink na \'n belasting- of adviesvraag. Ek help met hoe Paytime werk — waar om iets in te sit en watter knoppie om te druk.\nBelasting- en nakomingsadvies (bv. of iets belasbaar is of watter IRP5-kode om te gebruik) is deel van die betaalde Sean AI-byvoeging, of vra jou rekenmeester.',
-              helpful: 'Was dit nuttig?', thanks: 'Dankie!', error: 'Kon nie nou antwoord nie. Probeer weer.', source: 'Bron' },
+              helpful: 'Was dit nuttig?', thanks: 'Dankie!', error: 'Kon nie nou antwoord nie. Probeer weer.', source: 'Bron',
+              explain: 'Verduidelik stap vir stap', explaining: 'Pip dink hoe om dit eenvoudiger te verduidelik…', newq: 'Nuwe vraag',
+              next: 'Sê vir my wanneer jy daar is, of waar jy vashaak, dan help ek verder.', more: 'Volgende stappe',
+              doneSteps: 'Dis al die stappe. As jy iewers vashaak, sê vir my waar.',
+              stuck: 'Sê waar jy vashaak…', disclaimer: 'Hulp met hoe Paytime werk — nie belasting- of rekeningkundige advies nie.',
+              cannot: 'Ek kan dit nie beter verduidelik as die artikel hierbo nie. Volg die stappe daar, of vra jou vraag op \'n ander manier.',
+              offlineExplain: 'Pip kan nou nie verder verduidelik nie. Volg die artikel hierbo, of probeer later weer.',
+              limit: 'Ek kan nie verder hieroor verduidelik nie. Volg die artikel hierbo, of vra \'n nuwe vraag.' },
         EN: { title: 'PIP — Paytime\'s Intelligent Pal', hint: 'Hi! I\'m Pip, your Paytime assistant.\nAsk me how to do something in Paytime, e.g. "How do I add overtime to a payslip?"\nJy kan ook in Afrikaans vra.',
               placeholder: 'Type your question…', send: 'Send', open: 'Open the screen', none: 'I don\'t have a help article about this yet. Your question was noted so we can add one.',
               thinking: 'Pip is also writing a short answer…', offline: 'Pip\'s AI helper is offline right now — here is the help article that fits best.',
               advice: 'That sounds like a tax or advice question. I help with how Paytime works — where to enter something and which button to click.\nTax and compliance advice (e.g. whether something is taxable or which IRP5 code to use) is part of the paid Sean AI add-on, or ask your accountant.',
-              helpful: 'Was this helpful?', thanks: 'Thank you!', error: 'Could not answer right now. Please try again.', source: 'Source' }
+              helpful: 'Was this helpful?', thanks: 'Thank you!', error: 'Could not answer right now. Please try again.', source: 'Source',
+              explain: 'Explain step by step', explaining: 'Pip is working out a simpler way to explain it…', newq: 'New question',
+              next: 'Tell me when you are there, or where you are stuck, and I will help further.', more: 'Next steps',
+              doneSteps: 'That is all the steps. If you get stuck somewhere, tell me where.',
+              stuck: 'Tell me where you are stuck…', disclaimer: 'Help with how Paytime works — not tax or accounting advice.',
+              cannot: 'I can\'t explain it better than the article above. Follow the steps there, or ask your question another way.',
+              offlineExplain: 'Pip can\'t explain further right now. Follow the article above, or try again later.',
+              limit: 'I can\'t explain more about this. Follow the article above, or ask a new question.' }
     };
     var lang = 'EN';   // English first (Ruan 2026-11-11); no switch — each reply follows the language of the question
 
@@ -63,6 +80,8 @@
         '.phc-link{display:inline-block;margin-top:6px;color:#67e8f9;text-decoration:none;font-size:12.5px}' +
         '.phc-note{font-size:12px;color:#a59cc9;font-style:italic}' +
         '.phc-fb{margin-top:6px;font-size:12px;color:#a59cc9}.phc-fb button{background:none;border:none;cursor:pointer;font-size:15px}' +
+        '.phc-act{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}.phc-act button{background:#2a1f4d;border:1px solid #7c3aed;color:#e9e4ff;border-radius:8px;padding:5px 9px;font-size:12.5px;cursor:pointer}' +
+        '.phc-act button:disabled{opacity:.5;cursor:default}' +
         '.phc-in{display:flex;gap:8px;padding:10px;border-top:1px solid #2a1f4d}' +
         '.phc-in input{flex:1;background:#17122b;border:1px solid #3b2a6b;color:#fff;border-radius:10px;padding:9px 10px;font-size:13.5px}' +
         '.phc-in button{background:#7c3aed;border:none;color:#fff;border-radius:10px;padding:0 14px;cursor:pointer}';
@@ -82,7 +101,7 @@
         document.body.appendChild(panel);
         btn.addEventListener('click', function () { panel.classList.toggle('open'); if (panel.classList.contains('open')) panel.querySelector('#phc-q').focus(); });
         panel.querySelector('.phc-x').addEventListener('click', function () { panel.classList.remove('open'); });
-        panel.querySelector('#phc-form').addEventListener('submit', function (e) { e.preventDefault(); ask(); });
+        panel.querySelector('#phc-form').addEventListener('submit', function (e) { e.preventDefault(); submit(); });
         applyLang();
         say('bot', textHtml(T[lang].hint));
     }
@@ -90,7 +109,7 @@
     function applyLang() {
         var t = T[lang];
         document.getElementById('phc-title').textContent = t.title;
-        document.getElementById('phc-q').placeholder = t.placeholder;
+        document.getElementById('phc-q').placeholder = thread ? t.stuck : t.placeholder;
         document.getElementById('phc-send').textContent = t.send;
     }
 
@@ -120,12 +139,147 @@
         msg.appendChild(fb);
     }
 
-    function ask() {
+    // An open "explain" conversation: typed text goes to it as a follow-up.
+    // "Explain step by step" pages through the APPROVED article's own numbered
+    // steps, 3 at a time — no AI, always correct, works with the AI computer off.
+    // Only when the client types where they are stuck does the local AI help,
+    // told which step they are at (trial 2026-11-17: the small model does not
+    // keep to "3 steps", repeats steps, and drifts in Afrikaans).
+    var thread = null;   // { rootId, pending: [], shown: n, seen: {} } — page memory only
+    var STEP_RE = /^\s*\d{1,2}[.)]\s/;
+    var NEXT_RE = /^\s*(ok(ay)?|ja|yes|klaar|done|gedoen|reg|ek is daar|i'?m there|i am there|daar|volgende|next|wat nou|what now|en nou|and now|then\??|toe\??)\b/i;
+    function submit() {
         var input = document.getElementById('phc-q');
         var q = input.value.trim();
         if (q.length < 2) return;
         input.value = '';
         say('me', esc(q));
+        if (thread && thread.pending.length && NEXT_RE.test(q) && q.split(/\s+/).length <= 4) { showMore(thread.rootId); return; }
+        if (thread) explain(thread.rootId, q); else ask(q);
+    }
+    function endThread() { thread = null; applyLang(); }
+    function newThread(rootId) { return { rootId: rootId, pending: [], shown: 0, seen: {} }; }
+    function stepKey(s) { return String(s).replace(STEP_RE, '').trim().toLowerCase(); }
+
+    function splitSteps(text) {
+        var intro = [], steps = [];
+        String(text || '').split('\n').forEach(function (line) {
+            var l = line.trim();
+            if (STEP_RE.test(line)) steps.push(l);
+            else if (steps.length) { if (l) steps[steps.length - 1] += '\n' + l; }
+            else if (l) intro.push(l);
+        });
+        return { intro: intro.join('\n'), steps: steps };
+    }
+
+    // mode 'article' → [Explain step by step]; 'answer' → [Next steps]? [New question]
+    function explainButtons(msg, rootId, mode, article) {
+        var t = T[lang];
+        var more = mode === 'answer' && thread && thread.pending.length;
+        var bar = el('<div class="phc-act">' +
+            (mode === 'article' ? '<button type="button" data-a="explain">' + esc(t.explain) + '</button>' : '') +
+            (more ? '<button type="button" data-a="more">' + esc(t.more) + '</button>' : '') +
+            (mode === 'answer' ? '<button type="button" data-a="new">' + esc(t.newq) + '</button>' : '') + '</div>');
+        var off = function () { bar.querySelectorAll('button').forEach(function (b) { b.disabled = true; }); };
+        var eb = bar.querySelector('[data-a="explain"]');
+        if (eb) eb.addEventListener('click', function () {
+            off();
+            var steps = article ? splitSteps(article.body).steps : [];
+            if (steps.length >= 2) {
+                thread = newThread(rootId); thread.pending = steps; applyLang();
+                showMore(rootId);
+            } else {
+                explain(rootId, '');   // an article without numbered steps: the AI writes them
+            }
+        });
+        var mb = bar.querySelector('[data-a="more"]');
+        if (mb) mb.addEventListener('click', function () { off(); showMore(rootId); });
+        var nb = bar.querySelector('[data-a="new"]');
+        if (nb) nb.addEventListener('click', function () { endThread(); bar.remove(); document.getElementById('phc-q').focus(); });
+        msg.appendChild(bar);
+    }
+
+    function stepsHtml(lines, last, fromAi) {
+        var t = T[lang];
+        return textHtml(lines.join('\n')) + '<br><br>' + esc(last ? t.doneSteps : t.next) +
+            (fromAi ? '<div class="phc-note">' + esc(t.disclaimer) + '</div>' : '');
+    }
+
+    function markShown(steps) {
+        steps.forEach(function (s) { thread.seen[stepKey(s)] = true; });
+        thread.shown += steps.length;
+    }
+
+    // Next 3 of the pending steps — no AI.
+    function showMore(rootId) {
+        if (!thread || !thread.pending.length) return;
+        var chunk = thread.pending.splice(0, 3);
+        markShown(chunk);
+        var m = say('bot', stepsHtml(chunk, !thread.pending.length, false));
+        explainButtons(m, rootId, 'answer');
+    }
+
+    // An AI answer: leave out steps the client has already seen, then page it.
+    function showAnswer(msg, answer, qid, rootId) {
+        var s = splitSteps(answer);
+        var fresh = s.steps.filter(function (x) { return !thread.seen[stepKey(x)]; });
+        var steps = fresh.length ? fresh : s.steps;
+        var first = steps.slice(0, 3);
+        thread.pending = steps.slice(first.length);
+        markShown(first);
+        var lines = (s.intro ? [s.intro] : []).concat(first.length ? first : [answer]);
+        msg.innerHTML = stepsHtml(lines, !thread.pending.length, true);
+        feedback(msg, qid);
+        explainButtons(msg, rootId, 'answer');
+    }
+
+    // Ask the local AI to help with the article of question rootId.
+    function explain(rootId, text) {
+        var t = T[lang];
+        if (!thread || thread.rootId !== rootId) thread = newThread(rootId);
+        applyLang();
+        api('POST', '/api/help/questions/' + rootId + '/explain', { message: text, language: lang, at_step: thread.shown }).then(function (r) {
+            if (!r.ok) { say('bot', esc((r.data && r.data.error) || t.error)); return; }
+            var d = r.data;
+            if (d.language === 'AF' || d.language === 'EN') { lang = d.language; t = T[lang]; applyLang(); }
+            if (d.advice) { say('bot', textHtml(t.advice)); return; }
+            var st = d.ai && d.ai.status;
+            if (st === 'queued') {
+                var msg = say('bot', '<div class="phc-note">' + esc(t.explaining) + '</div>');
+                pollExplain(d.question_id, rootId, text, msg, 0);
+            } else if (st === 'limit') { say('bot', esc(t.limit)); }
+            else if (st === 'offline') { say('bot', esc(t.offlineExplain)); }
+            else { say('bot', esc(t.cannot)); }
+        }).catch(function () { say('bot', esc(t.error)); });
+    }
+
+    // Small model on one computer: ~10–60 s; stop after ~3 minutes.
+    function pollExplain(qid, rootId, text, msg, tries) {
+        var t = T[lang];
+        if (tries > 36) { msg.innerHTML = esc(t.offlineExplain); return; }
+        setTimeout(function () {
+            api('GET', '/api/help/questions/' + qid).then(function (r) {
+                if (!r.ok) { msg.innerHTML = esc(t.error); return; }
+                var d = r.data;
+                if (d.ai_status === 'done' && d.ai_answer) {
+                    if (!thread || thread.rootId !== rootId) thread = newThread(rootId);
+                    showAnswer(msg, d.ai_answer, qid, rootId);
+                } else if (d.not_covered) {
+                    // Not about this article: it is a new question.
+                    msg.remove(); endThread();
+                    if (text) ask(text); else say('bot', esc(t.cannot));
+                    return;
+                } else if (d.ai_status === 'queued' && d.online !== false) {
+                    pollExplain(qid, rootId, text, msg, tries + 1); return;
+                } else {
+                    msg.innerHTML = esc(d.ai_status === 'queued' ? t.offlineExplain : t.cannot);
+                }
+                document.getElementById('phc-log').scrollTop = 1e9;
+            }).catch(function () { msg.innerHTML = esc(t.error); });
+        }, 5000);
+    }
+
+    function ask(q) {
         var t = T[lang];
         api('POST', '/api/help/ask', { app: APP, question: q, language: lang }).then(function (r) {
             if (!r.ok) { say('bot', esc((r.data && r.data.error) || t.error)); return; }
@@ -139,6 +293,7 @@
                 : '';
             var msg = say('bot', lead + d.articles.map(articleHtml).join(''));
             feedback(msg, d.question_id);
+            if (d.can_explain) explainButtons(msg, d.question_id, 'article', d.articles[0]);
             if (d.ai && d.ai.status === 'queued' && d.ai.online) poll(d.question_id, msg, 0);
         }).catch(function () { say('bot', esc(t.error)); });
     }

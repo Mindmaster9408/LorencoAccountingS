@@ -41,10 +41,12 @@
     bottom: isSuper ? 92 : 20,
     text: {
       AF: { title: 'LENNY — Ledger Leo se assistent', aria: 'Lenny, jou Ledger Leo-assistent',
+            explaining: 'Lenny dink hoe om dit eenvoudiger te verduidelik…', disclaimer: 'Hulp met hoe Ledger Leo werk — nie BTW-, belasting- of rekeningkundige advies nie.',
             thinking: 'Lenny skryf ook \'n kort antwoord…', offline: 'Lenny se AI-helper is tans af — hier is die hulpartikel wat die beste pas.',
             hint: "Hallo! Ek is Lenny, jou Ledger Leo-assistent.\nVra my hoe om iets in Ledger Leo te doen, bv. \"Hoe maak ek 'n faktuur?\"",
             advice: "Dit klink na 'n BTW-, belasting- of rekeningkundige adviesvraag. Ek help met hoe Leo werk — waar om iets in te sit en watter knoppie om te druk.\nAdvies (bv. of iets BTW-pligtig is of na watter rekening iets moet gaan) is deel van die betaalde Sean AI-byvoeging, of vra jou rekenmeester." },
       EN: { title: "LENNY — Ledger Leo's assistant", aria: 'Lenny, your Ledger Leo assistant',
+            explaining: 'Lenny is working out a simpler way to explain it…', disclaimer: 'Help with how Ledger Leo works — not VAT, tax or accounting advice.',
             thinking: 'Lenny is also writing a short answer…', offline: "Lenny's AI helper is offline right now — here is the help article that fits best.",
             hint: "Hi! I'm Lenny, your Ledger Leo assistant.\nAsk me how to do something in Ledger Leo, e.g. \"How do I create an invoice?\"\nJy kan ook in Afrikaans vra.",
             advice: "That sounds like a VAT, tax or accounting advice question. I help with how Leo works — where to enter something and which button to click.\nAdvice (e.g. whether something carries VAT or which account it belongs in) is part of the paid Sean AI add-on, or ask your accountant." }
@@ -52,7 +54,7 @@
   };
   const script = document.createElement('script');
   script.id = 'app-help-chat-script';
-  script.src = '/dashboard/js/app-help-chat.js?v=20261111b';
+  script.src = '/dashboard/js/app-help-chat.js?v=20261117a';
   document.head.appendChild(script);
 })();
 

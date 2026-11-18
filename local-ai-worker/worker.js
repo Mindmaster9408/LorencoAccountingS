@@ -143,6 +143,12 @@ async function answerHelp(cfg, payload) {
   const NL = String.fromCharCode(10);
   const articles = (payload.articles || []).map((a, i) => '### Article ' + (i + 1) + ': ' + a.title +
     (a.screen_name ? ' (screen: ' + a.screen_name + ')' : '') + NL + a.body).join(NL + NL);
+  // "Explain step by step" follow-ups (2026-11-17): the server sends the whole chat
+  // (rules + article + conversation) ready-made, so its wording lives on the server.
+  const ready = Array.isArray(payload.messages) && payload.messages.length >= 2
+    ? payload.messages.filter(m => m && ['system', 'user', 'assistant'].includes(m.role))
+        .map(m => ({ role: m.role, content: String(m.content || '').slice(0, 12000) }))
+    : null;
   const res = await fetch(cfg.ollamaUrl + '/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -151,7 +157,7 @@ async function answerHelp(cfg, payload) {
       stream: false,
       keep_alive: cfg.keepAlive || '24h',
       options: { temperature: 0.2, num_predict: 400 },
-      messages: [
+      messages: ready || [
         { role: 'system', content: HELP_PROMPT[L].replace('{APP}', app).replace('{BOT}', bot) + NL + NL + articles },
         { role: 'user', content: String(payload.question || '').slice(0, 1000) }
       ]
