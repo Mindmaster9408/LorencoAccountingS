@@ -273,6 +273,17 @@ app.use('/api/help', authenticateToken, requireCompany, sevcoHelp.userRouter);
 app.use('/api/sevco/help', authenticateToken, sevcoHelp.adminRouter);
 // 2FA endpoints — dormant; no login flow change until TWO_FACTOR_AUTH_ENABLED=true
 app.use('/api/auth', twoFactorRoutes);
+
+// Personal access tokens (migration 186) — a user's own keys for bots / AI agents.
+app.use('/api/api-tokens', authenticateToken, require('./shared/routes/apiTokens'));
+
+// MCP server for external AI bots (e.g. Grok) acting AS a user with that user's rights.
+// Always mounted so it can refuse clearly: 503 unless MCP_ENABLED=true and the
+// feature_flags kill switch 'mcp_kill_switch' is not active.
+// See docs/accounting/GROK_MCP_INTEGRATION_AUDIT_2026-11-18.md.
+app.use('/mcp', require('./modules/mcp').createMcpRouter());
+console.log(String(process.env.MCP_ENABLED || '').toLowerCase() === 'true'
+  ? '  🤖 MCP server (/mcp) — ACTIVE' : '  ⬜ MCP server (/mcp) — off (MCP_ENABLED is not true)');
 app.use('/api/companies', authenticateToken, companiesRoutes);
 app.use('/api/users', authenticateToken, usersRoutes);
 app.use('/api/employees', authenticateToken, employeesRoutes);

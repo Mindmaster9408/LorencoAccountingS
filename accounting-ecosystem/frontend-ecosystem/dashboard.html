@@ -1801,6 +1801,28 @@
                         </div>
                     </div>
 
+                    <!-- ── Bot / AI access keys (migration 186) — every user ── -->
+                    <div id="apiKeysSection" style="border-top:1px solid var(--border);margin:20px 0 0 0;padding-top:20px;">
+                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;">Bot / AI access keys</div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5;">
+                            A key lets an AI bot (e.g. Grok) work in Ledger Leo <strong>as you</strong> — with exactly your rights and companies, nothing more.
+                            For a bot, create a separate user for it, give that user the role you want, sign in as that user and create the key here.
+                            <span id="apiKeysMcpUrl"></span>
+                        </div>
+                        <div id="apiKeysNew" style="display:none;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.35);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+                            <div style="font-size:0.8rem;font-weight:700;color:#34d399;margin-bottom:6px;">Copy this key now — it is shown only once</div>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <code id="apiKeysNewValue" style="flex:1;word-break:break-all;font-size:0.78rem;color:rgba(255,255,255,0.9);background:rgba(0,0,0,0.3);padding:8px;border-radius:6px;"></code>
+                                <button type="button" class="btn-form save" onclick="_apiKeyCopy()">Copy</button>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-bottom:12px;">
+                            <input type="text" id="apiKeyName" maxlength="100" placeholder="Key name, e.g. Grok bot" style="flex:1;" onkeydown="if (event.key === 'Enter') { event.preventDefault(); _apiKeyCreate(); }">
+                            <button type="button" class="btn-form save" onclick="_apiKeyCreate()" id="apiKeyCreateBtn">Create key</button>
+                        </div>
+                        <div id="apiKeysList" style="font-size:0.82rem;color:var(--text-muted);">Loading…</div>
+                    </div>
+
                     <div class="form-actions">
                         <button type="button" class="btn-form cancel" onclick="closeProfileModal()">Cancel</button>
                         <button type="submit" class="btn-form save" id="profSaveBtn">Save Changes</button>
@@ -4159,6 +4181,91 @@
             document.getElementById('profNewPwd').value = '';
             document.getElementById('profileModal').classList.add('show');
             _load2faStatus();
+            _loadApiKeys();
+        }
+
+        // ── Bot / AI access keys (personal access tokens, migration 186) ────────────
+        // The key itself is shown once and kept only in page memory — never in browser storage.
+        function _apiKeyEsc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+        function _apiKeyDate(iso) {
+            if (!iso) return '—';
+            try { return new Date(iso).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); }
+            catch (e) { return iso; }
+        }
+        async function _loadApiKeys() {
+            const list = document.getElementById('apiKeysList');
+            if (!list) return;
+            document.getElementById('apiKeysNew').style.display = 'none';
+            document.getElementById('apiKeysNewValue').textContent = '';
+            try {
+                const res = await fetch('/api/api-tokens', { headers: _2faAuthHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not load keys');
+                document.getElementById('apiKeysMcpUrl').innerHTML = data.mcp_enabled
+                    ? '<br>Bot connection address (MCP): <code>' + _apiKeyEsc(data.mcp_url) + '</code>'
+                    : '<br><em>The bot connection is not switched on yet.</em>';
+                const keys = data.tokens || [];
+                if (!keys.length) { list.innerHTML = 'No keys yet.'; return; }
+                list.innerHTML = '<table style="width:100%;border-collapse:collapse;">' +
+                    '<tr style="text-align:left;color:var(--text-muted);font-size:0.75rem;"><th style="padding:4px;">Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr>' +
+                    keys.map(function(k) {
+                        const state = k.revoked_at ? '<span style="color:#f87171;">revoked</span>'
+                            : (!k.active ? '<span style="color:#fbbf24;">expired</span>'
+                            : '<button type="button" class="btn-form cancel" style="padding:4px 10px;" onclick="_apiKeyRevoke(' + Number(k.id) + ')">Revoke</button>');
+                        return '<tr style="border-top:1px solid var(--border);' + (k.active ? '' : 'opacity:0.55;') + '">' +
+                            '<td style="padding:6px 4px;color:rgba(255,255,255,0.85);">' + _apiKeyEsc(k.name) + '</td>' +
+                            '<td><code>' + _apiKeyEsc(k.prefix) + '…</code></td>' +
+                            '<td>' + _apiKeyDate(k.created_at) + '</td>' +
+                            '<td>' + _apiKeyDate(k.last_used_at) + '</td>' +
+                            '<td style="text-align:right;">' + state + '</td></tr>';
+                    }).join('') + '</table>';
+            } catch (e) {
+                list.textContent = 'Could not load keys: ' + e.message;
+            }
+        }
+        async function _apiKeyCreate() {
+            const nameEl = document.getElementById('apiKeyName');
+            const name = nameEl.value.trim();
+            if (!name) { showToast('Give the key a name, e.g. "Grok bot"', true); return; }
+            const btn = document.getElementById('apiKeyCreateBtn');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/api/api-tokens', {
+                    method: 'POST',
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, _2faAuthHeaders()),
+                    body: JSON.stringify({ name: name })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not create the key');
+                nameEl.value = '';
+                await _loadApiKeys();
+                document.getElementById('apiKeysNewValue').textContent = data.token;
+                document.getElementById('apiKeysNew').style.display = 'block';
+            } catch (e) {
+                showToast(e.message, true);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+        function _apiKeyCopy() {
+            const v = document.getElementById('apiKeysNewValue').textContent;
+            if (navigator.clipboard && v) navigator.clipboard.writeText(v).then(function() { showToast('Key copied'); }, function() {});
+        }
+        async function _apiKeyRevoke(id) {
+            if (!confirm('Revoke this key? A bot using it stops working immediately.')) return;
+            try {
+                const res = await fetch('/api/api-tokens/' + encodeURIComponent(id), { method: 'DELETE', headers: _2faAuthHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not revoke the key');
+                showToast('Key revoked');
+                _loadApiKeys();
+            } catch (e) {
+                showToast(e.message, true);
+            }
         }
 
         function _2faAuthHeaders() {

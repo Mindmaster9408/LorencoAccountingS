@@ -1189,7 +1189,7 @@ router.get('/bank-recon-history', authenticate, hasPermission('report.view'), as
         ),
         users!bank_recon_sessions_created_by_fkey(
           id,
-          name,
+          name:full_name,
           email
         )
       `)
@@ -1238,7 +1238,7 @@ router.get('/bank-recon-history/:sessionId', authenticate, hasPermission('report
         ),
         users!bank_recon_sessions_created_by_fkey(
           id,
-          name,
+          name:full_name,
           email
         )
       `)
