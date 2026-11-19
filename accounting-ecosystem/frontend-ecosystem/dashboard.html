@@ -4221,7 +4221,7 @@
                         const p = k.policy || {};
                         const box = function(key, label) {
                             return '<label style="display:inline-flex;align-items:center;gap:5px;margin:2px 14px 2px 0;cursor:pointer;">' +
-                                '<input type="checkbox" ' + (p[key] ? 'checked ' : '') + 'onchange="_apiKeyPolicy(' + Number(k.id) + ', '' + key + '', this)"> ' + label + '</label>';
+                                '<input type="checkbox" data-key-id="' + Number(k.id) + '" data-policy="' + key + '" ' + (p[key] ? 'checked ' : '') + 'onchange="_apiKeyPolicy(this)"> ' + label + '</label>';
                         };
                         const policyRow = k.active
                             ? '<tr><td colspan="5" style="padding:0 4px 8px 4px;font-size:0.76rem;">' +
@@ -4269,13 +4269,11 @@
             const v = document.getElementById('apiKeysNewValue').textContent;
             if (navigator.clipboard && v) navigator.clipboard.writeText(v).then(function() { showToast('Key copied'); }, function() {});
         }
-        async function _apiKeyPolicy(id, key, el) {
+        async function _apiKeyPolicy(el) {
+            const id = el.getAttribute('data-key-id');
             const row = el.closest('td');
             const policy = {};
-            row.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
-                const m = (cb.getAttribute('onchange') || '').match(/'([a-z_]+)'/);
-                if (m) policy[m[1]] = cb.checked;
-            });
+            row.querySelectorAll('input[data-policy]').forEach(function(cb) { policy[cb.getAttribute('data-policy')] = cb.checked; });
             el.disabled = true;
             try {
                 const res = await fetch('/api/api-tokens/' + encodeURIComponent(id) + '/policy', {
