@@ -27,6 +27,11 @@ const db           = require('../config/database');       // pg pool for atomic 
 const JournalService = require('./journalService');
 const AuditLogger    = require('./auditLogger');
 const DuplicateDetectionService = require('./duplicateDetectionService');
+const {
+  baseExternalId,
+  numberRepeatedExternalIds,
+  resolveExternalIdCollisions,
+} = require('./bankExternalId');
 const { v4: uuidv4 } = require('uuid');
 
 // ── Transfer detection constants ─────────────────────────────────────────────
@@ -91,31 +96,52 @@ const BankStagingService = {
     const source  = ['pdf','image','csv','manual','api'].includes(importSource)
       ? importSource : 'pdf';
 
+    // ── 0. Separate identical lines within this statement ─────────────────
+    // Several real, identical bank lines on one day (e.g. repeated R5 fees)
+    // share one generated external_id; number them "#2", "#3"… by position
+    // so each is its own row. See bankExternalId.js.
+    transactions = numberRepeatedExternalIds(transactions);
+
     // ── 1. Collect external IDs for deduplication ─────────────────────────
-    // Check BOTH staging (non-REJECTED) AND live bank_transactions.
+    // Check BOTH staging (non-REJECTED, not yet CONFIRMED — confirmed rows are
+    // counted via bank_transactions) AND live bank_transactions.
+    //
+    // Counted per id FAMILY (plain id + its "#n" variants) rather than exact
+    // id: rows staged before occurrence numbering existed all carry the plain
+    // id, so "how many of this line already exist" is the right test. The
+    // first <existing count> occurrences in this file are skipped.
     const incomingExtIds = transactions
       .map(t => t.externalId || t.external_id)
       .filter(Boolean);
 
-    let existingExtIds = new Set();
+    const existingFamilyCount = new Map();   // base id → rows already present
     if (incomingExtIds.length > 0) {
-      // Check staging first
-      const { data: existingStaging } = await supabase
+      const countRow = r => {
+        const b = baseExternalId(r.external_id);
+        existingFamilyCount.set(b, (existingFamilyCount.get(b) || 0) + 1);
+      };
+
+      let stagingQ = supabase
         .from('bank_transaction_staging')
         .select('external_id')
         .eq('company_id', companyId)
         .in('external_id', incomingExtIds)
-        .not('match_status', 'eq', 'REJECTED');   // rejected rows can be re-imported
-      (existingStaging || []).forEach(r => existingExtIds.add(r.external_id));
+        .not('match_status', 'in', '(REJECTED,CONFIRMED)');   // rejected rows can be re-imported
+      if (bankAccountId) stagingQ = stagingQ.eq('bank_account_id', bankAccountId);
+      const { data: existingStaging } = await stagingQ;
+      (existingStaging || []).forEach(countRow);
 
-      // Also check live bank_transactions — a confirmed row's externalId lives here
-      const { data: existingLive } = await supabase
+      // Live bank_transactions — a confirmed row's externalId lives here
+      let liveQ = supabase
         .from('bank_transactions')
         .select('external_id')
         .eq('company_id', companyId)
         .in('external_id', incomingExtIds);
-      (existingLive || []).forEach(r => existingExtIds.add(r.external_id));
+      if (bankAccountId) liveQ = liveQ.eq('bank_account_id', bankAccountId);
+      const { data: existingLive } = await liveQ;
+      (existingLive || []).forEach(countRow);
     }
+    const fileFamilySeen = new Map();        // base id → occurrences seen in this file
 
     // ── 2. Pre-fetch candidates for fuzzy duplicate detection ─────────────
     // Only useful when bankAccountId is known — without it we can't scope the query.
@@ -136,9 +162,14 @@ const BankStagingService = {
       const txn   = transactions[i];
       const extId = txn.externalId || txn.external_id || null;
 
-      if (extId && existingExtIds.has(extId)) {
-        skippedCount++;
-        continue;
+      if (extId) {
+        const b = baseExternalId(extId);
+        const nth = (fileFamilySeen.get(b) || 0) + 1;
+        fileFamilySeen.set(b, nth);
+        if (nth <= (existingFamilyCount.get(b) || 0)) {
+          skippedCount++;
+          continue;
+        }
       }
 
       const parsedAmount = parseFloat(txn.amount);
@@ -576,6 +607,42 @@ const BankStagingService = {
       return { confirmed: [], skipped };
     }
 
+    // ── Give each confirmed row a free external_id ─────────────────────────
+    // The user has explicitly confirmed these rows (incl. "Confirm Anyway"
+    // on a flagged possible duplicate), i.e. decided each is its own bank
+    // line. If its external_id is already taken on that bank account —
+    // identical same-day lines staged before occurrence numbering existed,
+    // or two such lines in this very batch — move it to the next free "#n"
+    // instead of letting the unique index (migration 163) fail the whole
+    // bulk insert. The claim above still stops a double-click / retry from
+    // inserting the SAME staging row twice.
+    let taken;
+    try {
+      taken = await BankStagingService._loadTakenExternalIds(
+        companyId, toActuallyInsert.map(i => i.bankTxn)
+      );
+    } catch (lookupErr) {
+      // Release the claim so the rows can be confirmed again later.
+      await supabase
+        .from('bank_transaction_staging')
+        .update({ match_status: 'UNMATCHED', updated_at: new Date().toISOString() })
+        .eq('company_id', companyId)
+        .in('id', toActuallyInsert.map(i => i.staging_row.id));
+      throw lookupErr;
+    }
+    const resolvedIds = resolveExternalIdCollisions(
+      toActuallyInsert.map(i => i.bankTxn), taken
+    );
+    const overriddenIds = [];
+    toActuallyInsert.forEach((item, idx) => {
+      if (resolvedIds[idx] !== item.bankTxn.external_id) {
+        item.bankTxn.external_id = resolvedIds[idx];
+        overriddenIds.push(item.staging_row.id);
+      } else if (item.staging_row.duplicate_status === 'POSSIBLE') {
+        overriddenIds.push(item.staging_row.id);
+      }
+    });
+
     // Bulk insert into bank_transactions
     const { data: inserted, error: insertErr } = await supabase
       .from('bank_transactions')
@@ -615,10 +682,54 @@ const BankStagingService = {
       ));
     }
 
+    // Record that the user pushed these through despite a duplicate flag /
+    // taken id. Best-effort: the import itself has already succeeded.
+    if (overriddenIds.length > 0) {
+      const { error: ovErr } = await supabase
+        .from('bank_transaction_staging')
+        .update({ duplicate_status: 'OVERRIDDEN' })
+        .eq('company_id', companyId)
+        .in('id', overriddenIds);
+      if (ovErr) console.warn('[confirmStaged] could not mark OVERRIDDEN:', ovErr.message);
+    }
+
     return {
       confirmed: inserted || [],
       skipped,
     };
+  },
+
+  /**
+   * External ids already used in bank_transactions on the given rows' bank
+   * accounts and dates (an external_id is per bank account; generated ids
+   * embed the date, so the rows' dates bound the search). Paged past the
+   * 1000-row API cap.
+   *
+   * @returns {Promise<Set<string>>} keys "<bank_account_id>|<external_id>"
+   */
+  async _loadTakenExternalIds(companyId, rows) {
+    const taken = new Set();
+    const withId = rows.filter(r => r.external_id);
+    if (withId.length === 0) return taken;
+
+    const accounts = [...new Set(withId.map(r => r.bank_account_id))];
+    const dates    = [...new Set(withId.map(r => r.date))];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from('bank_transactions')
+        .select('bank_account_id, external_id')
+        .eq('company_id', companyId)
+        .in('bank_account_id', accounts)
+        .in('date', dates)
+        .not('external_id', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`Failed to check existing external ids: ${error.message}`);
+      (data || []).forEach(r => taken.add(`${r.bank_account_id}|${r.external_id}`));
+      if (!data || data.length < PAGE) break;
+    }
+    return taken;
   },
 
 
@@ -834,6 +945,13 @@ const BankStagingService = {
 
     const transferAmount = Math.abs(parseFloat(fromRow.amount));
     const transferDate   = fromRow.date <= toRow.date ? fromRow.date : toRow.date;
+
+    // NOTE: external_ids are deliberately NOT collision-resolved here (unlike
+    // confirmStaged). This path has no atomic claim — the unique index from
+    // migration 163 is what stops a double-click from inserting both legs
+    // (and posting the journal) twice. Identical same-day lines get distinct
+    // ids at staging time (numberRepeatedExternalIds), so this only bites
+    // rows staged before that existed; those can be confirmed as normal rows.
 
     // ── Create and post transfer journal ─────────────────────────────────
     // Transfer journal: Dr receiving account, Cr sending account
