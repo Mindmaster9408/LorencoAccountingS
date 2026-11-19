@@ -8,7 +8,7 @@ practice's choice of rights or the number of bots. Only Sean is Lorenco's own AI
 protect the shared server. Background: `accounting-ecosystem/docs/accounting/GROK_MCP_INTEGRATION_AUDIT_2026-11-18.md`;
 pricing notes `accounting-ecosystem/docs/pricing/BOTS_EN_BILLIKE_GEBRUIK.md`.
 
-**Status:** not committed (on the pending commit list). Migration 186 **run**. `/mcp` answers **503 (off)**
+**Status:** phase 1 pushed 2026-11-19 (c5a82d5); follow-up (audit correlation id + error category, start_date/end_date) not yet committed. Migration 186 **run**. `/mcp` answers **503 (off)**
 until `MCP_ENABLED=true` is set on Render.
 
 ## How Codebox 3 was applied
@@ -20,8 +20,8 @@ until `MCP_ENABLED=true` is set on Render.
 | No direct DB access from tools, no service key for the agent, no admin credentials | Tools call the normal Lorenco API over loopback **as the key's user**; **platform admin accounts (super admins + ADMIN_EMAILS) cannot create or use keys**. |
 | Dedicated bot identity, hashed token, revocable | Personal access key per user (`lnc_…`, SHA-256 hash only, revoke = instant 401). The practice creates a dedicated user for its bot. |
 | Company enforcement every request | Leo's own checks + MCP pre-check: the company must be in the user's own company list. |
-| Tools: ping, list_companies, get_trial_balance | Yes — plus 6 more **read-only** tools already built and tested (bank accounts, import status, allocation rules, unallocated transactions, reconciliation status, company profile). Trial balance params are `from_date` / `to_date`. |
-| Rate limit, audit, timeouts, validation, safe errors, isolation, kill switch | 60/min per bot (burst 120), 600/min per company, 10/min heavy tools; every tool call in `audit_log` (module `mcp`, args only — no results, no tokens); 25 s timeout per Lorenco call; strict argument checks; 5xx details never shown to the bot; kill switch below. |
+| Tools: ping, list_companies, get_trial_balance | Yes — plus 6 more **read-only** tools already built and tested (bank accounts, import status, allocation rules, unallocated transactions, reconciliation status, company profile). Trial balance params are `start_date` / `end_date` (YYYY-MM-DD, start ≤ end; old names `from_date`/`to_date` still accepted), mapped to Leo's verified contract `?fromDate=&toDate=`. |
+| Rate limit, audit, timeouts, validation, safe errors, isolation, kill switch | 60/min per bot (burst 120), 600/min per company, 10/min heavy tools; every tool call in `audit_log` (module `mcp`: user, company, tool, timestamp, ok/fail, duration, safe `error_category`, `correlation_id`; args only — no results, no tokens; refused/invalid/rate-limited calls audited too); 25 s timeout per Lorenco call; strict argument checks; 5xx details never shown to the bot; kill switch below. |
 | Prohibited capabilities | Not built, and the MCP layer is **read-only**: it refuses any non-GET call even if a tool asked. Never to be built as tools: SARS submissions, bank payments, period close/reopen, final approval of financial statements, deleting records, changing own permissions, direct client communication. |
 
 ## Files
@@ -37,7 +37,7 @@ until `MCP_ENABLED=true` is set on Render.
 | `backend/server.js` | mounts `/api/api-tokens` and `/mcp` |
 | `frontend-ecosystem/dashboard.html` | Profile → "Bot / AI access keys" (create, copy once, list, revoke, MCP address) |
 | `backend/modules/accounting/routes/reports.js` | bug fix found while testing: bank-recon-history selected `users.name` → 500 in production; now `name:full_name` |
-| `backend/tests/mcp-server.test.js` | 28 tests |
+| `backend/tests/mcp-server.test.js` | 30 tests |
 
 ## Test results (Codebox 3 list)
 | # | Test | Result |
@@ -50,7 +50,8 @@ until `MCP_ENABLED=true` is set on Render.
 | 6 | `get_trial_balance` returns Leo's report | ✅ (company 51, 2026/27) |
 | 7 | Unauthorized company refused | ✅ company 7 refused (pre-check + Leo) |
 | 8 | No write access | ✅ only read tools listed; non-GET refused before sending (unit) |
-| 9 | Existing Leo unaffected | ✅ full suite 1472 pass, golden 56/56, lint 0 errors |
+| 8b | Prohibited actions | ✅ none exist as tools; calling e.g. `submit_sars_return`, `make_bank_payment`, `close_period` fails closed (-32602), nothing sent |
+| 9 | Existing Leo unaffected | ✅ full suite 1474 pass, golden 56/56, lint 0 errors |
 | 10 | Calls audited | ✅ `audit_log` module `mcp` rows per tool call |
 
 ## Render environment variables
@@ -71,7 +72,7 @@ Kill switch without a redeploy: in Supabase, `feature_flags` row `flag_key = 'mc
    Reset its password in Users, sign in as it, open **Profile → Bot / AI access keys**, create a key, copy it.
 3. In Grok (xAI remote MCP): server URL `https://app.lorencoecosystem.com/mcp`, server label `lorenco`,
    authorization = the key (sent as `Authorization: Bearer <key>`).
-4. Ask: "Ping Lorenco", "Which companies can you see?", "Show the trial balance of Infinite Legacy — TEST for 2026-03-01 to 2027-02-28".
+4. Ask: "Ping Lorenco", "Which companies can you see?", "Show the trial balance of Infinite Legacy — TEST for 2026-03-01 to 2027-02-28" (start_date / end_date).
 
 ## Open risks / next
 - Live Grok test still to do (which Grok product; header passthrough; result size) — audit section H.
@@ -80,3 +81,46 @@ Kill switch without a redeploy: in Supabase, `feature_flags` row `flag_key = 'mc
   bot channel (the `X-Lorenco-Channel: mcp` header is already sent). Prohibited list above stays prohibited.
 - Managers creating a key FOR a bot user (today: sign in as the bot user and create it there).
 - Local `.env`: `ACCOUNTING_DATABASE_URL` points at retired Zeabur — locally set it to the Supabase URL.
+
+---
+
+## 2026-11-19 — Phase 2: bank write tools (Ruan: "hy moet kan bank intrek, allokeer, bankrekon doen — alles")
+
+**Status:** built + tested, NOT committed. Server version 1.1.0. `MCP_ENABLED=true` is already live on Render (GET /mcp answers 405 "Use POST").
+
+**Bot user (DB, done with Ruan's instruction):** Leo Bot (test), user 45, company 51 only: `user_company_access.role` and
+`users.role` viewer/cashier → `business_owner` (= Leo admin, all Leo rights). Never `super_admin` (that role string is
+treated as platform admin in auth). Ruan set its password himself (ECO Hub → Manage Users → Reset PW).
+
+**New tools (12 → 21 total).** Read: `list_accounts`, `list_vat_settings`, `list_bank_transactions`, `get_sean_suggestions`.
+Write (`readOnlyHint: false`, `destructiveHint: false`):
+| Tool | Leo route (same as the screens) |
+|---|---|
+| `import_bank_statement_pdf` | `POST /bank/import/pdf` (Leo's parser) → `POST /bank/import` as source `pdf` + file hash; same file again → nothing staged unless `allow_duplicate_file` |
+| `stage_bank_transactions` | `POST /bank/import` as source `csv` (bot-supplied rows) |
+| `confirm_staged_transactions` | `POST /bank/staging/confirm` |
+| `reject_staged_transaction` | `PATCH /bank/staging/:id/reject` (restorable) |
+| `allocate_bank_transaction` | `POST /bank/transactions/:id/allocate` (`allocationType: account`, VAT split by Leo) |
+| `sean_auto_allocate` | `POST /bank/sean-auto-allocate` (only if switched on for the company) |
+| `create_allocation_rule` | `POST /bank/rules` |
+| `reconcile_bank_transactions` | `POST /bank/reconcile`; cleared balance computed like the recon screen (opening + reconciled + selected); a difference → nothing reconciled unless `allow_difference` |
+
+**Guards:** `lorencoApi.js` WRITE_ALLOWLIST — any non-GET outside those 9 method+path pairs is refused before sending;
+DELETE never allowed (no unallocate/unreconcile/delete via the bot — do those on the screen). Audit `args` never hold the
+PDF or line lists (`[pdf N KB]`, `[n items]`); `write: true` flag per row. Leo's own `accounting_audit_log` shows the bot
+user as the actor.
+
+**Sean learning:** allocations go through `allocateBankTransaction` with the bot as `createdByUserId`. Sean's bank
+learning only learns from `pdf`/`api` lines (existing rule, same as for employees), so allocations on
+`import_bank_statement_pdf` lines are learned; `stage_bank_transactions` (csv) lines are not.
+
+**Tests:** `tests/mcp-server.test.js` 40/40; full suite 1484 pass; lint 0 errors. E2E with the official SDK client in
+company 51 (bot user 45, key created directly and revoked after): 25/25 — stage → confirm → Sean suggestions → allocate
+(2 balanced journals) → double allocation refused → reconcile refused on difference, then reconciled → rule created →
+company 7 refused → delete tool fails closed → audited. Synthetic lines tagged `MCP E2E …` remain in company 51 (ABSA,
+reconciled, nets R65 out). PDF import is unit-tested only (no synthetic PDF statement run live yet).
+
+**Also fixed:** `frontend-accounting/users-permissions.html` role dropdown was empty for every user (`/api/users/roles`
+returns `{role, level}` objects, page expected strings).
+
+**Open:** live Grok test; manager creating a key for a bot user; unallocate/unreconcile deliberately not exposed.

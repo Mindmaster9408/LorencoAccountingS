@@ -98,10 +98,10 @@ describe('tool argument checks', () => {
   const schema = TOOLS.find(t => t.name === 'get_trial_balance').inputSchema;
   test.each([
     [{}, 'company_id is required'],
-    [{ company_id: 'abc', from_date: '2026-03-01', to_date: '2026-03-31' }, 'company_id must be a whole number'],
-    [{ company_id: 51, from_date: '1 March', to_date: '2026-03-31' }, 'from_date must look like YYYY-MM-DD'],
-    [{ company_id: 51, from_date: '2026-03-01', to_date: '2026-03-31', drop: 1 }, 'unknown argument: drop'],
-    [{ company_id: 51, from_date: '2026-03-01', to_date: '2026-03-31' }, null]
+    [{ company_id: 'abc', start_date: '2026-03-01', end_date: '2026-03-31' }, 'company_id must be a whole number'],
+    [{ company_id: 51, start_date: '1 March', end_date: '2026-03-31' }, 'start_date must look like YYYY-MM-DD'],
+    [{ company_id: 51, start_date: '2026-03-01', end_date: '2026-03-31', drop: 1 }, 'unknown argument: drop'],
+    [{ company_id: 51, start_date: '2026-03-01', end_date: '2026-03-31' }, null]
   ])('%j', (args, expected) => expect(validateArgs(schema, args)).toBe(expected));
 
   test('long lists are cut with an explicit note', () => {
@@ -166,22 +166,67 @@ describe('MCP server over HTTP', () => {
     expect(r.body).toBeNull();
   });
 
-  test('tools/list: all read-only Leo tools with input schemas', async () => {
+  test('tools/list: read tools + bank write tools, each marked correctly', async () => {
     const r = await post({ jsonrpc: '2.0', id: 3, method: 'tools/list' });
-    const names = r.body.result.tools.map(t => t.name);
-    expect(names).toEqual(['ping', 'list_companies', 'get_company_profile', 'list_bank_accounts', 'get_bank_import_status',
-      'get_allocation_rules', 'get_unallocated_transactions', 'get_reconciliation_status', 'get_trial_balance']);
-    expect(r.body.result.tools.every(t => t.inputSchema && t.inputSchema.type === 'object' && t.annotations.readOnlyHint)).toBe(true);
+    const tools = r.body.result.tools;
+    const write = tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name).sort();
+    expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_allocation_rule',
+      'import_bank_statement_pdf', 'reconcile_bank_transactions', 'reject_staged_transaction', 'sean_auto_allocate',
+      'stage_bank_transactions']);
+    expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ping', 'list_companies', 'get_trial_balance',
+      'list_accounts', 'list_vat_settings', 'list_bank_transactions', 'get_sean_suggestions']));
+    expect(tools.every(t => t.inputSchema && t.inputSchema.type === 'object')).toBe(true);
+    expect(tools.filter(t => !t.annotations.readOnlyHint).every(t => t.annotations.destructiveHint === false)).toBe(true);
   });
 
   test('tools/call runs AS the token user through the normal API, and is audited', async () => {
     const r = await post({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'get_trial_balance',
-      arguments: { company_id: 51, from_date: '2026-03-01', to_date: '2026-03-31' } } });
+      arguments: { company_id: 51, from_date: '2026-03-01', to_date: '2026-03-31' } } });   // phase-1 names still accepted
     expect(r.body.result.isError).toBeUndefined();
     expect(JSON.parse(r.body.result.content[0].text).accounts[0].code).toBe('1000');
     expect(calls).toEqual([['GET', '/api/accounting/reports/trial-balance?fromDate=2026-03-01&toDate=2026-03-31', 10, 51]]);
     await new Promise(r2 => setTimeout(r2, 20));
     expect(mockDb.audit_log[0]).toMatchObject({ user_id: 10, module: 'mcp', action_type: 'MCP_TOOL_CALL', entity_id: 'get_trial_balance', company_id: 51 });
+    expect(mockDb.audit_log[0].metadata).toMatchObject({ ok: true, error_category: null, channel: 'mcp' });
+    expect(mockDb.audit_log[0].metadata.correlation_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(JSON.stringify(mockDb.audit_log[0])).not.toMatch(/accounts|lnc_/);   // no payload, no token
+  });
+
+  test('failed calls are audited with a safe error category; start after end is refused', async () => {
+    apiBehaviour = 'forbidden';
+    await post({ jsonrpc: '2.0', id: 41, method: 'tools/call', params: { name: 'list_bank_accounts', arguments: { company_id: 99 } } });
+    apiBehaviour = 'ok';
+    const r = await post({ jsonrpc: '2.0', id: 42, method: 'tools/call', params: { name: 'get_trial_balance',
+      arguments: { company_id: 51, start_date: '2026-04-01', end_date: '2026-03-01' } } });
+    expect(r.body.result.isError).toBe(true);
+    await new Promise(r2 => setTimeout(r2, 20));
+    expect(mockDb.audit_log.map(a => a.metadata.error_category)).toEqual(['forbidden', 'invalid_arguments']);
+    expect(calls.filter(c => c[0] === 'GET')).toHaveLength(1);   // the reversed range never reached Leo
+  });
+
+  test('the audit never stores a PDF or long lists — only ids, sizes and counts', async () => {
+    const pdf = Buffer.concat([Buffer.from('%PDF-1.7 '), Buffer.alloc(4000, 32)]).toString('base64');
+    await post({ jsonrpc: '2.0', id: 45, method: 'tools/call', params: { name: 'import_bank_statement_pdf',
+      arguments: { company_id: 51, bank_account_id: 5, pdf_base64: pdf } } });
+    await post({ jsonrpc: '2.0', id: 46, method: 'tools/call', params: { name: 'stage_bank_transactions',
+      arguments: { company_id: 51, bank_account_id: 5, transactions: [{ date: '2026-10-01', description: 'SALARY ACME', amount: 100 }] } } });
+    await new Promise(r2 => setTimeout(r2, 20));
+    const [a1, a2] = mockDb.audit_log.map(a => a.metadata);
+    expect(a1.args.pdf_base64).toMatch(/^.pdf [0-9]+ KB.$/);
+    expect(a1.write).toBe(true);
+    expect(a2.args.transactions).toBe('[1 items]');
+    expect(JSON.stringify(mockDb.audit_log)).not.toMatch(/SALARY|JVBERi/);
+  });
+
+  test('prohibited capabilities do not exist as tools and fail closed', async () => {
+    const list = (await post({ jsonrpc: '2.0', id: 43, method: 'tools/list' })).body.result.tools.map(t => t.name).join(' ');
+    expect(list).not.toMatch(/sars|submit|pay|close|reopen|approve|delete|permission|role|email|send/i);
+    for (const name of ['submit_sars_return', 'make_bank_payment', 'close_period', 'reopen_period', 'approve_financial_statements',
+      'delete_journal', 'set_my_permissions', 'email_client']) {
+      const r = await post({ jsonrpc: '2.0', id: 44, method: 'tools/call', params: { name, arguments: { company_id: 51 } } });
+      expect(r.body.error.code).toBe(-32602);
+    }
+    expect(calls).toEqual([]);
   });
 
   test('Leo refuses → tool error the bot can read (rights come from the user, not the bot)', async () => {
@@ -302,11 +347,26 @@ describe('Codebox 3 controls', () => {
     afterAll(() => { global.fetch = realFetch; });
     const ctx = { user: { id: 10, email: 'bot@example.test' }, tokenId: 1 };
 
-    test('read-only: any non-GET is refused before anything is sent', async () => {
+    test('writes only on the bank allow-list; DELETE and everything else refused before anything is sent', async () => {
       const c = createClient();
-      await expect(c.request(ctx, 51, 'POST', '/api/accounting/journals', {})).rejects.toMatchObject({ status: 403 });
-      await expect(c.request(ctx, 51, 'DELETE', '/api/accounting/bank/transactions/1')).rejects.toMatchObject({ status: 403 });
+      for (const [m, p] of [['POST', '/api/accounting/journals'], ['DELETE', '/api/accounting/bank/transactions/1'],
+        ['DELETE', '/api/accounting/bank/transactions/1/allocate'], ['POST', '/api/accounting/periods/3/close'],
+        ['POST', '/api/accounting/year-end/close'], ['PUT', '/api/users/45'], ['POST', '/api/payroll/payruns'],
+        ['POST', '/api/accounting/bank/transactions/1/allocate/../../../journals'], ['PUT', '/api/accounting/bank/sean-settings']]) {
+        await expect(c.request(ctx, 51, m, p, {})).rejects.toMatchObject({ status: 403 });
+      }
       expect(seen).toEqual([]);
+      const { isAllowedCall } = require('../modules/mcp/lorencoApi');
+      expect(isAllowedCall('POST', '/api/accounting/bank/transactions/12/allocate')).toBe(true);
+      expect(isAllowedCall('PATCH', '/api/accounting/bank/staging/9/reject')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/bank/reconcile')).toBe(true);
+    });
+
+    test('an allowed write goes through select-company, then the POST with a JSON body', async () => {
+      const c = createClient();
+      await c.request(ctx, 51, 'POST', '/api/accounting/bank/staging/confirm', { stagingIds: [1] });
+      expect(seen.map(s => s.join(' '))).toEqual(['GET /api/auth/companies', 'POST /api/auth/select-company',
+        'POST /api/accounting/bank/staging/confirm']);
     });
 
     test('a company outside the user\'s own list is refused before select-company is tried', async () => {
@@ -322,5 +382,107 @@ describe('Codebox 3 controls', () => {
         'GET /api/auth/companies', 'POST /api/auth/select-company',
         'GET /api/accounting/reports/trial-balance?fromDate=2026-03-01&toDate=2026-03-31']);
     });
+  });
+});
+
+describe('Phase 2 — bank write tools (fake Leo API)', () => {
+  const { TOOLS: T, validateArgs: V } = require('../modules/mcp/tools');
+  const tool = (n) => T.find(t => t.name === n);
+  const ctx = { user: { id: 45 }, tokenId: 1 };
+  let calls, replies;
+  const api = { async request(c, cid, method, path, body) {
+    calls.push({ method, path: path.split('?')[0], query: path.split('?')[1] || '', body, cid });
+    const key = method + ' ' + path.split('?')[0];
+    const r = typeof replies[key] === 'function' ? replies[key](path, body) : replies[key];
+    if (r instanceof Error) throw r;
+    return r === undefined ? {} : r;
+  } };
+  beforeEach(() => { calls = []; replies = {}; });
+
+  test('nested argument checks for lists of lines', () => {
+    const s = tool('allocate_bank_transaction').inputSchema;
+    expect(V(s, { company_id: 51, transaction_id: 1, lines: [] })).toBe('lines needs at least 1 item(s)');
+    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ amount: 5 }] })).toBe('lines[0].account_id is required');
+    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 'x' }] })).toBe('lines[0].amount must be a number');
+    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 0 }] })).toBe('lines[0].amount must be at least 0.01');
+    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 5, hack: 1 }] })).toBe('unknown argument: lines[0].hack');
+    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 5, vat_inclusive: 'no' }] })).toBe('lines[0].vat_inclusive must be true or false');
+    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 114.99, vat_setting_id: 2 }] })).toBeNull();
+    expect(V(tool('create_allocation_rule').inputSchema, { company_id: 51, match_pattern: 'x', account_id: 1, match_type: 'regex' }))
+      .toBe('match_type must be one of: contains, starts_with, exact');
+  });
+
+  test('allocate maps to Leo\'s own allocate route and body', async () => {
+    await tool('allocate_bank_transaction').run(api, ctx, { company_id: 51, transaction_id: 77,
+      lines: [{ account_id: 3, amount: 100.004, vat_setting_id: 2 }, { account_id: 4, amount: 15, vat_inclusive: false, description: 'fee' }] });
+    expect(calls).toEqual([{ method: 'POST', path: '/api/accounting/bank/transactions/77/allocate', query: '', cid: 51, body: {
+      lines: [{ accountId: 3, amount: 100, vatSettingId: 2 }, { accountId: 4, amount: 15, vatInclusive: false, description: 'fee' }],
+      allocationType: 'account' } }]);
+  });
+
+  test('PDF import: Leo parses, then stages as source pdf with the file hash', async () => {
+    replies['POST /api/accounting/bank/import/pdf'] = { bank: 'ABSA', parserConfidence: 0.97, fileHash: 'h1',
+      transactions: [{ date: '2026-10-01', description: 'FEE', amount: -10 }], batchDuplicateWarning: null };
+    replies['POST /api/accounting/bank/import'] = { batchId: 'b1', staged: 1, skipped: 0, duplicatesSuspected: 0, transfersDetected: 0, message: 'ok' };
+    const pdf = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(200, 32)]).toString('base64');
+    const out = await tool('import_bank_statement_pdf').run(api, ctx, { company_id: 51, bank_account_id: 5, pdf_base64: pdf, filename: 'oct.pdf' });
+    expect(calls[0].body).toBeInstanceOf(FormData);
+    expect(calls[0].body.get('bankAccountId')).toBe('5');
+    expect(calls[1].body).toEqual({ bankAccountId: 5, transactions: [{ date: '2026-10-01', description: 'FEE', amount: -10 }], importSource: 'pdf', fileHash: 'h1' });
+    expect(out).toMatchObject({ bank: 'ABSA', batch_id: 'b1', staged: 1 });
+  });
+
+  test('PDF import: not a PDF → refused; same file again → nothing staged', async () => {
+    await expect(tool('import_bank_statement_pdf').run(api, ctx, { company_id: 51, bank_account_id: 5,
+      pdf_base64: Buffer.from('hello world'.repeat(20)).toString('base64') })).rejects.toMatchObject({ status: 400 });
+    replies['POST /api/accounting/bank/import/pdf'] = { fileHash: 'h1', transactions: [{ date: '2026-10-01', description: 'X', amount: 1 }],
+      batchDuplicateWarning: { existingBatchId: 'old' } };
+    const pdf = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(200, 32)]).toString('base64');
+    const out = await tool('import_bank_statement_pdf').run(api, ctx, { company_id: 51, bank_account_id: 5, pdf_base64: pdf });
+    expect(out.staged).toBe(0);
+    expect(calls.map(c => c.path)).toEqual(['/api/accounting/bank/import/pdf']);
+  });
+
+  const reconSetup = () => {
+    replies['GET /api/accounting/bank/accounts'] = { bankAccounts: [{ id: 5, opening_balance: '1000.00' }] };
+    replies['GET /api/accounting/bank/transactions'] = (path) => path.includes('status=reconciled')
+      ? { transactions: [{ id: 1, amount: '200' }] }
+      : { transactions: [{ id: 10, amount: '-150.50' }, { id: 11, amount: '75.25' }] };
+  };
+
+  test('reconcile: cleared balance like the recon screen; a difference → nothing reconciled', async () => {
+    reconSetup();
+    const out = await tool('reconcile_bank_transactions').run(api, ctx, { company_id: 51, bank_account_id: 5,
+      transaction_ids: [10, 11], statement_date: '2026-10-31', statement_closing_balance: 1100 });
+    expect(out).toMatchObject({ book_opening_balance: 1200, selected_total: -75.25, cleared_balance: 1124.75, difference: -24.75, reconciled: false });
+    expect(calls.some(c => c.method === 'POST')).toBe(false);
+  });
+
+  test('reconcile: balances → posts Leo\'s reconcile with the same figures', async () => {
+    reconSetup();
+    const out = await tool('reconcile_bank_transactions').run(api, ctx, { company_id: 51, bank_account_id: 5,
+      transaction_ids: [10, 11, 10], statement_date: '2026-10-31', statement_closing_balance: 1124.75 });
+    expect(out.reconciled).toBe(true);
+    expect(calls.find(c => c.method === 'POST')).toMatchObject({ path: '/api/accounting/bank/reconcile', body: {
+      transactionIds: [10, 11], bankAccountId: 5, statementDate: '2026-10-31', statementClosingBalance: 1124.75, clearedBalance: 1124.75 } });
+  });
+
+  test('reconcile: ids that are not allocated lines on this account → refused', async () => {
+    reconSetup();
+    await expect(tool('reconcile_bank_transactions').run(api, ctx, { company_id: 51, bank_account_id: 5,
+      transaction_ids: [10, 999], statement_date: '2026-10-31', statement_closing_balance: 0 })).rejects.toMatchObject({ status: 422 });
+    expect(calls.some(c => c.method === 'POST')).toBe(false);
+  });
+
+  test('confirm, reject, rule, Sean suggestions map to the screen routes', async () => {
+    replies['POST /api/accounting/bank/staging/confirm'] = { confirmed: [{ id: 501 }], skipped: [], seanAutoAllocate: false };
+    const c = await tool('confirm_staged_transactions').run(api, ctx, { company_id: 51, staging_ids: [9] });
+    expect(c).toMatchObject({ confirmed: 1, confirmed_transaction_ids: [501] });
+    await tool('reject_staged_transaction').run(api, ctx, { company_id: 51, staging_id: 9 });
+    await tool('create_allocation_rule').run(api, ctx, { company_id: 51, match_pattern: 'ENGEN', account_id: 8 });
+    await tool('get_sean_suggestions').run(api, ctx, { company_id: 51, transaction_ids: [501] });
+    expect(calls.map(c2 => c2.method + ' ' + c2.path)).toEqual(['POST /api/accounting/bank/staging/confirm',
+      'PATCH /api/accounting/bank/staging/9/reject', 'POST /api/accounting/bank/rules', 'POST /api/accounting/bank/sean-suggestions']);
+    expect(calls[2].body).toMatchObject({ matchPattern: 'ENGEN', matchType: 'contains', accountId: 8, priority: 100 });
   });
 });

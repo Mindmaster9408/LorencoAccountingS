@@ -42,20 +42,45 @@ class LorencoApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
+/**
+ * Phase 2 (Ruan 2026-11-19): the bot may WRITE, but only through this fixed list of Leo
+ * routes — the same routes the Leo screens use, so Leo's permission checks, validation,
+ * audit and Sean learning apply unchanged. Anything else that is not a GET is refused here,
+ * whatever a tool asks for. DELETE is never allowed (deleting records is a prohibited
+ * capability), and nothing for SARS, payments, periods, year-end, users or permissions.
+ */
+const WRITE_ALLOWLIST = [
+  ['POST',  /^\/api\/accounting\/bank\/import\/pdf$/],
+  ['POST',  /^\/api\/accounting\/bank\/import$/],
+  ['POST',  /^\/api\/accounting\/bank\/staging\/confirm$/],
+  ['PATCH', /^\/api\/accounting\/bank\/staging\/\d+\/reject$/],
+  ['POST',  /^\/api\/accounting\/bank\/sean-suggestions$/],
+  ['POST',  /^\/api\/accounting\/bank\/sean-auto-allocate$/],
+  ['POST',  /^\/api\/accounting\/bank\/transactions\/\d+\/allocate$/],
+  ['POST',  /^\/api\/accounting\/bank\/reconcile$/],
+  ['POST',  /^\/api\/accounting\/bank\/rules$/]
+];
+function isAllowedCall(method, path) {
+  const m = String(method).toUpperCase();
+  if (m === 'GET') return true;
+  const p = String(path).split('?')[0];
+  return WRITE_ALLOWLIST.some(([wm, re]) => wm === m && re.test(p));
+}
+
 async function call(bearer, method, path, body) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   let res;
   try {
     res = await fetch(baseUrl() + path, {
       method,
       signal: ctrl.signal,
-      headers: {
+      headers: Object.assign({
         'Authorization': 'Bearer ' + bearer,
-        'Content-Type': 'application/json',
         'X-Lorenco-Channel': 'mcp'        // lets audit / Sean learning see the bot channel later
-      },
-      body: body ? JSON.stringify(body) : undefined
+      }, isForm ? {} : { 'Content-Type': 'application/json' }),   // FormData sets its own boundary
+      body: body ? (isForm ? body : JSON.stringify(body)) : undefined
     });
   } catch (e) {
     if (e.name === 'AbortError') throw new LorencoApiError(504, `Lorenco took longer than ${Math.round(REQUEST_TIMEOUT_MS / 1000)} s — try a smaller range`);
@@ -112,11 +137,11 @@ function createClient() {
       return r.data.token;
     },
 
-    /** Read a Lorenco API path as this user in this company. Phase 1 is read-only:
-     *  any other method is refused here, whatever a tool asks for. */
+    /** Call a Lorenco API path as this user in this company. GET, or one of the
+     *  allow-listed bank write routes — anything else is refused before it is sent. */
     async request(ctx, companyId, method, path, body) {
-      if (String(method).toUpperCase() !== 'GET') {
-        throw new LorencoApiError(403, 'The bot connection is read-only — writing is not available');
+      if (!isAllowedCall(method, path)) {
+        throw new LorencoApiError(403, 'This action is not available through the bot connection');
       }
       const token = await this.companyToken(ctx, companyId);
       const r = await call(token, method, path, body);
@@ -134,4 +159,4 @@ function createClient() {
   };
 }
 
-module.exports = { createClient, mintUserJwt, LorencoApiError, baseUrl };
+module.exports = { createClient, mintUserJwt, LorencoApiError, baseUrl, isAllowedCall, WRITE_ALLOWLIST };

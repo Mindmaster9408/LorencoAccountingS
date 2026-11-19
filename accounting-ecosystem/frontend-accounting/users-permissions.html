@@ -414,7 +414,9 @@
         const res = await fetch('/api/users/roles', { headers: authH() });
         if (!res.ok) throw new Error('roles fetch failed');
         const data = await res.json();
-        availableRoles = (data.roles || []).filter(r => r !== 'super_admin');
+        // /api/users/roles returns [{ role, level }] — use the role key (was rendered as "[object Object]")
+        availableRoles = (data.roles || []).map(r => (r && typeof r === 'object') ? r.role : r)
+          .filter(r => r && r !== 'super_admin' && r !== 'admin');
       } catch {
         availableRoles = Object.keys(ROLE_LABELS).filter(r => r !== 'super_admin');
       }
