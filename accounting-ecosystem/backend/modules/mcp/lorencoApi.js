@@ -60,7 +60,12 @@ const WRITE_ALLOWLIST = [
   ['POST',  /^\/api\/accounting\/bot-decisions\/allocate$/],
   ['POST',  /^\/api\/accounting\/bot-decisions\/exception$/],
   ['POST',  /^\/api\/accounting\/bank\/reconcile$/],
-  ['POST',  /^\/api\/accounting\/bank\/rules$/]
+  ['POST',  /^\/api\/accounting\/bank\/rules$/],
+  // Setup — create only, never edit/delete (2026-11-19)
+  ['POST',  /^\/api\/accounting\/accounts$/],
+  ['POST',  /^\/api\/accounting\/bank\/accounts$/],
+  ['POST',  /^\/api\/accounting\/pos\/customers$/],
+  ['POST',  /^\/api\/accounting\/suppliers$/]
 ];
 function isAllowedCall(method, path) {
   const m = String(method).toUpperCase();

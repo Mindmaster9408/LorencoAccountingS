@@ -170,7 +170,8 @@ describe('MCP server over HTTP', () => {
     const r = await post({ jsonrpc: '2.0', id: 3, method: 'tools/list' });
     const tools = r.body.result.tools;
     const write = tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name).sort();
-    expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_allocation_rule',
+    expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_account', 'create_allocation_rule',
+      'create_bank_account', 'create_customer', 'create_supplier',
       'flag_for_review', 'import_bank_statement_pdf', 'reconcile_bank_transactions', 'reject_staged_transaction', 'sean_auto_allocate',
       'stage_bank_transactions']);
     expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ping', 'list_companies', 'get_trial_balance',
@@ -363,6 +364,14 @@ describe('Codebox 3 controls', () => {
       expect(isAllowedCall('POST', '/api/accounting/bot-decisions/5/approve')).toBe(false);          // people only
       expect(isAllowedCall('PATCH', '/api/accounting/bank/staging/9/reject')).toBe(true);
       expect(isAllowedCall('POST', '/api/accounting/bank/reconcile')).toBe(true);
+      // setup: create only — never edit or delete
+      for (const p of ['/api/accounting/accounts', '/api/accounting/bank/accounts', '/api/accounting/pos/customers', '/api/accounting/suppliers']) {
+        expect(isAllowedCall('POST', p)).toBe(true);
+        expect(isAllowedCall('PUT', p + '/3')).toBe(false);
+        expect(isAllowedCall('DELETE', p + '/3')).toBe(false);
+      }
+      expect(isAllowedCall('POST', '/api/accounting/suppliers/invoices')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/accounts/3/merge')).toBe(false);
     });
 
     test('an allowed write goes through select-company, then the POST with a JSON body', async () => {
@@ -505,5 +514,72 @@ describe('Phase 2 — bank write tools (fake Leo API)', () => {
     expect(calls.map(c2 => c2.method + ' ' + c2.path)).toEqual(['POST /api/accounting/bank/staging/confirm',
       'PATCH /api/accounting/bank/staging/9/reject', 'POST /api/accounting/bank/rules', 'POST /api/accounting/bank/sean-suggestions']);
     expect(calls[2].body).toMatchObject({ matchPattern: 'ENGEN', matchType: 'contains', accountId: 8, priority: 100 });
+  });
+});
+
+describe('Setup tools — accounts, bank accounts, customers, suppliers (fake Leo API)', () => {
+  const { TOOLS: T, validateArgs: V } = require('../modules/mcp/tools');
+  const tool = (n) => T.find(t => t.name === n);
+  const ctx = { user: { id: 46 }, tokenId: 9, policy: {} };
+  let calls, replies;
+  const api = { async request(c, cid, method, path, body) {
+    calls.push({ method, path: path.split('?')[0], body });
+    const r = replies[method + ' ' + path.split('?')[0]];
+    if (r instanceof Error) throw r;
+    return r === undefined ? {} : r;
+  } };
+  beforeEach(() => { calls = []; replies = {}; });
+
+  test('every setup tool needs a reason; account type and last-4 digits are checked', () => {
+    expect(V(tool('create_account').inputSchema, { company_id: 2, code: '6250', name: 'Courier', type: 'expense' })).toMatch(/reason/);
+    expect(V(tool('create_account').inputSchema, { company_id: 2, code: '6250', name: 'Courier', type: 'cost', reason: 'x' })).toMatch(/type/);
+    const b = { company_id: 2, name: 'FNB', bank_name: 'FNB', ledger_account_id: 5, opening_balance: 10, opening_balance_date: '2026-03-01', reason: 'statement' };
+    expect(V(tool('create_bank_account').inputSchema, { ...b, account_last4: '62000000917' })).toMatch(/account_last4/);
+    expect(V(tool('create_bank_account').inputSchema, { ...b, account_last4: '0917' })).toBeNull();
+    expect(V(tool('create_supplier').inputSchema, { company_id: 2, name: 'X', reason: 'r', bank_account: '123' })).toMatch(/unknown argument/);
+  });
+
+  test('create_account posts to the chart of accounts', async () => {
+    replies['POST /api/accounting/accounts'] = { id: 99, code: '6250', name: 'Courier', type: 'expense' };
+    const out = await tool('create_account').run(api, ctx, { company_id: 2, code: '6250', name: ' Courier ', type: 'expense', reason: 'courier debit orders' });
+    expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/accounting/accounts', body: { code: '6250', name: 'Courier', type: 'expense' } });
+    expect(out).toMatchObject({ created: true, account: { id: 99 } });
+  });
+
+  test('create_bank_account stores only the last 4 digits, needs a bank/cash ledger and refuses duplicates', async () => {
+    replies['GET /api/accounting/bank/accounts'] = { bankAccounts: [{ id: 1, name: 'ABSA Cheque', account_number_masked: '****1111' }] };
+    replies['GET /api/accounting/accounts'] = { accounts: [{ id: 5, code: '1010', name: 'Bank', type: 'asset', sub_type: 'bank' },
+      { id: 6, code: '6200', name: 'Telephone', type: 'expense' }] };
+    replies['POST /api/accounting/bank/accounts'] = { id: 2, name: 'FNB Cheque', account_number_masked: '****0917', ledger_account_id: 5 };
+    const a = { company_id: 2, name: 'FNB Cheque', bank_name: 'FNB', account_last4: '0917', ledger_account_id: 5,
+      opening_balance: '1234.567', opening_balance_date: '2026-03-01', reason: 'statement Mar 2026' };
+    await tool('create_bank_account').run(api, ctx, a);
+    const post = calls.find(c => c.method === 'POST');
+    expect(post.body).toMatchObject({ accountNumberMasked: '****0917', ledgerAccountId: 5, openingBalance: 1234.57, currency: 'ZAR' });
+    calls = [];
+    await expect(tool('create_bank_account').run(api, ctx, { ...a, account_last4: '1111', name: 'Other' })).rejects.toMatchObject({ status: 409 });
+    await expect(tool('create_bank_account').run(api, ctx, { ...a, name: 'absa cheque ', account_last4: '2222' })).rejects.toMatchObject({ status: 409 });
+    await expect(tool('create_bank_account').run(api, ctx, { ...a, ledger_account_id: 6 })).rejects.toMatchObject({ status: 400 });
+    await expect(tool('create_bank_account').run(api, ctx, { ...a, ledger_account_id: 77 })).rejects.toMatchObject({ status: 400 });
+    expect(calls.filter(c => c.method === 'POST')).toEqual([]);
+  });
+
+  test('create_customer and create_supplier refuse a same-name duplicate (any capitals) and otherwise create', async () => {
+    replies['GET /api/accounting/customer-invoices/customers'] = { customers: [{ id: 3, name: 'Acme Trading' }] };
+    replies['POST /api/accounting/pos/customers'] = { customer: { id: 4, name: 'Beta Foods' } };
+    await expect(tool('create_customer').run(api, ctx, { company_id: 2, name: 'ACME trading ', reason: 'r' })).rejects.toMatchObject({ status: 409 });
+    const c = await tool('create_customer').run(api, ctx, { company_id: 2, name: 'Beta Foods', vat_number: '4123', reason: 'receipt on statement' });
+    expect(c).toMatchObject({ created: true, customer: { id: 4 } });
+    expect(calls.find(x => x.method === 'POST').body).toMatchObject({ name: 'Beta Foods', tax_reference: '4123', is_active: true });
+
+    calls = [];
+    replies['GET /api/accounting/suppliers'] = { suppliers: [{ id: 8, name: 'Vodacom', supplier_code: 'SUP001' }] };
+    replies['POST /api/accounting/suppliers'] = { supplier: { id: 9, name: 'Engen Garage', supplier_code: 'SUP002' } };
+    await expect(tool('create_supplier').run(api, ctx, { company_id: 2, name: 'vodacom', reason: 'r' })).rejects.toMatchObject({ status: 409 });
+    const s = await tool('create_supplier').run(api, ctx, { company_id: 2, name: 'Engen Garage', reason: 'fuel on statement' });
+    expect(s).toMatchObject({ created: true, supplier: { id: 9, code: 'SUP002' } });
+    const body = calls.find(x => x.method === 'POST').body;
+    expect(body).toMatchObject({ name: 'Engen Garage', type: 'company', paymentTerms: 30 });
+    expect(Object.keys(body).some(k => /bank/i.test(k))).toBe(false);   // a bot never sets supplier bank details
   });
 });

@@ -86,7 +86,7 @@ const TOOLS = [
     async run(api, ctx) {
       return { status: 'ok', server: 'Lorenco Ledger Leo', version: ctx.serverVersion || null, mcp_enabled: true,
         connected_as: ctx.user.full_name || ctx.user.username || null, read_only: false,
-        note: 'Read tools plus bank write tools; what you may do depends on this user\'s role in each company.' };
+        note: 'Read tools, bank write tools and setup tools (create accounts, bank accounts, customers, suppliers); what you may do depends on this user\'s role in each company.' };
     }
   },
   {
@@ -467,6 +467,161 @@ const TOOLS = [
         transactionIds: wanted, bankAccountId: accId, statementDate: a.statement_date,
         statementClosingBalance: closing, clearedBalance: cleared });
       return Object.assign(figures, { reconciled: true, result: r });
+    }
+  },
+  // ── Setup: chart of accounts, bank accounts, customers, suppliers (create only — 2026-11-19) ──
+  {
+    name: 'list_customers',
+    description: 'Customers of the company (id, name, email, phone). Check here before create_customer.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      search: { type: 'string', description: 'Only names containing this text' },
+      limit: { type: 'integer', minimum: 1, maximum: MAX_ROWS_CAP }
+    }, required: ['company_id'], additionalProperties: false },
+    async run(api, ctx, a) {
+      const d = await api.request(ctx, a.company_id, 'GET', '/api/accounting/customer-invoices/customers');
+      const s = String(a.search || '').trim().toLowerCase();
+      const rows = ((d && d.customers) || []).filter(c => !s || String(c.name || '').toLowerCase().includes(s))
+        .map(c => ({ id: c.id, name: c.name, email: c.email || null, phone: c.phone || null }));
+      return { customers: rows.slice(0, rowsLimit(a)), total: rows.length };
+    }
+  },
+  {
+    name: 'list_suppliers',
+    description: 'Suppliers of the company (id, code, name, VAT number, balance owing). Check here before create_supplier.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      search: { type: 'string', description: 'Only suppliers whose name, code or email contains this text' },
+      limit: { type: 'integer', minimum: 1, maximum: MAX_ROWS_CAP }
+    }, required: ['company_id'], additionalProperties: false },
+    async run(api, ctx, a) {
+      const d = await api.request(ctx, a.company_id, 'GET', '/api/accounting/suppliers' + qs({ search: a.search }));
+      const rows = ((d && d.suppliers) || []).map(x => ({ id: x.id, code: x.supplier_code || null, name: x.name,
+        vat_number: x.vat_number || null, email: x.email || null, is_active: x.is_active !== false,
+        balance_owing: x.balance_owing != null ? x.balance_owing : null }));
+      return { suppliers: rows.slice(0, rowsLimit(a)), total: rows.length };
+    }
+  },
+  {
+    name: 'create_account',
+    description: 'Add an account to the chart of accounts (like Add Account on the Chart of Accounts screen). Check list_accounts first: the code must be new. Bank / cash ledger accounts use sub_type "bank" or "cash". Accounts cannot be edited or deleted by a bot.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      code: { type: 'string', pattern: '^[A-Za-z0-9./-]{1,20}$', description: 'account code, e.g. 6250 (letters, digits, . / -)' },
+      name: { type: 'string', description: 'Account name' },
+      type: { type: 'string', enum: ['asset', 'liability', 'equity', 'income', 'expense'] },
+      sub_type: { type: 'string', description: 'Optional sub type, e.g. bank, cash, current_asset, cost_of_sales' },
+      reporting_group: { type: 'string', description: 'Optional reporting group, e.g. bank_cash, drawings' },
+      parent_id: { type: 'integer', description: 'Optional parent account id (list_accounts)' },
+      description: { type: 'string' },
+      vat_code: { type: 'string', description: 'Optional default VAT code (list_vat_settings)' },
+      reason: { type: 'string', description: 'Why this account is needed (kept in the bot audit trail)' }
+    }, required: ['company_id', 'code', 'name', 'type', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      if (!String(a.name).trim()) throw apiError(400, 'name is required');
+      const d = await api.request(ctx, a.company_id, 'POST', '/api/accounting/accounts', {
+        code: a.code.trim(), name: a.name.trim(), type: a.type, subType: a.sub_type || undefined,
+        reportingGroup: a.reporting_group || undefined, parentId: a.parent_id != null ? Number(a.parent_id) : undefined,
+        description: a.description || undefined, vatCode: a.vat_code || undefined });
+      return { created: true, account: d && { id: d.id, code: d.code, name: d.name, type: d.type, sub_type: d.sub_type || null } };
+    }
+  },
+  {
+    name: 'create_bank_account',
+    description: 'Add a bank account in Ledger Leo (like Add Bank Account on the Banking screen), linked to a bank/cash ledger account from the chart (create_account first if needed). Only the LAST 4 digits of the account number are stored. The opening balance must be the statement balance on opening_balance_date — it drives every later reconciliation, so take it from the statement, never guess.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      name: { type: 'string', description: 'Display name, e.g. "FNB Business Cheque"' },
+      bank_name: { type: 'string', description: 'e.g. FNB, ABSA, Standard Bank, Nedbank, Capitec' },
+      account_last4: { type: 'string', pattern: '^\\d{4}$', description: 'the last 4 digits of the account number' },
+      ledger_account_id: { type: 'integer', description: 'bank/cash ledger account id (list_accounts)' },
+      opening_balance: { type: 'number', description: 'statement balance on opening_balance_date (overdrawn = negative)' },
+      opening_balance_date: isoDate,
+      currency: { type: 'string', pattern: '^[A-Z]{3}$', description: 'ISO currency, default ZAR' },
+      reason: { type: 'string', description: 'Where the details come from, e.g. "statement Oct 2026 p1"' }
+    }, required: ['company_id', 'name', 'bank_name', 'account_last4', 'ledger_account_id', 'opening_balance', 'opening_balance_date', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      const masked = '****' + a.account_last4;
+      const existing = ((await api.request(ctx, a.company_id, 'GET', '/api/accounting/bank/accounts')) || {}).bankAccounts || [];
+      const dup = existing.find(b => b.is_active !== false && (String(b.account_number_masked || '').slice(-4) === a.account_last4
+        || String(b.name || '').trim().toLowerCase() === String(a.name).trim().toLowerCase()));
+      if (dup) throw apiError(409, `A bank account like this already exists: id ${dup.id} "${dup.name}" ${dup.account_number_masked || ''}. Use it instead of creating another.`);
+      const accts = ((await api.request(ctx, a.company_id, 'GET', '/api/accounting/accounts')) || {}).accounts || [];
+      const ledger = accts.find(x => Number(x.id) === Number(a.ledger_account_id));
+      if (!ledger) throw apiError(400, 'ledger_account_id is not an account of this company (list_accounts).');
+      if (!(ledger.type === 'asset' && (['bank', 'cash'].includes(String(ledger.sub_type || '').toLowerCase()) || ledger.reporting_group === 'bank_cash'))) {
+        throw apiError(400, `Account ${ledger.code} ${ledger.name} is not a bank/cash asset account. Create one with create_account (type asset, sub_type bank).`);
+      }
+      const d = await api.request(ctx, a.company_id, 'POST', '/api/accounting/bank/accounts', {
+        name: a.name.trim(), bankName: a.bank_name.trim(), accountNumberMasked: masked, currency: a.currency || 'ZAR',
+        ledgerAccountId: Number(a.ledger_account_id), openingBalance: money(a.opening_balance), openingBalanceDate: a.opening_balance_date });
+      return { created: true, bank_account: d && { id: d.id, name: d.name, bank_name: d.bank_name, account_number_masked: d.account_number_masked,
+        ledger_account_id: d.ledger_account_id, opening_balance: d.opening_balance, opening_balance_date: d.opening_balance_date },
+        subaccount_created: (d && d.subaccount_created) || null };
+    }
+  },
+  {
+    name: 'create_customer',
+    description: 'Add a customer (like Add Customer on the Customers screen). Refused when a customer with the same name already exists — use that one.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      name: { type: 'string' },
+      customer_number: { type: 'string' }, contact_person: { type: 'string' },
+      email: { type: 'string' }, phone: { type: 'string' },
+      vat_number: { type: 'string', description: 'customer VAT / tax reference' },
+      registration_number: { type: 'string', description: 'company registration or ID number' },
+      address: { type: 'string' }, city: { type: 'string' }, province: { type: 'string' }, postal_code: { type: 'string' },
+      credit_limit: { type: 'number', minimum: 0 },
+      notes: { type: 'string' },
+      reason: { type: 'string', description: 'Why / where from, e.g. "receipt from this customer on the Oct statement"' }
+    }, required: ['company_id', 'name', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      const name = String(a.name).trim();
+      if (!name) throw apiError(400, 'name is required');
+      const list = ((await api.request(ctx, a.company_id, 'GET', '/api/accounting/customer-invoices/customers')) || {}).customers || [];
+      const dup = list.find(c => String(c.name || '').trim().toLowerCase() === name.toLowerCase());
+      if (dup) throw apiError(409, `Customer "${dup.name}" already exists (id ${dup.id}). Use it instead of creating another.`);
+      const d = await api.request(ctx, a.company_id, 'POST', '/api/accounting/pos/customers', {
+        name, customer_number: a.customer_number || null, contact_person: a.contact_person || null,
+        email: a.email || null, phone: a.phone || null, tax_reference: a.vat_number || null, id_number: a.registration_number || null,
+        address_line_1: a.address || null, city: a.city || null, province: a.province || null, postal_code: a.postal_code || null,
+        credit_limit: a.credit_limit != null ? Number(a.credit_limit) : 0, notes: a.notes || null, is_active: true });
+      const c = d && d.customer;
+      return { created: true, customer: c && { id: c.id, name: c.name, customer_number: c.customer_number || null } };
+    }
+  },
+  {
+    name: 'create_supplier',
+    description: 'Add a supplier (like Add Supplier on the Suppliers screen). Refused when a supplier with the same name already exists. Supplier BANK details cannot be set by a bot — a person adds those in Lorenco (payment-fraud protection).',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      name: { type: 'string' },
+      code: { type: 'string', description: 'Optional supplier code; generated (SUP001…) when left out' },
+      type: { type: 'string', enum: ['company', 'individual'] },
+      contact_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' },
+      vat_number: { type: 'string' }, registration_number: { type: 'string' },
+      address: { type: 'string' }, city: { type: 'string' }, postal_code: { type: 'string' },
+      payment_terms: { type: 'integer', minimum: 0, maximum: 365, description: 'days, default 30' },
+      notes: { type: 'string' },
+      reason: { type: 'string', description: 'Why / where from, e.g. "debit order on the Oct statement"' }
+    }, required: ['company_id', 'name', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      const name = String(a.name).trim();
+      if (!name) throw apiError(400, 'name is required');
+      const list = ((await api.request(ctx, a.company_id, 'GET', '/api/accounting/suppliers' + qs({ search: name }))) || {}).suppliers || [];
+      const dup = list.find(s => String(s.name || '').trim().toLowerCase() === name.toLowerCase());
+      if (dup) throw apiError(409, `Supplier "${dup.name}" already exists (id ${dup.id}, ${dup.supplier_code || ''}). Use it instead of creating another.`);
+      const d = await api.request(ctx, a.company_id, 'POST', '/api/accounting/suppliers', {
+        name, code: a.code || undefined, type: a.type || 'company', contactName: a.contact_name || null,
+        email: a.email || null, phone: a.phone || null, vatNumber: a.vat_number || null, registrationNumber: a.registration_number || null,
+        address: a.address || null, city: a.city || null, postalCode: a.postal_code || null,
+        paymentTerms: a.payment_terms != null ? Number(a.payment_terms) : 30, notes: a.notes || null });
+      const s = d && d.supplier;
+      return { created: true, supplier: s && { id: s.id, code: s.supplier_code, name: s.name } };
     }
   },
   {
