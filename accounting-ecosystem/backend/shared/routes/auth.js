@@ -19,6 +19,7 @@ const { logPosEvent, POS_EVENTS } = require('../../modules/pos/services/posAudit
 const { PIN_ELIGIBLE_ROLES: PIN_ELIGIBLE_ROLES_SET } = require('../../modules/pos/routes/pin');
 const tfa = require('../../services/twoFactorAuth');
 const { recordActivity } = require('../services/loginActivity');
+const { normalizeLogin, loginOrFilter } = require('../utils/loginIdentity');
 
 const router = express.Router();
 
@@ -92,7 +93,7 @@ router.post('/login', async (req, res) => {
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
-      .or(`username.eq.${loginId},email.eq.${loginId}`)
+      .or(loginOrFilter(loginId))
       .eq('is_active', true)
       .single();
 
@@ -435,8 +436,8 @@ router.post('/register', async (req, res) => {
       mainUser = existingUser;
     } else {
       // New user mode — validate and create
-      const regEmail = email;
-      const regUsername = username || email;
+      const regEmail = normalizeLogin(email);
+      const regUsername = normalizeLogin(username) || regEmail;
       const regPassword = password;
       const regFullName = full_name;
 
@@ -448,7 +449,7 @@ router.post('/register', async (req, res) => {
       const { data: existing } = await supabase
         .from('users')
         .select('id')
-        .or(`username.eq.${regUsername},email.eq.${regEmail}`)
+        .or(loginOrFilter(regUsername) + ',' + loginOrFilter(regEmail))
         .limit(1);
 
       if (existing && existing.length > 0) {
@@ -1017,7 +1018,7 @@ router.post('/forgot-password/request', async (req, res) => {
     const { data: user } = await supabase
       .from('users')
       .select('id, email, full_name')
-      .or(`email.eq.${email.toLowerCase()},username.eq.${email.toLowerCase()}`)
+      .or(loginOrFilter(email, ['email', 'username']))
       .eq('is_active', true)
       .maybeSingle();
 
@@ -1121,7 +1122,7 @@ router.post('/forgot-password/reset', async (req, res) => {
     const { data: user } = await supabase
       .from('users')
       .select('id, email')
-      .or(`email.eq.${email.toLowerCase()},username.eq.${email.toLowerCase()}`)
+      .or(loginOrFilter(email, ['email', 'username']))
       .eq('is_active', true)
       .maybeSingle();
 
@@ -1673,11 +1674,10 @@ router.post('/companies/:companyId/users/link-existing', authenticateToken, asyn
     if (!company) return res.status(404).json({ error: 'Company not found' });
 
     // Find the existing user by username or email — same lookup pattern as /login
-    const trimmedId = identifier.toLowerCase().trim();
     const { data: existingUser, error: findErr } = await supabase
       .from('users')
       .select('id, username, email, full_name, is_active')
-      .or(`username.eq.${trimmedId},email.eq.${trimmedId}`)
+      .or(loginOrFilter(identifier))
       .maybeSingle();
 
     if (findErr || !existingUser) {
@@ -1939,6 +1939,12 @@ router.post('/pos/pin-login', async (req, res) => {
       if (!userData) {
         const { data: u2 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('email', String(user_identifier)).eq('is_active', true).maybeSingle();
         userData = u2;
+      }
+      const lowerId = normalizeLogin(user_identifier);
+      if (!userData && lowerId && lowerId !== String(user_identifier)) {
+        // logins are stored lower-case (shared/utils/loginIdentity.js) — "Leo@…" must still find "leo@…"
+        const { data: u2b } = await supabase.from('users').select('id, username, email, full_name, is_active').or(loginOrFilter(lowerId)).eq('is_active', true).maybeSingle();
+        userData = u2b;
       }
       if (!userData) {
         const { data: u3 } = await supabase.from('users').select('id, username, email, full_name, is_active').eq('employee_id', String(user_identifier)).eq('is_active', true).maybeSingle();

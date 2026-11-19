@@ -15,6 +15,7 @@ const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
 const { auditFromReq } = require('../../middleware/audit');
 const { MANAGEMENT_ROLES } = require('../../config/permissions');
+const { normalizeLogin, loginOrFilter } = require('../utils/loginIdentity');
 
 const router = express.Router();
 
@@ -1582,7 +1583,8 @@ router.patch('/:id/parent', async (req, res) => {
 router.post('/:ecoClientId/create-owner', async (req, res) => {
   try {
     const ecoClientId = parseInt(req.params.ecoClientId);
-    const { full_name, email, password } = req.body;
+    const { full_name, password } = req.body;
+    const email = normalizeLogin(req.body.email);   // logins stored lower-case (shared/utils/loginIdentity.js)
 
     // Permission check — only practice-level roles may create owner logins
     const allowedRoles = ['business_owner', 'accountant', 'store_manager', 'super_admin'];
@@ -1626,7 +1628,8 @@ router.post('/:ecoClientId/create-owner', async (req, res) => {
     const { data: existingUser } = await supabase
       .from('users')
       .select('id')
-      .eq('email', email)
+      .or(loginOrFilter(email))
+      .limit(1)
       .maybeSingle();
     if (existingUser) {
       return res.status(409).json({ error: 'A user with this email already exists' });

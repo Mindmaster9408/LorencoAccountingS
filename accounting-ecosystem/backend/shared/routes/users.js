@@ -12,6 +12,7 @@ const { supabase } = require('../../config/database');
 const { authenticateToken, requireCompany, requirePermission, invalidateUserSessions } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { canManageRole, getAllRoles } = require('../../config/permissions');
+const { normalizeLogin, loginOrFilter } = require('../utils/loginIdentity');
 
 const router = express.Router();
 
@@ -124,7 +125,7 @@ router.put('/me', async (req, res) => {
 
     const updates = { updated_at: new Date().toISOString() };
     if (full_name !== undefined) updates.full_name = full_name;
-    if (email !== undefined) updates.email = email;
+    if (email !== undefined) updates.email = normalizeLogin(email);
 
     // Password change requires current password verification
     if (new_password) {
@@ -225,7 +226,10 @@ router.get('/:id', requirePermission('USERS.VIEW'), async (req, res) => {
  */
 router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
   try {
-    const { username, email, password, full_name, role, apps, apps_access } = req.body;
+    const { password, full_name, role, apps, apps_access } = req.body;
+    // logins are stored trimmed + lower-case (shared/utils/loginIdentity.js)
+    const email = normalizeLogin(req.body.email);
+    const username = normalizeLogin(req.body.username);
 
     if (!email || !password || !full_name || !role) {
       return res.status(400).json({ error: 'email, password, full_name, and role are required' });
@@ -241,7 +245,7 @@ router.post('/', requirePermission('USERS.CREATE'), async (req, res) => {
     const { data: existing } = await supabase
       .from('users')
       .select('id')
-      .or(`username.eq.${resolvedUsername},email.eq.${email}`)
+      .or(loginOrFilter(resolvedUsername) + ',' + loginOrFilter(email))
       .limit(1);
 
     if (existing && existing.length > 0) {
@@ -368,19 +372,19 @@ router.put('/:id', requirePermission('USERS.EDIT'), async (req, res) => {
     // Update user profile fields
     const updates = {};
     if (full_name !== undefined) updates.full_name = full_name;
-    if (email !== undefined) updates.email = email;
+    if (email !== undefined) updates.email = normalizeLogin(email);
     if (username !== undefined && username.trim()) {
       // Verify new username is not already taken by another user
       const { data: existing } = await supabase
         .from('users')
         .select('id')
-        .eq('username', username.trim())
+        .or(loginOrFilter(username, ['username']))
         .neq('id', userId)
         .limit(1);
       if (existing && existing.length > 0) {
         return res.status(409).json({ error: 'That username is already taken by another user' });
       }
-      updates.username = username.trim();
+      updates.username = normalizeLogin(username);
     }
     if (is_active !== undefined) updates.is_active = is_active;
     updates.updated_at = new Date().toISOString();
