@@ -124,3 +124,45 @@ reconciled, nets R65 out). PDF import is unit-tested only (no synthetic PDF stat
 returns `{role, level}` objects, page expected strings).
 
 **Open:** live Grok test; manager creating a key for a bot user; unallocate/unreconcile deliberately not exposed.
+
+---
+
+## 2026-11-19 — Codebox 4: first working GrokBot (decision rules + human approval)
+
+**Status:** pushed 2026-11-19 (Ruan: "ja"). Migration 187 **RUN**. Test data set up in company 51 (bank account 25
+"GrokBot Test Bank (synthetic)", ledger 1015, VAT STD 15%, rule ENGEN→6300, Sean history VODACOM→6200). E2E **40/40**.
+Server version 1.2.0, 24 tools.
+
+**Ruan's earlier decision kept:** the practice decides the bot's rights. Codebox 4's restrictions are therefore a **policy per
+key**, set by a person in Profile → Bot / AI access keys (safe defaults), never changeable by the bot. The only fixed rules
+(not policy): director/owner lines, transfers between own bank accounts and disagreement with a confident Sean always wait
+for a person; an approved rule is never overridden.
+
+| Piece | File |
+|---|---|
+| Migration (NOT RUN) | `backend/config/migrations/187_bot_decisions.sql` — `user_api_tokens.policy`, `bot_decisions` table |
+| Decision rules (pure) | `backend/modules/accounting/services/botDecisionService.js` — rule > Sean (≥70%) > evidence > bot > person |
+| Leo routes | `backend/modules/accounting/routes/botDecisions.js` at `/api/accounting/bot-decisions`: POST /allocate + /exception (bot only), GET / (both), POST /:id/approve + /:id/reject (people only; approve posts through allocateBankTransaction as the person → Sean learns the person's decision) |
+| Bot marker survives company selection | `backend/shared/routes/auth.js` select-company copies `via`/`apiTokenId` when present (bot tokens 30 min); browser logins unchanged. Change Impact Note in chat: LOW payroll risk |
+| Key policy | `shared/services/apiTokens.js` (POLICY_DEFAULTS, setTokenPolicy), `shared/routes/apiTokens.js` (PUT /:id/policy; any bot-token request refused) |
+| MCP | allocate now ONLY via `/bot-decisions/allocate` (raw allocate removed from the allow-list); new tools `flag_for_review`, `list_bot_decisions`, `get_bot_policy`; `create_allocation_rule`, `sean_auto_allocate`, reconcile `allow_difference` need the policy; `reason` required |
+| UI | `frontend-accounting/bot-review.html` (Banking → Bot Review): bot proposal vs Sean vs rule side by side, approve (optionally another account) / reject; `dashboard.html` Profile: policy checkboxes per key; `js/navigation.js` menu link |
+| GrokBot | `backend/scripts/grokbot/GROKBOT_INSTRUCTIONS.md` (paste into the Grok bot), `make-test-statement.js` (synthetic FNB statement, 24 lines — Leo's reader reads 24/24, 0 mismatches), `setup-test-company.js` (company 51 only: test bank ****0917, VAT STD 15%, rule ENGEN→6300, Sean history VODACOM→6200) |
+
+**Tests:** `tests/bot-decision-rules.test.js` 11/11, `tests/mcp-server.test.js` 41/41, full suite 1496 pass, lint 0 errors.
+E2E with the official MCP SDK client as the bot + the Bot Review API as a person, company 51, synthetic FNB statement: 40/40 —
+Leo read 24/24 lines, same file refused, duplicate rejected, 23 confirmed, rule override refused, rule/Sean/bot postings,
+disagreement without reason refused / with reason held, rent VAT split 8000 + 1200, director + drawings + transfer held,
+exception raised (and not twice), policy blocks rules / Sean auto / reconcile-with-difference, delete fails closed, unposted
+line cannot be reconciled, person approves (with another account → posted as the person), approves director, rejects transfer,
+no double approval, full audit in accounting_audit_log + MCP audit.
+**Bug found by the first E2E run and fixed:** a transfer to 1030 "Bank — Savings" was posted because only accounts linked
+to a Leo bank account counted as bank; now the chart's `reporting_group = 'bank_cash'` / sub_type bank|cash also counts, and
+`reporting_group = 'drawings'` counts as director/owner. The wrongly posted test line was unallocated (journal reversed).
+
+**Finding:** Leo's PDF reader (pdf-parse 1.1.4) could not open pdfkit's default compressed output ("bad XRef entry");
+uncompressed PDF 1.4 reads fine. Real bank PDFs are unaffected so far, but some PDF producers may hit this — follow-up.
+
+**Next:** Ruan connects the real Grok bot (key from Leo Bot's Profile, GROKBOT_INSTRUCTIONS.md as its instructions) and gives
+it a synthetic statement (`node scripts/grokbot/make-test-statement.js out.pdf 2026-12` — a new month each run, the same file
+is refused). Not for real clients until Ruan approves.

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bot Review — Ledger Leo</title>
+  <script src="js/navigation.js"></script>
+  <script src="js/theme-guard.js"></script>
+  <script src="js/polyfills.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+    .content { max-width: 1200px; margin: 0 auto; padding: 24px 16px 60px; }
+    .page-header h1 { font-size: 1.5rem; font-weight: 700; }
+    .page-header p { color: #8b949e; font-size: 0.88rem; margin-top: 4px; line-height: 1.5; }
+    .tabs { display: flex; gap: 6px; margin: 20px 0 14px; flex-wrap: wrap; }
+    .tab { background: #161b22; border: 1px solid #30363d; color: #c9d1d9; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; }
+    .tab.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    .tab .n { opacity: 0.75; margin-left: 4px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+    .row1 { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+    .desc { font-weight: 600; font-size: 0.95rem; word-break: break-word; }
+    .amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .amt.out { color: #f85149; } .amt.in { color: #3fb950; }
+    .meta { color: #8b949e; font-size: 0.78rem; margin-top: 4px; }
+    .chips { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { font-size: 0.72rem; padding: 3px 8px; border-radius: 999px; background: #3b2e1a; color: #e3b341; border: 1px solid #9e6a03; }
+    .chip.status { background: #1a2b3b; color: #58a6ff; border-color: #1f6feb; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 12px; }
+    .box { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; line-height: 1.45; }
+    .box h4 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.8px; color: #8b949e; margin-bottom: 4px; }
+    .box.bot { border-color: #8957e5; } .box.sean { border-color: #1f6feb; } .box.rule { border-color: #238636; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+    select, input[type=text] { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 7px 9px; font-size: 0.82rem; max-width: 100%; }
+    select { min-width: 220px; }
+    input[type=text] { flex: 1; min-width: 160px; }
+    button { border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .btn-ok { background: #238636; color: #fff; } .btn-no { background: #21262d; color: #f85149; border: 1px solid #da3633; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .empty, .err { color: #8b949e; padding: 30px; text-align: center; }
+    .err { color: #f85149; }
+  </style>
+</head>
+<body>
+  <div class="content">
+    <div class="page-header">
+      <h1>Bot Review</h1>
+      <p>Bank allocations a bot (e.g. GrokBot) may not post on its own, and lines it handed to you.
+         Approving posts the allocation as <strong>you</strong> — Sean learns your decision. Nothing here is posted until you approve.</p>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </div>
+
+  <script>
+    const TABS = [
+      { key: 'pending_approval,exception', label: 'Waiting for you' },
+      { key: 'posted', label: 'Posted by bot' },
+      { key: 'approved,rejected', label: 'Reviewed' },
+      { key: 'failed', label: 'Failed' }
+    ];
+    let current = TABS[0].key, accounts = [], counts = {};
+
+    const token = () => localStorage.getItem('token') || localStorage.getItem('eco_token') || '';
+    const H = () => ({ Authorization: 'Bearer ' + token(), 'Content-Type': 'application/json' });
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const money = (n) => 'R ' + Number(Math.abs(n || 0)).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const when = (iso) => { try { return new Date(iso).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }); } catch (e) { return iso; } };
+
+    function renderTabs() {
+      document.getElementById('tabs').innerHTML = TABS.map(t => {
+        const n = t.key.split(',').reduce((s, k) => s + (counts[k] || 0), 0);
+        return '<button type="button" class="tab' + (t.key === current ? ' active' : '') + '" data-k="' + t.key + '">' + esc(t.label) +
+          (t.key === current || n ? '<span class="n">' + n + '</span>' : '') + '</button>';
+      }).join('');
+      document.querySelectorAll('.tab').forEach(b => b.onclick = () => { current = b.dataset.k; load(); });
+    }
+
+    function linesText(lines, names) {
+      return (lines || []).map(l => esc(names[l.accountId] || ('account ' + l.accountId)) + ' — ' + money(l.amount) + (l.vatSettingId ? ' (VAT)' : '')).join('<br>') || '<em>none suggested</em>';
+    }
+
+    function accountOptions(selected) {
+      return '<option value="">Choose account…</option>' + accounts.map(a =>
+        '<option value="' + a.id + '"' + (Number(selected) === Number(a.id) ? ' selected' : '') + '>' + esc(a.code + ' ' + a.name) + '</option>').join('');
+    }
+
+    function card(d) {
+      const t = d.bank_line || {};
+      const names = d.accounts || {};
+      const open = d.status === 'pending_approval' || d.status === 'exception';
+      const lines = (d.proposed && d.proposed.lines) || [];
+      const single = lines.length <= 1;
+      const pre = lines[0] ? lines[0].accountId : (d.sean_suggestion && d.sean_suggestion.accountId) || (d.rule_suggestion && d.rule_suggestion.accountId) || '';
+      return '<div class="card" data-id="' + d.id + '">' +
+        '<div class="row1"><div class="desc">' + esc(t.description || ('Bank line ' + d.entity_id)) + '</div>' +
+        '<div class="amt ' + (Number(t.amount) < 0 ? 'out' : 'in') + '">' + (Number(t.amount) < 0 ? '−' : '+') + money(t.amount) + '</div></div>' +
+        '<div class="meta">' + esc(t.date || '') + ' · ' + esc(d.bot_name || 'Bot') + ' · ' + when(d.created_at) +
+          (d.reviewed_by_name ? ' · reviewed by ' + esc(d.reviewed_by_name) + ' ' + when(d.reviewed_at) : '') + '</div>' +
+        '<div class="chips"><span class="chip status">' + esc(d.status.replace('_', ' ')) + '</span>' +
+          (d.hold_labels || []).map(h => '<span class="chip">' + esc(h) + '</span>').join('') + '</div>' +
+        '<div class="grid">' +
+          '<div class="box bot"><h4>Bot ' + (d.action === 'exception' ? '(raised for review)' : 'proposes') + '</h4>' + linesText(lines, names) +
+            '<div style="margin-top:6px;"><strong>Reason:</strong> ' + esc(d.reason) + '</div>' +
+            (d.disagreement_reason ? '<div><strong>Why not Sean:</strong> ' + esc(d.disagreement_reason) + '</div>' : '') +
+            (d.evidence ? '<div><strong>Evidence:</strong> ' + esc(d.evidence) + '</div>' : '') + '</div>' +
+          '<div class="box sean"><h4>Sean recommends</h4>' + (d.sean_suggestion
+            ? esc(names[d.sean_suggestion.accountId] || d.sean_suggestion.accountCode || d.sean_suggestion.accountId) +
+              ' — ' + esc(d.sean_suggestion.confidence) + '% confident<br><span style="color:#8b949e;">' + esc(d.sean_suggestion.reason || '') + '</span>'
+            : '<em>No suggestion</em>') + '</div>' +
+          '<div class="box rule"><h4>Approved rule</h4>' + (d.rule_suggestion
+            ? esc(names[d.rule_suggestion.accountId] || d.rule_suggestion.accountCode) + '<br><span style="color:#8b949e;">' + esc(d.rule_suggestion.matchType) + ' “' + esc(d.rule_suggestion.matchPattern) + '”</span>'
+            : '<em>None applies</em>') + '</div>' +
+        '</div>' +
+        (open ? '<div class="actions">' +
+          (single ? '<select class="acct">' + accountOptions(pre) + '</select>' : '<span class="meta">Split allocation — approve as proposed</span>') +
+          '<input type="text" class="note" maxlength="500" placeholder="Note (optional)">' +
+          '<button type="button" class="btn-ok">Approve &amp; post</button><button type="button" class="btn-no">Reject</button></div>'
+          : (d.review_note ? '<div class="meta" style="margin-top:8px;">Note: ' + esc(d.review_note) + '</div>' : '') +
+            (d.journal_id ? '<div class="meta">Journal #' + esc(d.journal_id) + '</div>' : '') +
+            (d.error ? '<div class="meta" style="color:#f85149;">' + esc(d.error) + '</div>' : '')) +
+        '</div>';
+    }
+
+    async function act(el, kind) {
+      const c = el.closest('.card'); const id = c.dataset.id;
+      const d = window._rows.find(r => String(r.id) === String(id));
+      const note = c.querySelector('.note').value.trim();
+      const body = { note: note || undefined };
+      if (kind === 'approve') {
+        const sel = c.querySelector('.acct');
+        if (sel) {
+          if (!sel.value) { alert('Choose the account to post to.'); return; }
+          body.lines = [{ accountId: Number(sel.value), amount: Math.abs(Number(d.bank_line && d.bank_line.amount)),
+            vatSettingId: ((d.proposed && d.proposed.lines && d.proposed.lines[0]) || {}).vatSettingId }];
+        }
+      }
+      c.querySelectorAll('button').forEach(b => b.disabled = true);
+      try {
+        const r = await fetch('/api/accounting/bot-decisions/' + encodeURIComponent(id) + '/' + kind, { method: 'POST', headers: H(), body: JSON.stringify(body) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        load();
+      } catch (e) {
+        alert((kind === 'approve' ? 'Could not post: ' : 'Could not reject: ') + e.message);
+        c.querySelectorAll('button').forEach(b => b.disabled = false);
+      }
+    }
+
+    async function load() {
+      renderTabs();
+      const list = document.getElementById('list');
+      list.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const [r, all] = await Promise.all([
+          fetch('/api/accounting/bot-decisions?limit=300&status=' + encodeURIComponent(current), { headers: H() }),
+          fetch('/api/accounting/bot-decisions?limit=500', { headers: H() })
+        ]);
+        const j = await r.json(); const ja = await all.json();
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        counts = ja.counts || {};
+        renderTabs();
+        window._rows = j.decisions || [];
+        list.innerHTML = window._rows.length ? window._rows.map(card).join('') : '<div class="empty">Nothing here.</div>';
+        list.querySelectorAll('.btn-ok').forEach(b => b.onclick = () => act(b, 'approve'));
+        list.querySelectorAll('.btn-no').forEach(b => b.onclick = () => act(b, 'reject'));
+      } catch (e) {
+        list.innerHTML = '<div class="err">Could not load bot decisions: ' + esc(e.message) + '</div>';
+      }
+    }
+
+    (async function init() {
+      try {
+        const r = await fetch('/api/accounting/accounts', { headers: H() });
+        const j = await r.json();
+        accounts = (j.accounts || []).filter(a => a.is_postable !== false);
+      } catch (e) { accounts = []; }
+      load();
+    })();
+  </script>
+</body>
+</html>

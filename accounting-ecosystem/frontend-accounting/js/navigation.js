@@ -160,7 +160,7 @@ function createNavigation() {
       </div>
 
 
-      <div class="nav-item ${currentPage.includes('bank') || currentPage === 'bank-staging.html' ? 'active' : ''}">
+      <div class="nav-item ${currentPage.includes('bank') || currentPage === 'bank-staging.html' || currentPage === 'bot-review.html' ? 'active' : ''}">
         <a href="/accounting/bank.html">Banking</a>
         <div class="dropdown">
           <a href="/accounting/bank.html">Bank Transactions</a>
@@ -168,6 +168,7 @@ function createNavigation() {
           <a href="#">Payment Processing</a>
           <a href="/accounting/bank-rules.html">Bank Rules</a>
           <a href="/accounting/bank-staging.html">Import Review (Staging)</a>
+          <a href="/accounting/bot-review.html">Bot Review</a>
         </div>
       </div>
 

@@ -47,6 +47,13 @@ function apiError(status, message) {
   return new LorencoApiError(status, message);
 }
 
+/** Key policy (set by a person in Profile; the bot can never change it). */
+function requirePolicy(ctx, key, what) {
+  if (!(ctx.policy && ctx.policy[key] === true)) {
+    throw apiError(403, what + ' is switched off for this bot key. A person can allow it in Lorenco: Profile → Bot / AI access keys.');
+  }
+}
+
 /** All bank lines of one status on one account (pages of 1000, like the recon screen). */
 async function allBankLines(api, ctx, companyId, bankAccountId, status) {
   const out = [];
@@ -309,7 +316,7 @@ const TOOLS = [
   },
   {
     name: 'allocate_bank_transaction',
-    description: 'Allocate (post) one unallocated bank transaction to one or more accounts. Leo posts the journal against the bank\'s ledger account, splits VAT when a line has a vat_setting_id (amounts VAT-inclusive unless vat_inclusive is false), validates and audits it — the same posting path as the Banking screen. Line amounts are positive and must add up to the transaction amount. Sean learns from this allocation.',
+    description: 'Allocate one unallocated bank transaction. Leo checks it server-side first: an approved allocation rule that applies may NOT be overridden (refused); if Sean confidently recommends another account you must give disagreement_reason and it WAITS for a person; director/owner lines, transfers between own bank accounts and keys set to "approve everything" also WAIT for a person. Otherwise Leo posts the journal (VAT split by Leo, same path as the Banking screen) and Sean learns from it. Line amounts are positive and must add up to the transaction amount. Always give reason.',
     inputSchema: { type: 'object', properties: {
       company_id: companyIdProp,
       transaction_id: { type: 'integer' },
@@ -317,21 +324,74 @@ const TOOLS = [
         account_id: { type: 'integer' }, amount: { type: 'number', minimum: 0.01 },
         vat_setting_id: { type: 'integer' }, vat_inclusive: { type: 'boolean' }, description: { type: 'string' }
       }, required: ['account_id', 'amount'], additionalProperties: false } },
-      description: { type: 'string', description: 'Journal description (default: the bank line\'s description)' },
-      applied_rule_id: { type: 'integer', description: 'If this follows an allocation rule, its id' }
-    }, required: ['company_id', 'transaction_id', 'lines'], additionalProperties: false },
+      reason: { type: 'string', description: 'Why this account (required)' },
+      decision_source: { type: 'string', enum: ['rule', 'sean', 'evidence', 'bot'], description: 'What the decision is based on' },
+      disagreement_reason: { type: 'string', description: 'Required when you choose a different account than Sean recommends' },
+      evidence: { type: 'string', description: 'Supporting documents or history you relied on' },
+      description: { type: 'string', description: 'Journal description (default: the bank line\'s description)' }
+    }, required: ['company_id', 'transaction_id', 'lines', 'reason'], additionalProperties: false },
     write: true,
     async run(api, ctx, a) {
-      const body = {
+      return api.request(ctx, a.company_id, 'POST', '/api/accounting/bot-decisions/allocate', {
+        bankTransactionId: parseInt(a.transaction_id, 10),
         lines: a.lines.map(l => Object.assign({ accountId: Number(l.account_id), amount: money(l.amount) },
           l.vat_setting_id != null ? { vatSettingId: Number(l.vat_setting_id) } : {},
           l.vat_inclusive === false ? { vatInclusive: false } : {},
           l.description ? { description: l.description } : {})),
-        allocationType: 'account'
-      };
-      if (a.description) body.description = a.description;
-      if (a.applied_rule_id != null) body.appliedRuleId = Number(a.applied_rule_id);
-      return api.request(ctx, a.company_id, 'POST', '/api/accounting/bank/transactions/' + parseInt(a.transaction_id, 10) + '/allocate', body);
+        reason: a.reason, decisionSource: a.decision_source, disagreementReason: a.disagreement_reason,
+        evidence: a.evidence, description: a.description, correlationId: ctx.correlationId || null
+      });
+    }
+  },
+  {
+    name: 'flag_for_review',
+    description: 'Hand a bank line to a person instead of allocating it: unknown expense, a possible duplicate, a director/owner payment, anything you are not sure of, or when you think an approved rule is wrong. It appears on the Bot Review page with your reason and optional suggested lines.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      transaction_id: { type: 'integer' },
+      reason: { type: 'string' },
+      evidence: { type: 'string' },
+      suggested_lines: { type: 'array', maxItems: 50, items: { type: 'object', properties: {
+        account_id: { type: 'integer' }, amount: { type: 'number', minimum: 0.01 }, vat_setting_id: { type: 'integer' }
+      }, required: ['account_id', 'amount'], additionalProperties: false } }
+    }, required: ['company_id', 'transaction_id', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      return api.request(ctx, a.company_id, 'POST', '/api/accounting/bot-decisions/exception', {
+        bankTransactionId: parseInt(a.transaction_id, 10), reason: a.reason, evidence: a.evidence,
+        lines: (a.suggested_lines || []).map(l => Object.assign({ accountId: Number(l.account_id), amount: money(l.amount) },
+          l.vat_setting_id != null ? { vatSettingId: Number(l.vat_setting_id) } : {})),
+        correlationId: ctx.correlationId || null
+      });
+    }
+  },
+  {
+    name: 'list_bot_decisions',
+    description: 'Your decisions in this company — posted, waiting for approval, exceptions, approved, rejected, failed — with the reason, the rule and Sean suggestion that applied and the bank line. Use it for your review report.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      status: { type: 'string', description: 'Comma-separated: posted, pending_approval, exception, approved, rejected, failed' },
+      since: Object.assign({}, isoDate, { description: 'Only decisions from this date (YYYY-MM-DD)' }),
+      limit: { type: 'integer', minimum: 1, maximum: MAX_ROWS_CAP }
+    }, required: ['company_id'], additionalProperties: false },
+    limitRows: true,
+    async run(api, ctx, a) {
+      const d = await api.request(ctx, a.company_id, 'GET', '/api/accounting/bot-decisions' + qs({ status: a.status, since: a.since, limit: rowsLimit(a) }));
+      return { counts: d.counts || {}, decisions: (d.decisions || []).map(x => ({
+        id: x.id, status: x.status, action: x.action, bank_line: x.bank_line, decision_source: x.decision_source,
+        proposed: x.proposed, rule: x.rule_suggestion, sean: x.sean_suggestion, reason: x.reason,
+        disagreement_reason: x.disagreement_reason, waiting_because: x.hold_labels, journal_id: x.journal_id,
+        reviewed_by: x.reviewed_by_name, review_note: x.review_note, created_at: x.created_at })) };
+    }
+  },
+  {
+    name: 'get_bot_policy',
+    description: 'What this bot key may do on its own (set by a person in Lorenco; you cannot change it).',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    async run(api, ctx) {
+      return { policy: ctx.policy || {}, always_needs_a_person: ['director / owner / shareholder lines', 'transfers between own bank accounts',
+        'allocations that differ from a confident Sean recommendation'], never_available: ['deleting records', 'SARS submissions',
+        'payments', 'closing or reopening periods', 'approving financial statements', 'changing users or permissions', 'contacting clients'] };
     }
   },
   {
@@ -341,13 +401,14 @@ const TOOLS = [
       required: ['company_id'], additionalProperties: false },
     heavy: true, write: true,
     async run(api, ctx, a) {
+      requirePolicy(ctx, 'allow_sean_auto', 'Letting Sean allocate by himself');
       return api.request(ctx, a.company_id, 'POST', '/api/accounting/bank/sean-auto-allocate',
         a.bank_account_id ? { bankAccountId: parseInt(a.bank_account_id, 10) } : {});
     }
   },
   {
     name: 'create_allocation_rule',
-    description: 'Create a bank allocation rule: bank lines whose description matches the pattern are suggested to the account (and VAT code).',
+    description: 'Only if this key allows it (get_bot_policy). Create a bank allocation rule: bank lines whose description matches the pattern are suggested to the account (and VAT code).',
     inputSchema: { type: 'object', properties: {
       company_id: companyIdProp,
       match_pattern: { type: 'string', description: 'Text to match in the bank description' },
@@ -357,6 +418,7 @@ const TOOLS = [
     }, required: ['company_id', 'match_pattern', 'account_id'], additionalProperties: false },
     write: true,
     async run(api, ctx, a) {
+      requirePolicy(ctx, 'allow_create_rules', 'Creating allocation rules');
       return api.request(ctx, a.company_id, 'POST', '/api/accounting/bank/rules', {
         matchPattern: a.match_pattern, matchType: a.match_type || 'contains', accountId: Number(a.account_id),
         vatSettingId: a.vat_setting_id != null ? Number(a.vat_setting_id) : undefined, priority: a.priority || 100 });
@@ -375,6 +437,7 @@ const TOOLS = [
     }, required: ['company_id', 'bank_account_id', 'transaction_ids', 'statement_date', 'statement_closing_balance'], additionalProperties: false },
     heavy: true, write: true,
     async run(api, ctx, a) {
+      if (a.allow_difference === true) requirePolicy(ctx, 'allow_reconcile_difference', 'Reconciling with a difference');
       const accId = parseInt(a.bank_account_id, 10);
       const accounts = (await api.request(ctx, a.company_id, 'GET', '/api/accounting/bank/accounts')).bankAccounts || [];
       const account = accounts.find(x => Number(x.id) === accId);

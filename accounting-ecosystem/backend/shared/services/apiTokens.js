@@ -38,6 +38,24 @@ function generateToken() {
   return TOKEN_PREFIX + crypto.randomBytes(32).toString('base64url');
 }
 
+/**
+ * Bot policy per key (migration 187, Codebox 4). What a bot using this key may do ON ITS
+ * OWN. Set by a person in Profile; the bot connection can never change it. Missing keys
+ * mean the safe default. Director/owner lines ALWAYS need a person — not a policy option.
+ */
+const POLICY_DEFAULTS = Object.freeze({
+  allow_create_rules: false,          // create_allocation_rule
+  allow_reconcile_difference: false,  // reconcile_bank_transactions with allow_difference
+  allow_sean_auto: false,             // sean_auto_allocate
+  require_approval_all: false         // every allocation waits for a person
+});
+function normalizePolicy(p) {
+  const src = (p && typeof p === 'object' && !Array.isArray(p)) ? p : {};
+  const out = {};
+  for (const k of Object.keys(POLICY_DEFAULTS)) out[k] = src[k] === true;
+  return out;
+}
+
 const isActive = (t, now = Date.now()) =>
   !t.revoked_at && (!t.expires_at || new Date(t.expires_at).getTime() > now);
 
@@ -46,13 +64,13 @@ function present(t) {
   return {
     id: t.id, name: t.name, prefix: t.token_prefix, created_at: t.created_at,
     last_used_at: t.last_used_at || null, expires_at: t.expires_at || null,
-    revoked_at: t.revoked_at || null, active: isActive(t)
+    revoked_at: t.revoked_at || null, active: isActive(t), policy: normalizePolicy(t.policy)
   };
 }
 
 async function listTokens(supabase, userId) {
   const { data, error } = await supabase.from('user_api_tokens')
-    .select('id, name, token_prefix, created_at, last_used_at, expires_at, revoked_at')
+    .select('id, name, token_prefix, created_at, last_used_at, expires_at, revoked_at, policy')
     .eq('user_id', userId).order('created_at', { ascending: false });
   if (error) throw new Error('Could not load tokens: ' + error.message);
   return (data || []).map(present);
@@ -61,7 +79,7 @@ async function listTokens(supabase, userId) {
 /**
  * @returns {{ token: string, record: object }} — token is returned ONCE, never stored.
  */
-async function createToken(supabase, userId, { name, expiresInDays } = {}) {
+async function createToken(supabase, userId, { name, expiresInDays, policy } = {}) {
   const cleanName = String(name || '').trim().slice(0, 100);
   if (!cleanName) { const e = new Error('Give the key a name (e.g. "Grok bot")'); e.status = 400; throw e; }
   let expiresAt = null;
@@ -77,10 +95,19 @@ async function createToken(supabase, userId, { name, expiresInDays } = {}) {
   const token = generateToken();
   const { data, error } = await supabase.from('user_api_tokens').insert({
     user_id: userId, name: cleanName, token_hash: hashToken(token),
-    token_prefix: token.slice(0, 12), expires_at: expiresAt
-  }).select('id, name, token_prefix, created_at, last_used_at, expires_at, revoked_at').single();
+    token_prefix: token.slice(0, 12), expires_at: expiresAt, policy: normalizePolicy(policy)
+  }).select('id, name, token_prefix, created_at, last_used_at, expires_at, revoked_at, policy').single();
   if (error) throw new Error('Could not create the key: ' + error.message);
   return { token, record: present(data) };
+}
+
+/** Change a key's bot policy (a person, from Profile — never through the bot connection). */
+async function setTokenPolicy(supabase, userId, tokenId, policy) {
+  const clean = normalizePolicy(policy);
+  const { data, error } = await supabase.from('user_api_tokens').update({ policy: clean })
+    .eq('id', tokenId).eq('user_id', userId).is('revoked_at', null).select('id');
+  if (error) throw new Error('Could not save the key settings: ' + error.message);
+  return (data || []).length > 0 ? clean : null;
 }
 
 async function revokeToken(supabase, userId, tokenId, revokedBy) {
@@ -100,7 +127,7 @@ async function revokeToken(supabase, userId, tokenId, revokedBy) {
 async function resolveToken(supabase, raw) {
   if (!raw || typeof raw !== 'string' || !raw.startsWith(TOKEN_PREFIX) || raw.length < 40 || raw.length > 100) return null;
   const { data: t, error } = await supabase.from('user_api_tokens')
-    .select('id, user_id, expires_at, revoked_at, last_used_at')
+    .select('id, user_id, expires_at, revoked_at, last_used_at, policy')
     .eq('token_hash', hashToken(raw)).maybeSingle();
   if (error || !t || !isActive(t)) return null;
   const { data: user } = await supabase.from('users')
@@ -112,11 +139,12 @@ async function resolveToken(supabase, raw) {
     supabase.from('user_api_tokens').update({ last_used_at: new Date().toISOString() }).eq('id', t.id)
       .then(() => {}, () => {});
   }
-  return { tokenId: t.id, user };
+  return { tokenId: t.id, user, policy: normalizePolicy(t.policy) };
 }
 
 module.exports = {
   TOKEN_PREFIX, MAX_ACTIVE_PER_USER,
   hashToken, generateToken, isActive, present, isPlatformAdmin,
-  listTokens, createToken, revokeToken, resolveToken
+  listTokens, createToken, revokeToken, resolveToken,
+  POLICY_DEFAULTS, normalizePolicy, setTokenPolicy
 };

@@ -171,10 +171,10 @@ describe('MCP server over HTTP', () => {
     const tools = r.body.result.tools;
     const write = tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name).sort();
     expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_allocation_rule',
-      'import_bank_statement_pdf', 'reconcile_bank_transactions', 'reject_staged_transaction', 'sean_auto_allocate',
+      'flag_for_review', 'import_bank_statement_pdf', 'reconcile_bank_transactions', 'reject_staged_transaction', 'sean_auto_allocate',
       'stage_bank_transactions']);
     expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ping', 'list_companies', 'get_trial_balance',
-      'list_accounts', 'list_vat_settings', 'list_bank_transactions', 'get_sean_suggestions']));
+      'list_accounts', 'list_vat_settings', 'list_bank_transactions', 'get_sean_suggestions', 'list_bot_decisions', 'get_bot_policy']));
     expect(tools.every(t => t.inputSchema && t.inputSchema.type === 'object')).toBe(true);
     expect(tools.filter(t => !t.annotations.readOnlyHint).every(t => t.annotations.destructiveHint === false)).toBe(true);
   });
@@ -357,7 +357,10 @@ describe('Codebox 3 controls', () => {
       }
       expect(seen).toEqual([]);
       const { isAllowedCall } = require('../modules/mcp/lorencoApi');
-      expect(isAllowedCall('POST', '/api/accounting/bank/transactions/12/allocate')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/bank/transactions/12/allocate')).toBe(false);   // only via the decision rules
+      expect(isAllowedCall('POST', '/api/accounting/bot-decisions/allocate')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/bot-decisions/exception')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/bot-decisions/5/approve')).toBe(false);          // people only
       expect(isAllowedCall('PATCH', '/api/accounting/bank/staging/9/reject')).toBe(true);
       expect(isAllowedCall('POST', '/api/accounting/bank/reconcile')).toBe(true);
     });
@@ -401,23 +404,41 @@ describe('Phase 2 — bank write tools (fake Leo API)', () => {
 
   test('nested argument checks for lists of lines', () => {
     const s = tool('allocate_bank_transaction').inputSchema;
-    expect(V(s, { company_id: 51, transaction_id: 1, lines: [] })).toBe('lines needs at least 1 item(s)');
-    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ amount: 5 }] })).toBe('lines[0].account_id is required');
-    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 'x' }] })).toBe('lines[0].amount must be a number');
-    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 0 }] })).toBe('lines[0].amount must be at least 0.01');
-    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 5, hack: 1 }] })).toBe('unknown argument: lines[0].hack');
-    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 5, vat_inclusive: 'no' }] })).toBe('lines[0].vat_inclusive must be true or false');
-    expect(V(s, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 114.99, vat_setting_id: 2 }] })).toBeNull();
+    expect(V(s, { company_id: 51, transaction_id: 1, reason: 'Fibre account', lines: [] })).toBe('lines needs at least 1 item(s)');
+    expect(V(s, { company_id: 51, transaction_id: 1, reason: 'Fibre account', lines: [{ amount: 5 }] })).toBe('lines[0].account_id is required');
+    expect(V(s, { company_id: 51, transaction_id: 1, reason: 'Fibre account', lines: [{ account_id: 3, amount: 'x' }] })).toBe('lines[0].amount must be a number');
+    expect(V(s, { company_id: 51, transaction_id: 1, reason: 'Fibre account', lines: [{ account_id: 3, amount: 0 }] })).toBe('lines[0].amount must be at least 0.01');
+    expect(V(s, { company_id: 51, transaction_id: 1, reason: 'Fibre account', lines: [{ account_id: 3, amount: 5, hack: 1 }] })).toBe('unknown argument: lines[0].hack');
+    expect(V(s, { company_id: 51, transaction_id: 1, reason: 'Fibre account', lines: [{ account_id: 3, amount: 5, vat_inclusive: 'no' }] })).toBe('lines[0].vat_inclusive must be true or false');
+    expect(V(s, { company_id: 51, transaction_id: 1, reason: 'Fibre account', lines: [{ account_id: 3, amount: 114.99, vat_setting_id: 2 }] })).toBeNull();
     expect(V(tool('create_allocation_rule').inputSchema, { company_id: 51, match_pattern: 'x', account_id: 1, match_type: 'regex' }))
       .toBe('match_type must be one of: contains, starts_with, exact');
   });
 
-  test('allocate maps to Leo\'s own allocate route and body', async () => {
-    await tool('allocate_bank_transaction').run(api, ctx, { company_id: 51, transaction_id: 77,
-      lines: [{ account_id: 3, amount: 100.004, vat_setting_id: 2 }, { account_id: 4, amount: 15, vat_inclusive: false, description: 'fee' }] });
-    expect(calls).toEqual([{ method: 'POST', path: '/api/accounting/bank/transactions/77/allocate', query: '', cid: 51, body: {
+  test('allocate goes through the bot decision route with reason and evidence', async () => {
+    await tool('allocate_bank_transaction').run(api, Object.assign({ correlationId: 'c-1' }, ctx), { company_id: 51, transaction_id: 77,
+      lines: [{ account_id: 3, amount: 100.004, vat_setting_id: 2 }, { account_id: 4, amount: 15, vat_inclusive: false, description: 'fee' }],
+      reason: 'Monthly fibre account', decision_source: 'sean' });
+    expect(calls).toEqual([{ method: 'POST', path: '/api/accounting/bot-decisions/allocate', query: '', cid: 51, body: {
+      bankTransactionId: 77,
       lines: [{ accountId: 3, amount: 100, vatSettingId: 2 }, { accountId: 4, amount: 15, vatInclusive: false, description: 'fee' }],
-      allocationType: 'account' } }]);
+      reason: 'Monthly fibre account', decisionSource: 'sean', disagreementReason: undefined, evidence: undefined,
+      description: undefined, correlationId: 'c-1' } }]);
+    expect(V(tool('allocate_bank_transaction').inputSchema, { company_id: 51, transaction_id: 1, lines: [{ account_id: 3, amount: 5 }] }))
+      .toBe('reason is required');
+  });
+
+  test('key policy: rules, reconcile-with-difference and Sean auto are off unless a person allowed them', async () => {
+    const off = Object.assign({ policy: {} }, ctx);
+    await expect(tool('create_allocation_rule').run(api, off, { company_id: 51, match_pattern: 'X', account_id: 1 })).rejects.toMatchObject({ status: 403 });
+    await expect(tool('sean_auto_allocate').run(api, off, { company_id: 51 })).rejects.toMatchObject({ status: 403 });
+    await expect(tool('reconcile_bank_transactions').run(api, off, { company_id: 51, bank_account_id: 5, transaction_ids: [1],
+      statement_date: '2026-10-31', statement_closing_balance: 1, allow_difference: true })).rejects.toMatchObject({ status: 403 });
+    expect(calls).toEqual([]);
+    const on = Object.assign({ policy: { allow_create_rules: true, allow_sean_auto: true } }, ctx);
+    await tool('create_allocation_rule').run(api, on, { company_id: 51, match_pattern: 'X', account_id: 1 });
+    await tool('sean_auto_allocate').run(api, on, { company_id: 51 });
+    expect(calls.map(c => c.path)).toEqual(['/api/accounting/bank/rules', '/api/accounting/bank/sean-auto-allocate']);
   });
 
   test('PDF import: Leo parses, then stages as source pdf with the file hash', async () => {
@@ -479,7 +500,7 @@ describe('Phase 2 — bank write tools (fake Leo API)', () => {
     const c = await tool('confirm_staged_transactions').run(api, ctx, { company_id: 51, staging_ids: [9] });
     expect(c).toMatchObject({ confirmed: 1, confirmed_transaction_ids: [501] });
     await tool('reject_staged_transaction').run(api, ctx, { company_id: 51, staging_id: 9 });
-    await tool('create_allocation_rule').run(api, ctx, { company_id: 51, match_pattern: 'ENGEN', account_id: 8 });
+    await tool('create_allocation_rule').run(api, Object.assign({ policy: { allow_create_rules: true } }, ctx), { company_id: 51, match_pattern: 'ENGEN', account_id: 8 });
     await tool('get_sean_suggestions').run(api, ctx, { company_id: 51, transaction_ids: [501] });
     expect(calls.map(c2 => c2.method + ' ' + c2.path)).toEqual(['POST /api/accounting/bank/staging/confirm',
       'PATCH /api/accounting/bank/staging/9/reject', 'POST /api/accounting/bank/rules', 'POST /api/accounting/bank/sean-suggestions']);

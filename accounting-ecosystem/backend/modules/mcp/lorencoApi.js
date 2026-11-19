@@ -56,7 +56,9 @@ const WRITE_ALLOWLIST = [
   ['PATCH', /^\/api\/accounting\/bank\/staging\/\d+\/reject$/],
   ['POST',  /^\/api\/accounting\/bank\/sean-suggestions$/],
   ['POST',  /^\/api\/accounting\/bank\/sean-auto-allocate$/],
-  ['POST',  /^\/api\/accounting\/bank\/transactions\/\d+\/allocate$/],
+  // Allocation ONLY through the bot decision rules (rule > Sean > person) — never the raw allocate route
+  ['POST',  /^\/api\/accounting\/bot-decisions\/allocate$/],
+  ['POST',  /^\/api\/accounting\/bot-decisions\/exception$/],
   ['POST',  /^\/api\/accounting\/bank\/reconcile$/],
   ['POST',  /^\/api\/accounting\/bank\/rules$/]
 ];

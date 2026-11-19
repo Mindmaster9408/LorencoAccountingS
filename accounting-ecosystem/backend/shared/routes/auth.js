@@ -843,7 +843,11 @@ router.post('/select-company', authenticateToken, async (req, res) => {
       role: role,
       isSuperAdmin: isSuperAdmin,
       hasCoachingAccess,
-    }, JWT_SECRET, { expiresIn: '12h' });
+      // Bot connection (personal access key via /mcp): keep the marker so Leo can tell
+      // a bot from a person (bot decision rules, human-only approval). Grants nothing;
+      // browser logins never carry it, so their token is unchanged.
+      ...(req.user.via === 'api_token' ? { via: 'api_token', apiTokenId: req.user.apiTokenId || null } : {}),
+    }, JWT_SECRET, { expiresIn: req.user.via === 'api_token' ? '30m' : '12h' });
 
     recordActivity(req.user.userId, parsedCompanyId); // fire-and-forget
 

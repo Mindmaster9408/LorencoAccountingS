@@ -66,6 +66,7 @@ router.use('/year-end',  require('./routes/yearEnd'));
 router.use('/bank/rules',   require('./routes/bankRules'));
 router.use('/bank',         require('./routes/bank'));
 router.use('/bank/staging', require('./routes/bankStaging'));
+router.use('/bot-decisions', require('./routes/botDecisions'));   // bot allocations + human approval (migration 187)
 router.use('/pos', require('./routes/pos-bridge'));
 router.use('/reports', require('./routes/reports'));
 // OCR drafts mounted BEFORE the generic /suppliers router so the more-specific
