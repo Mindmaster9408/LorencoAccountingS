@@ -27,13 +27,16 @@ const { createLimiter } = require('./rateLimit');
 const { TOOLS, validateArgs, toContent, rowsLimit, MAX_ROWS_DEFAULT } = require('./tools');
 
 const SUPPORTED_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const SERVER_INFO = { name: 'lorenco-ledger-leo', title: 'Lorenco Ledger Leo', version: '1.5.0' };
+const SERVER_INFO = { name: 'lorenco-ledger-leo', title: 'Lorenco Ledger Leo', version: '1.6.0' };
 const INSTRUCTIONS =
   'You are working in Lorenco Ledger Leo as the user who created this key, with exactly that user\'s rights — you are a normal user / bookkeeper, ' +
   'and you can do ANY Ledger Leo task a person can do on the screens. Start with list_companies, then pass company_id to the other tools. ' +
   'Use the dedicated tools for the common work; for everything else (edit, delete, void, credit notes, quotes, customer receipts, supplier payments, ' +
   'journals, periods, year-end, opening balances, VAT periods …) find the route with leo_routes and do it with leo_request. ' +
-  'Never answer "I cannot do that" for a Ledger Leo task before checking leo_routes. Only these are closed: other apps (Paytime, Checkout Charlie, Stockton …), ' +
+  'Never answer "I cannot do that" for a Ledger Leo task before checking leo_routes. ' +
+  'Firmflow (practice management: clients, tasks, time, deadlines, tax and secretarial work) works the same way with firmflow_routes + firmflow_request, ' +
+  'using the accounting PRACTICE company id; there you prepare the work and submit it for review — sign-off (approve / reject / QA lock / partner override) is done by a person. ' +
+  'Only these are closed: other apps (Paytime, Checkout Charlie, Stockton …), marking SARS submissions as submitted, ' +
   'e-mailing / sending to clients, SARS submissions, system settings and keys, users and permissions, AI / Sean settings, approving your own Bot Review items. ' +
   'Write tools change the books exactly like a person, so be sure before you write and give a reason. Bank statement flow: import_bank_statement_pdf → get_bank_import_status → ' +
   'confirm_staged_transactions → get_sean_suggestions → allocate_bank_transaction → reconcile_bank_transactions. ' +

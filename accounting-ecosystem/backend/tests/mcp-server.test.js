@@ -172,7 +172,7 @@ describe('MCP server over HTTP', () => {
     const write = tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name).sort();
     expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_account', 'create_allocation_rule',
       'create_bank_account', 'create_customer', 'create_customer_invoice', 'create_journal', 'create_supplier', 'create_supplier_invoice',
-      'create_vat_code', 'flag_for_review', 'import_bank_statement_pdf', 'leo_request', 'post_customer_invoice', 'reconcile_bank_transactions',
+      'create_vat_code', 'firmflow_request', 'flag_for_review', 'import_bank_statement_pdf', 'leo_request', 'post_customer_invoice', 'reconcile_bank_transactions',
       'reject_staged_transaction', 'sean_auto_allocate', 'stage_bank_transactions']);
     expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ping', 'list_companies', 'get_trial_balance',
       'list_accounts', 'list_vat_settings', 'list_bank_transactions', 'get_sean_suggestions', 'list_bot_decisions', 'get_bot_policy']));
@@ -764,5 +764,56 @@ describe('Full Ledger Leo access — VAT codes, journals, reports, leo_routes / 
     expect(calls).toEqual([]);
     await t.run(api, ctxOf({ allow_create_rules: true }), Object.assign({ method: 'DELETE', path: '/api/accounting/bank/rules/4' }, r));
     expect(calls.map(c => c.method + ' ' + c.path)).toEqual(['DELETE /api/accounting/bank/rules/4']);
+  });
+});
+
+describe('Firmflow (practice) access', () => {
+  const { TOOLS: T, validateArgs: V } = require('../modules/mcp/tools');
+  const { blockReason } = require('../modules/mcp/lorencoApi');
+  const tool = (n) => T.find(t => t.name === n);
+
+  test('staff work is allowed; sign-off, SARS marking, settings, staff and system are refused', () => {
+    for (const [m, p] of [['GET', '/api/practice/clients'], ['POST', '/api/practice/clients'], ['PUT', '/api/practice/clients/3'],
+      ['POST', '/api/practice/tasks'], ['PUT', '/api/practice/tasks/3'], ['PUT', '/api/practice/tasks/3/submit-review'],
+      ['POST', '/api/practice/time-entries'], ['PUT', '/api/practice/time-entries/4/submit-review'], ['POST', '/api/practice/deadlines'],
+      ['POST', '/api/practice/communications'], ['POST', '/api/practice/individual-tax/calculations/2/submit-review'],
+      ['PUT', '/api/practice/tax-disputes/3/accept'], ['PUT', '/api/practice/tax-disputes/3/reject'], ['GET', '/api/practice/team'],
+      ['PUT', '/api/practice/delegation/5/accept']]) {
+      expect([m, p, blockReason(m, p)]).toEqual([m, p, null]);
+    }
+    for (const [m, p] of [['PUT', '/api/practice/tasks/3/approve-review'], ['PUT', '/api/practice/tasks/3/approve-final'],
+      ['PUT', '/api/practice/tasks/3/reject-review'], ['PUT', '/api/practice/tasks/3/qa-lock'], ['PUT', '/api/practice/tasks/3/start-review'],
+      ['PUT', '/api/practice/time-entries/4/approve'], ['POST', '/api/practice/individual-tax/calculations/2/approve'],
+      ['PUT', '/api/practice/tax-completion/2/partner-override'], ['PUT', '/api/practice/secretarial-governance/resolutions/2/sign'],
+      ['PUT', '/api/practice/work-authorization/2/approve-override'], ['PUT', '/api/practice/billing/packs/2/lock'],
+      ['POST', '/api/practice/qms/reviews'], ['POST', '/api/practice/provisional-tax/2/review'],
+      ['PUT', '/api/practice/tax-submissions/2/mark-submitted'], ['PUT', '/api/practice/tax-disputes/2/mark-submitted'],
+      ['POST', '/api/practice/team'], ['PUT', '/api/practice/team/2'], ['PUT', '/api/practice/profile'], ['PUT', '/api/practice/kv/x'],
+      ['GET', '/api/practice/kv/x'], ['PUT', '/api/practice/automation/rules/2'], ['PUT', '/api/practice/deadline-settings'],
+      ['GET', '/api/practice/pilot-readiness/runs']]) {
+      expect([m, p, typeof blockReason(m, p)]).toEqual([m, p, 'string']);
+    }
+  });
+
+  test('firmflow_routes lists Firmflow routes (index.js routes and mounted files), without blocked ones', async () => {
+    const r = await tool('firmflow_routes').run(null, {}, {});
+    expect(r.count).toBeGreaterThan(300);
+    const paths = r.routes.map(x => x.method + ' ' + x.path);
+    expect(paths).toEqual(expect.arrayContaining(['POST /api/practice/tasks', 'POST /api/practice/time-entries',
+      'PUT /api/practice/tasks/:id/submit-review', 'GET /api/practice/clients']));
+    expect(paths.some(p => /\/(approve|approve-review|qa-lock|mark-submitted)$|\/kv\//.test(p))).toBe(false);
+    const t = (await tool('firmflow_routes').run(null, {}, { filter: 'time-entries', method: 'POST' })).routes;
+    expect(t.find(x => x.path === '/api/practice/time-entries').body).toEqual(expect.arrayContaining(['client_id', 'hours']));
+  });
+
+  test('firmflow_request only takes /api/practice paths and needs a reason to change data', async () => {
+    const t = tool('firmflow_request');
+    expect(V(t.inputSchema, { company_id: 51, method: 'GET', path: '/api/accounting/journals' })).toMatch(/path must look like/);
+    const calls = [];
+    const api = { async request(c, cid, m, p, b) { calls.push([m, p, b, cid]); return { ok: 1 }; } };
+    await expect(t.run(api, {}, { company_id: 51, method: 'POST', path: '/api/practice/tasks', body: {} })).rejects.toMatchObject({ status: 400 });
+    await t.run(api, {}, { company_id: 51, method: 'POST', path: '/api/practice/tasks', body: { title: 'VAT201 March' }, reason: 'asked by Ruan' });
+    await t.run(api, {}, { company_id: 51, method: 'GET', path: '/api/practice/tasks', query: { status: 'open' } });
+    expect(calls).toEqual([['POST', '/api/practice/tasks', { title: 'VAT201 March' }, 51], ['GET', '/api/practice/tasks?status=open', undefined, 51]]);
   });
 });

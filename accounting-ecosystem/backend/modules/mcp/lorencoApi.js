@@ -45,7 +45,8 @@ class LorencoApiError extends Error {
 /**
  * 2026-11-20 (Ruan): the bot is a normal Ledger Leo user — it may call ANY Ledger Leo route
  * (/api/accounting/…), read or write, edit or delete, exactly like a person on the screens.
- * Leo's own role and permission checks decide what this user may do. What stays closed here,
+ * Leo's own role and permission checks decide what this user may do. Firmflow (/api/practice/…)
+ * was added the same day on the same terms (see the Firmflow block below). What stays closed here,
  * whatever a tool asks for ("the other apps and matters"):
  *   - every other app (Paytime, Checkout Charlie, Stockton, …) — nothing outside /api/accounting
  *   - contacting clients (any /send, recurring billing that e-mails), SARS submissions
@@ -68,9 +69,21 @@ const HARD_BLOCK = [
   [W,      /^\/api\/accounting\/(bot-decisions|ai\/actions)\/\d+\/(approve|reject)$/, 'approving or rejecting bot / AI work is done by a person'],
   ['POST', /^\/api\/accounting\/bank\/transactions\/\d+\/allocate$/,     'allocate bank lines with allocate_bank_transaction (approved rules, Sean and the approval rules apply)'],
   ['PUT',  /^\/api\/accounting\/bank\/transactions\/transfer$/,          'transfers between own bank accounts wait for a person — use allocate_bank_transaction'],
-  ['POST', /^\/api\/accounting\/bank\/staging\/transfers\/\d+\/confirm$/, 'transfers between own bank accounts wait for a person — use allocate_bank_transaction']
+  ['POST', /^\/api\/accounting\/bank\/staging\/transfers\/\d+\/confirm$/, 'transfers between own bank accounts wait for a person — use allocate_bank_transaction'],
+
+  // ── Firmflow (practice management, /api/practice) — 2026-11-20 ──
+  // The bot does the work (clients, tasks, time, deadlines, tax and secretarial prep) and submits it for
+  // review; sign-off stays with a person: approving / rejecting / QA-locking / partner overrides / recording
+  // reviews. Firmflow itself sends no e-mail.
+  [ANY,    /^\/api\/practice\/(kv|pilot-readiness)(\/|$)/,               'system and pilot tools are not available to the bot'],
+  [W,      /^\/api\/practice\/(team|users|profile|deadline-settings|tax-configs|alert-rules|automation)(\/|$)/,
+                                                                         'practice settings, staff and users are managed by a person'],
+  [W,      /^\/api\/practice\/tax-(submissions|disputes)\/[^/]+\/mark-submitted$/, 'only the person who submitted on SARS eFiling marks a submission as submitted'],
+  [W,      /^\/api\/practice\/(?!tax-disputes\/).+\/(approve|reject|approve-[a-z-]+|reject-[a-z-]+|start-review|qa-lock|qa-unlock|partner-review|partner-override|override|accept-risk|sign|lock|decision)$/,
+                                                                         'sign-off (approve / reject / QA lock / partner override) is done by a person — submit the work for review instead'],
+  ['POST', /^\/api\/practice\/.+\/(reviews|review)$/,                    'reviews are recorded by the person who did the review']
 ];
-const LEO_PATH = /^\/api\/accounting\/[A-Za-z0-9._~\-/]*$/;
+const LEO_PATH = /^\/api\/(accounting|practice)\/[A-Za-z0-9._~\-/]*$/;
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 /** Why this call is refused, or null when it may go to Leo. */
@@ -79,7 +92,7 @@ function blockReason(method, path) {
   if (!METHODS.includes(m)) return 'unsupported method ' + m;
   const p = String(path || '').split('?')[0];
   if (!LEO_PATH.test(p) || p.includes('..') || p.includes('//')) {
-    return 'only Ledger Leo (/api/accounting/…) is available to the bot — other apps are not';
+    return 'only Ledger Leo (/api/accounting/…) and Firmflow (/api/practice/…) are available to the bot — other apps are not';
   }
   for (const [bm, re, why] of HARD_BLOCK) {
     if ((bm === ANY || (bm === W ? m !== 'GET' : bm === m)) && re.test(p)) return why;

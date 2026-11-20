@@ -116,7 +116,7 @@ const TOOLS = [
     async run(api, ctx) {
       return { status: 'ok', server: 'Lorenco Ledger Leo', version: ctx.serverVersion || null, mcp_enabled: true,
         connected_as: ctx.user.full_name || ctx.user.username || null, read_only: false,
-        note: 'Full Ledger Leo access as this user: dedicated tools for the common work, and leo_routes + leo_request for EVERYTHING else (edit, delete, void, journals, payments, credit notes, quotes, periods, year-end …). What you may do depends on this user\'s role in each company.' };
+        note: 'Full Ledger Leo access as this user: dedicated tools for the common work, and leo_routes + leo_request for EVERYTHING else (edit, delete, void, journals, payments, credit notes, quotes, periods, year-end …). Firmflow (practice management) through firmflow_routes + firmflow_request. What you may do depends on this user\'s role in each company.' };
     }
   },
   {
@@ -422,8 +422,10 @@ const TOOLS = [
       return { policy: ctx.policy || {}, always_needs_a_person: ['director / owner / shareholder lines', 'transfers between own bank accounts',
         'allocations that differ from a confident Sean recommendation'], never_available: ['other apps (Paytime, Checkout Charlie, Stockton …)',
         'e-mailing / sending anything to clients', 'SARS submissions', 'system settings, integrations and keys', 'changing users or permissions',
-        'changing AI / Sean settings', 'approving your own Bot Review items'],
-        everything_else: 'Any other Ledger Leo task is available — dedicated tools, or leo_routes + leo_request.' };
+        'changing AI / Sean settings', 'approving your own Bot Review items',
+        'Firmflow sign-off (approve / reject / QA lock / partner override / recording reviews)', 'marking SARS submissions as submitted',
+        'Firmflow practice settings, staff and users'],
+        everything_else: 'Any other Ledger Leo task is available — dedicated tools, or leo_routes + leo_request. Any other Firmflow task: firmflow_routes + firmflow_request.' };
     }
   },
   {
@@ -899,7 +901,7 @@ const TOOLS = [
     }, additionalProperties: false },
     async run(api, ctx, a) {
       const words = String(a.filter || '').toLowerCase().split(/\s+/).filter(Boolean);
-      const rows = leoRouteCatalogue().filter(r => (!a.method || r.method === a.method) &&
+      const rows = routeCatalogue('accounting').filter(r => (!a.method || r.method === a.method) &&
         words.every(w => r.path.toLowerCase().includes(w)));
       return { count: rows.length, routes: rows,
         how: 'Call leo_request with method, path (replace :id etc. with real ids), query and body. Field names are as Leo reads them; when unsure, GET an existing record first and copy its shape. Leo\'s error message tells you what is missing.' };
@@ -933,21 +935,66 @@ const TOOLS = [
       }
       return api.request(ctx, a.company_id, m, p + qs(q), m === 'GET' || m === 'DELETE' ? undefined : (a.body || {}));
     }
+  },
+
+  // ── Firmflow — practice management (Ruan 2026-11-20) ────────────────────────────────────────
+  {
+    name: 'firmflow_routes',
+    description: 'The list of EVERYTHING you can do in Firmflow (practice management) through firmflow_request: clients and contacts, tasks, time entries / WIP, deadlines and the compliance calendar, engagements, billing, document requests, communications log, reminders, workflows, individual / company / provisional tax work, tax payments, SARS statement recon, disputes, secretarial (registers, meetings, resolutions, beneficial ownership), onboarding, knowledge base, SOPs, risk register, planning board, capacity and reports. Search with "filter" (e.g. "tasks", "time-entries", "deadlines", "individual-tax", "secretarial"). Check here before ever saying a Firmflow task cannot be done.',
+    inputSchema: { type: 'object', properties: {
+      filter: { type: 'string', description: 'Words to match in the path, e.g. "tasks" or "time-entries"' },
+      method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }
+    }, additionalProperties: false },
+    async run(api, ctx, a) {
+      const words = String(a.filter || '').toLowerCase().split(/\s+/).filter(Boolean);
+      const rows = routeCatalogue('practice').filter(r => (!a.method || r.method === a.method) &&
+        words.every(w => r.path.toLowerCase().includes(w)));
+      return { count: rows.length, routes: rows,
+        how: 'Call firmflow_request with the PRACTICE company_id (the accounting firm, from list_companies — not the client\'s own company), method, path (replace :id etc. with real ids), query and body. When unsure of the fields, GET an existing record first and copy its shape.' };
+    }
+  },
+  {
+    name: 'firmflow_request',
+    description: 'Do ANY task in Firmflow (practice management) as this user, like a staff member on the screens: add / edit clients and contacts, create and update tasks, log time, manage deadlines, engagements, document requests, the communications log, tax and secretarial work, and submit work for review — plus every read. Find the route with firmflow_routes. company_id is the accounting PRACTICE (firm) company. Firmflow checks this user\'s role. Not available: sign-off (approve / reject / QA lock / partner override / recording reviews — a person signs off; you submit for review), marking SARS submissions as submitted, practice settings, staff and users.',
+    inputSchema: { type: 'object', properties: {
+      company_id: Object.assign({}, companyIdProp, { description: 'The accounting practice (firm) company id from list_companies' }),
+      method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+      path: { type: 'string', pattern: '^/api/practice/[A-Za-z0-9._~\\-/]+$', description: 'e.g. /api/practice/tasks or /api/practice/time-entries' },
+      query: { type: 'object', description: 'Query-string values, e.g. {"status":"open"}' },
+      body: { type: 'object', description: 'JSON body for POST / PUT / PATCH' },
+      reason: { type: 'string', description: 'Why (required for anything that changes data)' }
+    }, required: ['company_id', 'method', 'path'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      const m = a.method, p = a.path.replace(/\/+$/, '');
+      if (m !== 'GET' && !(a.reason && String(a.reason).trim())) throw apiError(400, 'reason is required for anything that changes data');
+      if (m === 'GET' && /\/(pdf|file|download|export)$/.test(p)) throw apiError(400, 'PDF / file downloads are not available through the bot — use the data route instead.');
+      const q = {};
+      for (const [k, v] of Object.entries(a.query || {})) {
+        if (v !== null && typeof v === 'object') throw apiError(400, `query.${k} must be a plain value`);
+        q[k] = v;
+      }
+      return api.request(ctx, a.company_id, m, p + qs(q), m === 'GET' || m === 'DELETE' ? undefined : (a.body || {}));
+    }
   }
 ];
 
 /**
- * Every Ledger Leo route, read from the route files themselves (so it never goes stale):
- * mount prefix from modules/accounting/index.js + router.<method>('<path>') per file, with the
- * req.body / req.query fields the handler destructures. Routes the bot may not use are left out.
+ * Every route of an app, read from the route files themselves (so it never goes stale): the mounts
+ * in modules/<app>/index.js — router.use('/x', require('./routes/f')) or router.use('/x', xRouter)
+ * with const xRouter = require('./f') — plus routes defined in index.js itself, with the
+ * req.body / req.query fields each handler reads. Routes the bot may not use are left out.
  */
-let _catalogue = null;
-function leoRouteCatalogue() {
-  if (_catalogue) return _catalogue;
+const APPS = { accounting: '/api/accounting', practice: '/api/practice' };
+const _catalogues = {};
+function routeCatalogue(app) {
+  if (_catalogues[app]) return _catalogues[app];
   const fs = require('fs');
   const path = require('path');
   const { blockReason } = require('./lorencoApi');
-  const dir = path.join(__dirname, '..', 'accounting');
+  const base = APPS[app];
+  const dir = path.join(__dirname, '..', app);
+  const read = (file) => { try { return fs.readFileSync(path.join(dir, file), 'utf8'); } catch (_) { return null; } };
   const fields = (seg, src) => {
     const out = new Set();
     const re = new RegExp('const\\s*\\{([^}]+)\\}\\s*=\\s*req\\.' + src, 'g');
@@ -963,14 +1010,8 @@ function leoRouteCatalogue() {
     return [...out];
   };
   const rows = [];
-  let index = '';
-  try { index = fs.readFileSync(path.join(dir, 'index.js'), 'utf8'); } catch (_) { index = ''; }
-  const mountRe = /router\.use\(\s*'([^']+)'\s*,\s*require\('\.\/routes\/([^']+?)(?:\.js)?'\)\s*\)/g;
-  let mm;
-  while ((mm = mountRe.exec(index))) {
-    const prefix = '/api/accounting' + mm[1];
-    let src = '';
-    try { src = fs.readFileSync(path.join(dir, 'routes', mm[2] + '.js'), 'utf8'); } catch (_) { continue; }
+  const seen = new Set();
+  const addRoutes = (src, prefix) => {
     const routeRe = /router\.(get|post|put|patch|delete)\(\s*'([^']+)'/g;
     const hits = [];
     let r;
@@ -979,8 +1020,11 @@ function leoRouteCatalogue() {
       const seg = src.slice(h.at, i + 1 < hits.length ? hits[i + 1].at : src.length);
       const sub = h.sub.replace(/\([^)]*\)/g, '');
       const full = (prefix + (sub === '/' ? '' : sub)).replace(/\/+$/, '') || prefix;
-      if (/\/(pdf|file|download)$/.test(full)) return;
+      if (/\/(pdf|file|download|export)$/.test(full)) return;
       if (blockReason(h.method, full.replace(/:[A-Za-z]+/g, '1'))) return;
+      const key = h.method + ' ' + full;
+      if (seen.has(key)) return;
+      seen.add(key);
       const row = { method: h.method, path: full };
       const b = h.method === 'GET' || h.method === 'DELETE' ? [] : fields(seg, 'body');
       const q = fields(seg, 'query');
@@ -988,8 +1032,22 @@ function leoRouteCatalogue() {
       if (q.length) row.query = q;
       rows.push(row);
     });
+  };
+  const index = read('index.js') || '';
+  const vars = {};
+  const varRe = /const\s+(\w+)\s*=\s*require\('\.\/([^']+?)(?:\.js)?'\)/g;
+  let v;
+  while ((v = varRe.exec(index))) vars[v[1]] = v[2];
+  const mountRe = /router\.use\(\s*'([^']+)'\s*,\s*(?:require\('\.\/([^']+?)(?:\.js)?'\)|(\w+))\s*\)/g;
+  let mm;
+  while ((mm = mountRe.exec(index))) {
+    const file = mm[2] || vars[mm[3]];
+    if (!file) continue;
+    const src = read(file + '.js');
+    if (src) addRoutes(src, base + (mm[1] === '/' ? '' : mm[1]));
   }
-  _catalogue = rows;
+  addRoutes(index, base);            // routes defined in index.js itself (e.g. Firmflow clients, tasks, time)
+  _catalogues[app] = rows;
   return rows;
 }
 
