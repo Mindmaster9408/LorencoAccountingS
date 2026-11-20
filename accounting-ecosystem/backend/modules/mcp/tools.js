@@ -67,6 +67,33 @@ async function allBankLines(api, ctx, companyId, bankAccountId, status) {
   return out;
 }
 
+/**
+ * Invoice lines: every account must be an active, postable account of THIS company and not a
+ * bank/cash account; every VAT rate must be one of the company's VAT rates (or 0). Leo's supplier
+ * invoice route does not check line accounts itself, so the bot path checks them here.
+ */
+async function checkInvoiceLines(api, ctx, a, kind) {
+  const accts = ((await api.request(ctx, a.company_id, 'GET', '/api/accounting/accounts')) || {}).accounts || [];
+  const byId = new Map(accts.map(x => [Number(x.id), x]));
+  for (const l of a.lines) {
+    const acc = byId.get(Number(l.account_id));
+    if (!acc) throw apiError(400, `Account ${l.account_id} is not an account of this company (list_accounts).`);
+    if (acc.is_active === false || acc.is_postable === false) throw apiError(400, `Account ${acc.code} ${acc.name} is inactive or a header account.`);
+    if (acc.reporting_group === 'bank_cash' || ['bank', 'cash'].includes(String(acc.sub_type || '').toLowerCase())) {
+      throw apiError(400, `Account ${acc.code} ${acc.name} is a bank/cash account — it cannot be used on an invoice line.`);
+    }
+    if (kind === 'income' && acc.type !== 'income') throw apiError(400, `Account ${acc.code} ${acc.name} is not an income account.`);
+    if (!(Number(l.quantity) > 0)) throw apiError(400, 'Line quantity must be more than 0.');
+  }
+  const vats = ((await api.request(ctx, a.company_id, 'GET', '/api/accounting/vat-settings')) || {}).vatSettings || [];
+  const rates = new Set([0, ...vats.filter(v => v.is_active !== false).map(v => Number(v.rate))]);
+  for (const l of a.lines) {
+    if (!rates.has(Number(l.vat_rate))) {
+      throw apiError(400, `VAT rate ${l.vat_rate}% is not one of this company's VAT rates (${[...rates].join('%, ')}%). See list_vat_settings.`);
+    }
+  }
+}
+
 const qs = (o) => {
   const p = Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v));
@@ -622,6 +649,131 @@ const TOOLS = [
         paymentTerms: a.payment_terms != null ? Number(a.payment_terms) : 30, notes: a.notes || null });
       const s = d && d.supplier;
       return { created: true, supplier: s && { id: s.id, code: s.supplier_code, name: s.name } };
+    }
+  },
+  // ── Invoices: customer (create + post, NEVER send) and supplier (create = posted) — 2026-11-20 ──
+  {
+    name: 'list_customer_invoices',
+    description: 'Customer (sales) invoices. status: draft (not yet posted), sent (posted to the books — "sent" is Leo\'s word for posted, it does not mean e-mailed), paid, part_paid (partly paid), void.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      status: { type: 'string', enum: ['draft', 'sent', 'paid', 'part_paid', 'overdue', 'void', 'cancelled'] },
+      customer_id: { type: 'integer' }, from_date: isoDate, to_date: isoDate,
+      limit: { type: 'integer', minimum: 1, maximum: MAX_ROWS_CAP }
+    }, required: ['company_id'], additionalProperties: false },
+    async run(api, ctx, a) {
+      const d = await api.request(ctx, a.company_id, 'GET', '/api/accounting/customer-invoices' + qs({ status: a.status,
+        customerId: a.customer_id, fromDate: a.from_date, toDate: a.to_date, limit: rowsLimit(a) }));
+      return { invoices: ((d && d.invoices) || []).map(i => ({ id: i.id, invoice_number: i.invoice_number, date: i.date,
+        due_date: i.due_date || null, customer_id: i.customer_id, customer_name: i.customer_name || null, status: i.status,
+        total: i.total_amount, vat: i.vat_amount, balance_due: i.balance_due })) };
+    }
+  },
+  {
+    name: 'create_customer_invoice',
+    description: 'Create a customer (sales) invoice as a DRAFT; with post: true it is also posted to the books. A bot can NEVER e-mail an invoice to a customer — a person sends it from Ledger Leo. The customer must already exist (list_customers / create_customer). Leo refuses a duplicate invoice number.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      customer_id: { type: 'integer', description: 'from list_customers' },
+      invoice_number: { type: 'string', description: 'Optional; Leo numbers it (INV-0001…) when left out' },
+      invoice_date: isoDate, due_date: isoDate,
+      vat_inclusive: { type: 'boolean', description: 'true when unit prices include VAT (default false)' },
+      lines: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: {
+        description: { type: 'string' },
+        account_id: { type: 'integer', description: 'income account id (list_accounts)' },
+        quantity: { type: 'number', minimum: 0 },
+        unit_price: { type: 'number', minimum: 0 },
+        vat_rate: { type: 'number', minimum: 0, maximum: 100, description: 'VAT % — a rate from list_vat_settings, or 0' }
+      }, required: ['description', 'account_id', 'quantity', 'unit_price', 'vat_rate'], additionalProperties: false } },
+      notes: { type: 'string' },
+      post: { type: 'boolean', description: 'true = post to the books straight away (default false: stays a draft for a person)' },
+      reason: { type: 'string', description: 'Where this invoice comes from (kept in the bot audit trail)' }
+    }, required: ['company_id', 'customer_id', 'invoice_date', 'lines', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      await checkInvoiceLines(api, ctx, a, 'income');
+      const d = await api.request(ctx, a.company_id, 'POST', '/api/accounting/customer-invoices', {
+        customerId: Number(a.customer_id), invoiceNumber: a.invoice_number || undefined, invoiceDate: a.invoice_date,
+        dueDate: a.due_date || undefined, vatInclusive: a.vat_inclusive === true, notes: a.notes || undefined,
+        lines: a.lines.map(l => ({ description: l.description, accountId: Number(l.account_id), lineType: 'account',
+          quantity: Number(l.quantity), unitPrice: Number(l.unit_price), vatRate: Number(l.vat_rate) })) });
+      const inv = d && d.invoice;
+      const out = { created: true, invoice: inv && { id: inv.id, invoice_number: inv.invoice_number, total: inv.total_amount, status: inv.status }, posted: false };
+      if (a.post === true && inv) {
+        try {
+          await api.request(ctx, a.company_id, 'POST', `/api/accounting/customer-invoices/${parseInt(inv.id, 10)}/post`, {});
+          out.posted = true; out.invoice.status = 'sent';
+        } catch (e) {
+          // the draft exists — say so, so the bot does not create it a second time
+          out.post_error = (e && e.message) || 'posting failed';
+          out.note_draft = `The invoice was created as draft id ${inv.id} but NOT posted. Fix the cause, then use post_customer_invoice — do not create it again.`;
+        }
+      }
+      out.note = 'Not e-mailed. A person sends it to the customer from Ledger Leo.';
+      return out;
+    }
+  },
+  {
+    name: 'post_customer_invoice',
+    description: 'Post an existing DRAFT customer invoice to the books (like Post on the invoice screen). Does NOT e-mail it — a person sends it.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp, invoice_id: { type: 'integer' },
+      reason: { type: 'string' }
+    }, required: ['company_id', 'invoice_id', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      const d = await api.request(ctx, a.company_id, 'POST', `/api/accounting/customer-invoices/${parseInt(a.invoice_id, 10)}/post`, {});
+      return { posted: true, invoice_id: Number(a.invoice_id), result: d || null, note: 'Not e-mailed. A person sends it to the customer from Ledger Leo.' };
+    }
+  },
+  {
+    name: 'list_supplier_invoices',
+    description: 'Supplier (purchase) invoices already in the books, with supplier, totals and amount paid. Check here before create_supplier_invoice.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      supplier_id: { type: 'integer' }, status: { type: 'string' }, from_date: isoDate, to_date: isoDate,
+      limit: { type: 'integer', minimum: 1, maximum: MAX_ROWS_CAP }
+    }, required: ['company_id'], additionalProperties: false },
+    async run(api, ctx, a) {
+      const d = await api.request(ctx, a.company_id, 'GET', '/api/accounting/suppliers/invoices' + qs({ supplierId: a.supplier_id,
+        status: a.status, fromDate: a.from_date, toDate: a.to_date }));
+      const rows = ((d && d.invoices) || []).map(i => ({ id: i.id, invoice_number: i.invoice_number, reference: i.reference || null,
+        date: i.date, due_date: i.due_date || null, supplier_id: i.supplier_id, supplier_name: i.supplier_name || null,
+        status: i.status, total: i.total_amount, vat: i.vat_amount, amount_paid: i.amount_paid }));
+      return { invoices: rows.slice(0, rowsLimit(a)), total: rows.length };
+    }
+  },
+  {
+    name: 'create_supplier_invoice',
+    description: 'Capture a supplier (purchase) invoice. In Ledger Leo a supplier invoice is POSTED TO THE BOOKS immediately (there is no draft stage), so only do this from a real invoice document. invoice_number is the supplier\'s own number — required, so the same invoice can never be captured twice. The supplier must already exist (list_suppliers / create_supplier).',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      supplier_id: { type: 'integer', description: 'from list_suppliers' },
+      invoice_number: { type: 'string', description: 'the number printed on the supplier\'s invoice' },
+      reference: { type: 'string' },
+      invoice_date: isoDate, due_date: isoDate,
+      vat_inclusive: { type: 'boolean', description: 'true when the amounts include VAT (default false)' },
+      lines: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: {
+        description: { type: 'string' },
+        account_id: { type: 'integer', description: 'expense / asset / cost-of-sales account id (list_accounts)' },
+        quantity: { type: 'number', minimum: 0 },
+        unit_price: { type: 'number', minimum: 0 },
+        vat_rate: { type: 'number', minimum: 0, maximum: 100, description: 'VAT % — a rate from list_vat_settings, or 0' }
+      }, required: ['description', 'account_id', 'quantity', 'unit_price', 'vat_rate'], additionalProperties: false } },
+      notes: { type: 'string' },
+      reason: { type: 'string', description: 'Which document this comes from, e.g. "Vodacom invoice 12345 dated 2026-10-01"' }
+    }, required: ['company_id', 'supplier_id', 'invoice_number', 'invoice_date', 'lines', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      if (!String(a.invoice_number).trim()) throw apiError(400, 'invoice_number is required');
+      await checkInvoiceLines(api, ctx, a, 'purchase');
+      const d = await api.request(ctx, a.company_id, 'POST', '/api/accounting/suppliers/invoices', {
+        supplierId: Number(a.supplier_id), invoiceNumber: String(a.invoice_number).trim(), reference: a.reference || undefined,
+        invoiceDate: a.invoice_date, dueDate: a.due_date || undefined, vatInclusive: a.vat_inclusive === true, notes: a.notes || undefined,
+        lines: a.lines.map(l => ({ description: l.description, accountId: Number(l.account_id),
+          quantity: Number(l.quantity), unitPrice: Number(l.unit_price), vatRate: Number(l.vat_rate) })) });
+      const inv = (d && (d.invoice || d)) || {};
+      return { created: true, posted: true, invoice: { id: inv.id, invoice_number: inv.invoice_number, total: inv.total_amount, status: inv.status } };
     }
   },
   {

@@ -171,8 +171,8 @@ describe('MCP server over HTTP', () => {
     const tools = r.body.result.tools;
     const write = tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name).sort();
     expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_account', 'create_allocation_rule',
-      'create_bank_account', 'create_customer', 'create_supplier',
-      'flag_for_review', 'import_bank_statement_pdf', 'reconcile_bank_transactions', 'reject_staged_transaction', 'sean_auto_allocate',
+      'create_bank_account', 'create_customer', 'create_customer_invoice', 'create_supplier', 'create_supplier_invoice',
+      'flag_for_review', 'import_bank_statement_pdf', 'post_customer_invoice', 'reconcile_bank_transactions', 'reject_staged_transaction', 'sean_auto_allocate',
       'stage_bank_transactions']);
     expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ping', 'list_companies', 'get_trial_balance',
       'list_accounts', 'list_vat_settings', 'list_bank_transactions', 'get_sean_suggestions', 'list_bot_decisions', 'get_bot_policy']));
@@ -370,8 +370,17 @@ describe('Codebox 3 controls', () => {
         expect(isAllowedCall('PUT', p + '/3')).toBe(false);
         expect(isAllowedCall('DELETE', p + '/3')).toBe(false);
       }
-      expect(isAllowedCall('POST', '/api/accounting/suppliers/invoices')).toBe(false);
       expect(isAllowedCall('POST', '/api/accounting/accounts/3/merge')).toBe(false);
+      // invoices: create + post, never send / void / edit
+      expect(isAllowedCall('POST', '/api/accounting/customer-invoices')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/12/post')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/12/send')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/12/void')).toBe(false);
+      expect(isAllowedCall('PUT', '/api/accounting/customer-invoices/12')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/payments')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/suppliers/invoices')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/suppliers/invoices/4/void')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/suppliers/payments')).toBe(false);
     });
 
     test('an allowed write goes through select-company, then the POST with a JSON body', async () => {
@@ -581,5 +590,77 @@ describe('Setup tools — accounts, bank accounts, customers, suppliers (fake Le
     const body = calls.find(x => x.method === 'POST').body;
     expect(body).toMatchObject({ name: 'Engen Garage', type: 'company', paymentTerms: 30 });
     expect(Object.keys(body).some(k => /bank/i.test(k))).toBe(false);   // a bot never sets supplier bank details
+  });
+});
+
+describe('Invoice tools (fake Leo API)', () => {
+  const { TOOLS: T, validateArgs: V } = require('../modules/mcp/tools');
+  const tool = (n) => T.find(t => t.name === n);
+  const ctx = { user: { id: 46 }, tokenId: 9, policy: {} };
+  let calls, replies;
+  const api = { async request(c, cid, method, path, body) {
+    calls.push({ method, path: path.split('?')[0], body });
+    const r = replies[method + ' ' + path.split('?')[0]];
+    if (typeof r === 'function') return r(body);
+    if (r instanceof Error) throw r;
+    return r === undefined ? {} : r;
+  } };
+  beforeEach(() => {
+    calls = [];
+    replies = {
+      'GET /api/accounting/accounts': { accounts: [{ id: 1, code: '4000', name: 'Sales', type: 'income' },
+        { id: 2, code: '6200', name: 'Telephone', type: 'expense' }, { id: 3, code: '1010', name: 'Bank', type: 'asset', sub_type: 'bank' },
+        { id: 4, code: '5000', name: 'Header', type: 'expense', is_postable: false }] },
+      'GET /api/accounting/vat-settings': { vatSettings: [{ id: 1, code: 'STD', rate: 15 }] }
+    };
+  });
+  const line = (o = {}) => Object.assign({ description: 'Consulting', account_id: 1, quantity: 1, unit_price: 1000, vat_rate: 15 }, o);
+
+  test('schemas: reason and VAT rate per line required; supplier invoice number required', () => {
+    expect(V(tool('create_customer_invoice').inputSchema, { company_id: 51, customer_id: 1, invoice_date: '2026-11-01', lines: [line()] })).toMatch(/reason/);
+    const { vat_rate: _vat, ...noVat } = line();
+    expect(V(tool('create_customer_invoice').inputSchema, { company_id: 51, customer_id: 1, invoice_date: '2026-11-01', lines: [noVat], reason: 'r' })).toMatch(/vat_rate/);
+    expect(V(tool('create_supplier_invoice').inputSchema, { company_id: 51, supplier_id: 1, invoice_date: '2026-11-01', lines: [line({ account_id: 2 })], reason: 'r' })).toMatch(/invoice_number/);
+    expect(V(tool('create_customer_invoice').inputSchema, { company_id: 51, customer_name: 'X', customer_id: 1, invoice_date: '2026-11-01', lines: [line()], reason: 'r' })).toMatch(/unknown argument/);
+  });
+
+  test('customer invoice: draft by default, posted with post:true, never sent', async () => {
+    replies['POST /api/accounting/customer-invoices'] = { invoice: { id: 7, invoice_number: 'INV-0007', total_amount: 1150, status: 'draft' } };
+    const draft = await tool('create_customer_invoice').run(api, ctx, { company_id: 51, customer_id: 5, invoice_date: '2026-11-01', lines: [line()], reason: 'r' });
+    expect(draft).toMatchObject({ created: true, posted: false, invoice: { id: 7 } });
+    expect(calls.find(c => c.method === 'POST').body).toMatchObject({ customerId: 5, lines: [{ accountId: 1, lineType: 'account', vatRate: 15 }] });
+    expect(calls.find(c => c.method === 'POST').body.customerName).toBeUndefined();
+    calls = [];
+    const posted = await tool('create_customer_invoice').run(api, ctx, { company_id: 51, customer_id: 5, invoice_date: '2026-11-01', lines: [line()], post: true, reason: 'r' });
+    expect(posted).toMatchObject({ posted: true, invoice: { status: 'sent' } });
+    expect(calls.filter(c => c.method === 'POST').map(c => c.path)).toEqual(['/api/accounting/customer-invoices', '/api/accounting/customer-invoices/7/post']);
+    expect(calls.some(c => /send/.test(c.path))).toBe(false);
+  });
+
+  test('a failed post keeps the draft id so the bot does not create it twice', async () => {
+    replies['POST /api/accounting/customer-invoices'] = { invoice: { id: 8, invoice_number: 'INV-0008', status: 'draft' } };
+    replies['POST /api/accounting/customer-invoices/8/post'] = new Error('Sales account missing');
+    const out = await tool('create_customer_invoice').run(api, ctx, { company_id: 51, customer_id: 5, invoice_date: '2026-11-01', lines: [line()], post: true, reason: 'r' });
+    expect(out).toMatchObject({ created: true, posted: false, post_error: 'Sales account missing' });
+    expect(out.note_draft).toMatch(/draft id 8/);
+  });
+
+  test('lines are checked before anything is posted: own postable account, not bank, income for sales, known VAT rate', async () => {
+    const run = (n, l, extra = {}) => tool(n).run(api, ctx, Object.assign({ company_id: 51, customer_id: 5, supplier_id: 5, invoice_number: 'A1',
+      invoice_date: '2026-11-01', lines: [l], reason: 'r' }, extra));
+    await expect(run('create_customer_invoice', line({ account_id: 99 }))).rejects.toMatchObject({ status: 400 });
+    await expect(run('create_customer_invoice', line({ account_id: 3 }))).rejects.toThrow(/bank\/cash/);
+    await expect(run('create_customer_invoice', line({ account_id: 2 }))).rejects.toThrow(/not an income account/);
+    await expect(run('create_supplier_invoice', line({ account_id: 4 }))).rejects.toThrow(/header/);
+    await expect(run('create_supplier_invoice', line({ account_id: 2, vat_rate: 14 }))).rejects.toThrow(/VAT rate 14%/);
+    expect(calls.filter(c => c.method === 'POST')).toEqual([]);
+  });
+
+  test('supplier invoice posts with the supplier\'s own number', async () => {
+    replies['POST /api/accounting/suppliers/invoices'] = { invoice: { id: 11, invoice_number: 'VC-123', total_amount: 230, status: 'unpaid' } };
+    const out = await tool('create_supplier_invoice').run(api, ctx, { company_id: 51, supplier_id: 5, invoice_number: ' VC-123 ',
+      invoice_date: '2026-11-01', vat_inclusive: true, lines: [line({ account_id: 2, unit_price: 230 })], reason: 'Vodacom invoice VC-123' });
+    expect(out).toMatchObject({ created: true, posted: true, invoice: { id: 11, invoice_number: 'VC-123' } });
+    expect(calls.find(c => c.method === 'POST').body).toMatchObject({ supplierId: 5, invoiceNumber: 'VC-123', vatInclusive: true });
   });
 });

@@ -65,7 +65,11 @@ const WRITE_ALLOWLIST = [
   ['POST',  /^\/api\/accounting\/accounts$/],
   ['POST',  /^\/api\/accounting\/bank\/accounts$/],
   ['POST',  /^\/api\/accounting\/pos\/customers$/],
-  ['POST',  /^\/api\/accounting\/suppliers$/]
+  ['POST',  /^\/api\/accounting\/suppliers$/],
+  // Invoices — customer: create + post, NEVER /send (people e-mail clients); supplier: create (= posted)
+  ['POST',  /^\/api\/accounting\/customer-invoices$/],
+  ['POST',  /^\/api\/accounting\/customer-invoices\/\d+\/post$/],
+  ['POST',  /^\/api\/accounting\/suppliers\/invoices$/]
 ];
 function isAllowedCall(method, path) {
   const m = String(method).toUpperCase();

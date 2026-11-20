@@ -913,11 +913,10 @@ router.post('/:id/void', authenticate, hasPermission('ar.invoice.void'), async (
       }
     }
 
-    // Reverse the posted journal if one exists
-    if (invoice.journal_id) {
-      await JournalService.reverseJournal(invoice.journal_id, companyId, userId(req));
-    }
-
+    // Status FIRST, then the journal reversal (2026-11-20). The old order reversed the journal and
+    // then failed on the status update (CHECK constraint, fixed in migration 188), leaving the
+    // invoice 'sent' in AR while its GL journal was already reversed. If the reversal fails now,
+    // the status is put back so invoice and GL can never disagree.
     const { error: voidErr } = await supabase
       .from('customer_invoices')
       .update({ status: 'void', updated_at: new Date().toISOString() })
@@ -925,6 +924,19 @@ router.post('/:id/void', authenticate, hasPermission('ar.invoice.void'), async (
       .eq('company_id', companyId);
 
     if (voidErr) throw new Error(voidErr.message);
+
+    if (invoice.journal_id) {
+      try {
+        await JournalService.reverseJournal(invoice.journal_id, companyId, userId(req));
+      } catch (revErr) {
+        await supabase
+          .from('customer_invoices')
+          .update({ status: invoice.status, updated_at: new Date().toISOString() })
+          .eq('id', invoiceId)
+          .eq('company_id', companyId);
+        throw revErr;
+      }
+    }
 
     await AuditLogger.log({
       companyId,
