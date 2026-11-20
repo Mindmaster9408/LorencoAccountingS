@@ -686,7 +686,7 @@
                     <label class="app-checkbox"><input type="checkbox" id="mPos" value="pos"> &#128722; POS</label>
                     <label class="app-checkbox"><input type="checkbox" id="mPayroll" value="payroll"> &#128176; Payroll</label>
                     <label class="app-checkbox"><input type="checkbox" id="mAccounting" value="accounting"> &#128200; Accounting</label>
-                    <label class="app-checkbox app-checkbox-til-only" id="mInventoryWrap" title="Only available under The Infinite Legacy"><input type="checkbox" id="mInventory" value="inventory"> &#128230; Storehouse</label>
+                    <label class="app-checkbox app-checkbox-til-only" id="mInventoryWrap" title="Only for Lorenco's own clients"><input type="checkbox" id="mInventory" value="inventory"> &#128230; Storehouse</label>
                 </div>
             </div>
             <div class="form-group">
@@ -843,10 +843,14 @@
         //       FOLLOW-UP: migrate to fully separate per-app Sean keys
         //       once billing and provisioning logic is ready.
         // ============================================================
-        // Returns true only when co is The Infinite Legacy (matches same check as backend guard).
+        // Lorenco companies by ID (mirrors backend/shared/utils/ecoCompanies.js — change together):
+        // 1 = super users' profile ("Lorenco Ecosystem", was "The Infinite Legacy"),
+        // 38 = Lorenco Accounting Services, the practice holding Lorenco's clients.
+        const ECO_SUPER_COMPANY_ID = 1;
+        const STOCKTON_MANAGER_IDS = [1, 38];
+        // True when co may hand out Stockton to its clients (same check as the backend guard).
         function isTILCompany(co) {
-            if (!co) return false;
-            return co.company_name === 'The Infinite Legacy' || co.trading_name === 'The Infinite Legacy';
+            return !!co && STOCKTON_MANAGER_IDS.includes(Number(co.id));
         }
 
         const APP_REGISTRY = [

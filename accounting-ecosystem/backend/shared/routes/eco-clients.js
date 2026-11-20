@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
+const { isStocktonManager } = require('../utils/ecoCompanies');
 const { auditFromReq } = require('../../middleware/audit');
 const { MANAGEMENT_ROLES } = require('../../config/permissions');
 const { normalizeLogin, loginOrFilter } = require('../utils/loginIdentity');
@@ -64,20 +65,11 @@ async function loadManagedClient(req, clientId) {
 }
 
 // ─── Storehouse Guard ───────────────────────────────────────────────────────
-// Lorenco Storehouse (app key: 'inventory') may only be assigned under
-// The Infinite Legacy. This check is enforced backend-side regardless of UI.
-async function isInfiniteLegacyCompany(companyId) {
-  if (!companyId) return false;
-  const { data, error } = await supabase
-    .from('companies')
-    .select('company_name, trading_name')
-    .eq('id', companyId)
-    .single();
-  if (error || !data) return false;
-  return (
-    data.company_name === 'The Infinite Legacy' ||
-    data.trading_name === 'The Infinite Legacy'
-  );
+// Stockton (app key: 'inventory') may only be assigned to Lorenco's own clients: those managed
+// by Lorenco Accounting Services or the super profile (by company ID — 2026-11-20, see
+// shared/utils/ecoCompanies.js). Enforced backend-side regardless of UI.
+async function isStocktonManagerCompany(companyId) {
+  return isStocktonManager(companyId);
 }
 
 // ─── Cross-App Sync Helper ──────────────────────────────────────────────────
@@ -785,13 +777,13 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'No company exists in the system yet. Please create a company first.' });
     }
 
-    // ── Storehouse restriction: inventory may only be assigned under The Infinite Legacy ──
+    // ── Stockton restriction: inventory only for clients managed by Lorenco (see ecoCompanies.js) ──
     const requestedApps = Array.isArray(apps) ? apps : [];
     if (requestedApps.includes('inventory')) {
-      const allowed = await isInfiniteLegacyCompany(resolvedCompanyId);
+      const allowed = await isStocktonManagerCompany(resolvedCompanyId);
       if (!allowed) {
         return res.status(403).json({
-          error: 'Stockton can only be assigned under The Infinite Legacy.'
+          error: 'Stockton is only available for Lorenco\'s own clients (managed by Lorenco Accounting Services or the Lorenco Ecosystem profile).'
         });
       }
     }
@@ -1000,12 +992,12 @@ function nonAdminUpdateBlock(old, body) {
 async function validateAppAdditions(old, newApps) {
   const oldApps = old.apps || [];
 
-  // ── Storehouse restriction: inventory may only be assigned under The Infinite Legacy ──
+  // ── Stockton restriction: inventory only for clients managed by Lorenco (see ecoCompanies.js) ──
   const inventoryBeingAdded = newApps.includes('inventory') && !oldApps.includes('inventory');
   if (inventoryBeingAdded) {
-    const allowed = await isInfiniteLegacyCompany(old.company_id);
+    const allowed = await isStocktonManagerCompany(old.company_id);
     if (!allowed) {
-      return { status: 403, error: 'Stockton can only be assigned under The Infinite Legacy.' };
+      return { status: 403, error: 'Stockton is only available for Lorenco\'s own clients (managed by Lorenco Accounting Services or the Lorenco Ecosystem profile).' };
     }
   }
 

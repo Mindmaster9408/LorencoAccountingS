@@ -28,7 +28,8 @@ const { amountsFor } = require('../../config/app-pricing');
 const { APP_LABELS, todaySA, addDays } = require('./appSubscriptions');
 
 const BILLING_COMPANY_ID = () => Number(process.env.ECO_BILLING_COMPANY_ID || 40);
-const LORENCO_PRACTICE_ID = () => Number(process.env.LORENCO_PRACTICE_COMPANY_ID || 1);
+// Lorenco's practice = Lorenco Accounting Services (company 38) since 2026-11-20 — its clients are billed directly.
+const { LORENCO_PRACTICE_ID, SUPER_COMPANY_ID } = require('../utils/ecoCompanies');
 const EXTRA_LABELS = { slips: 'Slips', insights: 'Insights', collector: 'Collector', commander: 'Commander' };
 const appLabel = k => APP_LABELS[k] || EXTRA_LABELS[k] || k;
 
@@ -44,6 +45,7 @@ const first = (...vals) => { for (const v of vals) if (!blank(v)) return String(
 function computePayers(ecoClients, companies) {
   const co = new Map((companies || []).map(c => [Number(c.id), c]));
   const practiceId = LORENCO_PRACTICE_ID();
+  const superId = SUPER_COMPANY_ID();   // a client still held by the super profile also pays for itself
 
   // Companies whose eco_client is excluded (TEST etc.) — rows created under them are excluded too.
   const excludedCompanyIds = new Set();
@@ -64,7 +66,7 @@ function computePayers(ecoClients, companies) {
     const cc = Number(e.client_company_id);
     const mgr = Number(e.company_id);
     if (excludedCompanyIds.has(cc) || excludedCompanyIds.has(mgr)) continue;
-    const payerId = (mgr === practiceId || mgr === cc) ? cc : mgr;
+    const payerId = (mgr === practiceId || mgr === superId || mgr === cc) ? cc : mgr;
     if (!co.has(payerId)) continue;
     payer(payerId).clients.push({
       ecoClientId: e.id, name: e.name, companyId: cc,

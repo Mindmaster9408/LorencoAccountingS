@@ -20,6 +20,7 @@
 10. [Part F — Super User Access Policy (PERMANENT — HARD RULE)](#10-part-f--super-user-access-policy)
 11. [Part G — Checkout Charlie Deployment Timing (PERMANENT — HARD RULE)](#11-part-g--checkout-charlie-deployment-timing)
 12. [Part H — Designated Test/Sandbox Company (PERMANENT — HARD RULE)](#12-part-h--designated-testsandbox-company)
+13. [Part I — Lorenco Company Structure (PERMANENT)](#13-part-i--lorenco-company-structure-permanent--2026-11-20)
 
 ---
 
@@ -912,7 +913,7 @@ These patterns are blocked for payroll code. Claude must refuse to generate them
 
 ### RULE F1 — SUPER USERS HAVE UNRESTRICTED ACCESS TO ALL APPS
 
-Every super user of The Infinite Legacy — currently Ruan, Anton, MJ, and Anrich, and any future super user added — must have **unrestricted, automatic access to every app in the ecosystem**, including any app designed or built in the future.
+Every super user of the Lorenco Ecosystem (company 1, formerly "The Infinite Legacy") — currently Ruan, Anton, MJ, and Anrich, and any future super user added — must have **unrestricted, automatic access to every app in the ecosystem**, including any app designed or built in the future.
 
 This is a hard, permanent rule. Claude must never implement any feature, permission check, module gate, or UI condition that restricts a super user from any app — past or future — except the single carve-out defined in Rule F2.
 
@@ -963,7 +964,7 @@ When a new super user is added to the ecosystem, the following must always be tr
 | `users.has_coaching_access` | `false` (unless explicitly Ruan) |
 | `users.is_active` | `true` |
 | `user_company_access.role` | `super_admin` |
-| `user_company_access.company_id` | The Infinite Legacy company ID |
+| `user_company_access.company_id` | The super profile, company 1 "Lorenco Ecosystem" (formerly The Infinite Legacy) — plus Lorenco Accounting Services (company 38) |
 | `sean-webapp/lib/auth.ts` `CORE_SUPER_USERS` | Add with `hasCoachingAccess: false` |
 | `backend/config/seed.js` `seedAdditionalUsers` | Add for DB-reset resilience |
 
@@ -1040,7 +1041,7 @@ A dedicated, permanent sandbox company exists for testing any app or feature acr
 | Field | Value |
 |---|---|
 | Company name | `Infinite Legacy — TEST` |
-| Managed under (eco_client `company_id`) | The Infinite Legacy (company id 1) |
+| Managed under (eco_client `company_id`) | The super profile "Lorenco Ecosystem" (company id 1, formerly The Infinite Legacy) |
 | Client's own isolated data silo (`client_company_id`) | company id 51 |
 | `eco_clients.id` | 44 |
 | `client_code` | `CLT-5F5E41CC` |
@@ -1066,6 +1067,25 @@ Being "just test data" does not suspend any other rule in this file. In particul
 - **Sean AI governance (Part B) applies in full here.** If Sean learns something from activity in this test company (e.g. an IRP5 code mapping, an allocation pattern), that learning event must still go through the same controlled capture → proposal → approval → propagation flow as learning from any real client. Sean must not auto-propagate anything globally just because the source was the test company — Rule B2 (explicit authorization for global changes) and Rule B9 (no auto-overwrite of intentional differences) apply exactly as they do everywhere else.
 - Required-field validation, permission logic, browser-storage prohibition (Part D), and all other engineering standards in this file apply to code paths exercised via this company exactly as they apply to real companies — a bug is a bug regardless of which company's data revealed it.
 - The only thing that changes for this company is that its data carries no real business/compliance consequence, so it is safe to create, break, and delete data here freely. It is not a loophole for skipping any process rule.
+
+---
+
+## 13. PART I — LORENCO COMPANY STRUCTURE (PERMANENT — 2026-11-20)
+
+| Company | ID | Role |
+|---|---|---|
+| Lorenco Ecosystem (formerly "The Infinite Legacy") | 1 | The super users' profile only. Super admins land here. Holds the TEST company (51). No ordinary staff are ever added here. |
+| Lorenco Accounting Services (Pty) Ltd | 38 | Ruan's accounting practice — holds Lorenco's clients (eco_clients.company_id = 38), runs Firmflow, own profile (self eco_client row). |
+| Lorenco Ecosystum (Pty) Ltd | 40 | A client of Lorenco Accounting; Eco billing invoices are issued from here (ECO_BILLING_COMPANY_ID). |
+
+- **Recognise these companies by ID, never by name** — `backend/shared/utils/ecoCompanies.js` (SUPER_COMPANY_ID = 1,
+  LORENCO_PRACTICE_ID = 38), mirrored in the frontend as ECO_SUPER_COMPANY_ID / STOCKTON_MANAGER_IDS. Never add a
+  `company_name === '…'` check again.
+- Stockton (inventory) is only for Lorenco's own clients: companies managed by 1 or 38.
+- Eco billing: clients of 1 or 38 are billed directly; clients of another practice are billed to that practice.
+- Client groups (e.g. Turkstra / Pennygrow) are users with access to several companies — independent of who manages them.
+- Bots linked to Lorenco Accounting get a restricted role there plus explicit user_client_access rows, so the
+  practice link never opens every client to a bot.
 
 ---
 

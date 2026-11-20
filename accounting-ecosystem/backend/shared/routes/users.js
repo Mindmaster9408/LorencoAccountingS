@@ -9,6 +9,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
+const { companyMayUseStockton } = require('../utils/ecoCompanies');
 const { authenticateToken, requireCompany, requirePermission, invalidateUserSessions } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { canManageRole, getAllRoles } = require('../../config/permissions');
@@ -19,14 +20,13 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(requireCompany);
 
-// Strip 'inventory' from an apps_access array if the company is not The Infinite Legacy.
+// Strip 'inventory' from an apps_access array unless the company may use Stockton (a Lorenco
+// company or a client managed by one — shared/utils/ecoCompanies.js, by ID since 2026-11-20).
 // Returns null when the resulting array would be empty (null = unrestricted, which is
 // still correct — no whitelist is safer than an empty whitelist for a new user).
 async function sanitiseAppsAccess(appsAccess, companyId) {
   if (!Array.isArray(appsAccess) || !appsAccess.includes('inventory')) return appsAccess;
-  const { data } = await supabase.from('companies').select('company_name, trading_name').eq('id', companyId).single();
-  const isTIL = data && (data.company_name === 'The Infinite Legacy' || data.trading_name === 'The Infinite Legacy');
-  if (isTIL) return appsAccess;
+  if (await companyMayUseStockton(supabase, companyId)) return appsAccess;
   const stripped = appsAccess.filter(a => a !== 'inventory');
   return stripped.length > 0 ? stripped : null;
 }

@@ -7,6 +7,12 @@ jest.mock('../shared/services/email', () => ({ sendEmail: jest.fn() }));
 
 const { computePayers, customerFieldsFor, buildLines } = require('../shared/services/ecoBilling');
 
+// These fixtures use company 1 as Lorenco's practice; the live default is 38 (Lorenco Accounting
+// Services, since 2026-11-20 — see eco-companies.test.js), so the fixture sets it explicitly.
+const _prevPractice = process.env.LORENCO_PRACTICE_COMPANY_ID;
+process.env.LORENCO_PRACTICE_COMPANY_ID = '1';   // set now: some computePayers calls run while the tests are collected
+afterAll(() => { if (_prevPractice === undefined) delete process.env.LORENCO_PRACTICE_COMPANY_ID; else process.env.LORENCO_PRACTICE_COMPANY_ID = _prevPractice; });
+
 const companies = [
   { id: 1,  company_name: 'Lorenco Practice', modules_enabled: ['pos'] },
   { id: 2,  company_name: 'Direct Client A' },

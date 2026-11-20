@@ -1215,7 +1215,7 @@
                             <select id="acManagingCompany">
                                 <option value="">Select managing company...</option>
                             </select>
-                            <small style="color:var(--text-muted);font-size:0.78rem;">The company that manages this account (e.g. The Infinite Legacy).</small>
+                            <small style="color:var(--text-muted);font-size:0.78rem;">The company that manages this account (e.g. Lorenco Accounting Services).</small>
                         </div>
                     </div>
                     <div class="form-row">
@@ -1399,7 +1399,7 @@
                         <span class="app-check-icon">🤖</span>
                         <span class="app-check-label">SEAN AI</span>
                     </label>
-                    <label class="app-check" id="editAppsInventoryWrap" style="display:none;" onclick="toggleAppCheck(this)" title="Only available for The Infinite Legacy clients">
+                    <label class="app-check" id="editAppsInventoryWrap" style="display:none;" onclick="toggleAppCheck(this)" title="Only for Lorenco's own clients">
                         <input type="checkbox" name="editApps" value="inventory">
                         <span class="app-check-icon">📦</span>
                         <span class="app-check-label">Stockton</span>
@@ -2351,13 +2351,9 @@
 
             if (companies.length === 0) return;
 
-            // For superusers, always prioritise "The Infinite Legacy" as primary
+            // For superusers, always prioritise the super profile (company 1, by ID) as primary
             if (isSuperAdmin) {
-                const isInfinite = c => {
-                    const n = (c.company_name || '').toLowerCase();
-                    const t = (c.trading_name || '').toLowerCase();
-                    return n.includes('infinite legacy') || t.includes('infinite legacy');
-                };
+                const isInfinite = c => Number(c.id) === 1;   // ECO_SUPER_COMPANY_ID (declared further down)
                 const infiniteIdx = companies.findIndex(isInfinite);
                 if (infiniteIdx > 0) {
                     const infiniteCo = companies.splice(infiniteIdx, 1)[0];
@@ -2974,10 +2970,14 @@
         const APP_ICONS = { pos: '🛒', payroll: '💰', accounting: '📊', sean: '🤖', inventory: '📦', practice: '🏛️' };
         const APP_LABELS = { pos: 'Checkout Charlie', payroll: 'Lorenco Paytime', accounting: 'Ledger Leo', sean: 'SEAN AI', inventory: 'Stockton', practice: 'Firmflow' };
 
-        // Returns true when the company is The Infinite Legacy — mirrors admin.html guard.
+        // Lorenco companies by ID (mirrors backend/shared/utils/ecoCompanies.js — change together):
+        // 1 = super users' profile ("Lorenco Ecosystem", was "The Infinite Legacy"),
+        // 38 = Lorenco Accounting Services, the practice holding Lorenco's clients.
+        const ECO_SUPER_COMPANY_ID = 1;
+        const STOCKTON_MANAGER_IDS = [1, 38];
+        // True when co may hand out Stockton to its clients — mirrors admin.html and the backend guard.
         function isTILCompany(co) {
-            if (!co) return false;
-            return co.company_name === 'The Infinite Legacy' || co.trading_name === 'The Infinite Legacy';
+            return !!co && STOCKTON_MANAGER_IDS.includes(Number(co.id));
         }
 
         // ── Toast ──
@@ -3566,7 +3566,7 @@
             // SEAN AI is only for individual clients
             const isIndividual = (client.client_type || '').toLowerCase() === 'individual';
 
-            // Inventory/Storehouse is only for clients managed under The Infinite Legacy.
+            // Stockton is only for clients managed by Lorenco Accounting Services or the super profile.
             // Clients in the dashboard are always scoped to selectedCompany (the managing practice),
             // so checking selectedCompany is the correct and sufficient guard.
             const isTIL = isTILCompany(selectedCompany);

@@ -11,6 +11,7 @@ const express = require('express');
 const { supabase } = require('../../config/database');
 const { authenticateToken, requireCompany, requirePermission, requireSuperAdmin } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
+const { companyMayUseStockton } = require('../utils/ecoCompanies');
 const { BASE_MODULES } = require('../../config/company-modules');
 const { hasPermission } = require('../../config/permissions');
 
@@ -190,13 +191,10 @@ router.post('/', async (req, res) => {
       ? modules_enabled
       : [...BASE_MODULES];
 
-    // Guard: Lorenco Storehouse (inventory) may only be enabled for The Infinite Legacy
+    // Guard: Stockton (inventory) only for Lorenco's own clients. A brand-new company is nobody's
+    // client yet, so Stockton is switched on after it is linked (shared/utils/ecoCompanies.js).
     if (resolvedModules.includes('inventory')) {
-      const isTIL = company_name === 'The Infinite Legacy' ||
-        (trading_name && trading_name === 'The Infinite Legacy');
-      if (!isTIL) {
-        return res.status(403).json({ error: 'Stockton can only be assigned under The Infinite Legacy.' });
-      }
+      return res.status(403).json({ error: 'Stockton is only available for Lorenco\'s own clients (managed by Lorenco Accounting Services or the Lorenco Ecosystem profile). Switch it on once the company is a Lorenco client.' });
     }
 
     const { data, error } = await supabase
@@ -380,14 +378,10 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
     }
     updates.updated_at = new Date().toISOString();
 
-    // Guard: Lorenco Storehouse (inventory) may only be enabled for The Infinite Legacy
+    // Guard: Stockton (inventory) only for Lorenco companies and their clients (by ID — ecoCompanies.js)
     if (Array.isArray(updates.modules_enabled) && updates.modules_enabled.includes('inventory')) {
-      const isTIL = old && (
-        old.company_name === 'The Infinite Legacy' ||
-        old.trading_name === 'The Infinite Legacy'
-      );
-      if (!isTIL) {
-        return res.status(403).json({ error: 'Stockton can only be assigned under The Infinite Legacy.' });
+      if (!old || !(await companyMayUseStockton(supabase, id))) {
+        return res.status(403).json({ error: 'Stockton is only available for Lorenco\'s own clients (managed by Lorenco Accounting Services or the Lorenco Ecosystem profile).' });
       }
     }
 

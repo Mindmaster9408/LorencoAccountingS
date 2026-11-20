@@ -25,6 +25,7 @@
 const { supabase } = require('../../config/database');
 const { sendEmail } = require('./email');
 const { priceFor } = require('../../config/app-pricing');
+const { isStocktonManager } = require('../utils/ecoCompanies');
 
 // Lazy — eco-clients.js requires this module too (create flow).
 const ecoClients = () => require('../routes/eco-clients');
@@ -113,9 +114,7 @@ function formatDateZA(dateStr) {
  */
 async function eligibility(client) {
   const out = {};
-  const { data: managing } = await supabase
-    .from('companies').select('company_name, trading_name').eq('id', client.company_id).maybeSingle();
-  const isTIL = !!managing && (managing.company_name === 'The Infinite Legacy' || managing.trading_name === 'The Infinite Legacy');
+  const isLorencoClient = isStocktonManager(client.company_id);   // by ID — shared/utils/ecoCompanies.js
   let holderType = null;
   if (client.client_company_id) {
     const { data: own } = await supabase
@@ -126,7 +125,7 @@ async function eligibility(client) {
 
   for (const key of REQUESTABLE_APPS) {
     let reason = null;
-    if (key === 'inventory' && !isTIL) reason = 'Stockton is only available for clients of The Infinite Legacy.';
+    if (key === 'inventory' && !isLorencoClient) reason = 'Stockton is only available for Lorenco\'s own clients.';
     if (key === 'practice' && holderType !== 'accounting_practice') reason = 'Firmflow is only for accounting practices.';
     if (key === 'sean' && !isIndividual) reason = 'SEAN AI is only for individual clients.';
     out[key] = { eligible: !reason, reason };

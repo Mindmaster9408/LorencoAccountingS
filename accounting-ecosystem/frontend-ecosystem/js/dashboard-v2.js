@@ -111,11 +111,11 @@ async function init() {
     companies = [];
   }
 
-  // Step 4: select primary company (super admin lands on Infinite Legacy)
+  // Step 4: select primary company (super admin lands on the super profile — company 1, by ID;
+  // mirrors backend/shared/utils/ecoCompanies.js)
   if (isSuperAdmin) {
-    selectedCompany = companies.find(c =>
-      c.company_name === 'The Infinite Legacy' || c.trading_name === 'The Infinite Legacy'
-    ) || companies.find(c => c.is_primary) || companies[0] || null;
+    selectedCompany = companies.find(c => Number(c.id) === 1)
+      || companies.find(c => c.is_primary) || companies[0] || null;
   } else {
     selectedCompany = companies.find(c => c.is_primary) || companies[0] || null;
   }

@@ -11,6 +11,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { isSuperCompany } = require('../utils/ecoCompanies');
 const { supabase } = require('../../config/database');
 const { authenticateToken, invalidateUserSessions, JWT_SECRET } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
@@ -198,11 +199,9 @@ router.post('/login', async (req, res) => {
 
     let selectedCompany = null;
     if (companyList.length >= 1) {
-      // Super admins always land on "The Infinite Legacy" as their home company
+      // Super admins always land on the super profile (company 1, "Lorenco Ecosystem" — by ID)
       if (isSuperAdmin) {
-        selectedCompany = companyList.find(c =>
-          c.company_name === 'The Infinite Legacy' || c.trading_name === 'The Infinite Legacy'
-        ) || companyList[0];
+        selectedCompany = companyList.find(c => isSuperCompany(c.id)) || companyList[0];
       } else {
         // Regular users: prefer primary company, otherwise first
         selectedCompany = companyList.find(c => c.is_primary) || companyList[0];
