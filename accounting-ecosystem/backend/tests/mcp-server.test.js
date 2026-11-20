@@ -171,9 +171,9 @@ describe('MCP server over HTTP', () => {
     const tools = r.body.result.tools;
     const write = tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name).sort();
     expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_account', 'create_allocation_rule',
-      'create_bank_account', 'create_customer', 'create_customer_invoice', 'create_supplier', 'create_supplier_invoice',
-      'flag_for_review', 'import_bank_statement_pdf', 'post_customer_invoice', 'reconcile_bank_transactions', 'reject_staged_transaction', 'sean_auto_allocate',
-      'stage_bank_transactions']);
+      'create_bank_account', 'create_customer', 'create_customer_invoice', 'create_journal', 'create_supplier', 'create_supplier_invoice',
+      'create_vat_code', 'flag_for_review', 'import_bank_statement_pdf', 'leo_request', 'post_customer_invoice', 'reconcile_bank_transactions',
+      'reject_staged_transaction', 'sean_auto_allocate', 'stage_bank_transactions']);
     expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ping', 'list_companies', 'get_trial_balance',
       'list_accounts', 'list_vat_settings', 'list_bank_transactions', 'get_sean_suggestions', 'list_bot_decisions', 'get_bot_policy']));
     expect(tools.every(t => t.inputSchema && t.inputSchema.type === 'object')).toBe(true);
@@ -348,39 +348,44 @@ describe('Codebox 3 controls', () => {
     afterAll(() => { global.fetch = realFetch; });
     const ctx = { user: { id: 10, email: 'bot@example.test' }, tokenId: 1 };
 
-    test('writes only on the bank allow-list; DELETE and everything else refused before anything is sent', async () => {
+    test('everything in Ledger Leo is allowed; other apps and the hard-block list are refused before anything is sent', async () => {
       const c = createClient();
-      for (const [m, p] of [['POST', '/api/accounting/journals'], ['DELETE', '/api/accounting/bank/transactions/1'],
-        ['DELETE', '/api/accounting/bank/transactions/1/allocate'], ['POST', '/api/accounting/periods/3/close'],
-        ['POST', '/api/accounting/year-end/close'], ['PUT', '/api/users/45'], ['POST', '/api/payroll/payruns'],
-        ['POST', '/api/accounting/bank/transactions/1/allocate/../../../journals'], ['PUT', '/api/accounting/bank/sean-settings']]) {
+      for (const [m, p] of [['PUT', '/api/users/45'], ['POST', '/api/payroll/payruns'], ['GET', '/api/payroll/employees'],
+        ['GET', '/api/pos/sales'], ['POST', '/api/accounting/bank/transactions/1/allocate/../../../journals'],
+        ['PUT', '/api/accounting/bank/sean-settings'], ['POST', '/api/accounting/customer-invoices/12/send'],
+        ['POST', '/api/accounting/vat-recon/periods/3/submit'], ['GET', '/api/accounting/paye/config'],
+        ['POST', '/api/accounting/bot-decisions/5/approve'], ['DELETE', '/api/accounting/company/51'],
+        ['POST', '/api/accounting/integrations'], ['TRACE', '/api/accounting/accounts']]) {
         await expect(c.request(ctx, 51, m, p, {})).rejects.toMatchObject({ status: 403 });
       }
       expect(seen).toEqual([]);
-      const { isAllowedCall } = require('../modules/mcp/lorencoApi');
-      expect(isAllowedCall('POST', '/api/accounting/bank/transactions/12/allocate')).toBe(false);   // only via the decision rules
-      expect(isAllowedCall('POST', '/api/accounting/bot-decisions/allocate')).toBe(true);
-      expect(isAllowedCall('POST', '/api/accounting/bot-decisions/exception')).toBe(true);
-      expect(isAllowedCall('POST', '/api/accounting/bot-decisions/5/approve')).toBe(false);          // people only
-      expect(isAllowedCall('PATCH', '/api/accounting/bank/staging/9/reject')).toBe(true);
-      expect(isAllowedCall('POST', '/api/accounting/bank/reconcile')).toBe(true);
-      // setup: create only — never edit or delete
-      for (const p of ['/api/accounting/accounts', '/api/accounting/bank/accounts', '/api/accounting/pos/customers', '/api/accounting/suppliers']) {
-        expect(isAllowedCall('POST', p)).toBe(true);
-        expect(isAllowedCall('PUT', p + '/3')).toBe(false);
-        expect(isAllowedCall('DELETE', p + '/3')).toBe(false);
+      const { isAllowedCall, blockReason } = require('../modules/mcp/lorencoApi');
+      // normal accountant work: edit, delete, void, payments, journals, periods, year-end
+      for (const [m, p] of [['POST', '/api/accounting/journals'], ['POST', '/api/accounting/journals/4/reverse'],
+        ['DELETE', '/api/accounting/bank/transactions/1'], ['DELETE', '/api/accounting/bank/transactions/1/allocate'],
+        ['POST', '/api/accounting/periods/3/lock'], ['POST', '/api/accounting/periods/3/unlock'], ['POST', '/api/accounting/year-end/close'],
+        ['PUT', '/api/accounting/accounts/3'], ['DELETE', '/api/accounting/accounts/3'], ['POST', '/api/accounting/vat-settings'],
+        ['POST', '/api/accounting/customer-invoices/12/void'], ['PUT', '/api/accounting/customer-invoices/12'],
+        ['POST', '/api/accounting/customer-invoices/payments'], ['POST', '/api/accounting/suppliers/payments'],
+        ['POST', '/api/accounting/credit-notes'], ['POST', '/api/accounting/quotes'], ['PUT', '/api/accounting/pos/customers/3'],
+        ['POST', '/api/accounting/bot-decisions/allocate'], ['PATCH', '/api/accounting/bank/staging/9/reject']]) {
+        expect([m, p, blockReason(m, p)]).toEqual([m, p, null]);
       }
-      expect(isAllowedCall('POST', '/api/accounting/accounts/3/merge')).toBe(false);
-      // invoices: create + post, never send / void / edit
-      expect(isAllowedCall('POST', '/api/accounting/customer-invoices')).toBe(true);
-      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/12/post')).toBe(true);
-      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/12/send')).toBe(false);
-      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/12/void')).toBe(false);
-      expect(isAllowedCall('PUT', '/api/accounting/customer-invoices/12')).toBe(false);
-      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/payments')).toBe(false);
-      expect(isAllowedCall('POST', '/api/accounting/suppliers/invoices')).toBe(true);
-      expect(isAllowedCall('POST', '/api/accounting/suppliers/invoices/4/void')).toBe(false);
-      expect(isAllowedCall('POST', '/api/accounting/suppliers/payments')).toBe(false);
+      // still closed
+      expect(isAllowedCall('POST', '/api/accounting/bank/transactions/12/allocate')).toBe(false);   // only via the decision rules
+      expect(isAllowedCall('PUT', '/api/accounting/bank/transactions/transfer')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/bank/staging/transfers/2/confirm')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/quotes/3/send')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/customer-statements/3/statement/send')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/recurring-plans/run')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/customer-invoices/12/billing-choice')).toBe(false);
+      expect(isAllowedCall('PUT', '/api/accounting/employees')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/pos/gl-sync/generate-invoice')).toBe(false);
+      expect(isAllowedCall('PUT', '/api/accounting/kv/x')).toBe(false);
+      expect(isAllowedCall('PUT', '/api/accounting/ai/settings')).toBe(false);
+      expect(isAllowedCall('POST', '/api/accounting/ai/actions/3/approve')).toBe(false);
+      expect(isAllowedCall('GET', '/api/accounting/%2e%2e/users')).toBe(false);
+      expect(isAllowedCall('GET', '/api/accounting/reports/trial-balance?fromDate=2026-03-01')).toBe(true);
     });
 
     test('an allowed write goes through select-company, then the POST with a JSON body', async () => {
@@ -662,5 +667,102 @@ describe('Invoice tools (fake Leo API)', () => {
       invoice_date: '2026-11-01', vat_inclusive: true, lines: [line({ account_id: 2, unit_price: 230 })], reason: 'Vodacom invoice VC-123' });
     expect(out).toMatchObject({ created: true, posted: true, invoice: { id: 11, invoice_number: 'VC-123' } });
     expect(calls.find(c => c.method === 'POST').body).toMatchObject({ supplierId: 5, invoiceNumber: 'VC-123', vatInclusive: true });
+  });
+});
+
+describe('Full Ledger Leo access — VAT codes, journals, reports, leo_routes / leo_request (fake Leo API)', () => {
+  const { TOOLS: T, validateArgs: V } = require('../modules/mcp/tools');
+  const tool = (n) => T.find(t => t.name === n);
+  let calls, replies;
+  const ctxOf = (policy) => ({ user: { id: 45 }, tokenId: 1, correlationId: 'c-1', policy: policy || {} });
+  const api = { async request(c, cid, method, path, body) {
+    calls.push({ method, path, body, cid });
+    const key = method + ' ' + path.split('?')[0];
+    const r = typeof replies[key] === 'function' ? replies[key](path, body) : replies[key];
+    if (r instanceof Error) throw r;
+    return r === undefined ? {} : r;
+  } };
+  beforeEach(() => { calls = []; replies = {}; });
+
+  test('create_vat_code posts the VAT setting', async () => {
+    replies['POST /api/accounting/vat-settings'] = { vatSetting: { id: 9 } };
+    const out = await tool('create_vat_code').run(api, ctxOf(), { company_id: 51, code: 'std', name: 'Standard 15%', rate: 15, reason: 'new client' });
+    expect(out).toEqual({ vatSetting: { id: 9 } });
+    expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/accounting/vat-settings', cid: 51,
+      body: { code: 'std', name: 'Standard 15%', rate: 15, is_capital: false } });
+  });
+
+  test('create_journal: refuses unbalanced or two-sided lines, creates + posts a balanced one', async () => {
+    const t = tool('create_journal');
+    const base = { company_id: 51, date: '2026-03-31', description: 'Depreciation', reason: 'month-end' };
+    await expect(t.run(api, ctxOf(), Object.assign({}, base, { lines: [{ account_id: 1, debit: 100 }, { account_id: 2, credit: 90 }] })))
+      .rejects.toMatchObject({ status: 400 });
+    await expect(t.run(api, ctxOf(), Object.assign({}, base, { lines: [{ account_id: 1, debit: 100, credit: 100 }, { account_id: 2, credit: 0 }] })))
+      .rejects.toMatchObject({ status: 400 });
+    expect(calls).toEqual([]);
+    replies['POST /api/accounting/journals'] = { id: 77, status: 'draft' };
+    replies['POST /api/accounting/journals/77/post'] = { id: 77, status: 'posted' };
+    const out = await t.run(api, ctxOf(), Object.assign({}, base, { post: true, lines: [{ account_id: 1, debit: 100 }, { account_id: 2, credit: 100 }] }));
+    expect(out).toMatchObject({ created: true, posted: true, journal: { id: 77, status: 'posted' } });
+    expect(calls[0].body.lines).toEqual([{ accountId: 1, debit: 100, credit: 0, description: null }, { accountId: 2, debit: 0, credit: 100, description: null }]);
+    expect(calls[0].body.idempotencyKey).toBe('mcp-c-1');
+  });
+
+  test('create_journal: a failed post returns the draft id instead of failing', async () => {
+    replies['POST /api/accounting/journals'] = { id: 78 };
+    replies['POST /api/accounting/journals/78/post'] = new Error('Period is locked');
+    const out = await tool('create_journal').run(api, ctxOf(), { company_id: 51, date: '2026-03-31', description: 'x', reason: 'y', post: true,
+      lines: [{ account_id: 1, debit: 5 }, { account_id: 2, credit: 5 }] });
+    expect(out).toMatchObject({ created: true, posted: false, journal_id: 78, post_error: 'Period is locked' });
+  });
+
+  test('get_report maps each report to the Leo route', async () => {
+    const t = tool('get_report');
+    await t.run(api, ctxOf(), { company_id: 51, report: 'profit_loss', start_date: '2026-03-01', end_date: '2026-03-31' });
+    await t.run(api, ctxOf(), { company_id: 51, report: 'balance_sheet', as_of_date: '2026-03-31' });
+    await t.run(api, ctxOf(), { company_id: 51, report: 'customer_aging', as_of_date: '2026-03-31' });
+    await t.run(api, ctxOf(), { company_id: 51, report: 'vat_report', period_key: '2026-03' });
+    expect(calls.map(c => c.path)).toEqual(['/api/accounting/reports/profit-loss?fromDate=2026-03-01&toDate=2026-03-31',
+      '/api/accounting/reports/balance-sheet?asOfDate=2026-03-31', '/api/accounting/customer-invoices/aging?asAt=2026-03-31',
+      '/api/accounting/vat/report?periodKey=2026-03']);
+    await expect(t.run(api, ctxOf(), { company_id: 51, report: 'profit_loss' })).rejects.toMatchObject({ status: 400 });
+  });
+
+  test('leo_routes lists Leo routes from the route files, without blocked ones', async () => {
+    const r = await tool('leo_routes').run(api, ctxOf(), {});
+    expect(r.count).toBeGreaterThan(150);
+    const paths = r.routes.map(x => x.method + ' ' + x.path);
+    expect(paths).toEqual(expect.arrayContaining(['POST /api/accounting/credit-notes', 'POST /api/accounting/journals/:id/reverse',
+      'POST /api/accounting/suppliers/payments', 'DELETE /api/accounting/accounts/:id', 'POST /api/accounting/periods/:id/lock']));
+    expect(paths.some(p => /\/send$|\/paye|\/employees|\/integrations|\/kv|pdf$/.test(p))).toBe(false);
+    const vat = (await tool('leo_routes').run(api, ctxOf(), { filter: 'vat-settings', method: 'POST' })).routes;
+    expect(vat.find(x => x.path === '/api/accounting/vat-settings').body).toEqual(expect.arrayContaining(['code', 'name', 'rate']));
+  });
+
+  test('leo_request: passes method, path, query and body; needs a reason to change data', async () => {
+    const t = tool('leo_request');
+    expect(V(t.inputSchema, { company_id: 51, method: 'GET', path: '/api/payroll/employees' })).toMatch(/path must look like/);
+    expect(V(t.inputSchema, { company_id: 51, method: 'POST', path: '/api/accounting/quotes', body: [1] })).toBe('body must be an object');
+    await expect(t.run(api, ctxOf(), { company_id: 51, method: 'POST', path: '/api/accounting/credit-notes', body: {} })).rejects.toMatchObject({ status: 400 });
+    await t.run(api, ctxOf(), { company_id: 51, method: 'POST', path: '/api/accounting/credit-notes/', body: { customerId: 3 }, reason: 'returned goods' });
+    await t.run(api, ctxOf(), { company_id: 51, method: 'GET', path: '/api/accounting/journals', query: { status: 'draft', limit: 5 } });
+    await t.run(api, ctxOf(), { company_id: 51, method: 'DELETE', path: '/api/accounting/accounts/9', body: { x: 1 }, reason: 'duplicate' });
+    expect(calls).toEqual([
+      { method: 'POST', path: '/api/accounting/credit-notes', body: { customerId: 3 }, cid: 51 },
+      { method: 'GET', path: '/api/accounting/journals?status=draft&limit=5', body: undefined, cid: 51 },
+      { method: 'DELETE', path: '/api/accounting/accounts/9', body: undefined, cid: 51 }]);
+  });
+
+  test('leo_request: routes with their own checks go through their tool; rules and Sean auto keep the key policy', async () => {
+    const t = tool('leo_request');
+    const r = { reason: 'x', company_id: 51 };
+    await expect(t.run(api, ctxOf(), Object.assign({ method: 'POST', path: '/api/accounting/bot-decisions/allocate' }, r))).rejects.toMatchObject({ status: 400 });
+    await expect(t.run(api, ctxOf(), Object.assign({ method: 'POST', path: '/api/accounting/bank/reconcile' }, r))).rejects.toMatchObject({ status: 400 });
+    await expect(t.run(api, ctxOf(), Object.assign({ method: 'DELETE', path: '/api/accounting/bank/rules/4' }, r))).rejects.toMatchObject({ status: 403 });
+    await expect(t.run(api, ctxOf(), Object.assign({ method: 'POST', path: '/api/accounting/bank/sean-auto-allocate' }, r))).rejects.toMatchObject({ status: 403 });
+    await expect(t.run(api, ctxOf(), Object.assign({ method: 'GET', path: '/api/accounting/reports/profit-loss/pdf' }, r))).rejects.toMatchObject({ status: 400 });
+    expect(calls).toEqual([]);
+    await t.run(api, ctxOf({ allow_create_rules: true }), Object.assign({ method: 'DELETE', path: '/api/accounting/bank/rules/4' }, r));
+    expect(calls.map(c => c.method + ' ' + c.path)).toEqual(['DELETE /api/accounting/bank/rules/4']);
   });
 });

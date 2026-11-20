@@ -27,17 +27,20 @@ const { createLimiter } = require('./rateLimit');
 const { TOOLS, validateArgs, toContent, rowsLimit, MAX_ROWS_DEFAULT } = require('./tools');
 
 const SUPPORTED_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const SERVER_INFO = { name: 'lorenco-ledger-leo', title: 'Lorenco Ledger Leo', version: '1.4.0' };
+const SERVER_INFO = { name: 'lorenco-ledger-leo', title: 'Lorenco Ledger Leo', version: '1.5.0' };
 const INSTRUCTIONS =
-  'You are working in Lorenco Ledger Leo as the user who created this key, with exactly that user\'s rights. ' +
-  'Start with list_companies, then pass company_id to the other tools. Read tools never change anything; ' +
-  'write tools (import, confirm, allocate, rules, reconcile) post through Ledger Leo exactly like a person on the Banking screens, ' +
-  'so only do them when you are sure. Bank statement flow: import_bank_statement_pdf → get_bank_import_status → ' +
+  'You are working in Lorenco Ledger Leo as the user who created this key, with exactly that user\'s rights — you are a normal user / bookkeeper, ' +
+  'and you can do ANY Ledger Leo task a person can do on the screens. Start with list_companies, then pass company_id to the other tools. ' +
+  'Use the dedicated tools for the common work; for everything else (edit, delete, void, credit notes, quotes, customer receipts, supplier payments, ' +
+  'journals, periods, year-end, opening balances, VAT periods …) find the route with leo_routes and do it with leo_request. ' +
+  'Never answer "I cannot do that" for a Ledger Leo task before checking leo_routes. Only these are closed: other apps (Paytime, Checkout Charlie, Stockton …), ' +
+  'e-mailing / sending to clients, SARS submissions, system settings and keys, users and permissions, AI / Sean settings, approving your own Bot Review items. ' +
+  'Write tools change the books exactly like a person, so be sure before you write and give a reason. Bank statement flow: import_bank_statement_pdf → get_bank_import_status → ' +
   'confirm_staged_transactions → get_sean_suggestions → allocate_bank_transaction → reconcile_bank_transactions. ' +
   'Decision order: an approved allocation rule first (never override it), then Sean’s recommendation, then evidence, then your own reasoned choice. ' +
   'Every allocation needs a reason; when you differ from Sean give disagreement_reason — it then waits for a person. ' +
   'Director/owner lines, transfers between own bank accounts and anything you are unsure of go to a person (flag_for_review). ' +
-  'Setup tools (create_account, create_bank_account, create_customer, create_supplier) only add new records — check the list tools first so you never create a duplicate, ' +
+  'Before creating anything (accounts, bank accounts, VAT codes, customers, suppliers, invoices) check the list first so you never create a duplicate, ' +
   'take bank opening balances from the statement, and never invent details you were not given. ' +
   'Invoices: customer invoices may be created and posted but NEVER e-mailed (a person sends them); supplier invoices are posted the moment they are captured, so only capture them from a real invoice. ' +
   'Finish with list_bot_decisions as your review report. ' +
@@ -111,6 +114,7 @@ function createMcpRouter(deps = {}) {
     const out = {};
     for (const [k, v] of Object.entries(args || {})) {
       if (k === 'pdf_base64') out[k] = '[pdf ' + Math.round(String(v).length * 0.75 / 1024) + ' KB]';
+      else if (k === 'body' && v && typeof v === 'object') out[k] = '{fields: ' + Object.keys(v).slice(0, 30).join(', ') + '}';
       else if (Array.isArray(v)) out[k] = v.length <= 20 && v.every(x => typeof x === 'number' || /^\d+$/.test(String(x))) ? v : '[' + v.length + ' items]';
       else if (typeof v === 'string' && v.length > 200) out[k] = v.slice(0, 200) + '…';
       else out[k] = v;

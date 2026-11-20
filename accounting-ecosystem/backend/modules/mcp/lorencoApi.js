@@ -43,40 +43,50 @@ class LorencoApiError extends Error {
 }
 
 /**
- * Phase 2 (Ruan 2026-11-19): the bot may WRITE, but only through this fixed list of Leo
- * routes — the same routes the Leo screens use, so Leo's permission checks, validation,
- * audit and Sean learning apply unchanged. Anything else that is not a GET is refused here,
- * whatever a tool asks for. DELETE is never allowed (deleting records is a prohibited
- * capability), and nothing for SARS, payments, periods, year-end, users or permissions.
+ * 2026-11-20 (Ruan): the bot is a normal Ledger Leo user — it may call ANY Ledger Leo route
+ * (/api/accounting/…), read or write, edit or delete, exactly like a person on the screens.
+ * Leo's own role and permission checks decide what this user may do. What stays closed here,
+ * whatever a tool asks for ("the other apps and matters"):
+ *   - every other app (Paytime, Checkout Charlie, Stockton, …) — nothing outside /api/accounting
+ *   - contacting clients (any /send, recurring billing that e-mails), SARS submissions
+ *   - system: integrations / keys, raw KV, diagnostics, pilot tools, company admin
+ *   - its own leash: AI / Sean settings, approving its own Bot Review items
+ *   - bank allocation and transfers only through the decision rules (rule > Sean > person)
  */
-const WRITE_ALLOWLIST = [
-  ['POST',  /^\/api\/accounting\/bank\/import\/pdf$/],
-  ['POST',  /^\/api\/accounting\/bank\/import$/],
-  ['POST',  /^\/api\/accounting\/bank\/staging\/confirm$/],
-  ['PATCH', /^\/api\/accounting\/bank\/staging\/\d+\/reject$/],
-  ['POST',  /^\/api\/accounting\/bank\/sean-suggestions$/],
-  ['POST',  /^\/api\/accounting\/bank\/sean-auto-allocate$/],
-  // Allocation ONLY through the bot decision rules (rule > Sean > person) — never the raw allocate route
-  ['POST',  /^\/api\/accounting\/bot-decisions\/allocate$/],
-  ['POST',  /^\/api\/accounting\/bot-decisions\/exception$/],
-  ['POST',  /^\/api\/accounting\/bank\/reconcile$/],
-  ['POST',  /^\/api\/accounting\/bank\/rules$/],
-  // Setup — create only, never edit/delete (2026-11-19)
-  ['POST',  /^\/api\/accounting\/accounts$/],
-  ['POST',  /^\/api\/accounting\/bank\/accounts$/],
-  ['POST',  /^\/api\/accounting\/pos\/customers$/],
-  ['POST',  /^\/api\/accounting\/suppliers$/],
-  // Invoices — customer: create + post, NEVER /send (people e-mail clients); supplier: create (= posted)
-  ['POST',  /^\/api\/accounting\/customer-invoices$/],
-  ['POST',  /^\/api\/accounting\/customer-invoices\/\d+\/post$/],
-  ['POST',  /^\/api\/accounting\/suppliers\/invoices$/]
+const W = 'WRITE', ANY = 'ANY';
+const HARD_BLOCK = [
+  [W,      /\/send$/,                                                   'e-mailing clients is done by a person — the bot never contacts clients'],
+  [W,      /^\/api\/accounting\/customer-invoices\/recurring-plans\/run$/, 'running recurring billing e-mails clients — a person does that'],
+  [W,      /^\/api\/accounting\/customer-invoices\/\d+\/billing-choice$/,  'monthly billing plans e-mail clients — a person sets them up'],
+  [W,      /^\/api\/accounting\/vat-recon\/periods\/[^/]+\/submit$/,       'SARS submissions are done by a person'],
+  [ANY,    /^\/api\/accounting\/paye(\/|$)/,                             'PAYE / payroll belongs to Paytime, which the bot does not use'],
+  [ANY,    /^\/api\/accounting\/employees(\/|$)/,                        'employees belong to Paytime, which the bot does not use'],
+  [ANY,    /^\/api\/accounting\/pos\/(?!customers(\/|$))/,               'Checkout Charlie (POS) is not available to the bot'],
+  [ANY,    /^\/api\/accounting\/(integrations|kv|diagnostics|pilot|pilot-smoke-tests)(\/|$)/, 'system settings, keys and integrations are not available to the bot'],
+  [W,      /^\/api\/accounting\/company(\/|$)/,                          'creating, changing or deleting companies is done by a person'],
+  [W,      /^\/api\/accounting\/(ai\/settings|bank\/sean-settings)$/,     'the bot cannot change AI / Sean settings'],
+  [W,      /^\/api\/accounting\/(bot-decisions|ai\/actions)\/\d+\/(approve|reject)$/, 'approving or rejecting bot / AI work is done by a person'],
+  ['POST', /^\/api\/accounting\/bank\/transactions\/\d+\/allocate$/,     'allocate bank lines with allocate_bank_transaction (approved rules, Sean and the approval rules apply)'],
+  ['PUT',  /^\/api\/accounting\/bank\/transactions\/transfer$/,          'transfers between own bank accounts wait for a person — use allocate_bank_transaction'],
+  ['POST', /^\/api\/accounting\/bank\/staging\/transfers\/\d+\/confirm$/, 'transfers between own bank accounts wait for a person — use allocate_bank_transaction']
 ];
-function isAllowedCall(method, path) {
-  const m = String(method).toUpperCase();
-  if (m === 'GET') return true;
-  const p = String(path).split('?')[0];
-  return WRITE_ALLOWLIST.some(([wm, re]) => wm === m && re.test(p));
+const LEO_PATH = /^\/api\/accounting\/[A-Za-z0-9._~\-/]*$/;
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+/** Why this call is refused, or null when it may go to Leo. */
+function blockReason(method, path) {
+  const m = String(method || '').toUpperCase();
+  if (!METHODS.includes(m)) return 'unsupported method ' + m;
+  const p = String(path || '').split('?')[0];
+  if (!LEO_PATH.test(p) || p.includes('..') || p.includes('//')) {
+    return 'only Ledger Leo (/api/accounting/…) is available to the bot — other apps are not';
+  }
+  for (const [bm, re, why] of HARD_BLOCK) {
+    if ((bm === ANY || (bm === W ? m !== 'GET' : bm === m)) && re.test(p)) return why;
+  }
+  return null;
 }
+const isAllowedCall = (method, path) => blockReason(method, path) === null;
 
 async function call(bearer, method, path, body) {
   const ctrl = new AbortController();
@@ -148,12 +158,11 @@ function createClient() {
       return r.data.token;
     },
 
-    /** Call a Lorenco API path as this user in this company. GET, or one of the
-     *  allow-listed bank write routes — anything else is refused before it is sent. */
+    /** Call a Ledger Leo API path as this user in this company. Anything on the hard-block
+     *  list (other apps, contacting clients, SARS, system) is refused before it is sent. */
     async request(ctx, companyId, method, path, body) {
-      if (!isAllowedCall(method, path)) {
-        throw new LorencoApiError(403, 'This action is not available through the bot connection');
-      }
+      const why = blockReason(method, path);
+      if (why) throw new LorencoApiError(403, 'Not available to the bot: ' + why);
       const token = await this.companyToken(ctx, companyId);
       const r = await call(token, method, path, body);
       if (!r.ok) {
@@ -170,4 +179,4 @@ function createClient() {
   };
 }
 
-module.exports = { createClient, mintUserJwt, LorencoApiError, baseUrl, isAllowedCall, WRITE_ALLOWLIST };
+module.exports = { createClient, mintUserJwt, LorencoApiError, baseUrl, isAllowedCall, blockReason, HARD_BLOCK };

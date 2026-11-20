@@ -8,8 +8,11 @@
  * staged lines, allocate, Sean suggestions / auto-allocate, allocation rules and bank
  * reconciliation. They call the SAME Leo routes as the screens (allow-listed in
  * lorencoApi.js), so Leo validates, posts, audits and Sean learns exactly as for a person.
- * Never built as tools: deleting records, SARS submissions, payments, period close/reopen,
- * final approval of financial statements, users/permissions, contacting clients.
+ * 2026-11-20 (Ruan): the bot is a normal Ledger Leo user — create_vat_code, create_journal,
+ * get_report, and leo_routes + leo_request for every other Leo route (edit, delete, void,
+ * payments, periods, year-end …). Still closed (hard-blocked in lorencoApi.js): other apps,
+ * contacting clients, SARS submissions, system/keys/company admin, users/permissions,
+ * AI/Sean settings, approving its own Bot Review items.
  */
 
 const MAX_ROWS_DEFAULT = 100;
@@ -113,7 +116,7 @@ const TOOLS = [
     async run(api, ctx) {
       return { status: 'ok', server: 'Lorenco Ledger Leo', version: ctx.serverVersion || null, mcp_enabled: true,
         connected_as: ctx.user.full_name || ctx.user.username || null, read_only: false,
-        note: 'Read tools, bank write tools and setup tools (create accounts, bank accounts, customers, suppliers); what you may do depends on this user\'s role in each company.' };
+        note: 'Full Ledger Leo access as this user: dedicated tools for the common work, and leo_routes + leo_request for EVERYTHING else (edit, delete, void, journals, payments, credit notes, quotes, periods, year-end …). What you may do depends on this user\'s role in each company.' };
     }
   },
   {
@@ -417,8 +420,10 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async run(api, ctx) {
       return { policy: ctx.policy || {}, always_needs_a_person: ['director / owner / shareholder lines', 'transfers between own bank accounts',
-        'allocations that differ from a confident Sean recommendation'], never_available: ['deleting records', 'SARS submissions',
-        'payments', 'closing or reopening periods', 'approving financial statements', 'changing users or permissions', 'contacting clients'] };
+        'allocations that differ from a confident Sean recommendation'], never_available: ['other apps (Paytime, Checkout Charlie, Stockton …)',
+        'e-mailing / sending anything to clients', 'SARS submissions', 'system settings, integrations and keys', 'changing users or permissions',
+        'changing AI / Sean settings', 'approving your own Bot Review items'],
+        everything_else: 'Any other Ledger Leo task is available — dedicated tools, or leo_routes + leo_request.' };
     }
   },
   {
@@ -792,8 +797,201 @@ const TOOLS = [
       // Leo's trial-balance contract: ?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD
       return api.request(ctx, a.company_id, 'GET', '/api/accounting/reports/trial-balance' + qs({ fromDate: a.start_date, toDate: a.end_date }));
     }
+  },
+
+  // ── Full Ledger Leo access (Ruan 2026-11-20: the bot is a normal user / accountant) ──────────
+  {
+    name: 'create_vat_code',
+    description: 'Add a VAT code to the company (e.g. standard 15%, zero-rated 0%, exempt, capital goods). Check list_vat_settings first — Leo refuses the same code with the same effective date.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      code: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,30}$', description: 'Short code, e.g. std, zero, exempt, cap' },
+      name: { type: 'string', description: 'e.g. "Standard rate 15%"' },
+      rate: { type: 'number', minimum: 0, maximum: 100, description: 'Percentage, e.g. 15' },
+      is_capital: { type: 'boolean', description: 'Capital goods VAT code' },
+      effective_from: isoDate, effective_to: isoDate,
+      reason: { type: 'string' }
+    }, required: ['company_id', 'code', 'name', 'rate', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      return api.request(ctx, a.company_id, 'POST', '/api/accounting/vat-settings', {
+        code: a.code, name: a.name, rate: Number(a.rate), is_capital: !!a.is_capital,
+        effective_from: a.effective_from, effective_to: a.effective_to });
+    }
+  },
+  {
+    name: 'create_journal',
+    description: 'Write a journal (manual journal entry). Debits must equal credits; every line has an account and EITHER a debit OR a credit. With post: true it is posted to the books straight away, otherwise it stays a draft (post it later with leo_request POST /api/accounting/journals/{id}/post). Leo refuses inactive / header accounts and locked periods.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      date: isoDate,
+      description: { type: 'string' },
+      reference: { type: 'string' },
+      lines: { type: 'array', minItems: 2, maxItems: 200, items: { type: 'object', properties: {
+        account_id: { type: 'integer' }, debit: { type: 'number', minimum: 0 }, credit: { type: 'number', minimum: 0 },
+        description: { type: 'string' }
+      }, required: ['account_id'], additionalProperties: false } },
+      post: { type: 'boolean', description: 'Post immediately (default false = draft)' },
+      reason: { type: 'string' }
+    }, required: ['company_id', 'date', 'description', 'lines', 'reason'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      let dr = 0, cr = 0;
+      const lines = a.lines.map((l, i) => {
+        const d = money(l.debit || 0), c = money(l.credit || 0);
+        if ((d > 0) === (c > 0)) throw apiError(400, `Line ${i + 1}: give either a debit or a credit (not both, not neither).`);
+        dr += d; cr += c;
+        return { accountId: Number(l.account_id), debit: d, credit: c, description: l.description || null };
+      });
+      if (money(dr) !== money(cr)) throw apiError(400, `Journal does not balance: debits ${money(dr)} vs credits ${money(cr)}.`);
+      const j = await api.request(ctx, a.company_id, 'POST', '/api/accounting/journals', {
+        date: a.date, description: a.description, reference: a.reference || null, sourceType: 'manual', lines,
+        metadata: { via: 'mcp', reason: a.reason }, idempotencyKey: 'mcp-' + (ctx.correlationId || Date.now()) });
+      if (!a.post) return { created: true, posted: false, journal: j };
+      try {
+        const p = await api.request(ctx, a.company_id, 'POST', `/api/accounting/journals/${j.id}/post`, {});
+        return { created: true, posted: true, journal: p };
+      } catch (e) {
+        return { created: true, posted: false, journal_id: j.id, post_error: e.message,
+          note_draft: `Journal ${j.id} was saved as a draft but not posted — fix the problem and post THAT draft; do not create it again.` };
+      }
+    }
+  },
+  {
+    name: 'get_report',
+    description: 'Ledger Leo financial reports, exactly as the Reports screens calculate them: profit_loss, balance_sheet, cash_flow, general_ledger (one account, or all), trial_balance, vat_report (one VAT period), customer_aging, supplier_aging, control_accounts (debtors/creditors control vs sub-ledger), unallocated_bank.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      report: { type: 'string', enum: ['profit_loss', 'balance_sheet', 'cash_flow', 'general_ledger', 'trial_balance', 'vat_report',
+        'customer_aging', 'supplier_aging', 'control_accounts', 'unallocated_bank'] },
+      start_date: isoDate, end_date: isoDate,
+      as_of_date: Object.assign({}, isoDate, { description: 'YYYY-MM-DD — balance sheet / aging date (default: end_date or today)' }),
+      account_id: { type: 'integer', description: 'general_ledger: one account (leave out for the full ledger)' },
+      period_key: { type: 'string', description: 'vat_report: the VAT period key (see leo_request GET /api/accounting/vat-recon/periods)' }
+    }, required: ['company_id', 'report'], additionalProperties: false },
+    async run(api, ctx, a) {
+      const from = a.start_date, to = a.end_date, asOf = a.as_of_date || a.end_date || today();
+      const need = (...k) => { for (const x of k) if (!a[x]) throw apiError(400, `${a.report} needs ${k.join(' and ')}`); };
+      const base = '/api/accounting';
+      let path;
+      switch (a.report) {
+        case 'profit_loss': need('start_date', 'end_date'); path = base + '/reports/profit-loss' + qs({ fromDate: from, toDate: to }); break;
+        case 'balance_sheet': path = base + '/reports/balance-sheet' + qs({ asOfDate: asOf, fromDate: from }); break;
+        case 'cash_flow': need('start_date', 'end_date'); path = base + '/reports/cash-flow' + qs({ fromDate: from, toDate: to }); break;
+        case 'general_ledger': need('start_date', 'end_date');
+          path = base + (a.account_id ? '/reports/general-ledger' : '/reports/general-ledger/full') + qs({ accountId: a.account_id, fromDate: from, toDate: to }); break;
+        case 'trial_balance': need('start_date', 'end_date'); path = base + '/reports/trial-balance' + qs({ fromDate: from, toDate: to }); break;
+        case 'vat_report': need('period_key'); path = base + '/vat/report' + qs({ periodKey: a.period_key }); break;
+        case 'customer_aging': path = base + '/customer-invoices/aging' + qs({ asAt: asOf }); break;
+        case 'supplier_aging': path = base + '/suppliers/aging' + qs({ asAt: asOf }); break;
+        case 'control_accounts': path = base + '/reports/control-account-reconciliation' + qs({ asAt: asOf }); break;
+        case 'unallocated_bank': path = base + '/reports/unallocated-bank-transactions'; break;
+      }
+      return api.request(ctx, a.company_id, 'GET', path);
+    }
+  },
+  {
+    name: 'leo_routes',
+    description: 'The list of EVERYTHING you can do in Ledger Leo through leo_request: every route (method + path) with the body / query fields it reads. Search it with "filter" (e.g. "credit-notes", "journals", "payments", "periods", "quotes", "suppliers"). Use it whenever there is no dedicated tool for a task — never tell the user something cannot be done before checking here.',
+    inputSchema: { type: 'object', properties: {
+      filter: { type: 'string', description: 'Words to match in the path, e.g. "credit-notes" or "void"' },
+      method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }
+    }, additionalProperties: false },
+    async run(api, ctx, a) {
+      const words = String(a.filter || '').toLowerCase().split(/\s+/).filter(Boolean);
+      const rows = leoRouteCatalogue().filter(r => (!a.method || r.method === a.method) &&
+        words.every(w => r.path.toLowerCase().includes(w)));
+      return { count: rows.length, routes: rows,
+        how: 'Call leo_request with method, path (replace :id etc. with real ids), query and body. Field names are as Leo reads them; when unsure, GET an existing record first and copy its shape. Leo\'s error message tells you what is missing.' };
+    }
+  },
+  {
+    name: 'leo_request',
+    description: 'Do ANY task in Ledger Leo as this user, like a person on the screens: edit or delete records, void or credit invoices, record customer receipts and supplier payments, quotes, credit notes, purchase orders, journals (edit / post / reverse), periods (lock / unlock), year-end, opening balances, VAT periods and reconciliations, segments, items, bank (unallocate, unreconcile, flip sign, add lines), and every read. Find the route with leo_routes. Leo checks this user\'s permissions and validates everything. Not available: other apps (Paytime, Checkout Charlie …), e-mailing / sending to clients, SARS submissions, system settings and keys, approving your own Bot Review items.',
+    inputSchema: { type: 'object', properties: {
+      company_id: companyIdProp,
+      method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+      path: { type: 'string', pattern: '^/api/accounting/[A-Za-z0-9._~\\-/]+$', description: 'e.g. /api/accounting/credit-notes or /api/accounting/journals/123/reverse' },
+      query: { type: 'object', description: 'Query-string values, e.g. {"fromDate":"2026-03-01"}' },
+      body: { type: 'object', description: 'JSON body for POST / PUT / PATCH' },
+      reason: { type: 'string', description: 'Why (required for anything that changes data)' }
+    }, required: ['company_id', 'method', 'path'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      const m = a.method, p = a.path.replace(/\/+$/, '');
+      if (m !== 'GET' && !(a.reason && String(a.reason).trim())) throw apiError(400, 'reason is required for anything that changes data');
+      if (m === 'GET' && /\/(pdf|file|download)$/.test(p)) throw apiError(400, 'PDF / file downloads are not available through the bot — use the same route without /pdf for the data.');
+      // Tasks that have their own tool with extra checks go through that tool.
+      if (m === 'POST' && /^\/api\/accounting\/bot-decisions\/(allocate|exception)$/.test(p)) throw apiError(400, 'Use allocate_bank_transaction / flag_for_review for this.');
+      if (m === 'POST' && p === '/api/accounting/bank/reconcile') throw apiError(400, 'Use reconcile_bank_transactions (it checks the statement balance first).');
+      if (m !== 'GET' && /^\/api\/accounting\/bank\/rules(\/|$)/.test(p)) requirePolicy(ctx, 'allow_create_rules', 'Creating or changing allocation rules');
+      if (m === 'POST' && p === '/api/accounting/bank/sean-auto-allocate') requirePolicy(ctx, 'allow_sean_auto', 'Letting Sean allocate by himself');
+      const q = {};
+      for (const [k, v] of Object.entries(a.query || {})) {
+        if (v !== null && typeof v === 'object') throw apiError(400, `query.${k} must be a plain value`);
+        q[k] = v;
+      }
+      return api.request(ctx, a.company_id, m, p + qs(q), m === 'GET' || m === 'DELETE' ? undefined : (a.body || {}));
+    }
   }
 ];
+
+/**
+ * Every Ledger Leo route, read from the route files themselves (so it never goes stale):
+ * mount prefix from modules/accounting/index.js + router.<method>('<path>') per file, with the
+ * req.body / req.query fields the handler destructures. Routes the bot may not use are left out.
+ */
+let _catalogue = null;
+function leoRouteCatalogue() {
+  if (_catalogue) return _catalogue;
+  const fs = require('fs');
+  const path = require('path');
+  const { blockReason } = require('./lorencoApi');
+  const dir = path.join(__dirname, '..', 'accounting');
+  const fields = (seg, src) => {
+    const out = new Set();
+    const re = new RegExp('const\\s*\\{([^}]+)\\}\\s*=\\s*req\\.' + src, 'g');
+    let m;
+    while ((m = re.exec(seg))) {
+      for (const part of m[1].split(',')) {
+        const name = part.split(/[:=]/)[0].trim();
+        if (/^[A-Za-z_$][\w$]*$/.test(name)) out.add(name);
+      }
+    }
+    const re2 = new RegExp('req\\.' + src + '\\.([A-Za-z_$][\\w$]*)', 'g');
+    while ((m = re2.exec(seg))) out.add(m[1]);
+    return [...out];
+  };
+  const rows = [];
+  let index = '';
+  try { index = fs.readFileSync(path.join(dir, 'index.js'), 'utf8'); } catch (_) { index = ''; }
+  const mountRe = /router\.use\(\s*'([^']+)'\s*,\s*require\('\.\/routes\/([^']+?)(?:\.js)?'\)\s*\)/g;
+  let mm;
+  while ((mm = mountRe.exec(index))) {
+    const prefix = '/api/accounting' + mm[1];
+    let src = '';
+    try { src = fs.readFileSync(path.join(dir, 'routes', mm[2] + '.js'), 'utf8'); } catch (_) { continue; }
+    const routeRe = /router\.(get|post|put|patch|delete)\(\s*'([^']+)'/g;
+    const hits = [];
+    let r;
+    while ((r = routeRe.exec(src))) hits.push({ method: r[1].toUpperCase(), sub: r[2], at: r.index });
+    hits.forEach((h, i) => {
+      const seg = src.slice(h.at, i + 1 < hits.length ? hits[i + 1].at : src.length);
+      const sub = h.sub.replace(/\([^)]*\)/g, '');
+      const full = (prefix + (sub === '/' ? '' : sub)).replace(/\/+$/, '') || prefix;
+      if (/\/(pdf|file|download)$/.test(full)) return;
+      if (blockReason(h.method, full.replace(/:[A-Za-z]+/g, '1'))) return;
+      const row = { method: h.method, path: full };
+      const b = h.method === 'GET' || h.method === 'DELETE' ? [] : fields(seg, 'body');
+      const q = fields(seg, 'query');
+      if (b.length) row.body = b;
+      if (q.length) row.query = q;
+      rows.push(row);
+    });
+  }
+  _catalogue = rows;
+  return rows;
+}
 
 /** Minimal JSON-schema check for our tool schemas. Returns an error string or null. */
 function checkValue(p, v, k) {
@@ -801,6 +999,7 @@ function checkValue(p, v, k) {
   if (p.type === 'number' && !(typeof v === 'number' ? isFinite(v) : (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v))))) return `${k} must be a number`;
   if (p.type === 'boolean' && typeof v !== 'boolean') return `${k} must be true or false`;
   if (p.type === 'string' && typeof v !== 'string') return `${k} must be text`;
+  if (p.type === 'object' && !p.properties && (typeof v !== 'object' || Array.isArray(v))) return `${k} must be an object`;
   if (p.enum && !p.enum.includes(v)) return `${k} must be one of: ${p.enum.join(', ')}`;
   if (p.pattern && !new RegExp(p.pattern).test(String(v))) return `${k} must look like ${p.description || p.pattern}`;
   if (p.minimum != null && Number(v) < p.minimum) return `${k} must be at least ${p.minimum}`;
