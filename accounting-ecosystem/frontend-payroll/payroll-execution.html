@@ -604,11 +604,14 @@
 
                     <!-- Actions -->
                     <div class="run-actions">
-                        <div id="finalize-section">
+                        <div id="finalize-section" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                             <button class="btn btn-success btn-lg" id="finalize-btn"
                                     data-permission="FINALIZE_PAYRUN"
                                     onclick="openFinalizeModal()">
                                 ✓ Finalize Payroll
+                            </button>
+                            <button type="button" class="btn btn-outline" id="draft-payslips-btn" onclick="downloadDraftPayslips()">
+                                📄 Draft payslips
                             </button>
                         </div>
                         <div id="finalized-badge" style="display:none; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -1713,7 +1716,7 @@
             // Show reverse + bulk print buttons for finalized runs in history
             if (isFinalized && !isReversed) {
                 actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
-                    'onclick="bulkPrintPayslips(\'' + esc(runId) + '\')">🖨 Bulk Print Payslips</button>';
+                    'onclick="bulkPrintPayslips(\'' + esc(runId) + '\')">🧾 Download payslips</button>';
                 actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
                     'onclick="openBankFile(\'' + esc(runId) + '\')">🏦 Bank File</button>';
                 actionBtns += '<button type="button" class="btn btn-outline btn-sm" ' +
@@ -2041,15 +2044,115 @@
         showToast('Bank file created: ' + result.count + ' payment(s), ' + fmt(result.total), 'success');
     }
 
+    // ── Payslip download (Ruan 2026-11-22): finalized payslips (History / Reports) and draft
+    // payslips of the current run, with a choice of employees. Reads existing snapshots only —
+    // no calculation, nothing written. The browser's Print window → "Save as PDF" gives one PDF.
+    var _isFinalSnap = function (sn) { return sn && sn.is_locked && sn.status !== 'reversed'; };
+
     function bulkPrintPayslips(runId) {
         var cached = _statutoryCache[runId];
         if (!cached || !cached.snapshots || !cached.snapshots.length) {
-            alert('Payslip data not loaded yet. Please wait for the run panel to finish loading and try again.');
+            showToast('Payslip data not loaded yet — wait for the panel to finish loading and try again.', 'warning');
             return;
         }
-        var snaps     = cached.snapshots;
-        var periodKey = cached.periodKey || '';
+        var finals = cached.snapshots.filter(_isFinalSnap);
+        if (!finals.length) { showToast('No finalized payslips in this view.', 'warning'); return; }
+        openPayslipPicker(finals, cached.periodKey || '', false);
+    }
 
+    async function downloadDraftPayslips() {
+        if (!state.currentRunId || !state.periodKey) { showToast('Run payroll first.', 'warning'); return; }
+        var btn = document.getElementById('draft-payslips-btn');
+        if (btn) btn.disabled = true;
+        try {
+            var res = await PayrollAPI.getHistory(state.periodKey);
+            if (!res.ok || !res.data.success) { showToast((res.data && res.data.error) || 'Could not load the draft payslips.', 'error'); return; }
+            var snaps = (res.data.snapshots || []).filter(function (sn) {
+                return String(sn.payroll_run_id) === String(state.currentRunId) && sn.status !== 'reversed';
+            });
+            if (!snaps.length) { showToast('No payslips found for this run.', 'warning'); return; }
+            var anyDraft = snaps.some(function (sn) { return !sn.is_locked; });
+            openPayslipPicker(snaps, state.periodKey, anyDraft);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    function openPayslipPicker(snaps, periodKey, isDraft) {
+        var old = document.getElementById('payslip-picker');
+        if (old) old.remove();
+        var rows = snaps.map(function (sn) {
+            var emp = getEmployee(sn.employee_id);
+            return {
+                snap: sn,
+                num: (emp && emp.employee_number) ? String(emp.employee_number) : '',
+                name: emp ? ((emp.first_name || '') + ' ' + (emp.last_name || '')).trim() : 'Employee #' + sn.employee_id,
+                net: Number((sn.calculation_output || {}).net || 0)
+            };
+        }).sort(function (a, b) { return (a.num || a.name).localeCompare(b.num || b.name, undefined, { numeric: true }); });
+
+        var overlay = document.createElement('div');
+        overlay.id = 'payslip-picker';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        var list = rows.map(function (r, i) {
+            return '<label style="display:flex;gap:10px;align-items:center;padding:6px 4px;border-bottom:1px solid rgba(128,128,128,0.2);cursor:pointer;">' +
+                '<input type="checkbox" class="pp-cb" data-i="' + i + '" checked>' +
+                '<span style="min-width:70px;opacity:0.75;">' + esc(r.num) + '</span>' +
+                '<span style="flex:1;">' + esc(r.name) + '</span>' +
+                '<span style="font-variant-numeric:tabular-nums;">R ' + r.net.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</span></label>';
+        }).join('');
+        overlay.innerHTML =
+            '<div style="background:#16162a;color:#e6e6f0;border:1px solid #33335a;border-radius:12px;width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;">' +
+                '<div style="padding:16px 18px;border-bottom:1px solid #33335a;">' +
+                    '<div style="font-size:1.1rem;font-weight:700;">' + (isDraft ? '📄 Draft payslips' : '🧾 Payslips') + ' — ' + esc(periodKey) + '</div>' +
+                    '<div style="font-size:0.85rem;opacity:0.75;margin-top:4px;">' + (isDraft
+                        ? 'Not finalized yet — every page is marked DRAFT.'
+                        : 'Finalized payslips.') + ' Choose who to include, then use “Save as PDF” in the print window.</div>' +
+                '</div>' +
+                '<div style="padding:8px 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+                    '<button type="button" class="btn btn-outline btn-sm" id="pp-all">Select all</button>' +
+                    '<button type="button" class="btn btn-outline btn-sm" id="pp-none">Select none</button>' +
+                    '<input type="text" id="pp-filter" placeholder="Search name or number" style="flex:1;min-width:140px;padding:6px 8px;border-radius:6px;border:1px solid #33335a;background:#0f0f1f;color:#e6e6f0;">' +
+                '</div>' +
+                '<div id="pp-list" style="overflow:auto;padding:0 18px;flex:1;">' + list + '</div>' +
+                '<div style="padding:14px 18px;border-top:1px solid #33335a;display:flex;justify-content:space-between;align-items:center;gap:10px;">' +
+                    '<span id="pp-count" style="font-size:0.85rem;opacity:0.8;"></span>' +
+                    '<span style="display:flex;gap:8px;">' +
+                        '<button type="button" class="btn btn-outline" id="pp-cancel">Cancel</button>' +
+                        '<button type="button" class="btn btn-primary" id="pp-go">Download</button>' +
+                    '</span>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(overlay);
+
+        var cbs = function () { return Array.prototype.slice.call(overlay.querySelectorAll('.pp-cb')); };
+        var refresh = function () {
+            var n = cbs().filter(function (c) { return c.checked; }).length;
+            overlay.querySelector('#pp-count').textContent = n + ' of ' + rows.length + ' selected';
+            overlay.querySelector('#pp-go').disabled = n === 0;
+        };
+        var visible = function (c) { return c.closest('label').style.display !== 'none'; };
+        overlay.querySelector('#pp-all').onclick = function () { cbs().forEach(function (c) { if (visible(c)) c.checked = true; }); refresh(); };
+        overlay.querySelector('#pp-none').onclick = function () { cbs().forEach(function (c) { if (visible(c)) c.checked = false; }); refresh(); };
+        overlay.querySelector('#pp-filter').oninput = function () {
+            var q = this.value.toLowerCase().trim();
+            cbs().forEach(function (c) {
+                var r = rows[Number(c.getAttribute('data-i'))];
+                c.closest('label').style.display = !q || (r.name + ' ' + r.num).toLowerCase().indexOf(q) >= 0 ? 'flex' : 'none';
+            });
+        };
+        overlay.querySelector('#pp-list').onchange = refresh;
+        overlay.querySelector('#pp-cancel').onclick = function () { overlay.remove(); };
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+        overlay.querySelector('#pp-go').onclick = function () {
+            var chosen = cbs().filter(function (c) { return c.checked; }).map(function (c) { return rows[Number(c.getAttribute('data-i'))].snap; });
+            overlay.remove();
+            printPayslipSnapshots(chosen, periodKey, isDraft);   // opened from this click → not popup-blocked
+        };
+        refresh();
+    }
+
+    function printPayslipSnapshots(snaps, periodKey, isDraft) {
         var pages = '';
         snaps.forEach(function(snap, idx) {
             var emp  = getEmployee(snap.employee_id);
@@ -2129,8 +2232,10 @@
             }
 
             var pageBreak = idx < snaps.length - 1 ? 'page-break' : '';
+            var draftPage = isDraft && !snap.is_locked;
             pages +=
-                '<div class="payslip ' + pageBreak + '">' +
+                '<div class="payslip ' + pageBreak + (draftPage ? ' draft' : '') + '">' +
+                (draftPage ? '<div class="ps-draft-banner">DRAFT — not finalized, figures may still change</div>' : '') +
                 '<div class="ps-header">' +
                     '<div class="ps-company">' + esc(_companyNameForPrint()) + '</div>' +
                     '<div class="ps-title">EMPLOYEE PAYSLIP</div>' +
@@ -2163,7 +2268,7 @@
         win.document.write(
             '<!DOCTYPE html><html><head>' +
             '<meta charset="utf-8">' +
-            '<title>Payslips — ' + periodKey + '</title>' +
+            '<title>' + (isDraft ? 'DRAFT payslips' : 'Payslips') + ' — ' + periodKey + '</title>' +
             '<style>' +
             'body{font-family:Arial,sans-serif;margin:0;color:#222;}' +
             '.payslip{max-width:680px;margin:32px auto;padding:28px 32px;border:1px solid #ccc;box-sizing:border-box;}' +
@@ -2183,6 +2288,9 @@
             'tr.subtotal td{font-weight:700;border-top:2px solid #ccc;border-bottom:2px solid #ccc;background:#fafafa;}' +
             '.ps-net{display:flex;justify-content:space-between;font-size:1.05rem;font-weight:700;padding:10px 10px;background:#e8f5e9;border:2px solid #388e3c;margin-top:4px;}' +
             '.note{font-size:0.78rem;color:#856404;background:#fff3cd;padding:6px 10px;border-radius:4px;margin-top:8px;}' +
+            '.payslip{position:relative;}' +
+            '.payslip.draft::after{content:"DRAFT";position:absolute;top:38%;left:0;right:0;text-align:center;font-size:110px;font-weight:800;color:rgba(198,40,40,0.13);transform:rotate(-28deg);pointer-events:none;}' +
+            '.ps-draft-banner{background:#fdecea;color:#c62828;border:1px solid #f5c2c0;text-align:center;font-weight:700;font-size:0.8rem;padding:5px;margin-bottom:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
             '@media print{' +
             'body{margin:0;}' +
             '.payslip{border:none;margin:0;padding:20px 24px;max-width:100%;}' +
@@ -2347,7 +2455,10 @@
 
         var safeId = esc(runId);
         var html = '<div class="statutory-returns-section">' +
-            '<div class="statutory-returns-title">📋 Statutory Returns</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+                '<div class="statutory-returns-title">📋 Statutory Returns</div>' +
+                '<button type="button" class="btn btn-outline btn-sm" onclick="bulkPrintPayslips(\'' + safeId + '\')">🧾 Download payslips</button>' +
+            '</div>' +
             '<div class="statutory-returns-grid">';
 
         html += _buildReturnCard('EMP201',    'Monthly Employer Declaration to SARS',

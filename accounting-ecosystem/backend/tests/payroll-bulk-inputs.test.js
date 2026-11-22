@@ -13,7 +13,8 @@ const masters = [
   { id: 4, item_name: 'Commission', item_type: 'income', affects_uif: null, is_active: true },
   { id: 5, item_name: 'Provident Fund Employer', item_type: 'employer_contribution', is_active: true },
   { id: 6, item_name: 'Old Item', item_type: 'deduction', is_active: false },
-  { id: 7, item_name: 'Advance', item_type: 'deduction', affects_uif: false, is_active: true }
+  { id: 7, item_name: 'Advance', item_type: 'deduction', affects_uif: false, is_active: true },
+  { id: 8, item_code: 'BASIC', item_name: 'Basic Salary', item_type: 'earning', category: 'salary', is_active: true }
 ];
 const employees = [
   { id: 10, employee_number: 'E001', first_name: 'Ann', last_name: 'A', is_active: true },
@@ -64,6 +65,19 @@ describe('suggestTarget / checkMapping', () => {
     const bad = B.checkMapping({ a: { target: 'item', master_item_id: 99 }, b: { target: 'item', master_item_id: 6 },
       c: { target: 'item', master_item_id: 5 }, d: { target: 'overtime', rate: 5 }, e: { target: 'x' } }, masters);
     expect(bad).toHaveLength(5);
+  });
+});
+
+describe('basic salary is never a monthly input', () => {
+  test('not suggested, refused in the mapping (it would be paid twice)', () => {
+    expect(B.isBasicSalary(masters[7])).toBe(true);
+    expect(B.isBasicSalary({ item_name: 'Basic salary', item_type: 'earning' })).toBe(true);
+    expect(B.isBasicSalary(masters[0])).toBe(false);
+    expect(B.inputSide(masters[7])).toBeNull();
+    expect(B.suggestTarget('Basic Salary', masters)).toEqual({ target: 'ignore' });
+    const errs = B.checkMapping({ Basic: { target: 'item', master_item_id: 8 } }, masters);
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toMatch(/pay it twice/);
   });
 });
 

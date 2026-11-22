@@ -52,8 +52,21 @@ function parseValue(v) {
   return Number.isFinite(n) ? r2(n) : NaN;
 }
 
+/**
+ * The basic salary item. It is paid from each employee's record (employees.basic_salary /
+ * salary history), so as a monthly input it would be paid TWICE (2026-11-22: a Turkstra file
+ * with a "Basic" column did exactly that). Never a monthly input.
+ */
+function isBasicSalary(master) {
+  if (!master) return false;
+  return String(master.category || '').toLowerCase() === 'salary'
+    || String(master.item_code || '').toUpperCase() === 'BASIC'
+    || String(master.item_name || '').toLowerCase().trim() === 'basic salary';
+}
+
 /** Input side for a Payroll Items row; null = cannot be a monthly input. */
 function inputSide(master) {
+  if (isBasicSalary(master)) return null;
   const t = String((master && master.item_type) || '').toLowerCase();
   if (t === 'deduction') return 'deduction';
   if (t === 'employer_contribution' || t === 'company_contribution') return null;
@@ -89,6 +102,7 @@ function checkMapping(mapping, masters) {
       const master = (masters || []).find(x => String(x.id) === String(m.master_item_id));
       if (!master) errors.push(`Column "${col}": the payroll item does not exist in this company`);
       else if (master.is_active === false) errors.push(`Column "${col}": "${master.item_name}" is inactive`);
+      else if (isBasicSalary(master)) errors.push(`Column "${col}": the basic salary comes from each employee's record — importing it would pay it twice. Set this column to "do not import".`);
       else if (!inputSide(master)) errors.push(`Column "${col}": "${master.item_name}" is an employer contribution, not a monthly input`);
     } else if (m.target === 'overtime') {
       const rate = m.rate == null ? 1.5 : Number(m.rate);
@@ -239,7 +253,7 @@ async function allRows(makeQuery, what) {
 
 async function loadMasters(supabase, companyId) {
   const { data, error } = await supabase.from('payroll_items_master')
-    .select('id, item_name, item_type, affects_uif, irp5_code, is_active')
+    .select('id, item_code, item_name, item_type, category, affects_uif, irp5_code, is_active')
     .eq('company_id', companyId);
   if (error) throw new Error('Could not load payroll items: ' + error.message);
   return data || [];
@@ -282,8 +296,10 @@ async function runBulkInputs(supabase, { companyId, periodKey, rows, mapping, dr
   const out = Object.assign({ dry_run: !!dryRun || plan.errors.length > 0, period_key: periodKey }, plan);
   if (dryRun || plan.errors.length) return out;
 
+  // Employees are independent (each table write is its own transaction), so a few run side by
+  // side — 32 employees one after the other took about a minute and looked like a frozen page.
   const written = [], failed = [];
-  for (const pl of plan.plans) {
+  const writeOne = async (pl) => {
     try {
       const base = { companyId, employeeId: pl.employee_id, periodId: period.id, periodKey };
       if (pl.inputs) await replacePeriodRows(supabase, Object.assign({ table: 'payroll_period_inputs', rows: pl.inputs }, base));
@@ -293,8 +309,12 @@ async function runBulkInputs(supabase, { companyId, periodKey, rows, mapping, dr
     } catch (e) {
       failed.push({ employee_number: pl.employee_number, message: e.message });
     }
+  };
+  const PARALLEL = 6;
+  for (let i = 0; i < plan.plans.length; i += PARALLEL) {
+    await Promise.all(plan.plans.slice(i, i + PARALLEL).map(writeOne));
   }
   return Object.assign(out, { written, failed });
 }
 
-module.exports = { parseValue, inputSide, suggestTarget, checkMapping, buildPlan, loadMasters, runBulkInputs };
+module.exports = { parseValue, isBasicSalary, inputSide, suggestTarget, checkMapping, buildPlan, loadMasters, runBulkInputs };

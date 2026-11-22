@@ -8,6 +8,43 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0b14; color: #e6e6f0; min-height: 100vh; padding: 20px; }
         .wrapper { display: flex; gap: 20px; max-width: 1600px; margin: 0 auto; position: relative; z-index: 1; }
+
+        /* SIDEBAR — sidebar.js only builds the HTML; every Paytime page carries
+           these layout rules itself (dark-theme.css recolours them). Same block
+           as attendance.html / employees.html. */
+        .sidebar {
+            width: 300px; background: white; border-radius: 15px;
+            padding: 25px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            height: fit-content; position: sticky; top: 20px; flex-shrink: 0;
+        }
+        .sidebar-header { padding: 0 20px 20px; border-bottom: 2px solid #eee; }
+        .sidebar-title { color: #667eea; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        .sidebar-section { margin-top: 20px; }
+        .sidebar-section-title {
+            padding: 10px 20px; color: #999; font-size: 0.75rem;
+            font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .sidebar-link {
+            display: block; padding: 12px 20px; color: #666; text-decoration: none;
+            transition: all 0.2s; border-left: 3px solid transparent; font-weight: 500;
+        }
+        .sidebar-link:hover { background: #f8f9fa; color: #667eea; border-left-color: #667eea; }
+        .sidebar-link.active { background: #f0f4ff; color: #667eea; border-left-color: #667eea; font-weight: 600; }
+        .company-carousel { margin-top: 15px; padding: 15px 20px; border-top: 1px solid #eee; border-bottom: 1px solid #eee; }
+        .carousel-title { font-size: 0.85rem; font-weight: 600; color: #999; margin-bottom: 10px; text-transform: uppercase; }
+        .carousel-companies { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+        .carousel-company {
+            background: #f8f9fa; padding: 10px 12px; border-radius: 6px; font-size: 0.85rem;
+            color: #333; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .carousel-company:hover { background: #eee; border-color: #667eea; color: #667eea; }
+        .sidebar-actions { padding: 15px 20px; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .btn-sidebar { padding: 10px 15px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; text-align: center; }
+        .btn-switch { background: #667eea; color: white; }
+        .btn-switch:hover { background: #5568d3; }
+        .btn-logout { background: #eee; color: #333; }
+        .btn-logout:hover { background: #ddd; }
         .main-content { flex: 1; min-width: 0; background: rgba(20, 20, 35, 0.92); border: 1px solid rgba(255,255,255,0.08); border-radius: 15px; padding: 28px; }
         h1 { font-size: 1.6rem; margin-bottom: 4px; }
         .sub { color: #9a9ab0; font-size: 0.9rem; margin-bottom: 22px; line-height: 1.5; }
@@ -32,7 +69,11 @@
         .muted { color: #9a9ab0; }
         .hidden { display: none; }
         .table-wrap { overflow-x: auto; }
-        @media (max-width: 900px) { .wrapper { flex-direction: column; } body { padding: 12px; } .main-content { padding: 16px; } }
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            body { padding: 12px; }
+            .main-content { padding: 50px 16px 16px; }
+        }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/mobile-responsive.css">
@@ -160,6 +201,7 @@
 
         function invalidate() {
             state.lastCheck = null;
+            disarmSave();
             document.getElementById('saveBtn').disabled = true;
             document.getElementById('resultStep').classList.add('hidden');
         }
@@ -269,15 +311,33 @@
             });
         }
 
+        // Two-step Save on the page itself — no browser confirm() popup (it blocks the page for
+        // browser agents and looks like a freeze).
+        function disarmSave() {
+            state.confirmArmed = false;
+            var b = document.getElementById('saveBtn');
+            if (b) b.textContent = 'Save to this month';
+        }
+
         async function send(dryRun) {
+            if (dryRun) disarmSave();
             var period = document.getElementById('periodSelect').value;
             if (!period) { msg('resultMsg', 'Choose a month first.', 'error'); return; }
             var mapping = currentMapping();
             var btn = document.getElementById(dryRun ? 'checkBtn' : 'saveBtn');
-            if (!dryRun && !confirm('Save these inputs to ' + period + '? Values in the file replace the same items for these employees.')) return;
+            if (!dryRun && !state.confirmArmed) {
+                state.confirmArmed = true;
+                btn.textContent = 'Press again to save to ' + period;
+                msg('resultMsg', 'Values in the file replace the same items for these employees in ' + esc(period) + '. Press the green button again to save.', 'warn');
+                return;
+            }
+            var n = (state.lastCheck && state.lastCheck.summary && state.lastCheck.summary.employees_changed) || 0;
+            disarmSave();
             btn.disabled = true;
+            document.getElementById('checkBtn').disabled = true;
             document.getElementById('resultStep').classList.remove('hidden');
-            msg('resultMsg', dryRun ? 'Checking…' : 'Saving…', 'warn');
+            msg('resultMsg', dryRun ? 'Checking…' : 'Saving ' + n + ' employee(s)… this takes about ' + Math.max(5, Math.ceil(n / 6) * 3) +
+                ' seconds. Keep this page open — the result shows here when it is done.', 'warn');
             try {
                 var res = await api('POST', '/bulk-inputs', { period_key: period, rows: payloadRows(mapping), mapping: mapping, file_name: state.fileName, dry_run: dryRun });
                 render(res, mapping, dryRun);
