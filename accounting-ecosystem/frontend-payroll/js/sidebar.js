@@ -21,6 +21,7 @@
         { label: '📊 Dashboard',           href: 'company-dashboard.html' },
         { label: '👥 Employees',           href: 'employee-management.html' },
         { label: '⚙️ Execute Payroll',     href: 'payroll-execution.html' },
+        { label: '📝 Monthly Inputs',      href: 'monthly-inputs.html' },
         { label: '📋 Payroll Items',       href: 'payroll-items.html' },
         { label: '⏰ Attendance',           href: 'attendance.html' },
         { label: '📊 Reports',             href: 'reports.html' },

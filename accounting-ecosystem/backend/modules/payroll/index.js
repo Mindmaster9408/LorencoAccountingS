@@ -48,6 +48,9 @@ router.use('/calculate', calculateRoutes);
 // payruns router so its paths are never shadowed.
 router.use('/historical-import', require('./routes/historical-import'));
 
+// Bulk import of ONE open month's variable inputs (Ruan 2026-11-22). Same mount rule.
+router.use('/bulk-inputs', require('./routes/bulk-inputs'));
+
 // Payroll run, finalize, and history endpoints (all mounted at root — routes defined internally)
 // Provides: POST /run, POST /finalize, GET /history, GET /history/run/:id
 router.use('/', payrunsRoutes);

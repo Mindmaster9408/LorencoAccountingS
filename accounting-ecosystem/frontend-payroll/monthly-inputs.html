@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monthly Inputs Import - Paytime</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0b14; color: #e6e6f0; min-height: 100vh; padding: 20px; }
+        .wrapper { display: flex; gap: 20px; max-width: 1600px; margin: 0 auto; position: relative; z-index: 1; }
+        .main-content { flex: 1; min-width: 0; background: rgba(20, 20, 35, 0.92); border: 1px solid rgba(255,255,255,0.08); border-radius: 15px; padding: 28px; }
+        h1 { font-size: 1.6rem; margin-bottom: 4px; }
+        .sub { color: #9a9ab0; font-size: 0.9rem; margin-bottom: 22px; line-height: 1.5; }
+        .step { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px; margin-bottom: 18px; background: rgba(255,255,255,0.02); }
+        .step h2 { font-size: 1.05rem; margin-bottom: 12px; color: #b9a8ff; }
+        .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        select, input[type=text] { background: #15152a; color: #e6e6f0; border: 1px solid #33335a; border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; }
+        .btn { background: #6d5dfc; color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font-size: 0.9rem; cursor: pointer; }
+        .btn.secondary { background: #2a2a48; }
+        .btn.ok { background: #1f9d55; }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .drop { border: 2px dashed #3a3a66; border-radius: 12px; padding: 26px; text-align: center; color: #9a9ab0; cursor: pointer; }
+        .drop.hover { border-color: #6d5dfc; color: #e6e6f0; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.86rem; margin-top: 10px; }
+        th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
+        th { color: #9a9ab0; font-weight: 600; }
+        td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+        .msg { padding: 10px 14px; border-radius: 8px; margin: 10px 0; font-size: 0.9rem; line-height: 1.45; }
+        .msg.error { background: rgba(220, 53, 69, 0.15); border: 1px solid rgba(220,53,69,0.5); color: #ffb3bb; }
+        .msg.ok { background: rgba(31, 157, 85, 0.15); border: 1px solid rgba(31,157,85,0.5); color: #a6f0c6; }
+        .msg.warn { background: rgba(255, 193, 7, 0.12); border: 1px solid rgba(255,193,7,0.45); color: #ffe08a; }
+        .muted { color: #9a9ab0; }
+        .hidden { display: none; }
+        .table-wrap { overflow-x: auto; }
+        @media (max-width: 900px) { .wrapper { flex-direction: column; } body { padding: 12px; } .main-content { padding: 16px; } }
+    </style>
+    <link rel="stylesheet" href="css/dark-theme.css">
+    <link rel="stylesheet" href="css/mobile-responsive.css">
+    <link rel="stylesheet" href="/payroll/css/cosmic-bg.css">
+</head>
+<body>
+<div id="pt-cosmic-bg" aria-hidden="true"><div class="pt-bg-glow g1"></div><div class="pt-bg-glow g2"></div><div class="pt-bg-glow g3"></div><canvas id="pt-bgCanvas"></canvas></div>
+    <button id="mobile-hamburger" class="mobile-hamburger"><span style="font-size:20px;">&#9776;</span></button>
+    <div id="mobile-overlay" class="mobile-overlay"></div>
+    <div class="wrapper">
+        <div id="sidebar-container"></div>
+        <div class="main-content">
+            <h1>&#128229; Monthly Inputs Import</h1>
+            <div class="sub">Load one month's variable inputs for all employees at once — overtime and short-time hours, and amounts
+                such as advances, loans, savings and other deductions or earnings. A value in the file <b>replaces</b> that employee's
+                value for the same item this month; blank or 0 changes nothing. Overtime from Attendance and short time from unpaid
+                leave are kept. Nothing is saved until you check the file and press Save. Finalized months cannot change.</div>
+
+            <div class="step">
+                <h2>1. Month</h2>
+                <div class="row">
+                    <select id="periodSelect"></select>
+                    <button class="btn secondary" id="templateBtn">Download template for this month</button>
+                    <span class="muted" id="periodInfo"></span>
+                </div>
+            </div>
+
+            <div class="step">
+                <h2>2. File</h2>
+                <div id="drop" class="drop">Drop the Excel / CSV file here, or click to choose it.<br>
+                    <span class="muted">One row per employee. Needs an employee number column.</span></div>
+                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden">
+                <div id="fileMsg"></div>
+            </div>
+
+            <div class="step hidden" id="mapStep">
+                <h2>3. What each column is</h2>
+                <div class="row">
+                    <span>Employee number column:</span> <select id="empCol"></select>
+                </div>
+                <div class="table-wrap"><table id="mapTable"><thead><tr><th>Column in the file</th><th>Import as</th><th class="num">File total</th></tr></thead><tbody></tbody></table></div>
+                <div class="row" style="margin-top:14px;">
+                    <button class="btn" id="checkBtn">Check</button>
+                </div>
+            </div>
+
+            <div class="step hidden" id="resultStep">
+                <h2>4. Check and save</h2>
+                <div id="resultMsg"></div>
+                <div class="table-wrap" id="totalsWrap"></div>
+                <div class="table-wrap" id="errorsWrap"></div>
+                <div class="table-wrap" id="plansWrap"></div>
+                <div class="row" style="margin-top:14px;">
+                    <button class="btn ok" id="saveBtn" disabled>Save to this month</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="js/polyfills.js"></script>
+    <script src="js/update-check.js"></script>
+    <script src="js/data-access.js"></script>
+    <script src="js/permissions.js"></script>
+    <script src="js/audit.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/sidebar.js"></script>
+    <script>
+        // Business data goes to the server only (CLAUDE.md Part D); browser storage holds the auth token only.
+        var state = { companyId: null, setup: null, fileName: null, headers: [], rows: [], lastCheck: null };
+        var EMP_ALIASES = ['employee number', 'employee_number', 'emp number', 'emp no', 'empno', 'employee no', 'employee code', 'staff number', 'staff no', 'code'];
+
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+        function money(n) { return (Number(n) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        function msg(el, text, kind) { document.getElementById(el).innerHTML = text ? '<div class="msg ' + (kind || 'ok') + '">' + text + '</div>' : ''; }
+
+        async function api(method, path, body) {
+            var headers = { 'Content-Type': 'application/json' };
+            var token = safeLocalStorage.getItem('token');
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            var res = await fetch(window.location.origin + '/api/payroll' + path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined });
+            var data = {};
+            try { data = await res.json(); } catch (e) { data = {}; }
+            if (res.status === 401) { window.location.href = 'login.html'; throw new Error('Session expired'); }
+            if (!res.ok || data.success === false) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+            return data;
+        }
+
+        // "1 234,50" · "1,234.50" · "R 300" → number; same rules as the server.
+        function parseValue(v) {
+            if (v === null || v === undefined) return null;
+            if (typeof v === 'number') return isFinite(v) ? v : NaN;
+            var s = String(v).replace(/[R\s ]/g, '');
+            if (s === '' || s === '-') return null;
+            var d = s.lastIndexOf('.'), c = s.lastIndexOf(',');
+            if (d >= 0 && c >= 0) s = c > d ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+            else if (c >= 0) s = (/,\d{1,2}$/.test(s) && (s.match(/,/g) || []).length === 1) ? s.replace(',', '.') : s.replace(/,/g, '');
+            var n = Number(s);
+            return isFinite(n) ? n : NaN;
+        }
+
+        window.addEventListener('load', async function () {
+            try { if (!AUTH.isLoggedIn()) { window.location.href = 'login.html'; return; } }
+            catch (e) { window.location.href = 'login.html'; return; }
+            state.companyId = AUTH.getSession().company_id;
+            wireFile();
+            document.getElementById('templateBtn').onclick = downloadTemplate;
+            document.getElementById('checkBtn').onclick = function () { send(true); };
+            document.getElementById('saveBtn').onclick = function () { send(false); };
+            document.getElementById('periodSelect').onchange = function () { invalidate(); showPeriodInfo(); };
+            try {
+                state.setup = await api('GET', '/bulk-inputs/setup');
+                var sel = document.getElementById('periodSelect');
+                sel.innerHTML = (state.setup.periods || []).map(function (p) { return '<option value="' + esc(p.period_key) + '">' + esc(p.period_key) + '</option>'; }).join('');
+                if (!sel.options.length) msg('fileMsg', 'No pay periods exist yet for this company. Open the month in Paytime first.', 'error');
+                showPeriodInfo();
+            } catch (e) { msg('fileMsg', esc(e.message), 'error'); }
+        });
+
+        function showPeriodInfo() {
+            var key = document.getElementById('periodSelect').value;
+            var p = ((state.setup && state.setup.periods) || []).find(function (x) { return x.period_key === key; });
+            document.getElementById('periodInfo').textContent = p ? (String(p.start_date || '').slice(0, 10) + ' to ' + String(p.end_date || '').slice(0, 10)) : '';
+        }
+
+        function invalidate() {
+            state.lastCheck = null;
+            document.getElementById('saveBtn').disabled = true;
+            document.getElementById('resultStep').classList.add('hidden');
+        }
+
+        // ── Template: active employees + one column per hours type and input item ──
+        async function downloadTemplate() {
+            if (typeof XLSX === 'undefined') { msg('fileMsg', 'The Excel library did not load — refresh the page.', 'error'); return; }
+            try {
+                var emps = await DataAccess.getEmployees(state.companyId, {});
+                var items = (state.setup && state.setup.items) || [];
+                var header = ['Employee Number', 'Employee Name', 'Overtime', 'Overtime 2x', 'Short Time'];
+                items.forEach(function (i) { if (header.indexOf(i.item_name) < 0) header.push(i.item_name); });
+                var aoa = [header];
+                (emps || []).filter(function (e) { return e.is_active !== false; }).forEach(function (e) {
+                    aoa.push([e.employee_number || '', [e.first_name, e.last_name].filter(Boolean).join(' ')]);
+                });
+                var wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Inputs');
+                XLSX.writeFile(wb, 'monthly-inputs-' + (document.getElementById('periodSelect').value || 'month') + '.xlsx');
+            } catch (e) { msg('fileMsg', esc(e.message), 'error'); }
+        }
+
+        // ── File ──
+        function wireFile() {
+            var drop = document.getElementById('drop'), input = document.getElementById('fileInput');
+            drop.onclick = function () { input.click(); };
+            drop.ondragover = function (e) { e.preventDefault(); drop.classList.add('hover'); };
+            drop.ondragleave = function () { drop.classList.remove('hover'); };
+            drop.ondrop = function (e) { e.preventDefault(); drop.classList.remove('hover'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); };
+            input.onchange = function () { if (input.files[0]) readFile(input.files[0]); input.value = ''; };
+        }
+
+        function readFile(file) {
+            if (typeof XLSX === 'undefined') { msg('fileMsg', 'The Excel library did not load — refresh the page.', 'error'); return; }
+            invalidate();
+            var reader = new FileReader();
+            reader.onload = async function (ev) {
+                try {
+                    var wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+                    var ws = wb.Sheets[wb.SheetNames[0]];
+                    var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+                    var hi = aoa.findIndex(function (r) { return r.filter(function (c) { return String(c).trim() !== ''; }).length >= 2; });
+                    if (hi < 0) throw new Error('The file has no header row.');
+                    state.headers = aoa[hi].map(function (h) { return String(h).trim(); });
+                    state.rows = aoa.slice(hi + 1).map(function (r, i) { return { excelRow: hi + 2 + i, cells: r }; })
+                        .filter(function (r) { return r.cells.some(function (c) { return String(c).trim() !== ''; }); });
+                    state.fileName = file.name;
+                    if (!state.rows.length) throw new Error('The file has no employee rows.');
+                    msg('fileMsg', esc(file.name) + ' — ' + state.rows.length + ' rows, ' + state.headers.length + ' columns.', 'ok');
+                    await buildMapping();
+                } catch (e) { msg('fileMsg', esc(e.message), 'error'); document.getElementById('mapStep').classList.add('hidden'); }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        async function buildMapping() {
+            var cols = state.headers.filter(Boolean);
+            var setup = await api('GET', '/bulk-inputs/setup?columns=' + encodeURIComponent(cols.join(',')));
+            var items = setup.items || [];
+            var empSel = document.getElementById('empCol');
+            var guess = cols.find(function (c) { return EMP_ALIASES.indexOf(c.toLowerCase().replace(/_/g, ' ')) >= 0 || EMP_ALIASES.indexOf(c.toLowerCase()) >= 0; }) || cols[0];
+            empSel.innerHTML = cols.map(function (c) { return '<option' + (c === guess ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+            empSel.onchange = function () { invalidate(); renderMapRows(cols, items, setup.suggestions); };
+            renderMapRows(cols, items, setup.suggestions);
+            document.getElementById('mapStep').classList.remove('hidden');
+        }
+
+        function renderMapRows(cols, items, suggestions) {
+            var empCol = document.getElementById('empCol').value;
+            var opts = function (sel) {
+                var o = '<option value="ignore">— do not import —</option>' +
+                    '<option value="ot:1.5">Overtime hours (1.5x)</option><option value="ot:2">Overtime hours (2x)</option>' +
+                    '<option value="st">Short-time hours</option>';
+                o += '<optgroup label="Deductions">' + items.filter(function (i) { return i.side === 'deduction'; }).map(function (i) { return '<option value="item:' + i.id + '">' + esc(i.item_name) + '</option>'; }).join('') + '</optgroup>';
+                o += '<optgroup label="Earnings">' + items.filter(function (i) { return i.side === 'earning'; }).map(function (i) { return '<option value="item:' + i.id + '">' + esc(i.item_name) + '</option>'; }).join('') + '</optgroup>';
+                return o.replace('value="' + sel + '"', 'value="' + sel + '" selected');
+            };
+            var tbody = document.querySelector('#mapTable tbody');
+            tbody.innerHTML = cols.filter(function (c) { return c !== empCol; }).map(function (c) {
+                var s = (suggestions || {})[c] || { target: 'ignore' };
+                var val = s.target === 'item' ? 'item:' + s.master_item_id : s.target === 'overtime' ? 'ot:' + (Number(s.rate) === 2 ? '2' : '1.5') : s.target === 'short_time' ? 'st' : 'ignore';
+                var idx = state.headers.indexOf(c), total = 0;
+                state.rows.forEach(function (r) { var v = parseValue(r.cells[idx]); if (typeof v === 'number' && isFinite(v)) total += v; });
+                return '<tr><td>' + esc(c) + '</td><td><select data-col="' + esc(c) + '">' + opts(val) + '</select></td><td class="num">' + money(total) + '</td></tr>';
+            }).join('');
+            tbody.querySelectorAll('select').forEach(function (s) { s.onchange = invalidate; });
+        }
+
+        function currentMapping() {
+            var m = {};
+            document.querySelectorAll('#mapTable select').forEach(function (s) {
+                var v = s.value, col = s.getAttribute('data-col');
+                if (v === 'ignore') m[col] = { target: 'ignore' };
+                else if (v === 'st') m[col] = { target: 'short_time' };
+                else if (v.indexOf('ot:') === 0) m[col] = { target: 'overtime', rate: Number(v.slice(3)) };
+                else m[col] = { target: 'item', master_item_id: Number(v.slice(5)) };
+            });
+            return m;
+        }
+
+        function payloadRows(mapping) {
+            var empIdx = state.headers.indexOf(document.getElementById('empCol').value);
+            return state.rows.map(function (r) {
+                var values = {};
+                Object.keys(mapping).forEach(function (col) { if (mapping[col].target !== 'ignore') values[col] = r.cells[state.headers.indexOf(col)]; });
+                return { row: r.excelRow, employee_number: String(r.cells[empIdx] == null ? '' : r.cells[empIdx]).trim(), values: values };
+            });
+        }
+
+        async function send(dryRun) {
+            var period = document.getElementById('periodSelect').value;
+            if (!period) { msg('resultMsg', 'Choose a month first.', 'error'); return; }
+            var mapping = currentMapping();
+            var btn = document.getElementById(dryRun ? 'checkBtn' : 'saveBtn');
+            if (!dryRun && !confirm('Save these inputs to ' + period + '? Values in the file replace the same items for these employees.')) return;
+            btn.disabled = true;
+            document.getElementById('resultStep').classList.remove('hidden');
+            msg('resultMsg', dryRun ? 'Checking…' : 'Saving…', 'warn');
+            try {
+                var res = await api('POST', '/bulk-inputs', { period_key: period, rows: payloadRows(mapping), mapping: mapping, file_name: state.fileName, dry_run: dryRun });
+                render(res, mapping, dryRun);
+            } catch (e) {
+                msg('resultMsg', esc(e.message), 'error');
+            } finally {
+                document.getElementById('checkBtn').disabled = false;
+            }
+        }
+
+        function render(res, mapping, dryRun) {
+            var s = res.summary || {};
+            var saveBtn = document.getElementById('saveBtn');
+            if (!dryRun && !res.dry_run) {
+                var failed = res.failed || [];
+                msg('resultMsg', 'Saved for ' + (res.written || []).length + ' employee(s) in ' + esc(res.period_key) + '.' +
+                    (failed.length ? '<br>Not saved: ' + failed.map(function (f) { return esc(f.employee_number) + ' (' + esc(f.message) + ')'; }).join('; ') +
+                        '<br>Fix those and import again — saving the same file twice is safe.' : ' Open Execute Payroll to calculate the month.'), failed.length ? 'warn' : 'ok');
+                saveBtn.disabled = true;
+                state.lastCheck = null;
+            } else if (s.errors) {
+                msg('resultMsg', s.errors + ' problem(s) — nothing can be saved until they are fixed in the file (or the column mapping).', 'error');
+                saveBtn.disabled = true;
+            } else if (!s.employees_changed) {
+                msg('resultMsg', 'Nothing to import — every value is blank or 0.', 'warn');
+                saveBtn.disabled = true;
+            } else {
+                msg('resultMsg', 'Ready: ' + s.entries + ' entr' + (s.entries === 1 ? 'y' : 'ies') + ' for ' + s.employees_changed + ' employee(s)' +
+                    (s.warnings ? ', ' + s.warnings + ' warning(s) below' : '') + '. Compare the totals with your figures, then press Save.', s.warnings ? 'warn' : 'ok');
+                saveBtn.disabled = false;
+                state.lastCheck = res;
+            }
+
+            var totals = res.totals || {};
+            var trs = Object.keys(totals).map(function (col) {
+                var m = mapping[col] || {}, hours = m.target === 'overtime' || m.target === 'short_time';
+                return '<tr><td>' + esc(col) + '</td><td class="num">' + (hours ? money(totals[col]) + ' h' : 'R ' + money(totals[col])) + '</td></tr>';
+            }).join('');
+            document.getElementById('totalsWrap').innerHTML = trs ? '<table><thead><tr><th>Totals to import</th><th class="num">Total</th></tr></thead><tbody>' + trs + '</tbody></table>' : '';
+
+            var errs = res.errors || [];
+            document.getElementById('errorsWrap').innerHTML = errs.length ? '<table><thead><tr><th>Row</th><th>Employee</th><th>Problem</th></tr></thead><tbody>' +
+                errs.map(function (e) { return '<tr><td>' + esc(e.row == null ? '—' : e.row) + '</td><td>' + esc(e.employee_number) + '</td><td>' + esc(e.message) + '</td></tr>'; }).join('') + '</tbody></table>' : '';
+
+            var plans = res.plans || [];
+            document.getElementById('plansWrap').innerHTML = plans.length ? '<table><thead><tr><th>Employee</th><th>Will be set</th><th>Note</th></tr></thead><tbody>' +
+                plans.map(function (p) {
+                    var ch = p.changes.map(function (c) {
+                        if (c.kind === 'item') return esc(c.item) + ' R ' + money(c.amount);
+                        if (c.kind === 'overtime') return 'Overtime ' + c.rate + 'x ' + money(c.hours) + ' h';
+                        return 'Short time ' + money(c.hours) + ' h';
+                    }).join(' · ');
+                    return '<tr><td>' + esc(p.employee_number) + ' ' + esc(p.name) + '</td><td>' + ch + '</td><td class="muted">' + esc((p.warnings || []).join('; ')) + '</td></tr>';
+                }).join('') + '</tbody></table>' : '';
+        }
+    </script>
+</body>
+</html>
