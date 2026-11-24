@@ -488,6 +488,25 @@
             color: #0066cc;
             margin: 0 0 8px;
         }
+        .vat-report-group-table td.num, .vat-report-group-table th.num {
+            text-align: right; font-family: 'Courier New', monospace; white-space: nowrap;
+        }
+        .vat-detail-note { font-size: 11px; opacity: 0.75; }
+        .vat-detail-empty { opacity: 0.7; font-style: italic; }
+        .vat-summary {
+            border: 1px solid rgba(102, 126, 234, 0.45); border-radius: 10px;
+            padding: 16px 18px; margin-top: 8px; background: rgba(102, 126, 234, 0.08);
+        }
+        .vat-summary h3 { margin: 0 0 12px; font-size: 15px; }
+        .vat-summary table { width: 100%; max-width: 640px; border-collapse: collapse; font-size: 13px; }
+        .vat-summary td { padding: 5px 8px; border-bottom: 1px solid rgba(128,128,128,0.2); }
+        .vat-summary td.num { text-align: right; font-family: 'Courier New', monospace; white-space: nowrap; }
+        .vat-summary tr.sub td { font-weight: 700; }
+        .vat-summary tr.head td { font-weight: 700; padding-top: 14px; border-bottom: none; opacity: 0.85; }
+        .vat-summary tr.result td { font-weight: 800; font-size: 15px; border-top: 2px solid rgba(128,128,128,0.5); }
+        .vat-summary .muted { opacity: 0.7; }
+        .vat-tie-ok { color: #34a853; font-size: 13px; margin-top: 12px; }
+        .vat-tie-bad { color: #ea4335; font-size: 13px; margin-top: 12px; font-weight: 700; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/cosmic-bg.css">
@@ -551,9 +570,15 @@
 
         <div id="vatReportTab" class="vat-tab-panel" style="display:none;">
             <div class="report-card">
-                <div class="report-header">
-                    <h2>VAT Report</h2>
-                    <p>Itemized transactions for <span id="vatReportPeriodLabel">the selected period</span></p>
+                <div class="report-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <h2>VAT Report</h2>
+                        <p>Every entry behind your output and input VAT for <span id="vatReportPeriodLabel">the selected period</span>, straight from the posted ledger</p>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="btn-secondary" id="btnDownloadVatDetail" onclick="downloadVatDetail('xlsx')" disabled>&#11015; Download Excel</button>
+                        <button type="button" class="btn-secondary" id="btnDownloadVatDetailPdf" onclick="downloadVatDetail('pdf')" disabled>&#11015; Download PDF</button>
+                    </div>
                 </div>
                 <div class="report-content">
                     <div id="vatReportWarnings" style="display:none; background:#fff8e1; border:1px solid #ffc107; border-radius:8px; padding:14px 18px; margin-bottom:20px;">
@@ -1132,23 +1157,167 @@
         let currentCategorizedReport = null;
 
         async function loadCategorizedReport(periodKey) {
-            const groupsEl = document.getElementById('vatReportGroups');
             const bodyEl = document.getElementById('vat201TableBody');
             try {
+                // Drives the VAT201 Calculation tab only — the VAT Report tab
+                // uses the GL-based detail report (loadVatDetailReport below).
                 const report = await fetchAPI(`/vat/categorized?periodKey=${encodeURIComponent(periodKey)}`);
                 currentCategorizedReport = report;
-
-                const periodLabelEl = document.getElementById('vatReportPeriodLabel');
-                if (periodLabelEl) periodLabelEl.textContent = `${report.dateFrom} to ${report.dateTo}`;
-
-                renderVatReportWarnings(report);
-                renderVatReportGroups(report);
                 renderVat201Table(report);
             } catch (error) {
                 console.error('Error loading categorized VAT report:', error);
                 currentCategorizedReport = null;
-                if (groupsEl) groupsEl.innerHTML = `<p style="color:#b71c1c; text-align:center; padding:20px;">Error loading VAT report: ${error.message}</p>`;
                 if (bodyEl) bodyEl.innerHTML = `<tr><td colspan="4" style="border:1px solid #ccc; padding:12px; text-align:center; color:#b71c1c;">Error loading VAT201 report: ${error.message}</td></tr>`;
+            }
+        }
+
+        // ── VAT Report tab: line-by-line detail from the posted ledger ─────────
+        // GET /vat/detail — output standard / output no VAT / input standard /
+        // input no VAT / adjustments, then a summary that shows the calculation
+        // and checks it against the VAT control accounts.
+        let currentVatDetail = null;
+
+        async function loadVatDetailReport(periodKey) {
+            const container = document.getElementById('vatReportGroups');
+            const btns = ['btnDownloadVatDetail', 'btnDownloadVatDetailPdf'].map(id => document.getElementById(id)).filter(Boolean);
+            btns.forEach(b => { b.disabled = true; });
+            if (container) container.innerHTML = '<p class="vat-detail-empty" style="text-align:center; padding:20px;">Loading…</p>';
+            try {
+                const report = await fetchAPI(`/vat/detail?periodKey=${encodeURIComponent(periodKey)}`);
+                currentVatDetail = report;
+                const periodLabelEl = document.getElementById('vatReportPeriodLabel');
+                if (periodLabelEl) periodLabelEl.textContent = `${report.dateFrom} to ${report.dateTo}`;
+                renderVatReportWarnings(report);
+                renderVatDetail(report);
+                btns.forEach(b => { b.disabled = false; });
+            } catch (error) {
+                console.error('Error loading VAT detail report:', error);
+                currentVatDetail = null;
+                if (container) container.innerHTML = `<p style="color:#ea4335; text-align:center; padding:20px;">Error loading VAT report: ${escapeVatHtml(error.message)}</p>`;
+            }
+        }
+
+        function escapeVatHtml(s) {
+            return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function renderVatDetail(report) {
+            const container = document.getElementById('vatReportGroups');
+            if (!container) return;
+            const fmtR = v => 'R ' + (Number(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const sections = [
+                ['output_standard', 'OUTPUT VAT — Standard rate (15%)'],
+                ['output_no_vat',   'OUTPUT — Income with no VAT (zero-rated / exempt)'],
+                ['input_standard',  'INPUT VAT — Standard rate (15%) purchases and expenses'],
+                ['input_no_vat',    'INPUT — Purchases and expenses with no VAT claimed (zero-rated / exempt / not claimable)'],
+                ['vat_adjustment',  'VAT adjustments (VAT with no income or expense line)'],
+            ];
+            const totals = report.summary.totals;
+            let html = '';
+
+            for (const [key, title] of sections) {
+                const rows = report.rows.filter(r => r.section === key);
+                if (key === 'vat_adjustment' && rows.length === 0) continue;
+                const t = totals[key];
+                const body = rows.length === 0
+                    ? '<tr><td colspan="7" class="vat-detail-empty">None in this period</td></tr>'
+                    : rows.map(r => `<tr>
+                        <td style="white-space:nowrap;">${escapeVatHtml(r.date)}</td>
+                        <td>${escapeVatHtml(r.reference)}</td>
+                        <td>${escapeVatHtml(r.description)}${r.note ? `<div class="vat-detail-note">${escapeVatHtml(r.note)}</div>` : ''}</td>
+                        <td>${escapeVatHtml(r.account)}</td>
+                        <td class="num">${fmtR(r.exclusive)}</td>
+                        <td class="num">${fmtR(r.vat)}</td>
+                        <td class="num">${fmtR(r.inclusive)}</td>
+                    </tr>`).join('');
+                html += `
+                    <h3 class="vat-report-group-title">${escapeVatHtml(title)}</h3>
+                    <table class="vat-report-group-table">
+                        <thead><tr>
+                            <th>Date</th><th>Reference</th><th>Description</th><th>Account</th>
+                            <th class="num">Exclusive</th><th class="num">VAT</th><th class="num">Inclusive</th>
+                        </tr></thead>
+                        <tbody>${body}</tbody>
+                        <tfoot><tr style="font-weight:700;">
+                            <td colspan="4">Total — ${t.count} entr${t.count === 1 ? 'y' : 'ies'}</td>
+                            <td class="num">${fmtR(t.exclusive)}</td><td class="num">${fmtR(t.vat)}</td><td class="num">${fmtR(t.inclusive)}</td>
+                        </tr></tfoot>
+                    </table>`;
+            }
+
+            const c = report.summary.calculation;
+            const rate = report.summary.rate;
+            const tie = report.summary.tieOut;
+            const line = (label, value, cls = '') => `<tr class="${cls}"><td>${label}</td><td class="num">${value === null ? '' : fmtR(value)}</td></tr>`;
+            const resultLabel = c.result === 'payable' ? 'VAT payable to SARS' : c.result === 'refundable' ? 'VAT refundable by SARS' : 'No VAT due';
+
+            html += `
+                <div class="vat-summary">
+                    <h3>Summary — how the VAT is calculated</h3>
+                    <table>
+                        ${line('OUTPUT VAT (on sales)', null, 'head')}
+                        ${line('Standard-rate sales excluding VAT', c.outputStandardExclusive)}
+                        ${line(`× ${rate}% = expected output VAT`, c.outputVatExpected, 'muted')}
+                        ${line('Output VAT actually charged', c.outputVatOnSupplies)}
+                        ${c.outputVatAdjustments ? line('Output VAT adjustments', c.outputVatAdjustments) : ''}
+                        ${line('A. Total output VAT', c.outputVat, 'sub')}
+                        ${line('Sales with no VAT (zero-rated / exempt) — no VAT due', c.outputNoVatExclusive, 'muted')}
+                        ${line('INPUT VAT (on purchases and expenses)', null, 'head')}
+                        ${line('Standard-rate purchases excluding VAT', c.inputStandardExclusive)}
+                        ${line(`× ${rate}% = expected input VAT`, c.inputVatExpected, 'muted')}
+                        ${line('Input VAT actually claimed', c.inputVatOnPurchases)}
+                        ${c.inputVatAdjustments ? line('Input VAT adjustments', c.inputVatAdjustments) : ''}
+                        ${line('B. Total input VAT', c.inputVat, 'sub')}
+                        ${line('Purchases with no VAT claimed — nothing to claim', c.inputNoVatExclusive, 'muted')}
+                        ${line('A − B', c.netVat, 'sub')}
+                        ${line(resultLabel, Math.abs(c.netVat), 'result')}
+                    </table>
+                    <div class="${tie.ties ? 'vat-tie-ok' : 'vat-tie-bad'}">
+                        ${tie.ties
+                            ? '&#10003; These totals agree with the VAT control accounts (the Output VAT / Input VAT figures at the top of this page).'
+                            : `&#10007; Does not agree with the VAT control accounts — output differs by ${fmtR(tie.outputDifference)}, input by ${fmtR(tie.inputDifference)}.`}
+                    </div>
+                    <div class="vat-detail-note" style="margin-top:6px;">
+                        ${report.notVatRelatedCount} entr${report.notVatRelatedCount === 1 ? 'y' : 'ies'} in this period ${report.notVatRelatedCount === 1 ? 'is' : 'are'} not part of VAT (bank transfers, loans, receipts from customers, payments to suppliers, VAT payments) and ${report.notVatRelatedCount === 1 ? 'is' : 'are'} not listed.
+                        Small differences between "expected" and "actually charged/claimed" are rounding per invoice or bank line.
+                    </div>
+                </div>`;
+
+            container.innerHTML = html;
+        }
+
+        async function downloadVatDetail(format) {
+            if (!currentVatDetail) return;
+            const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+            const btn = document.getElementById(ext === 'pdf' ? 'btnDownloadVatDetailPdf' : 'btnDownloadVatDetail');
+            const label = btn ? btn.innerHTML : '';
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+                const token = localStorage.getItem('token');
+                // /pdf and /export (Excel) follow the codebase's file-route convention,
+                // which also keeps them out of the bot's (MCP) route list.
+                const route = ext === 'pdf' ? 'pdf' : 'export';
+                const res = await fetch(`${API_BASE}/vat/detail/${route}?periodKey=${encodeURIComponent(currentVatDetail.periodKey)}`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (!res.ok) {
+                    let msg = 'Download failed';
+                    try { msg = (await res.json()).error || msg; } catch (_) {}
+                    throw new Error(msg);
+                }
+                const blob = await res.blob();
+                const cd = res.headers.get('Content-Disposition') || '';
+                const m = cd.match(/filename="([^"]+)"/);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = m ? m[1] : `VAT_Detail_${currentVatDetail.periodKey}.${ext}`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+            } catch (error) {
+                alert('Could not download the VAT report: ' + error.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = label; }
             }
         }
 
@@ -1160,89 +1329,6 @@
             if (!warnings.length) { panel.style.display = 'none'; list.innerHTML = ''; return; }
             panel.style.display = 'block';
             list.innerHTML = warnings.map(w => `<li>${w}</li>`).join('');
-        }
-
-        function renderVatReportGroups(report) {
-            const container = document.getElementById('vatReportGroups');
-            if (!container) return;
-
-            const fmtR = v => 'R ' + (Number(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            const escapeHtml = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-            const groupDefs = [
-                { title: 'Standard Rate — Output VAT', direction: 'output', category: 'standard' },
-                { title: 'Zero Rate — Output VAT', direction: 'output', category: 'zero' },
-                { title: 'Bank Allocations & Manual Adjustments — Output VAT (assumed Standard Rate)', direction: 'output', category: 'bank_manual' },
-                { title: 'Old / Other Rate — Output VAT', direction: 'output', category: 'old_rate' },
-                { title: 'Standard Rate — Input VAT', direction: 'input', category: 'standard' },
-                { title: 'Zero Rate — Input VAT', direction: 'input', category: 'zero' },
-                { title: 'Bank Allocations & Manual Adjustments — Input VAT (assumed Standard Rate)', direction: 'input', category: 'bank_manual' },
-                { title: 'Old / Other Rate — Input VAT', direction: 'input', category: 'old_rate' },
-            ];
-
-            const items = report.items || [];
-            let html = '';
-            let grandExcl = 0, grandIncl = 0, grandVat = 0;
-
-            for (const def of groupDefs) {
-                const groupItems = items.filter(it => it.direction === def.direction &&
-                    (def.category === 'bank_manual' ? it.source === 'bank_or_manual' :
-                     it.source !== 'bank_or_manual' && (
-                        def.category === 'standard' ? it.rate === 15 :
-                        def.category === 'zero' ? it.rate === 0 :
-                        (it.rate !== 15 && it.rate !== 0)
-                     )));
-
-                if (groupItems.length === 0) continue;
-
-                let subExcl = 0, subIncl = 0, subVat = 0;
-                const rows = groupItems.map(it => {
-                    subExcl += it.exclusive; subIncl += it.inclusive; subVat += it.vat;
-                    return `<tr>
-                        <td>${escapeHtml(it.date)}</td>
-                        <td>${escapeHtml(it.reference)}</td>
-                        <td>${escapeHtml(it.party)}</td>
-                        <td>${escapeHtml(it.description)}</td>
-                        <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(it.exclusive)}</td>
-                        <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(it.inclusive)}</td>
-                        <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(it.vat)}</td>
-                    </tr>`;
-                }).join('');
-
-                grandExcl += subExcl; grandIncl += subIncl; grandVat += subVat;
-
-                html += `
-                    <h3 class="vat-report-group-title">${escapeHtml(def.title)}</h3>
-                    <table class="vat-report-group-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th><th>Reference</th><th>Account / Customer / Supplier</th><th>Description</th>
-                                <th style="text-align:right;">Exclusive</th><th style="text-align:right;">Inclusive</th><th style="text-align:right;">VAT</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                        <tfoot>
-                            <tr style="font-weight:700; background:#f5f5f5;">
-                                <td colspan="4">Total for ${escapeHtml(def.title)}</td>
-                                <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(subExcl)}</td>
-                                <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(subIncl)}</td>
-                                <td style="text-align:right; font-family:'Courier New',monospace;">${fmtR(subVat)}</td>
-                            </tr>
-                        </tfoot>
-                    </table>`;
-            }
-
-            if (!html) {
-                html = '<p style="color:#888; text-align:center; padding:20px;">No VAT-bearing transactions found for this period.</p>';
-            } else {
-                html += `
-                    <div style="background:#d4edda; border-radius:8px; padding:14px 18px; font-weight:700; display:flex; justify-content:space-between; font-size:14px;">
-                        <span>Grand Total</span>
-                        <span style="font-family:'Courier New',monospace;">Excl ${fmtR(grandExcl)} &nbsp;|&nbsp; Incl ${fmtR(grandIncl)} &nbsp;|&nbsp; VAT ${fmtR(grandVat)}</span>
-                    </div>`;
-            }
-
-            container.innerHTML = html;
         }
 
         function renderVat201Table(report) {
@@ -1386,8 +1472,8 @@
                 // Load Trial Balance data (drives the control-account tie-out table)
                 await loadTrialBalanceForPeriod(currentPeriodData.from_date, currentPeriodData.to_date);
 
-                // Load the itemized VAT Report + VAT201 Calculation tabs
-                await loadCategorizedReport(periodKey);
+                // Load the VAT Report (detail) + VAT201 Calculation tabs
+                await Promise.all([loadVatDetailReport(periodKey), loadCategorizedReport(periodKey)]);
 
             } catch (error) {
                 console.error('Error selecting VAT period:', error);
