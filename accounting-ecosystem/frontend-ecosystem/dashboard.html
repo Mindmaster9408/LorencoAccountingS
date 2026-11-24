@@ -4227,8 +4227,7 @@
                             ? '<tr><td colspan="5" style="padding:0 4px 8px 4px;font-size:0.76rem;">' +
                               box('allow_create_rules', 'May create allocation rules') +
                               box('allow_reconcile_difference', 'May reconcile with a difference') +
-                              box('allow_sean_auto', 'May let Sean allocate by himself') +
-                              box('require_approval_all', 'Every allocation needs approval') + '</td></tr>'
+                              box('allow_sean_auto', 'May let Sean allocate by himself') + '</td></tr>'
                             : '';
                         return '<tr style="border-top:1px solid var(--border);' + (k.active ? '' : 'opacity:0.55;') + '">' +
                             '<td style="padding:6px 4px;color:rgba(255,255,255,0.85);">' + _apiKeyEsc(k.name) + '</td>' +

@@ -168,7 +168,8 @@ function createNavigation() {
           <a href="#">Payment Processing</a>
           <a href="/accounting/bank-rules.html">Bank Rules</a>
           <a href="/accounting/bank-staging.html">Import Review (Staging)</a>
-          <a href="/accounting/bot-review.html">Bot Review</a>
+          ${(() => { try { const u = JSON.parse(localStorage.getItem('user') || 'null'); return !!(u && u.isGlobalAdmin === true); } catch (e) { return false; } })()
+            ? '<a href="/accounting/bot-review.html">Bot Review</a>' : '' /* super users only — clients never see bots (Ruan 2026-11-24) */}
         </div>
       </div>
 

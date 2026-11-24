@@ -373,8 +373,9 @@ describe('Codebox 3 controls', () => {
       }
       // still closed
       expect(isAllowedCall('POST', '/api/accounting/bank/transactions/12/allocate')).toBe(false);   // only via the decision rules
-      expect(isAllowedCall('PUT', '/api/accounting/bank/transactions/transfer')).toBe(false);
-      expect(isAllowedCall('POST', '/api/accounting/bank/staging/transfers/2/confirm')).toBe(false);
+      // 2026-11-24: transfers are done like an employee — Leo's transfer function is open to the bot
+      expect(isAllowedCall('PUT', '/api/accounting/bank/transactions/transfer')).toBe(true);
+      expect(isAllowedCall('POST', '/api/accounting/bank/staging/transfers/2/confirm')).toBe(true);
       expect(isAllowedCall('POST', '/api/accounting/quotes/3/send')).toBe(false);
       expect(isAllowedCall('POST', '/api/accounting/customer-statements/3/statement/send')).toBe(false);
       expect(isAllowedCall('POST', '/api/accounting/customer-invoices/recurring-plans/run')).toBe(false);
@@ -815,5 +816,29 @@ describe('Firmflow (practice) access', () => {
     await t.run(api, {}, { company_id: 51, method: 'POST', path: '/api/practice/tasks', body: { title: 'VAT201 March' }, reason: 'asked by Ruan' });
     await t.run(api, {}, { company_id: 51, method: 'GET', path: '/api/practice/tasks', query: { status: 'open' } });
     expect(calls).toEqual([['POST', '/api/practice/tasks', { title: 'VAT201 March' }, 51], ['GET', '/api/practice/tasks?status=open', undefined, 51]]);
+  });
+});
+
+describe('company session cache is per key (2026-11-24)', () => {
+  const { createClient } = require('../modules/mcp/lorencoApi');
+  const realFetch = global.fetch;
+  let seen;
+  beforeEach(() => {
+    seen = [];
+    global.fetch = async (url, opts) => {
+      seen.push([opts.method, url.replace(/^http:\/\/127\.0\.0\.1:\d+/, '')]);
+      const body = url.endsWith('/api/auth/companies') ? { companies: [{ id: 51 }] }
+        : url.endsWith('/api/auth/select-company') ? { token: 'company-jwt-' + seen.length } : { ok: 1 };
+      return { status: 200, ok: true, json: async () => body };
+    };
+  });
+  afterAll(() => { global.fetch = realFetch; });
+
+  test('a new key for the same bot user gets its own session (never the old key\u2019s)', async () => {
+    const c = createClient();
+    await c.request({ user: { id: 10, email: 'bot@example.test' }, tokenId: 1 }, 51, 'GET', '/api/accounting/accounts');
+    await c.request({ user: { id: 10, email: 'bot@example.test' }, tokenId: 1 }, 51, 'GET', '/api/accounting/accounts');
+    await c.request({ user: { id: 10, email: 'bot@example.test' }, tokenId: 2 }, 51, 'GET', '/api/accounting/accounts');
+    expect(seen.filter(s => s[1] === '/api/auth/select-company')).toHaveLength(2);   // key 1 once (cached), key 2 fresh
   });
 });

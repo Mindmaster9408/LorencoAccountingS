@@ -346,7 +346,7 @@ const TOOLS = [
   },
   {
     name: 'allocate_bank_transaction',
-    description: 'Allocate one unallocated bank transaction. Leo checks it server-side first: an approved allocation rule that applies may NOT be overridden (refused); if Sean confidently recommends another account you must give disagreement_reason and it WAITS for a person; director/owner lines, transfers between own bank accounts and keys set to "approve everything" also WAIT for a person. Otherwise Leo posts the journal (VAT split by Leo, same path as the Banking screen) and Sean learns from it. Line amounts are positive and must add up to the transaction amount. Always give reason.',
+    description: 'Allocate one unallocated bank transaction — posted straight away, exactly like a person on the Banking screen (journal, VAT split by Leo, Sean learns from it). Leo refuses two things: overriding an approved allocation rule (use flag_for_review if you think the rule is wrong), and a transfer between the company’s own bank accounts (use Leo’s transfer function via leo_routes "transfer", so both bank lines are matched once). Line amounts are positive and must add up to the transaction amount. Always give reason; give disagreement_reason when you choose differently from a confident Sean.',
     inputSchema: { type: 'object', properties: {
       company_id: companyIdProp,
       transaction_id: { type: 'integer' },
@@ -419,8 +419,8 @@ const TOOLS = [
     description: 'What this bot key may do on its own (set by a person in Lorenco; you cannot change it).',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async run(api, ctx) {
-      return { policy: ctx.policy || {}, always_needs_a_person: ['director / owner / shareholder lines', 'transfers between own bank accounts',
-        'allocations that differ from a confident Sean recommendation'], never_available: ['other apps (Paytime, Checkout Charlie, Stockton …)',
+      return { policy: ctx.policy || {}, allocations: 'posted straight away like an employee — follow approved rules, Sean and your instructions; transfers between own bank accounts through the transfer function',
+        never_available: ['other apps (Paytime, Checkout Charlie, Stockton …)',
         'e-mailing / sending anything to clients', 'SARS submissions', 'system settings, integrations and keys', 'changing users or permissions',
         'changing AI / Sean settings', 'approving your own Bot Review items',
         'Firmflow sign-off (approve / reject / QA lock / partner override / recording reviews)', 'marking SARS submissions as submitted',

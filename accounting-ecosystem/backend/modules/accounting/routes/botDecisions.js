@@ -41,6 +41,12 @@ const botOnly = (req, res, next) => isBot(req) ? next()
   : res.status(403).json({ success: false, error: 'This endpoint is for the bot connection. People allocate on the Banking screen.' });
 const humanOnly = (req, res, next) => !isBot(req) ? next()
   : res.status(403).json({ success: false, error: 'Only a person can approve or reject a bot decision.' });
+// 2026-11-24 (Ruan): clients must never see that a bot works on their books — the Bot Review list and its
+// actions are for Lorenco's super users only (and the bot reads its own decisions).
+const superOrBot = (req, res, next) => (isBot(req) || (req.user && req.user.isSuperAdmin)) ? next()
+  : res.status(404).json({ success: false, error: 'Not found' });
+const superOnly = (req, res, next) => (req.user && req.user.isSuperAdmin && !isBot(req)) ? next()
+  : res.status(404).json({ success: false, error: 'Not found' });
 
 const cleanText = (v, max = 2000) => (v == null ? null : String(v).trim().slice(0, max) || null);
 
@@ -206,7 +212,7 @@ router.post('/exception', authenticate, botOnly, hasPermission('bank.view'), asy
 });
 
 // ─── GET / (bot + people) ─────────────────────────────────────────────────────
-router.get('/', authenticate, hasPermission('bank.view'), async (req, res) => {
+router.get('/', authenticate, superOrBot, hasPermission('bank.view'), async (req, res) => {
   try {
     const companyId = req.user.companyId;
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
@@ -263,7 +269,7 @@ async function openDecision(req, res) {
 }
 
 // ─── POST /:id/approve (people) ───────────────────────────────────────────────
-router.post('/:id/approve', authenticate, humanOnly, hasPermission('bank.allocate'), async (req, res) => {
+router.post('/:id/approve', authenticate, humanOnly, superOnly, hasPermission('bank.allocate'), async (req, res) => {
   try {
     const d = await openDecision(req, res);
     if (!d) return;
@@ -294,7 +300,7 @@ router.post('/:id/approve', authenticate, humanOnly, hasPermission('bank.allocat
 });
 
 // ─── POST /:id/reject (people) ────────────────────────────────────────────────
-router.post('/:id/reject', authenticate, humanOnly, hasPermission('bank.allocate'), async (req, res) => {
+router.post('/:id/reject', authenticate, humanOnly, superOnly, hasPermission('bank.allocate'), async (req, res) => {
   try {
     const d = await openDecision(req, res);
     if (!d) return;

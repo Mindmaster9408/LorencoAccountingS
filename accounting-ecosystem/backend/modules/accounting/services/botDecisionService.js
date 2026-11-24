@@ -6,7 +6,15 @@
  * personal access key) may post on its own, and what must wait for a person.
  * Codebox 4, 2026-11-19. Pure logic, no database — see routes/botDecisions.js.
  * ============================================================================
- * Decision hierarchy (highest first):
+ * 2026-11-24 (Ruan): the bot is an ordinary EMPLOYEE — its allocations post straight away, exactly
+ * like a person on the Banking screen. The bot's own instructions, Sean and Leo's allocation rules are
+ * the controls; nothing waits for approval any more. Still enforced here (program rules, not holds):
+ *   - an approved allocation rule in Leo cannot be overridden (raise an exception instead)
+ *   - a transfer between the company's own bank accounts goes through Leo's transfer function, which
+ *     matches both bank lines once — allocating each side to the other bank would count it twice
+ * The 'hold' outcome and HOLD_LABELS remain only for decisions recorded before this change.
+ *
+ * Original hierarchy (Codebox 4, 2026-11-19), kept for history:
  *   1. An approved allocation rule that matches the bank line — the bot may NOT
  *      override it. Different account → refused (the bot can raise an exception
  *      if it thinks the rule is wrong).
@@ -84,33 +92,24 @@ function evaluateAllocation(p) {
     }
   }
 
-  const holdReasons = [];
   let decisionSource = rule ? 'rule' : (p.decisionSource || 'bot');
 
-  // 2. Sean — confident and different → a person decides, with both recorded.
-  if (!rule && sean && sean.accountId && Number(sean.confidence) >= SEAN_CONFIDENT) {
-    if (Number(sean.accountId) === primary) {
-      if (decisionSource === 'bot') decisionSource = 'sean';
-    } else {
-      if (!p.disagreementReason || String(p.disagreementReason).trim().length < 5) {
-        return refuse('DISAGREEMENT_REASON_REQUIRED', `Sean recommends another account (${sean.accountId}, ${sean.confidence}% confident). ` +
-          'Give disagreement_reason — the allocation will then wait for a person to choose.');
-      }
-      holdReasons.push('disagrees_with_sean');
-    }
+  // 2. Sean — agreeing is recorded as source 'sean'; disagreeing is the bot's call, like a person's
+  //    (disagreement_reason is kept on the decision record when given). Nothing waits.
+  if (!rule && sean && sean.accountId && Number(sean.confidence) >= SEAN_CONFIDENT && Number(sean.accountId) === primary) {
+    if (decisionSource === 'bot') decisionSource = 'sean';
   }
   if (decisionSource === 'sean' && !(sean && Number(sean.accountId) === primary)) decisionSource = 'bot';
 
-  // 5. People decide these — always.
-  const touchesDirector = accountIds.some(id => isDirectorAccount(accountsById.get(id)))
-    || DIRECTOR_DESC_RE.test(txn.description || '');
-  if (touchesDirector) holdReasons.push('director_or_owner');
-  if (accountIds.some(id => isBankOrCash(accountsById.get(id), bankLedgerIds))) holdReasons.push('internal_transfer');
-  if (policy.require_approval_all === true) holdReasons.push('policy_requires_approval');
+  // Transfer between own bank accounts → Leo's transfer function (both sides matched once).
+  if (accountIds.some(id => isBankOrCash(accountsById.get(id), bankLedgerIds))) {
+    return refuse('USE_TRANSFER', 'This is a transfer between the company’s own bank/cash accounts. Do it with Leo’s transfer function ' +
+      '(leo_routes "transfer": PUT /api/accounting/bank/transactions/transfer, or confirm the transfer Leo detected on import) so both ' +
+      'bank lines are matched once — allocating each side to the other bank would count it twice.');
+  }
 
-  return holdReasons.length
-    ? { outcome: 'hold', holdReasons, decisionSource }
-    : { outcome: 'post', holdReasons: [], decisionSource };
+  void policy;   // key policy no longer holds allocations (2026-11-24)
+  return { outcome: 'post', holdReasons: [], decisionSource };
 }
 
 const HOLD_LABELS = {

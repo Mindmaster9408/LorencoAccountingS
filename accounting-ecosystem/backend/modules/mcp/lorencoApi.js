@@ -52,7 +52,8 @@ class LorencoApiError extends Error {
  *   - contacting clients (any /send, recurring billing that e-mails), SARS submissions
  *   - system: integrations / keys, raw KV, diagnostics, pilot tools, company admin
  *   - its own leash: AI / Sean settings, approving its own Bot Review items
- *   - bank allocation and transfers only through the decision rules (rule > Sean > person)
+ *   - bank allocation only through allocate_bank_transaction (approved allocation rules checked);
+ *     since 2026-11-24 it posts like an employee — nothing waits for approval
  */
 const W = 'WRITE', ANY = 'ANY';
 const HARD_BLOCK = [
@@ -67,9 +68,10 @@ const HARD_BLOCK = [
   [W,      /^\/api\/accounting\/company(\/|$)/,                          'creating, changing or deleting companies is done by a person'],
   [W,      /^\/api\/accounting\/(ai\/settings|bank\/sean-settings)$/,     'the bot cannot change AI / Sean settings'],
   [W,      /^\/api\/accounting\/(bot-decisions|ai\/actions)\/\d+\/(approve|reject)$/, 'approving or rejecting bot / AI work is done by a person'],
-  ['POST', /^\/api\/accounting\/bank\/transactions\/\d+\/allocate$/,     'allocate bank lines with allocate_bank_transaction (approved rules, Sean and the approval rules apply)'],
-  ['PUT',  /^\/api\/accounting\/bank\/transactions\/transfer$/,          'transfers between own bank accounts wait for a person — use allocate_bank_transaction'],
-  ['POST', /^\/api\/accounting\/bank\/staging\/transfers\/\d+\/confirm$/, 'transfers between own bank accounts wait for a person — use allocate_bank_transaction'],
+  ['POST', /^\/api\/accounting\/bank\/transactions\/\d+\/allocate$/,     'allocate bank lines with allocate_bank_transaction (approved allocation rules are checked there)'],
+  // 2026-11-24 (Ruan: the bot is an ordinary employee): transfers between own accounts are done the way a
+  // person does them — Leo's transfer function (PUT /bank/transactions/transfer, or confirming a transfer
+  // detected on import), which matches both bank lines once. Both routes are open to the bot now.
 
   // ── Firmflow (practice management, /api/practice) — 2026-11-20 ──
   // The bot does the work (clients, tasks, time, deadlines, tax and secretarial prep) and submits it for
@@ -128,7 +130,9 @@ async function call(bearer, method, path, body) {
 }
 
 function createClient() {
-  const companyTokens = new Map();   // `${userId}|${companyId}` → { token, exp }
+  // Keyed per KEY as well: the minted JWT carries apiTokenId, so a new key for the same bot user must never
+  // reuse a session minted for an older (revoked) key (2026-11-24: 'This bot key is no longer valid' for 10 min).
+  const companyTokens = new Map();   // `${userId}|${tokenId}|${companyId}` → { token, exp }
   const allowedCache = new Map();    // userId → { ids: Set, exp }
 
   return {
@@ -155,7 +159,7 @@ function createClient() {
       const cid = parseInt(companyId, 10);
       if (!(cid > 0)) throw new LorencoApiError(400, 'company_id is required (use list_companies)');
       await this.assertAllowedCompany(ctx, cid);
-      const key = `${ctx.user.id}|${cid}`;
+      const key = `${ctx.user.id}|${ctx.tokenId}|${cid}`;
       const hit = companyTokens.get(key);
       if (hit && hit.exp > Date.now()) return hit.token;
       const r = await call(mintUserJwt(ctx.user, ctx.tokenId), 'POST', '/api/auth/select-company', { companyId: cid });
@@ -180,7 +184,7 @@ function createClient() {
       const r = await call(token, method, path, body);
       if (!r.ok) {
         // A role change or revoked access shows up here — drop the cached company token.
-        if (r.status === 401 || r.status === 403) companyTokens.delete(`${ctx.user.id}|${parseInt(companyId, 10)}`);
+        if (r.status === 401 || r.status === 403) companyTokens.delete(`${ctx.user.id}|${ctx.tokenId}|${parseInt(companyId, 10)}`);
         throw new LorencoApiError(r.status, (r.data && (r.data.error || r.data.message)) || `Request failed (${r.status})`);
       }
       return r.data;

@@ -54,36 +54,30 @@ describe('bot decision rules', () => {
     expect(evaluateAllocation(base({ sean: { accountId: 10, confidence: 90 } }))).toMatchObject({ outcome: 'post', decisionSource: 'sean' });
   });
 
-  test('2. disagreeing with a confident Sean needs a reason and then WAITS for a person', () => {
+  test('2. disagreeing with a confident Sean is the bot’s call (employee) — posted, no reason refusal', () => {
     const sean = { accountId: 11, confidence: 85 };
-    expect(evaluateAllocation(base({ sean })).code).toBe('DISAGREEMENT_REASON_REQUIRED');
-    expect(evaluateAllocation(base({ sean, disagreementReason: 'Invoice shows it is the fibre line, not stationery' })))
-      .toMatchObject({ outcome: 'hold', holdReasons: ['disagrees_with_sean'] });
+    expect(evaluateAllocation(base({ sean }))).toMatchObject({ outcome: 'post', decisionSource: 'bot', holdReasons: [] });
+    expect(evaluateAllocation(base({ sean, disagreementReason: 'Invoice shows it is the fibre line, not stationery' })).outcome).toBe('post');
   });
 
   test('a low-confidence Sean hint does not block the bot', () => {
     expect(evaluateAllocation(base({ sean: { accountId: 11, confidence: 40 } }))).toMatchObject({ outcome: 'post', decisionSource: 'bot' });
   });
 
-  test('director / owner lines ALWAYS wait — by account or by description, whatever the policy', () => {
-    expect(evaluateAllocation(base({ lines: [{ accountId: 12, amount: 115 }] })).holdReasons).toContain('director_or_owner');
-    expect(evaluateAllocation(base({ lines: [{ accountId: 15, amount: 115 }] })).holdReasons).toContain('director_or_owner');
-    expect(evaluateAllocation(base({ txn: { id: 1, amount: -115, description: 'PAYMENT TO DIRECTOR J DOE', status: 'unmatched' } })).outcome).toBe('hold');
-    // even when a rule says so
-    expect(evaluateAllocation(base({ rule: { ruleId: 1, accountId: 12 }, lines: [{ accountId: 12, amount: 115 }] })).outcome).toBe('hold');
+  test('director / owner lines post like any employee allocation (Ruan 2026-11-24)', () => {
+    expect(evaluateAllocation(base({ lines: [{ accountId: 12, amount: 115 }] })).outcome).toBe('post');
+    expect(evaluateAllocation(base({ lines: [{ accountId: 15, amount: 115 }] })).outcome).toBe('post');
+    expect(evaluateAllocation(base({ lines: [{ accountId: 18, amount: 115 }] })).outcome).toBe('post');
+    expect(evaluateAllocation(base({ txn: { id: 1, amount: -115, description: 'PAYMENT TO DIRECTOR J DOE', status: 'unmatched' } })).outcome).toBe('post');
   });
 
-  test('bank/cash accounts from the chart count as transfers even when not linked to a Leo bank account', () => {
-    expect(evaluateAllocation(base({ lines: [{ accountId: 16, amount: 115 }] })).holdReasons).toEqual(['internal_transfer']);
-    expect(evaluateAllocation(base({ lines: [{ accountId: 17, amount: 115 }] })).holdReasons).toEqual(['internal_transfer']);
-    expect(evaluateAllocation(base({ lines: [{ accountId: 18, amount: 115 }] })).holdReasons).toEqual(['director_or_owner']);
+  test('transfers between own bank / cash accounts are refused as allocations — Leo’s transfer function matches both sides once', () => {
+    for (const id of [13, 16, 17]) {   // linked bank, bank_cash in the chart, cash sub-type
+      expect(evaluateAllocation(base({ lines: [{ accountId: id, amount: 115 }] }))).toMatchObject({ outcome: 'refuse', code: 'USE_TRANSFER' });
+    }
   });
 
-  test('transfers between own bank accounts wait for a person', () => {
-    expect(evaluateAllocation(base({ lines: [{ accountId: 13, amount: 115 }] }))).toMatchObject({ outcome: 'hold', holdReasons: ['internal_transfer'] });
-  });
-
-  test('policy "approve everything" holds every allocation', () => {
-    expect(evaluateAllocation(base({ policy: { require_approval_all: true } }))).toMatchObject({ outcome: 'hold', holdReasons: ['policy_requires_approval'] });
+  test('the key policy no longer holds anything', () => {
+    expect(evaluateAllocation(base({ policy: { require_approval_all: true } }))).toMatchObject({ outcome: 'post', holdReasons: [] });
   });
 });

@@ -27,7 +27,7 @@ const { createLimiter } = require('./rateLimit');
 const { TOOLS, validateArgs, toContent, rowsLimit, MAX_ROWS_DEFAULT } = require('./tools');
 
 const SUPPORTED_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const SERVER_INFO = { name: 'lorenco-ledger-leo', title: 'Lorenco Ledger Leo', version: '1.6.0' };
+const SERVER_INFO = { name: 'lorenco-ledger-leo', title: 'Lorenco Ledger Leo', version: '1.7.0' };
 const INSTRUCTIONS =
   'You are working in Lorenco Ledger Leo as the user who created this key, with exactly that user\'s rights — you are a normal user / bookkeeper, ' +
   'and you can do ANY Ledger Leo task a person can do on the screens. Start with list_companies, then pass company_id to the other tools. ' +
@@ -41,8 +41,9 @@ const INSTRUCTIONS =
   'Write tools change the books exactly like a person, so be sure before you write and give a reason. Bank statement flow: import_bank_statement_pdf → get_bank_import_status → ' +
   'confirm_staged_transactions → get_sean_suggestions → allocate_bank_transaction → reconcile_bank_transactions. ' +
   'Decision order: an approved allocation rule first (never override it), then Sean’s recommendation, then evidence, then your own reasoned choice. ' +
-  'Every allocation needs a reason; when you differ from Sean give disagreement_reason — it then waits for a person. ' +
-  'Director/owner lines, transfers between own bank accounts and anything you are unsure of go to a person (flag_for_review). ' +
+  'You work as an ordinary employee: your allocations post straight away, so follow the rules carefully. Every allocation needs a reason; ' +
+  'when you differ from Sean give disagreement_reason. Transfers between the company’s own bank accounts use Leo’s transfer function (both sides matched once). ' +
+  'Anything you are genuinely unsure of: flag_for_review instead of guessing. ' +
   'Before creating anything (accounts, bank accounts, VAT codes, customers, suppliers, invoices) check the list first so you never create a duplicate, ' +
   'take bank opening balances from the statement, and never invent details you were not given. ' +
   'Invoices: customer invoices may be created and posted but NEVER e-mailed (a person sends them); supplier invoices are posted the moment they are captured, so only capture them from a real invoice. ' +
