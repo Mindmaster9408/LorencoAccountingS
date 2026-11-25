@@ -16,13 +16,22 @@
  *                       so later entries dated in it are swept to the open period
  *                       (existing journalService out-of-period mechanism)
  *   addPayment() / deletePayment()
+ *   carryCorrection()   step 2 (migration 190): carry a filed period's difference
+ *                       into a later, unfiled return — output → field 12,
+ *                       input → field 18. Only what is still uncorrected can be
+ *                       carried (difference − active corrections), under a row
+ *                       lock on the filed return, so nothing is corrected twice.
+ *   cancelCorrection()  only while the target period has no filed return
  *
  * Leo's own VAT201 figures come from the ledger via vatDetailReportService
- * (same journals as the VAT201 headline). Read and write paths are scoped by
- * company_id everywhere.
+ * (same journals as the VAT201 headline) plus corrections carried INTO the
+ * period. Read and write paths are scoped by company_id everywhere.
  *
- * Step 2 (not built here): carrying a difference into a later return
- * (field 12 / 18) — see SESSION_HANDOFF.
+ * Why differences don't already flow on by themselves: once a period is
+ * locked, entries dated in it are swept to the open period (and excluded from
+ * the old one by PERIOD_JOURNAL_FILTER) — those correct themselves. What is
+ * left is what the filed return itself got wrong, or what was posted between
+ * the eFiling date and capturing the return here.
  * ============================================================================
  */
 
@@ -115,7 +124,57 @@ function ledgerFieldsFromDetail(report) {
       else f.field_15 = round2(f.field_15 + r.vat);
     }
   }
+  // corrections of earlier filed periods carried into this one (migration 190)
+  const corr = report.summary.corrections;
+  if (corr) {
+    f.field_12 = round2(f.field_12 + corr.outputVat);
+    f.field_18 = round2(f.field_18 + corr.inputVat);
+  }
   return Object.assign(f, computeTotals(f));
+}
+
+/**
+ * What of a filed period's difference is still uncorrected: Total A / Total B
+ * difference (Leo − filed) minus active corrections already carried. Pure.
+ */
+function remainingToCorrect(differences, correctionsOut) {
+  const diff = key => {
+    const d = (differences || []).find(x => x.key === key);
+    return d ? d.difference : 0;
+  };
+  const active = (correctionsOut || []).filter(c => c.status === 'active');
+  const carriedOutput = round2(active.reduce((s, c) => s + Number(c.output_vat), 0));
+  const carriedInput = round2(active.reduce((s, c) => s + Number(c.input_vat), 0));
+  return {
+    outputDifference: diff('field_13'), inputDifference: diff('field_19'),
+    carriedOutput, carriedInput,
+    output: round2(diff('field_13') - carriedOutput),
+    input: round2(diff('field_19') - carriedInput),
+  };
+}
+
+/**
+ * Check amounts to carry against what is still uncorrected: same direction,
+ * not more than what is left, not both zero. Pure.
+ */
+function validateCarry(remaining, outputVat, inputVat) {
+  const errors = [];
+  const parse = (raw, label) => {
+    if (raw === undefined || raw === null || raw === '') return 0;
+    const v = Number(String(raw).replace(/[\s,]/g, '').replace(/^R/i, ''));
+    if (!Number.isFinite(v)) { errors.push(`${label} is not a number`); return 0; }
+    return round2(v);
+  };
+  const out = parse(outputVat, 'Output VAT correction');
+  const inp = parse(inputVat, 'Input VAT correction');
+  if (!errors.length && Math.abs(out) < 0.005 && Math.abs(inp) < 0.005) errors.push('Give an output and/or input VAT amount to carry');
+  for (const [amt, left, label] of [[out, remaining.output, 'output VAT (field 12)'], [inp, remaining.input, 'input VAT (field 18)']]) {
+    if (Math.abs(amt) < 0.005) continue;
+    if (Math.abs(left) < 0.005) errors.push(`There is no uncorrected ${label} difference left for this period`);
+    else if (Math.sign(amt) !== Math.sign(left)) errors.push(`The ${label} correction must be ${left > 0 ? 'positive' : 'negative'}, like the difference (${left.toFixed(2)})`);
+    else if (Math.abs(amt) > Math.abs(left) + 0.005) errors.push(`Only ${left.toFixed(2)} ${label} is still uncorrected — ${amt.toFixed(2)} would correct it twice`);
+  }
+  return { outputVat: out, inputVat: inp, errors };
 }
 
 /** Field-by-field differences: Leo now minus filed. Pure. */
@@ -143,6 +202,16 @@ function paymentPosition(filedReturn, payments) {
 
 const RETURN_COLS = ['id', 'company_id', 'vat_period_id', 'version', 'status', 'filed_date', 'sars_reference', 'notes',
   ...FIELD_KEYS, 'ledger_snapshot', 'captured_by_user_id', 'captured_at', 'superseded_at', 'superseded_by_return_id'];
+
+/** { periodKey, fromDate, toDate } of the calendar month after a YYYY-MM-DD date. Pure. */
+function nextMonthAfter(dateStr) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '')) return null;
+  const [y, m] = dateStr.split('-').map(Number);          // month of the date, 1-12
+  const ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+  const last = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  const mm = String(nm).padStart(2, '0');
+  return { periodKey: `${ny}-${mm}`, fromDate: `${ny}-${mm}-01`, toDate: `${ny}-${mm}-${String(last).padStart(2, '0')}` };
+}
 
 function numericReturn(r) {
   if (!r) return r;
@@ -222,6 +291,14 @@ class VatReturnsService {
       if (differences.length) causes = await this._causes(companyId, period, current.filed_date);
     }
 
+    const correctionsOut = await this._corrections(companyId, 'source', periodId);
+    const correctionsIn = await this._corrections(companyId, 'target', periodId);
+    const remaining = current ? remainingToCorrect(differences, correctionsOut) : null;
+    let carryTargets = [], newTargetSuggestion = null;
+    if (remaining && (Math.abs(remaining.output) >= 0.01 || Math.abs(remaining.input) >= 0.01)) {
+      ({ targets: carryTargets, suggestion: newTargetSuggestion } = await this._carryTargets(companyId, period));
+    }
+
     return {
       period: { id: period.id, periodKey: period.period_key, fromDate: period.from_date, toDate: period.to_date,
         locked: String(period.status || '').toUpperCase() === 'LOCKED' },
@@ -233,7 +310,158 @@ class VatReturnsService {
       ledger: ledger.fields,
       ledgerTiesToControlAccounts: ledger.tieOut.ties,
       differences, causes,
+      correctionsOut, correctionsIn, remaining, carryTargets, newTargetSuggestion,
     };
+  }
+
+  /** Corrections from ('source') or into ('target') a period, with period keys + whether the target is filed. */
+  async _corrections(companyId, side, periodId) {
+    const col = side === 'source' ? 'c.source_period_id' : 'c.target_period_id';
+    try {
+      const { rows } = await db.query(
+        `SELECT c.id, c.source_period_id, c.target_period_id, c.source_return_id,
+                c.output_vat::float AS output_vat, c.input_vat::float AS input_vat,
+                c.reason, c.status, c.created_at, c.cancelled_at, c.cancel_reason,
+                sp.period_key AS source_period_key, tp.period_key AS target_period_key,
+                EXISTS (SELECT 1 FROM vat_returns r
+                         WHERE r.company_id = c.company_id AND r.vat_period_id = c.target_period_id
+                           AND r.status = 'filed') AS target_filed
+           FROM vat_corrections c
+           JOIN vat_periods sp ON sp.id = c.source_period_id AND sp.company_id = c.company_id
+           JOIN vat_periods tp ON tp.id = c.target_period_id AND tp.company_id = c.company_id
+          WHERE c.company_id = $1 AND ${col} = $2
+          ORDER BY c.created_at, c.id`, [companyId, periodId]);
+      return rows;
+    } catch (err) {
+      if (err.code === '42P01') return [];        // migration 190 not run yet
+      throw err;
+    }
+  }
+
+  /**
+   * Periods a difference can be carried into: later than the source and not
+   * filed yet. Plus a suggested next month when a new one must be created.
+   */
+  async _carryTargets(companyId, source) {
+    const { rows: targets } = await db.query(
+      `SELECT p.id, p.period_key, p.from_date::text AS from_date, p.to_date::text AS to_date, p.status
+         FROM vat_periods p
+        WHERE p.company_id = $1 AND p.from_date > $2::date
+          AND NOT EXISTS (SELECT 1 FROM vat_returns r
+                           WHERE r.company_id = p.company_id AND r.vat_period_id = p.id AND r.status = 'filed')
+        ORDER BY p.from_date`, [companyId, source.to_date]);
+    const { rows: last } = await db.query(
+      `SELECT MAX(to_date)::text AS last_to FROM vat_periods WHERE company_id = $1`, [companyId]);
+    return { targets, suggestion: nextMonthAfter(last[0] && last[0].last_to > source.to_date ? last[0].last_to : source.to_date) };
+  }
+
+  async _resolveTarget(companyId, source, p) {
+    const bad = msg => { const e = new Error(msg); e.status = 400; return e; };
+    let target;
+    if (parseInt(p.targetPeriodId, 10)) {
+      target = await this._period(companyId, parseInt(p.targetPeriodId, 10));
+      if (!target) { const e = new Error('Target VAT period not found'); e.status = 404; throw e; }
+    } else if (p.targetNewPeriod) {
+      const np = p.targetNewPeriod;
+      if (!/^\d{4}-\d{2}$/.test(np.periodKey || '') || !/^\d{4}-\d{2}-\d{2}$/.test(np.fromDate || '') || !/^\d{4}-\d{2}-\d{2}$/.test(np.toDate || '') || np.fromDate > np.toDate) {
+        throw bad('Give the new period as YYYY-MM with a from and to date');
+      }
+      const { rows: overlap } = await db.query(
+        `SELECT period_key FROM vat_periods WHERE company_id = $1 AND from_date <= $3::date AND to_date >= $2::date LIMIT 1`,
+        [companyId, np.fromDate, np.toDate]);
+      if (overlap.length) throw bad(`Period ${overlap[0].period_key} already covers these dates — choose it from the list`);
+      if (np.fromDate <= source.to_date) throw bad('The correction must go into a period after the one being corrected');
+      const created = await vatReconService.createOrGetPeriod(companyId, {
+        periodKey: np.periodKey, fromDate: np.fromDate, toDate: np.toDate, filingFrequency: np.filingFrequency || 'monthly',
+      });
+      target = await this._period(companyId, created.id);
+    } else {
+      throw bad('Choose the later period the correction goes into');
+    }
+    if (target.from_date <= source.to_date) throw bad('The correction must go into a period after the one being corrected');
+    return target;
+  }
+
+  /**
+   * Carry (part of) a filed period's difference into a later, unfiled return.
+   * p: { sourcePeriodId, targetPeriodId | targetNewPeriod, outputVat, inputVat, reason }
+   */
+  async carryCorrection(companyId, userId, p) {
+    const reason = String(p.reason || '').trim();
+    if (!reason) { const e = new Error('A reason is required — it shows on the later return\'s VAT report'); e.status = 400; throw e; }
+    const sourceId = parseInt(p.sourcePeriodId, 10);
+    const source = sourceId ? await this._period(companyId, sourceId) : null;
+    if (!source) { const e = new Error('VAT period not found'); e.status = 404; throw e; }
+
+    const { rows: cur } = await db.query(
+      `SELECT ${RETURN_COLS.filter(c => c !== 'ledger_snapshot').join(', ')}
+         FROM vat_returns WHERE company_id = $1 AND vat_period_id = $2 AND status = 'filed'`, [companyId, sourceId]);
+    if (!cur.length) { const e = new Error('Capture the filed return for this period first — there is nothing to correct against yet'); e.status = 400; throw e; }
+    const current = numericReturn(cur[0]);
+    const differences = diffFields((await this._ledger(companyId, source)).fields, current);
+    const target = await this._resolveTarget(companyId, source, p);
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      // Serialise carries for this source: lock its filed return.
+      const { rows: lock } = await client.query(
+        `SELECT id FROM vat_returns WHERE company_id = $1 AND vat_period_id = $2 AND status = 'filed' FOR UPDATE`,
+        [companyId, sourceId]);
+      if (!lock.length || lock[0].id !== current.id) {
+        const e = new Error('The filed return for this period changed meanwhile — reload and try again'); e.status = 409; throw e;
+      }
+      const { rows: targetFiled } = await client.query(
+        `SELECT 1 FROM vat_returns WHERE company_id = $1 AND vat_period_id = $2 AND status = 'filed' LIMIT 1`,
+        [companyId, target.id]);
+      if (targetFiled.length) {
+        const e = new Error(`Period ${target.period_key} is already filed — choose a period that has not been filed yet`); e.status = 400; throw e;
+      }
+      const { rows: carried } = await client.query(
+        `SELECT output_vat, input_vat, status FROM vat_corrections
+          WHERE company_id = $1 AND source_period_id = $2 AND status = 'active'`, [companyId, sourceId]);
+      const remaining = remainingToCorrect(differences, carried);
+      const { outputVat, inputVat, errors } = validateCarry(remaining, p.outputVat, p.inputVat);
+      if (errors.length) { const e = new Error(errors.join('; ')); e.status = 400; throw e; }
+
+      const { rows: ins } = await client.query(
+        `INSERT INTO vat_corrections (company_id, source_period_id, source_return_id, target_period_id,
+                                      output_vat, input_vat, reason, created_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, source_period_id, target_period_id, source_return_id,
+                   output_vat::float AS output_vat, input_vat::float AS input_vat, reason, status, created_at`,
+        [companyId, sourceId, current.id, target.id, outputVat, inputVat, reason, userId || null]);
+      await client.query('COMMIT');
+      return { correction: { ...ins[0], source_period_key: source.period_key, target_period_key: target.period_key } };
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Cancel a carried correction — only while the target period has no filed return. */
+  async cancelCorrection(companyId, userId, correctionId, reason) {
+    const { rows } = await db.query(
+      `UPDATE vat_corrections c
+          SET status = 'cancelled', cancelled_at = now(), cancelled_by_user_id = $3, cancel_reason = $4
+        WHERE c.id = $1 AND c.company_id = $2 AND c.status = 'active'
+          AND NOT EXISTS (SELECT 1 FROM vat_returns r
+                           WHERE r.company_id = c.company_id AND r.vat_period_id = c.target_period_id
+                             AND r.status = 'filed')
+        RETURNING c.id, c.source_period_id, c.target_period_id, c.output_vat::float AS output_vat,
+                  c.input_vat::float AS input_vat, c.reason, c.status`,
+      [correctionId, companyId, userId || null, String(reason || '').trim() || null]);
+    if (rows.length) return rows[0];
+    const { rows: found } = await db.query(
+      `SELECT status FROM vat_corrections WHERE id = $1 AND company_id = $2`, [correctionId, companyId]);
+    if (!found.length) { const e = new Error('Correction not found'); e.status = 404; throw e; }
+    const e = new Error(found[0].status === 'cancelled'
+      ? 'This correction is already cancelled'
+      : 'The later return with this correction is already filed — it can no longer be cancelled. Correct it in a revised return instead.');
+    e.status = 409;
+    throw e;
   }
 
   /**
@@ -287,6 +515,16 @@ class VatReturnsService {
     }
     const period = await this._period(companyId, periodId);
     if (!period) { const e = new Error('VAT period not found'); e.status = 404; throw e; }
+
+    // A revision after part of the difference was carried to a later return
+    // would correct the same thing twice — make the user confirm deliberately.
+    const carriedOut = (await this._corrections(companyId, 'source', periodId)).filter(c => c.status === 'active');
+    if (carriedOut.length && !payload.confirmCorrections) {
+      const e = new Error(`Differences of this period were already carried to ${[...new Set(carriedOut.map(c => c.target_period_key))].join(', ')}. ` +
+        'A revised return that also fixes them would correct them twice — cancel those corrections first (if not yet filed), or confirm that the revision does not include them.');
+      e.status = 409; e.code = 'CORRECTIONS_EXIST';
+      throw e;
+    }
 
     const ledger = await this._ledger(companyId, period);
     const snapshot = { capturedAt: new Date().toISOString(), fields: ledger.fields, tiesToControlAccounts: ledger.tieOut.ties };
@@ -389,4 +627,5 @@ class VatReturnsService {
 module.exports = new VatReturnsService();
 Object.assign(module.exports, {
   FIELDS, computeTotals, validateReturnFields, ledgerFieldsFromDetail, diffFields, paymentPosition,
+  remainingToCorrect, validateCarry, nextMonthAfter,
 });

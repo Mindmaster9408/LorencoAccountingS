@@ -1336,11 +1336,12 @@
                     } else {
                         html += `<div class="vat-detail-note" style="margin-bottom:16px;">No entries were posted after the filing date — the difference was there when the return was filed (or the return was captured with different figures than Leo had).</div>`;
                     }
-                    html += `<div class="vat-detail-note" style="margin-bottom:16px;">To correct: file a revised return on eFiling and capture it here as a new version. (Carrying a difference into a later return is the next step still to be built.)</div>`;
                 }
+                html += renderSarsCorrectionsOut(d);
             } else {
                 html += `<p class="vat-detail-empty" style="margin-bottom:12px;">No filed return captured for this period yet.</p>`;
             }
+            html += renderSarsCorrectionsIn(d);
 
             html += `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
                 <button type="button" class="btn-secondary" onclick="showSarsReturnForm()">${cur ? '&#9998; Capture a revised return' : '&#9998; Capture the filed return'}</button>
@@ -1374,6 +1375,117 @@
 
             el.innerHTML = html;
             if (opts.capture && !cur) showSarsReturnForm();
+        }
+
+        // Step 2: carry a filed period's difference into a later return
+        // (output → field 12, input → field 18). Only what is still uncorrected
+        // can be carried — the server refuses anything that would correct twice.
+        function sarsCorrectionStatus(c) {
+            if (c.status === 'cancelled') return `<span class="sars-badge notfiled">Cancelled</span>${c.cancel_reason ? `<div class="vat-detail-note">${escapeVatHtml(c.cancel_reason)}</div>` : ''}`;
+            return c.target_filed
+                ? `<span class="sars-badge filed">Included in filed return ${escapeVatHtml(c.target_period_key)}</span>`
+                : `<span class="sars-badge rev">Waiting for return ${escapeVatHtml(c.target_period_key)}</span>`;
+        }
+
+        function renderSarsCorrectionsOut(d) {
+            const list = d.correctionsOut || [];
+            const rem = d.remaining;
+            const open = rem && (Math.abs(rem.output) >= 0.01 || Math.abs(rem.input) >= 0.01);
+            if (!list.length && !open) return '';
+            let html = `<h3 class="vat-report-group-title">Correcting the difference</h3>`;
+            if (rem && (rem.outputDifference || rem.inputDifference)) {
+                html += `
+                    <table class="vat-report-group-table" style="max-width:640px;">
+                        <thead><tr><th></th><th class="num">Difference</th><th class="num">Already carried</th><th class="num">Still to correct</th></tr></thead>
+                        <tbody>
+                            <tr><td>Output VAT (Total A → later field 12)</td><td class="num">${sarsR(rem.outputDifference)}</td><td class="num">${sarsR(rem.carriedOutput)}</td><td class="num ${Math.abs(rem.output) >= 0.01 ? 'sars-diff' : 'sars-ok'}">${sarsR(rem.output)}</td></tr>
+                            <tr><td>Input VAT (Total B → later field 18)</td><td class="num">${sarsR(rem.inputDifference)}</td><td class="num">${sarsR(rem.carriedInput)}</td><td class="num ${Math.abs(rem.input) >= 0.01 ? 'sars-diff' : 'sars-ok'}">${sarsR(rem.input)}</td></tr>
+                        </tbody>
+                    </table>`;
+            }
+            if (list.length) {
+                html += `
+                    <table class="vat-report-group-table">
+                        <thead><tr><th>Carried to</th><th>Reason</th><th class="num">Output VAT (12)</th><th class="num">Input VAT (18)</th><th>Status</th><th></th></tr></thead>
+                        <tbody>${list.map(c => `<tr>
+                            <td>${escapeVatHtml(c.target_period_key)}</td><td>${escapeVatHtml(c.reason)}</td>
+                            <td class="num">${sarsR(c.output_vat)}</td><td class="num">${sarsR(c.input_vat)}</td>
+                            <td>${sarsCorrectionStatus(c)}</td>
+                            <td>${c.status === 'active' && !c.target_filed ? `<button type="button" class="btn-secondary" style="padding:2px 8px; font-size:11px;" onclick="cancelSarsCorrection(${c.id})">Cancel</button>` : ''}</td>
+                        </tr>`).join('')}</tbody>
+                    </table>`;
+            }
+            if (open) {
+                const targets = d.carryTargets || [];
+                const sug = d.newTargetSuggestion;
+                const opts = targets.map(t => `<option value="${t.id}">${escapeVatHtml(t.period_key)} (${escapeVatHtml(t.from_date)} – ${escapeVatHtml(t.to_date)})</option>`).join('')
+                    + (sug ? `<option value="new">New period ${escapeVatHtml(sug.periodKey)} (${escapeVatHtml(sug.fromDate)} – ${escapeVatHtml(sug.toDate)})</option>` : '');
+                html += `
+                    <div class="vat-summary" style="margin:10px 0 16px;">
+                        <h3>Carry into a later return</h3>
+                        <div class="vat-detail-note" style="margin-bottom:8px;">The amounts go into field 12 (output) and field 18 (input) of the later return, and show on that period's VAT report. Nothing is posted to the books — the entries are already there. Or: file a revised return on eFiling and capture it above as a new version.</div>
+                        <div class="sars-form-row">
+                            <label>Into period <select id="sarsCarryTarget">${opts}</select></label>
+                            <label>Output VAT → field 12 <input type="number" step="0.01" id="sarsCarryOutput" class="sars-field-input" value="${Number(rem.output).toFixed(2)}"></label>
+                            <label>Input VAT → field 18 <input type="number" step="0.01" id="sarsCarryInput" class="sars-field-input" value="${Number(rem.input).toFixed(2)}"></label>
+                            <label style="flex:1; min-width:220px;">Reason <input type="text" id="sarsCarryReason" maxlength="300" placeholder="e.g. supplier invoice captured after filing"></label>
+                            <button type="button" class="btn-secondary" id="sarsCarryBtn" onclick="carrySarsCorrection()">Carry correction</button>
+                        </div>
+                    </div>`;
+            }
+            return html;
+        }
+
+        function renderSarsCorrectionsIn(d) {
+            const list = (d.correctionsIn || []).filter(c => c.status === 'active');
+            if (!list.length) return '';
+            return `
+                <h3 class="vat-report-group-title">Corrections of earlier periods in this return</h3>
+                <table class="vat-report-group-table">
+                    <thead><tr><th>From period</th><th>Reason</th><th class="num">Output VAT (12)</th><th class="num">Input VAT (18)</th></tr></thead>
+                    <tbody>${list.map(c => `<tr>
+                        <td>${escapeVatHtml(c.source_period_key)}</td><td>${escapeVatHtml(c.reason)}</td>
+                        <td class="num">${sarsR(c.output_vat)}</td><td class="num">${sarsR(c.input_vat)}</td></tr>`).join('')}</tbody>
+                </table>
+                <div class="vat-detail-note" style="margin-bottom:16px;">Already included in Leo's field 12 / 18 for this period.</div>`;
+        }
+
+        async function carrySarsCorrection() {
+            if (!sarsDetail) return;
+            const btn = document.getElementById('sarsCarryBtn');
+            const targetVal = document.getElementById('sarsCarryTarget').value;
+            const body = {
+                sourcePeriodId: sarsDetail.period.id,
+                outputVat: document.getElementById('sarsCarryOutput').value,
+                inputVat: document.getElementById('sarsCarryInput').value,
+                reason: document.getElementById('sarsCarryReason').value.trim(),
+            };
+            if (!body.reason) { alert('Give a reason — it shows on the later return\'s VAT report.'); return; }
+            if (targetVal === 'new') body.targetNewPeriod = sarsDetail.newTargetSuggestion;
+            else if (targetVal) body.targetPeriodId = Number(targetVal);
+            else { alert('Choose the period the correction goes into.'); return; }
+            if (!confirm('Carry this correction into the later return?')) return;
+            try {
+                btn.disabled = true; btn.textContent = 'Saving…';
+                await fetchAPI('/vat-returns/corrections', { method: 'POST', body: JSON.stringify(body) });
+                await loadSarsOverview();
+                await openSarsPeriod(sarsDetail.period.id);
+            } catch (error) {
+                alert('Could not carry the correction: ' + error.message);
+                btn.disabled = false; btn.textContent = 'Carry correction';
+            }
+        }
+
+        async function cancelSarsCorrection(id) {
+            if (!sarsDetail) return;
+            const reason = prompt('Why is this correction cancelled?');
+            if (reason === null) return;
+            try {
+                await fetchAPI(`/vat-returns/corrections/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+                await openSarsPeriod(sarsDetail.period.id);
+            } catch (error) {
+                alert('Could not cancel: ' + error.message);
+            }
         }
 
         function openOlderPeriodForm() {
@@ -1462,7 +1574,14 @@
             if (!confirm(verb)) return;
             try {
                 btn.disabled = true; btn.textContent = 'Saving…';
-                const res = await fetchAPI('/vat-returns/returns', { method: 'POST', body: JSON.stringify(body) });
+                let res;
+                try {
+                    res = await fetchAPI('/vat-returns/returns', { method: 'POST', body: JSON.stringify(body) });
+                } catch (e) {
+                    if (e.code !== 'CORRECTIONS_EXIST' || !confirm(e.message + '\n\nSave the revision anyway?')) throw e;
+                    body.confirmCorrections = true;
+                    res = await fetchAPI('/vat-returns/returns', { method: 'POST', body: JSON.stringify(body) });
+                }
                 if (res.lockWarning) alert(res.lockWarning);
                 await loadSarsOverview();
                 await openSarsPeriod(res.saved.vat_period_id);
@@ -1581,7 +1700,15 @@
             const rate = report.summary.rate;
             const tie = report.summary.tieOut;
             const line = (label, value, cls = '') => `<tr class="${cls}"><td>${label}</td><td class="num">${value === null ? '' : fmtR(value)}</td></tr>`;
-            const resultLabel = c.result === 'payable' ? 'VAT payable to SARS' : c.result === 'refundable' ? 'VAT refundable by SARS' : 'No VAT due';
+            const corr = report.summary.corrections && report.summary.corrections.items.length ? report.summary.corrections : null;
+            const finalNet = corr ? corr.netVatWithCorrections : c.netVat;
+            const finalResult = corr ? corr.result : c.result;
+            const resultLabel = finalResult === 'payable' ? 'VAT payable to SARS' : finalResult === 'refundable' ? 'VAT refundable by SARS' : 'No VAT due';
+            const corrHtml = !corr ? '' : line('CORRECTIONS OF EARLIER FILED PERIODS', null, 'head')
+                + corr.items.map(it =>
+                    (it.outputVat ? line(`Period ${escapeVatHtml(it.sourcePeriodKey)}, output VAT (field 12): ${escapeVatHtml(it.reason)}`, it.outputVat) : '')
+                  + (it.inputVat ? line(`Period ${escapeVatHtml(it.sourcePeriodKey)}, input VAT (field 18): ${escapeVatHtml(it.reason)}`, -it.inputVat) : '')).join('')
+                + line('A − B including corrections', finalNet, 'sub');
 
             html += `
                 <div class="vat-summary">
@@ -1602,7 +1729,8 @@
                         ${line('B. Total input VAT', c.inputVat, 'sub')}
                         ${line('Purchases with no VAT claimed — nothing to claim', c.inputNoVatExclusive, 'muted')}
                         ${line('A − B', c.netVat, 'sub')}
-                        ${line(resultLabel, Math.abs(c.netVat), 'result')}
+                        ${corrHtml}
+                        ${line(resultLabel, Math.abs(finalNet), 'result')}
                     </table>
                     <div class="${tie.ties ? 'vat-tie-ok' : 'vat-tie-bad'}">
                         ${tie.ties
@@ -1729,7 +1857,9 @@
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.error || 'API request failed');
+                const err = new Error(error.error || 'API request failed');
+                err.code = error.code;      // e.g. CORRECTIONS_EXIST from /vat-returns/returns
+                throw err;
             }
 
             return response.json();

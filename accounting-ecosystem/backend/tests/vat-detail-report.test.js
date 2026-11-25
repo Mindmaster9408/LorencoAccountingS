@@ -10,7 +10,7 @@ jest.mock('../modules/accounting/config/database', () => ({ query: jest.fn() }))
 jest.mock('../config/database', () => ({ supabase: {} }));
 
 const XLSX = require('xlsx');
-const { classifyJournal, buildSummary } = require('../modules/accounting/services/vatDetailReportService');
+const { classifyJournal, buildSummary, applyCorrections } = require('../modules/accounting/services/vatDetailReportService');
 const { buildVatDetailWorkbook } = require('../modules/accounting/routes/vat-report');
 
 const L = (code, type, sub_type, debit, credit, name = code) => ({ code, type, sub_type, debit, credit, name });
@@ -186,5 +186,41 @@ describe('Excel download', () => {
     expect(text).toMatch(/VAT PAYABLE TO SARS/);
     expect(text).toMatch(/agree with the VAT control accounts/);
     expect(text).not.toMatch(/VAT adjustments/);   // empty adjustment section is left out
+  });
+});
+
+describe('corrections of earlier filed periods (migration 190)', () => {
+  const rows = [
+    { section: 'output_standard', date: '2026-11-01', reference: 'INV1', description: 'Sale', account: 'Sales', exclusive: 1000, vat: 150, inclusive: 1150, note: '' },
+  ];
+  const withCorrections = () => {
+    const summary = buildSummary(rows, { outputVat: 150, inputVat: 0 });
+    applyCorrections(summary, [
+      { id: 1, source_period_key: '2026-09', reason: 'Invoice captured after filing', output_vat: 30, input_vat: 0 },
+      { id: 2, source_period_key: '2026-10', reason: 'Supplier credit missed', output_vat: 0, input_vat: 200 },
+    ]);
+    return { periodKey: '2026-11', dateFrom: '2026-11-01', dateTo: '2026-11-30', generatedAt: '2026-11-25T08:00:00.000Z',
+      rows, notVatRelatedCount: 0, warnings: [], summary };
+  };
+
+  test('payable including corrections: 150 + 30 output − 200 input = refund 20', () => {
+    const c = withCorrections().summary.corrections;
+    expect(c).toEqual(expect.objectContaining({ outputVat: 30, inputVat: 200, netVatWithCorrections: -20, result: 'refundable' }));
+    expect(withCorrections().summary.calculation.netVat).toBe(150);      // ledger figure unchanged
+  });
+
+  test('no corrections → net unchanged', () => {
+    const s = applyCorrections(buildSummary(rows, { outputVat: 150, inputVat: 0 }), []);
+    expect(s.corrections).toEqual(expect.objectContaining({ items: [], netVatWithCorrections: 150, result: 'payable' }));
+  });
+
+  test('Excel and PDF show the corrections and the corrected result', async () => {
+    const text = XLSX.utils.sheet_to_csv(XLSX.read(buildVatDetailWorkbook(withCorrections(), 'Fictional Co'), { type: 'buffer' }).Sheets['VAT Detail']);
+    expect(text).toMatch(/CORRECTIONS OF EARLIER FILED PERIODS/);
+    expect(text).toMatch(/Output VAT \(field 12\): Invoice captured after filing/);
+    expect(text).toMatch(/VAT REFUNDABLE BY SARS/);
+    const { generateVatDetailPdf } = require('../modules/accounting/services/vatDetailPdfService');
+    const buf = await generateVatDetailPdf(withCorrections(), 'Fictional Co');
+    expect(buf.slice(0, 5).toString()).toBe('%PDF-');
   });
 });

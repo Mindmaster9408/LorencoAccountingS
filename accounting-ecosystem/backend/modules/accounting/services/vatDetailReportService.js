@@ -202,6 +202,44 @@ function buildSummary(rows, headline, rate = STANDARD_RATE) {
   };
 }
 
+/**
+ * Corrections of earlier filed periods carried INTO this period
+ * (vat_corrections, migration 190). They are not ledger entries — they adjust
+ * the return (field 12 output / 18 input) on top of the ledger figures.
+ */
+async function loadIncomingCorrections(companyId, periodId) {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.id, c.output_vat::float AS output_vat, c.input_vat::float AS input_vat, c.reason,
+              p.period_key AS source_period_key
+         FROM vat_corrections c
+         JOIN vat_periods p ON p.id = c.source_period_id AND p.company_id = c.company_id
+        WHERE c.company_id = $1 AND c.target_period_id = $2 AND c.status = 'active'
+        ORDER BY p.from_date, c.id`, [companyId, periodId]);
+    return rows;
+  } catch (err) {
+    if (err.code === '42P01') return [];        // migration 190 not run yet
+    throw err;
+  }
+}
+
+/** Adds corrections + the corrected payable to a summary (mutates). Pure apart from that. */
+function applyCorrections(summary, corrections) {
+  const items = (corrections || []).map(c => ({
+    id: c.id, sourcePeriodKey: c.source_period_key, reason: c.reason,
+    outputVat: round2(c.output_vat), inputVat: round2(c.input_vat),
+  }));
+  const outputVat = round2(items.reduce((s, c) => s + c.outputVat, 0));
+  const inputVat = round2(items.reduce((s, c) => s + c.inputVat, 0));
+  const net = round2(summary.calculation.netVat + outputVat - inputVat);
+  summary.corrections = {
+    items, outputVat, inputVat,
+    netVatWithCorrections: net,
+    result: net > 0.005 ? 'payable' : net < -0.005 ? 'refundable' : 'nil',
+  };
+  return summary;
+}
+
 class VatDetailReportService {
   /**
    * @param {number} companyId
@@ -255,6 +293,8 @@ class VatDetailReportService {
       inputVat:  await vatReportService.calculateInputVat(companyId, dateFrom, dateTo, periodId),
     };
     const summary = buildSummary(rows, headline);
+    const corrections = periodId ? await loadIncomingCorrections(companyId, periodId) : [];
+    applyCorrections(summary, corrections);
 
     const warnings = [...period.warnings];
     if (!summary.tieOut.ties) {
@@ -281,6 +321,7 @@ class VatDetailReportService {
 module.exports = new VatDetailReportService();
 module.exports.classifyJournal = classifyJournal;
 module.exports.buildSummary = buildSummary;
+module.exports.applyCorrections = applyCorrections;
 module.exports.SECTION_TITLES = {
   output_standard: 'OUTPUT VAT — Standard rate (15%)',
   output_no_vat:   'OUTPUT — Income with no VAT (zero-rated / exempt)',

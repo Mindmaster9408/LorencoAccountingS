@@ -208,7 +208,19 @@ function buildVatDetailWorkbook(report, companyName) {
   aoa.push(['', '', 'Purchases with no VAT claimed — no VAT to claim', '', c.inputNoVatExclusive]);
   aoa.push([]);
   aoa.push(['', '', 'A − B', '', c.netVat]);
-  aoa.push(['', '', c.result === 'payable' ? 'VAT PAYABLE TO SARS' : c.result === 'refundable' ? 'VAT REFUNDABLE BY SARS' : 'NO VAT DUE', '', Math.abs(c.netVat)]);
+  const corr = report.summary.corrections && report.summary.corrections.items.length ? report.summary.corrections : null;
+  if (corr) {
+    aoa.push([]);
+    aoa.push(['', '', 'CORRECTIONS OF EARLIER FILED PERIODS']);
+    for (const it of corr.items) {
+      if (it.outputVat) aoa.push(['', it.sourcePeriodKey, `Output VAT (field 12): ${it.reason}`, '', it.outputVat]);
+      if (it.inputVat) aoa.push(['', it.sourcePeriodKey, `Input VAT (field 18): ${it.reason}`, '', -it.inputVat]);
+    }
+    aoa.push(['', '', 'A − B INCLUDING CORRECTIONS', '', corr.netVatWithCorrections]);
+  }
+  const finalNet = corr ? corr.netVatWithCorrections : c.netVat;
+  const finalResult = corr ? corr.result : c.result;
+  aoa.push(['', '', finalResult === 'payable' ? 'VAT PAYABLE TO SARS' : finalResult === 'refundable' ? 'VAT REFUNDABLE BY SARS' : 'NO VAT DUE', '', Math.abs(finalNet)]);
   aoa.push([]);
   const tie = report.summary.tieOut;
   aoa.push(['', '', tie.ties

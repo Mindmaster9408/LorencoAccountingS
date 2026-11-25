@@ -25,7 +25,8 @@ const svc = require('../modules/accounting/services/vatReturnsService');
 const vatDetail = require('../modules/accounting/services/vatDetailReportService');
 const vatRecon = require('../modules/accounting/services/vatReconciliationService');
 const { PERIOD_JOURNAL_FILTER } = require('../modules/accounting/services/vatReportService');
-const { computeTotals, validateReturnFields, ledgerFieldsFromDetail, diffFields, paymentPosition } = svc;
+const { computeTotals, validateReturnFields, ledgerFieldsFromDetail, diffFields, paymentPosition,
+  remainingToCorrect, validateCarry, nextMonthAfter } = svc;
 
 const detailReport = () => ({
   rows: [
@@ -45,7 +46,7 @@ const detailReport = () => ({
 });
 
 beforeEach(() => {
-  mockQuery.mockReset(); mockClientQuery.mockReset(); mockRelease.mockReset();
+  mockQuery.mockReset().mockResolvedValue({ rows: [] }); mockClientQuery.mockReset(); mockRelease.mockReset();
   vatRecon.lockPeriod.mockClear(); vatRecon.createOrGetPeriod.mockClear();
   vatDetail.generate.mockReset().mockResolvedValue(detailReport());
 });
@@ -195,5 +196,145 @@ describe('bot (MCP) cannot capture SARS returns', () => {
     expect(blockReason('POST', '/api/accounting/vat-returns/payments')).toMatch(/done by a person/);
     expect(blockReason('DELETE', '/api/accounting/vat-returns/payments/3')).toMatch(/done by a person/);
     expect(blockReason('GET', '/api/accounting/vat-returns/overview')).toBeNull();
+  });
+});
+
+// ── Step 2: carrying differences into a later return (migration 190) ──────────
+describe('corrections: what is left to correct', () => {
+  const diffs = [{ key: 'field_13', difference: 300 }, { key: 'field_19', difference: -40 }];
+
+  test('difference minus active corrections; cancelled ones ignored', () => {
+    const r = remainingToCorrect(diffs, [
+      { status: 'active', output_vat: 100, input_vat: -40 },
+      { status: 'cancelled', output_vat: 200, input_vat: 0 },
+    ]);
+    expect(r).toEqual({ outputDifference: 300, inputDifference: -40, carriedOutput: 100, carriedInput: -40, output: 200, input: 0 });
+  });
+
+  test('carry up to what is left, same direction', () => {
+    const rem = { output: 200, input: -40 };
+    expect(validateCarry(rem, '200', '-40').errors).toEqual([]);
+    expect(validateCarry(rem, 150, '').outputVat).toBe(150);
+  });
+
+  test('more than what is left would correct twice → refused', () => {
+    expect(validateCarry({ output: 200, input: 0 }, 250, 0).errors[0]).toMatch(/Only 200.00 output VAT \(field 12\) is still uncorrected/);
+  });
+
+  test('wrong direction, nothing left, or both zero → refused', () => {
+    expect(validateCarry({ output: 200, input: 0 }, -10, 0).errors[0]).toMatch(/must be positive/);
+    expect(validateCarry({ output: 200, input: 0 }, 0, 5).errors[0]).toMatch(/no uncorrected input VAT/);
+    expect(validateCarry({ output: 200, input: 0 }, 0, 0).errors[0]).toMatch(/Give an output and\/or input/);
+  });
+
+  test('next month suggestion', () => {
+    expect(nextMonthAfter('2026-11-30')).toEqual({ periodKey: '2026-12', fromDate: '2026-12-01', toDate: '2026-12-31' });
+    expect(nextMonthAfter('2026-12-31')).toEqual({ periodKey: '2027-01', fromDate: '2027-01-01', toDate: '2027-01-31' });
+    expect(nextMonthAfter('2028-01-31').toDate).toBe('2028-02-29');
+  });
+
+  test("corrections carried INTO a period land in Leo's field 12 / 18", () => {
+    const rep = detailReport();
+    rep.summary.corrections = { items: [{}], outputVat: 300, inputVat: -40 };
+    const f = ledgerFieldsFromDetail(rep);
+    expect(f.field_12).toBe(305);            // 5 ledger adjustment + 300 carried
+    expect(f.field_18).toBe(-40);
+    expect(f.field_13).toBe(455);
+    expect(f.field_20).toBe(455 - 170);
+  });
+});
+
+describe('carryCorrection', () => {
+  const source = { id: 5, period_key: '2026-09', from_date: '2026-09-01', to_date: '2026-09-30', status: 'LOCKED' };
+  const target = { id: 6, period_key: '2026-11', from_date: '2026-11-01', to_date: '2026-11-30', status: 'DRAFT' };
+  const filed = { id: 40, version: 1, status: 'filed', field_4: 150, field_13: 150, field_19: 210, field_15: 60, field_14: 150, field_20: -60 };
+  // Leo now (detailReport): field_13 155, field_19 210 → output difference 5
+
+  function wire({ carried = [], targetFiled = false, lockId = 40 } = {}) {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [source] })         // _period(source)
+      .mockResolvedValueOnce({ rows: [filed] })          // current filed return
+      .mockResolvedValueOnce({ rows: [target] });        // _period(target)
+    mockClientQuery.mockImplementation(async (sql) => {
+      if (/FOR UPDATE/.test(sql)) return { rows: lockId ? [{ id: lockId }] : [] };
+      if (/SELECT 1 FROM vat_returns/.test(sql)) return { rows: targetFiled ? [{}] : [] };
+      if (/FROM vat_corrections/.test(sql)) return { rows: carried };
+      if (/INSERT INTO vat_corrections/.test(sql)) return { rows: [{ id: 9, output_vat: 5, input_vat: 0, status: 'active' }] };
+      return { rows: [] };
+    });
+  }
+
+  test('carries the uncorrected output difference into the later period', async () => {
+    wire();
+    const r = await svc.carryCorrection(1, 7, { sourcePeriodId: 5, targetPeriodId: 6, outputVat: 5, reason: 'invoice after filing' });
+    expect(r.correction).toEqual(expect.objectContaining({ id: 9, source_period_key: '2026-09', target_period_key: '2026-11' }));
+    const ins = mockClientQuery.mock.calls.find(c => /INSERT INTO vat_corrections/.test(c[0]));
+    expect(ins[1]).toEqual([1, 5, 40, 6, 5, 0, 'invoice after filing', 7]);
+    expect(mockClientQuery.mock.calls.map(c => c[0])).toContain('COMMIT');
+  });
+
+  test('already carried → second carry refused (no double correction)', async () => {
+    wire({ carried: [{ status: 'active', output_vat: 5, input_vat: 0 }] });
+    await expect(svc.carryCorrection(1, 7, { sourcePeriodId: 5, targetPeriodId: 6, outputVat: 5, reason: 'again' }))
+      .rejects.toThrow(/no uncorrected output VAT/);
+    expect(mockClientQuery.mock.calls.map(c => c[0])).toContain('ROLLBACK');
+    expect(mockRelease).toHaveBeenCalled();
+  });
+
+  test('target already filed → refused', async () => {
+    wire({ targetFiled: true });
+    await expect(svc.carryCorrection(1, 7, { sourcePeriodId: 5, targetPeriodId: 6, outputVat: 5, reason: 'x' }))
+      .rejects.toThrow(/already filed/);
+  });
+
+  test('target not after the source → refused', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [source] }).mockResolvedValueOnce({ rows: [filed] })
+      .mockResolvedValueOnce({ rows: [{ ...target, from_date: '2026-08-01', to_date: '2026-08-31' }] });
+    await expect(svc.carryCorrection(1, 7, { sourcePeriodId: 5, targetPeriodId: 6, outputVat: 5, reason: 'x' }))
+      .rejects.toThrow(/period after the one being corrected/);
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+
+  test('no filed return yet, or no reason → refused', async () => {
+    await expect(svc.carryCorrection(1, 7, { sourcePeriodId: 5, targetPeriodId: 6, outputVat: 5 })).rejects.toThrow(/reason is required/);
+    mockQuery.mockResolvedValueOnce({ rows: [source] }).mockResolvedValueOnce({ rows: [] });
+    await expect(svc.carryCorrection(1, 7, { sourcePeriodId: 5, targetPeriodId: 6, outputVat: 5, reason: 'x' }))
+      .rejects.toThrow(/Capture the filed return/);
+  });
+
+  test('return revised meanwhile → 409', async () => {
+    wire({ lockId: 41 });
+    await expect(svc.carryCorrection(1, 7, { sourcePeriodId: 5, targetPeriodId: 6, outputVat: 5, reason: 'x' }))
+      .rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('cancelCorrection + revision guard', () => {
+  test('cannot cancel once the later return is filed', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })                    // UPDATE matched nothing
+      .mockResolvedValueOnce({ rows: [{ status: 'active' }] });
+    await expect(svc.cancelCorrection(1, 7, 9, 'oops')).rejects.toThrow(/already filed/);
+  });
+
+  test('cancel works while the later return is not filed', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9, status: 'cancelled' }] });
+    expect((await svc.cancelCorrection(1, 7, 9, 'wrong amount')).status).toBe('cancelled');
+    expect(mockQuery.mock.calls[0][0]).toMatch(/NOT EXISTS[\s\S]*status = 'filed'/);
+  });
+
+  test('revision of a period whose difference was carried needs confirmation', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, period_key: '2026-09', from_date: '2026-09-01', to_date: '2026-09-30', status: 'LOCKED' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 9, status: 'active', target_period_key: '2026-11' }] });
+    await expect(svc.captureReturn(1, 7, { periodId: 5, filedDate: '2026-12-01', fields: {} }))
+      .rejects.toMatchObject({ status: 409, code: 'CORRECTIONS_EXIST' });
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe('bot (MCP) cannot carry corrections', () => {
+  const { blockReason } = require('../modules/mcp/lorencoApi');
+  test('blocked', () => {
+    expect(blockReason('POST', '/api/accounting/vat-returns/corrections')).toMatch(/done by a person/);
+    expect(blockReason('POST', '/api/accounting/vat-returns/corrections/9/cancel')).toMatch(/done by a person/);
   });
 });

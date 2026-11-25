@@ -173,8 +173,19 @@ function generateVatDetailPdf(report, companyName) {
       const c = report.summary.calculation;
       const rate = report.summary.rate;
       const tie = report.summary.tieOut;
-      const resultLabel = c.result === 'payable' ? 'VAT PAYABLE TO SARS'
-        : c.result === 'refundable' ? 'VAT REFUNDABLE BY SARS' : 'NO VAT DUE';
+      const corr = report.summary.corrections && report.summary.corrections.items.length ? report.summary.corrections : null;
+      const finalNet = corr ? corr.netVatWithCorrections : c.netVat;
+      const finalResult = corr ? corr.result : c.result;
+      const resultLabel = finalResult === 'payable' ? 'VAT PAYABLE TO SARS'
+        : finalResult === 'refundable' ? 'VAT REFUNDABLE BY SARS' : 'NO VAT DUE';
+      const corrLines = !corr ? [] : [
+        ['head', 'CORRECTIONS OF EARLIER FILED PERIODS'],
+        ...corr.items.flatMap(it => [
+          ...(it.outputVat ? [['', `Period ${it.sourcePeriodKey}, output VAT (field 12): ${it.reason}`, it.outputVat]] : []),
+          ...(it.inputVat ? [['', `Period ${it.sourcePeriodKey}, input VAT (field 18): ${it.reason}`, -it.inputVat]] : []),
+        ]),
+        ['sub', 'A - B including corrections', finalNet],
+      ];
 
       const lines = [
         ['head', 'OUTPUT VAT (on sales)'],
@@ -192,7 +203,8 @@ function generateVatDetailPdf(report, companyName) {
         ['sub', 'B. Total input VAT', c.inputVat],
         ['muted', 'Purchases with no VAT claimed — nothing to claim', c.inputNoVatExclusive],
         ['sub', 'A - B', c.netVat],   // plain hyphen: Helvetica (WinAnsi) has no U+2212 minus
-        ['result', resultLabel, Math.abs(c.netVat)],
+        ...corrLines,
+        ['result', resultLabel, Math.abs(finalNet)],
       ];
       const sumH = 24 + lines.length * 15 + 60;
       if (y + sumH > BOTTOM) { doc.addPage(); pageHeader(); }

@@ -31,9 +31,23 @@ to SARS, and show where the books **now differ** from the filed return.
   penalty apart, delete payment, older period). Test rows removed and periods reset to DRAFT afterwards.
 - Pushed b53d226 together with the VAT detail PDF one-line fix.
 
-## Step 2 (agreed, not built)
-Carry a difference into a later return (output → field 12, input → field 18) with from/to period, amount and
-reason recorded so nothing is corrected twice; the next VAT201 + detail report include it.
+## Step 2 — carry differences into a later return (BUILT + PUSHED 2026-11-25)
+
+Migration 190 RUN 2026-11-25. E2E in co 51: 16/16 (carry part, double carry refused, wrong direction refused,
+unfiled source refused, target Leo field 12 + VAT report include it, carry into a newly created period, nothing
+left, revision needs confirmation, cancel + re-carry, target filed → cancel refused). Test rows removed afterwards.
+
+| File | Purpose |
+|---|---|
+| `backend/config/migrations/190_vat_corrections.sql` | NEW `vat_corrections`: source period (+ filed return), target period, output_vat (→ field 12), input_vat (→ field 18), reason, active/cancelled. No ledger posting — return-level adjustment only. |
+| `vatReturnsService.js` | `carryCorrection` (only what is still uncorrected = Total A/B difference − active corrections; same direction; target must be later and unfiled; serialised with FOR UPDATE on the filed return), `cancelCorrection` (only while target unfiled), corrections into a period added to Leo's field 12/18, revision of a period with carried corrections needs `confirmCorrections` (409 `CORRECTIONS_EXIST`). |
+| `routes/vatReturns.js` | POST `/corrections`, POST `/corrections/:id/cancel` (admin/accountant, audit-logged); error `code` passed to the client. Bot blocked (existing `/vat-returns` write block). |
+| `vatDetailReportService.js` + PDF + Excel | `summary.corrections` (items, totals, payable incl. corrections); shown under A − B in the VAT Report tab, PDF and Excel. |
+| `frontend-accounting/vat.html` | "Correcting the difference" (difference / carried / still to correct, carried list with status + Cancel, carry form), "Corrections of earlier periods in this return", revision confirm. |
+
+Why only what's left can be carried: entries dated in a locked period are swept to the open period by
+journalService and already correct themselves there; differences that remain are what the filed return got wrong
+or what was posted between eFiling and capturing.
 
 ## Follow-ups
 - VAT201 Calculation tab still uses calendar month + VAT ÷ 15% back-calc (`/vat/categorized`).
