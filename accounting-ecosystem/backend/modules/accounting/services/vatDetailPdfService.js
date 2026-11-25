@@ -69,7 +69,7 @@ function generateVatDetailPdf(report, companyName) {
         y = doc.page.margins.top;
         doc.font('Helvetica-Bold').fontSize(15).fillColor(ACCENT).text('VAT Detail Report', L, y, { width: W, lineBreak: false });
         doc.font('Helvetica-Bold').fontSize(10).fillColor(DARKTEXT)
-          .text(companyName || '', L, y + 2, { width: W, align: 'right', lineBreak: false });
+          .text(fitOneLine(companyName, W / 2), L, y + 2, { width: W, align: 'right', lineBreak: false });
         y += 20;
         doc.font('Helvetica').fontSize(8.5).fillColor(MUTED)
           .text(`VAT period ${report.periodKey}: ${fmtDate(report.dateFrom)} to ${fmtDate(report.dateTo)}  ·  from posted journals in Ledger Leo`, L, y, { width: W, lineBreak: false });
@@ -84,9 +84,27 @@ function generateVatDetailPdf(report, companyName) {
         }
       };
 
+      // Always ONE line per cell. pdfkit's own `ellipsis` only truncates when a
+      // fixed height is given, so text wrapped onto a 2nd line and ran into the
+      // next row (long account names, bank descriptions with embedded address
+      // line breaks). Collapse whitespace/newlines, then measure in the current
+      // font and cut with "…".
+      const fitOneLine = (raw, width) => {
+        let s = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+        if (doc.widthOfString(s) <= width) return s;
+        const ell = '…';
+        let lo = 0, hi = s.length;
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2);
+          if (doc.widthOfString(s.slice(0, mid).trimEnd() + ell) <= width) lo = mid; else hi = mid - 1;
+        }
+        return s.slice(0, lo).trimEnd() + ell;
+      };
+
       const cell = (text, c, opts = {}) => {
-        doc.text(String(text == null ? '' : text), c.x + 3, y + (opts.dy || 4), {
-          width: c.w - 6, align: c.num ? 'right' : 'left', lineBreak: false, ellipsis: true,
+        const w = c.w - 6;
+        doc.text(fitOneLine(text, w), c.x + 3, y + (opts.dy || 4), {
+          width: w, align: c.num ? 'right' : 'left', lineBreak: false,
         });
       };
 
@@ -98,8 +116,8 @@ function generateVatDetailPdf(report, companyName) {
       };
 
       const sectionTitle = (title, cont) => {
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(ACCENT)
-          .text(title + (cont ? ' (continued)' : ''), L, y, { width: W, lineBreak: false, ellipsis: true });
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(ACCENT);
+        doc.text(fitOneLine(title + (cont ? ' (continued)' : ''), W), L, y, { width: W, lineBreak: false });
         y += 15;
       };
 
@@ -194,7 +212,7 @@ function generateVatDetailPdf(report, companyName) {
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica')
           .fontSize(kind === 'result' ? 11 : 9)
           .fillColor(kind === 'muted' ? MUTED : DARKTEXT);
-        doc.text(label, L + 12, y, { width: boxW - 150, lineBreak: false, ellipsis: true });
+        doc.text(fitOneLine(label, boxW - 150), L + 12, y, { width: boxW - 150, lineBreak: false });
         if (value !== undefined) doc.text(fmtMoney(value), L + boxW - 140, y, { width: 128, align: 'right', lineBreak: false });
         y += kind === 'result' ? 18 : 15;
       }

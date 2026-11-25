@@ -85,6 +85,7 @@ router.use('/segments', require('./routes/segments'));
 router.use('/vat', require('./routes/vat-report'));
 router.use('/vat-settings', require('./routes/vat-settings'));
 router.use('/vat-recon', require('./routes/vatRecon'));
+router.use('/vat-returns', require('./routes/vatReturns'));   // filed SARS returns + payments (migration 189)
 router.use('/paye/config', require('./routes/payeConfig'));
 router.use('/paye/reconciliation', require('./routes/payeReconciliation'));
 

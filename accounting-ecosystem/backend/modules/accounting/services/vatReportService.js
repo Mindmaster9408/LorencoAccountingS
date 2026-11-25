@@ -4,6 +4,26 @@ const { getBadge } = require('./reportTruthBadge');
 const PERIOD_KEY_CANONICAL = /^\d{4}-\d{2}$/;
 const PERIOD_KEY_LEGACY = /^\d{4}\.\d{2}$/;
 
+/**
+ * Which posted journals belong to a VAT period ($2 = from, $3 = to, $4 = period id).
+ *
+ *   - dated inside the period, UNLESS the journal was swept out to a different
+ *     period (posted after this period was locked → journalService routes it to
+ *     the open period with is_out_of_period = true, keeping its original date)
+ *   - OR swept INTO this period from a locked earlier one
+ *
+ * Before 2026-11-25 the date test had no exclusion, so a late entry counted in
+ * BOTH its old (locked/filed) period and the open period it was moved to. No
+ * period was locked yet, so no figure had been affected; it mattered from the
+ * moment filing a return locks the period (vatReturnsService).
+ * Shared with vatDetailReportService so the detail always ties to these totals.
+ */
+const PERIOD_JOURNAL_FILTER = `(
+           (j.date >= $2 AND j.date <= $3
+              AND NOT (COALESCE(j.is_out_of_period, false) = true AND j.vat_period_id IS DISTINCT FROM $4))
+           OR (j.vat_period_id = $4 AND j.is_out_of_period = true)
+         )`;
+
 function round2(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
@@ -136,10 +156,7 @@ class VATReportService {
        WHERE j.company_id = $1
          AND j.status = 'posted'
          AND a.code = '1400'
-         AND (
-           (j.date >= $2 AND j.date <= $3)
-           OR (j.vat_period_id = $4 AND j.is_out_of_period = true)
-         )`,
+         AND ${PERIOD_JOURNAL_FILTER}`,
       [companyId, dateFrom, dateTo, periodId]
     );
 
@@ -155,10 +172,7 @@ class VATReportService {
        WHERE j.company_id = $1
          AND j.status = 'posted'
          AND a.code = '2300'
-         AND (
-           (j.date >= $2 AND j.date <= $3)
-           OR (j.vat_period_id = $4 AND j.is_out_of_period = true)
-         )`,
+         AND ${PERIOD_JOURNAL_FILTER}`,
       [companyId, dateFrom, dateTo, periodId]
     );
 
@@ -360,3 +374,4 @@ class VATReportService {
 
 module.exports = new VATReportService();
 module.exports.normalizeVatPeriodKey = normalizeVatPeriodKey;
+module.exports.PERIOD_JOURNAL_FILTER = PERIOD_JOURNAL_FILTER;

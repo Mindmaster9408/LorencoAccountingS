@@ -36,6 +36,7 @@
 
 const db = require('../config/database');
 const vatReportService = require('./vatReportService');
+const { PERIOD_JOURNAL_FILTER } = require('./vatReportService');
 
 const STANDARD_RATE = 15;            // SA standard rate (same as vatCategoryReportService)
 const SPLIT_THRESHOLD = 1.0;         // R1 — below this a difference is rounding, not a no-VAT part
@@ -64,6 +65,7 @@ function classifyJournal(journal, lines, rate = STANDARD_RATE) {
   let income = 0;                // net credit on income accounts
   let purchases = 0;             // net debit on expense + non-current asset accounts
   let stockAndOther = 0;         // net debit on current (non-bank) assets — counts for input only when VAT was claimed
+  let capital = 0;               // part of `purchases` on non-current (fixed) assets → VAT201 field 14
   const incomeNames = new Set(), purchaseNames = new Set(), stockNames = new Set();
 
   for (const l of lines) {
@@ -72,7 +74,9 @@ function classifyJournal(journal, lines, rate = STANDARD_RATE) {
     if (l.code === '1400') { inputVat += dr - cr; continue; }
     if (l.type === 'income') { income += cr - dr; incomeNames.add(l.name); continue; }
     if (l.type === 'expense' || (l.type === 'asset' && l.sub_type === 'non_current_asset')) {
-      purchases += dr - cr; purchaseNames.add(l.name); continue;
+      purchases += dr - cr; purchaseNames.add(l.name);
+      if (l.type === 'asset') capital += dr - cr;
+      continue;
     }
     if (l.type === 'asset' && l.sub_type !== 'bank' && dr > cr) {
       stockAndOther += dr - cr; stockNames.add(l.name);
@@ -133,7 +137,9 @@ function classifyJournal(journal, lines, rate = STANDARD_RATE) {
         note: base.note || 'Input VAT with no expense line in this entry' });
     } else {
       const { std, rest } = split(cost, inputVat);
-      rows.push({ ...base, section: 'input_standard', account: acct,
+      // Mostly fixed assets → capital goods (VAT201 field 14) rather than field 15.
+      const isCapital = Math.abs(capital) >= 0.005 && Math.abs(capital) * 2 >= Math.abs(cost);
+      rows.push({ ...base, section: 'input_standard', account: acct, capital: isCapital,
         exclusive: std, vat: inputVat, inclusive: round2(std + inputVat) });
       if (rest) rows.push({ ...base, section: 'input_no_vat', account: acct,
         exclusive: rest, vat: 0, inclusive: rest,
@@ -197,21 +203,30 @@ function buildSummary(rows, headline, rate = STANDARD_RATE) {
 }
 
 class VatDetailReportService {
-  async generate(companyId, periodKey) {
-    const period = await vatReportService.getVatPeriodRange(companyId, periodKey);
+  /**
+   * @param {number} companyId
+   * @param {string} periodKey  YYYY-MM
+   * @param {object} [range]    explicit { periodId, dateFrom, dateTo } — used by
+   *                            vatReturnsService for periods (e.g. bi-monthly or
+   *                            older) whose dates are known exactly
+   */
+  async generate(companyId, periodKey, range = null) {
+    const period = range && range.dateFrom && range.dateTo
+      ? { periodKey, periodId: range.periodId || null, dateFrom: range.dateFrom, dateTo: range.dateTo,
+          status: range.status || 'draft', warnings: [] }
+      : await vatReportService.getVatPeriodRange(companyId, periodKey);
     const { dateFrom, dateTo, periodId } = period;
 
     const { rows: lineRows } = await db.query(
       `SELECT j.id, j.date::text AS date, j.reference, j.description,
-              j.is_out_of_period, j.reversal_of_journal_id,
+              j.is_out_of_period, j.reversal_of_journal_id, j.posted_at,
               a.code, a.name, a.type, a.sub_type, jl.debit, jl.credit
          FROM journals j
          JOIN journal_lines jl ON jl.journal_id = j.id
          JOIN accounts a       ON a.id = jl.account_id
         WHERE j.company_id = $1
           AND j.status = 'posted'
-          AND ((j.date >= $2 AND j.date <= $3)
-               OR (j.vat_period_id = $4 AND j.is_out_of_period = true))
+          AND ${PERIOD_JOURNAL_FILTER}
         ORDER BY j.date, j.id, jl.id`,
       [companyId, dateFrom, dateTo, periodId]
     );

@@ -135,6 +135,28 @@ describe('PDF download', () => {
     expect(pageCount(buf)).toBeLessThanOrEqual(2);
   });
 
+  test('every cell is ONE line that fits its column (long text and embedded newlines)', async () => {
+    const PDFDocument = require('pdfkit');
+    const calls = [];
+    const orig = PDFDocument.prototype.text;
+    const spy = jest.spyOn(PDFDocument.prototype, 'text').mockImplementation(function (str, x, y, opts) {
+      if (opts && opts.width && opts.lineBreak === false) calls.push({ s: String(str), w: opts.width, fits: this.widthOfString(String(str)) <= opts.width + 0.01 });
+      return orig.call(this, str, x, y, opts);
+    });
+    try {
+      const report = makeReport(2);
+      report.rows[0].description = 'Bank: Digital Payment TURKSTRA-LIKE FICTIONAL (PTY) LTD\n6 FAKE STREET SOMEWHERE 2531\nReturn address: Private Bag X1, Fictiontown 0001, a very long line indeed';
+      report.rows[0].account = 'Cost of Sales — Materials - Purchases 15% with an extra long account name';
+      await generateVatDetailPdf(report, 'A Fictional Company With A Rather Long Registered Name (Pty) Ltd');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(calls.length).toBeGreaterThan(10);
+    expect(calls.filter(c => /\n/.test(c.s))).toEqual([]);
+    expect(calls.filter(c => !c.fits)).toEqual([]);
+    expect(calls.some(c => c.s.endsWith('…'))).toBe(true);
+  });
+
   test('long reports flow onto more pages without blank pages', async () => {
     const buf = await generateVatDetailPdf(makeReport(200), 'Fictional Co');
     const pages = pageCount(buf);

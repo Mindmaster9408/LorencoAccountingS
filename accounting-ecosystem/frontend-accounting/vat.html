@@ -507,6 +507,23 @@
         .vat-summary .muted { opacity: 0.7; }
         .vat-tie-ok { color: #34a853; font-size: 13px; margin-top: 12px; }
         .vat-tie-bad { color: #ea4335; font-size: 13px; margin-top: 12px; font-weight: 700; }
+        .sars-form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin: 8px 0; }
+        .sars-form-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; opacity: 0.9; }
+        .sars-form-row input, .sars-form-row select, .sars-field-input {
+            background: rgba(255,255,255,0.06); color: inherit; border: 1px solid rgba(128,128,128,0.45);
+            border-radius: 6px; padding: 6px 8px; font-size: 13px;
+        }
+        .sars-field-input { width: 140px; text-align: right; font-family: 'Courier New', monospace; }
+        .sars-field-input[readonly] { opacity: 0.8; font-weight: 700; }
+        .sars-row-click { cursor: pointer; }
+        .sars-row-click:hover td { background: rgba(102,126,234,0.10); }
+        .sars-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+        .sars-badge.filed { background: rgba(52,168,83,0.18); color: #34a853; }
+        .sars-badge.notfiled { background: rgba(128,128,128,0.18); }
+        .sars-badge.rev { background: rgba(249,171,0,0.18); color: #f9ab00; }
+        .sars-diff { color: #ea4335; font-weight: 700; }
+        .sars-ok { color: #34a853; }
+        .sars-section-row td { font-weight: 700; padding-top: 12px; opacity: 0.85; }
     </style>
     <link rel="stylesheet" href="css/dark-theme.css">
     <link rel="stylesheet" href="css/cosmic-bg.css">
@@ -566,6 +583,34 @@
                  feature to build later, not represented by hiding this tab. -->
             <button type="button" id="vat201TabBtn" class="vat-tab-btn" data-tab="vat201Tab" onclick="switchVatTab('vat201Tab')">VAT201 Calculation</button>
             <button type="button" class="vat-tab-btn" data-tab="reconciliationTab" onclick="switchVatTab('reconciliationTab')">Reconciliation</button>
+            <button type="button" class="vat-tab-btn" data-tab="sarsReturnsTab" onclick="switchVatTab('sarsReturnsTab'); loadSarsOverview();">SARS Returns</button>
+        </div>
+
+        <!-- Filed SARS returns + payments (vat_returns / vat_payments, migration 189) -->
+        <div id="sarsReturnsTab" class="vat-tab-panel" style="display:none;">
+            <div class="report-card">
+                <div class="report-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <h2>SARS Returns</h2>
+                        <p>What was actually filed on eFiling and paid to SARS — and where the books now differ from it</p>
+                    </div>
+                    <button type="button" class="btn-secondary" onclick="openOlderPeriodForm()">+ Capture an older period</button>
+                </div>
+                <div class="report-content">
+                    <div id="sarsOlderPeriod" style="display:none;" class="vat-summary">
+                        <h3>Older period (not in the list yet)</h3>
+                        <div class="sars-form-row">
+                            <label>Period (end month) <input type="month" id="sarsNewKey"></label>
+                            <label>From <input type="date" id="sarsNewFrom"></label>
+                            <label>To <input type="date" id="sarsNewTo"></label>
+                            <button type="button" class="btn-secondary" onclick="startOlderPeriodCapture()">Continue</button>
+                            <button type="button" class="btn-secondary" onclick="document.getElementById('sarsOlderPeriod').style.display='none'">Cancel</button>
+                        </div>
+                    </div>
+                    <div id="sarsOverview" style="overflow-x:auto;"><p class="vat-detail-empty">Loading…</p></div>
+                    <div id="sarsPeriodDetail" style="margin-top:22px;"></div>
+                </div>
+            </div>
         </div>
 
         <div id="vatReportTab" class="vat-tab-panel" style="display:none;">
@@ -1171,6 +1216,293 @@
             }
         }
 
+        // ── SARS Returns tab: filed returns, payments, differences ─────────────
+        // API: /api/accounting/vat-returns (services/vatReturnsService.js).
+        let sarsDetail = null;          // last loaded period detail
+        let sarsNewPeriod = null;       // { periodKey, fromDate, toDate } when capturing an older period
+        let sarsFieldLayout = null;     // VAT201 field list from /vat-returns/overview
+
+        const sarsR = v => (v === null || v === undefined) ? '—'
+            : 'R ' + (Number(v) || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        async function loadSarsOverview() {
+            const el = document.getElementById('sarsOverview');
+            if (!el) return;
+            try {
+                const { periods, fields } = await fetchAPI('/vat-returns/overview');
+                sarsFieldLayout = fields || sarsFieldLayout;
+                if (!periods.length) {
+                    el.innerHTML = '<p class="vat-detail-empty">No VAT periods yet. Select a period at the top of the page, or capture an older period.</p>';
+                    return;
+                }
+                el.innerHTML = `
+                    <table class="vat-report-group-table">
+                        <thead><tr>
+                            <th>Period</th><th>Dates</th><th>Status</th><th>Filed</th>
+                            <th class="num">Output (A)</th><th class="num">Input (B)</th><th class="num">Payable / (refund)</th>
+                            <th class="num">Paid</th><th class="num">Outstanding</th>
+                        </tr></thead>
+                        <tbody>${periods.map(p => `
+                            <tr class="sars-row-click" onclick="openSarsPeriod(${p.periodId})">
+                                <td><strong>${escapeVatHtml(p.periodKey)}</strong></td>
+                                <td style="white-space:nowrap;">${escapeVatHtml(p.fromDate)} – ${escapeVatHtml(p.toDate)}</td>
+                                <td>${p.filed
+                                    ? `<span class="sars-badge filed">Filed</span>${p.revisions ? ` <span class="sars-badge rev">Revised ×${p.revisions}</span>` : ''}`
+                                    : '<span class="sars-badge notfiled">Not captured</span>'}${p.locked ? ' &#128274;' : ''}</td>
+                                <td>${escapeVatHtml(p.filedDate || '')}</td>
+                                <td class="num">${sarsR(p.outputVat)}</td>
+                                <td class="num">${sarsR(p.inputVat)}</td>
+                                <td class="num">${sarsR(p.netVat)}</td>
+                                <td class="num">${p.filed ? sarsR(p.paidVat - p.refundsReceived) : '—'}</td>
+                                <td class="num ${p.outstanding && Math.abs(p.outstanding) >= 0.01 ? 'sars-diff' : ''}">${sarsR(p.outstanding)}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                    <div class="vat-detail-note">Click a period to capture its return, add payments or see differences.</div>`;
+            } catch (error) {
+                el.innerHTML = `<p style="color:#ea4335;">Could not load SARS returns: ${escapeVatHtml(error.message)}</p>`;
+            }
+        }
+
+        async function openSarsPeriod(periodId, opts = {}) {
+            const el = document.getElementById('sarsPeriodDetail');
+            sarsNewPeriod = null;
+            el.innerHTML = '<p class="vat-detail-empty">Loading…</p>';
+            try {
+                sarsDetail = await fetchAPI(`/vat-returns/periods/${periodId}`);
+                renderSarsPeriod(sarsDetail, opts);
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                el.innerHTML = `<p style="color:#ea4335;">Could not load the period: ${escapeVatHtml(error.message)}</p>`;
+            }
+        }
+
+        function renderSarsPeriod(d, opts = {}) {
+            const el = document.getElementById('sarsPeriodDetail');
+            const cur = d.current;
+            const pos = d.position;
+            const diffs = d.differences || [];
+            const typeLabel = { vat: 'VAT payment', penalty: 'Penalty', interest: 'Interest', refund: 'Refund received' };
+
+            let html = `<h3 class="vat-report-group-title" style="font-size:16px;">Period ${escapeVatHtml(d.period.periodKey)} (${escapeVatHtml(d.period.fromDate)} – ${escapeVatHtml(d.period.toDate)})${d.period.locked ? ' &#128274; locked' : ''}</h3>`;
+
+            // Filed return summary
+            if (cur) {
+                html += `
+                    <div class="vat-summary" style="margin-bottom:16px;">
+                        <h3>Filed return — version ${cur.version}${d.versions.length > 1 ? ` (of ${d.versions.length})` : ''}</h3>
+                        <table>
+                            <tr><td>Filed on</td><td class="num">${escapeVatHtml(cur.filed_date)}</td></tr>
+                            ${cur.sars_reference ? `<tr><td>SARS reference</td><td class="num">${escapeVatHtml(cur.sars_reference)}</td></tr>` : ''}
+                            <tr><td>Total A — output VAT (13)</td><td class="num">${sarsR(cur.field_13)}</td></tr>
+                            <tr><td>Total B — input VAT (19)</td><td class="num">${sarsR(cur.field_19)}</td></tr>
+                            <tr class="sub"><td>${cur.field_20 >= 0 ? 'VAT payable (20)' : 'VAT refundable (20)'}</td><td class="num">${sarsR(Math.abs(cur.field_20))}</td></tr>
+                            <tr><td>Paid to SARS (VAT)</td><td class="num">${sarsR(pos.paidVat)}</td></tr>
+                            ${pos.refundsReceived ? `<tr><td>Refund received</td><td class="num">${sarsR(pos.refundsReceived)}</td></tr>` : ''}
+                            ${pos.penalties ? `<tr><td class="muted">Penalties paid (not part of VAT due)</td><td class="num">${sarsR(pos.penalties)}</td></tr>` : ''}
+                            ${pos.interest ? `<tr><td class="muted">Interest paid (not part of VAT due)</td><td class="num">${sarsR(pos.interest)}</td></tr>` : ''}
+                            <tr class="result"><td>Outstanding</td><td class="num ${Math.abs(pos.outstanding) >= 0.01 ? 'sars-diff' : 'sars-ok'}">${sarsR(pos.outstanding)}</td></tr>
+                        </table>
+                        ${cur.notes ? `<div class="vat-detail-note" style="margin-top:8px;">Notes: ${escapeVatHtml(cur.notes)}</div>` : ''}
+                    </div>`;
+
+                // Differences: Leo now vs filed
+                if (!diffs.length) {
+                    html += `<div class="vat-tie-ok" style="margin-bottom:16px;">&#10003; Leo's books for this period still agree with the filed return.</div>`;
+                } else {
+                    html += `
+                        <h3 class="vat-report-group-title">Differences — Leo now vs what was filed</h3>
+                        <table class="vat-report-group-table">
+                            <thead><tr><th>Field</th><th>Description</th><th class="num">Leo now</th><th class="num">Filed</th><th class="num">Difference</th></tr></thead>
+                            <tbody>${diffs.map(x => `<tr>
+                                <td>${escapeVatHtml(x.code)}</td><td>${escapeVatHtml(x.label)}</td>
+                                <td class="num">${sarsR(x.leo)}</td><td class="num">${sarsR(x.filed)}</td>
+                                <td class="num sars-diff">${sarsR(x.difference)}</td></tr>`).join('')}
+                            </tbody>
+                        </table>`;
+                    if (d.causes && d.causes.length) {
+                        html += `
+                            <h3 class="vat-report-group-title">Entries posted on or after the filing date (${escapeVatHtml(cur.filed_date)})</h3>
+                            <table class="vat-report-group-table">
+                                <thead><tr><th>Date</th><th>Posted</th><th>Reference</th><th>Description</th><th class="num">Output VAT</th><th class="num">Input VAT</th></tr></thead>
+                                <tbody>${d.causes.map(c => `<tr>
+                                    <td style="white-space:nowrap;">${escapeVatHtml(c.date)}</td>
+                                    <td style="white-space:nowrap;">${escapeVatHtml(String(c.posted_at || '').slice(0, 10))}</td>
+                                    <td>${escapeVatHtml(c.reference || '')}</td>
+                                    <td>${escapeVatHtml(c.description || '')}${c.reversal_of_journal_id ? '<div class="vat-detail-note">Reversal of an earlier entry</div>' : ''}</td>
+                                    <td class="num">${sarsR(c.output_vat)}</td><td class="num">${sarsR(c.input_vat)}</td></tr>`).join('')}
+                                </tbody>
+                            </table>`;
+                    } else {
+                        html += `<div class="vat-detail-note" style="margin-bottom:16px;">No entries were posted after the filing date — the difference was there when the return was filed (or the return was captured with different figures than Leo had).</div>`;
+                    }
+                    html += `<div class="vat-detail-note" style="margin-bottom:16px;">To correct: file a revised return on eFiling and capture it here as a new version. (Carrying a difference into a later return is the next step still to be built.)</div>`;
+                }
+            } else {
+                html += `<p class="vat-detail-empty" style="margin-bottom:12px;">No filed return captured for this period yet.</p>`;
+            }
+
+            html += `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                <button type="button" class="btn-secondary" onclick="showSarsReturnForm()">${cur ? '&#9998; Capture a revised return' : '&#9998; Capture the filed return'}</button>
+            </div>
+            <div id="sarsReturnForm"></div>`;
+
+            // Payments
+            html += `
+                <h3 class="vat-report-group-title" style="margin-top:18px;">Payments and refunds</h3>
+                <table class="vat-report-group-table">
+                    <thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Notes</th><th class="num">Amount</th><th></th></tr></thead>
+                    <tbody>${d.payments.length ? d.payments.map(p => `<tr>
+                        <td>${escapeVatHtml(p.payment_date)}</td><td>${escapeVatHtml(typeLabel[p.payment_type] || p.payment_type)}</td>
+                        <td>${escapeVatHtml(p.reference || '')}</td><td>${escapeVatHtml(p.notes || '')}</td>
+                        <td class="num">${sarsR(p.amount)}</td>
+                        <td><button type="button" class="btn-secondary" style="padding:2px 8px; font-size:11px;" onclick="deleteSarsPayment(${p.id})">Remove</button></td>
+                    </tr>`).join('') : '<tr><td colspan="6" class="vat-detail-empty">No payments captured</td></tr>'}
+                    </tbody>
+                </table>
+                <div class="sars-form-row">
+                    <label>Date <input type="date" id="sarsPayDate"></label>
+                    <label>Amount <input type="number" step="0.01" min="0.01" id="sarsPayAmount" style="width:130px;"></label>
+                    <label>Type <select id="sarsPayType">
+                        <option value="vat">VAT payment</option><option value="refund">Refund received</option>
+                        <option value="penalty">Penalty</option><option value="interest">Interest</option>
+                    </select></label>
+                    <label>Reference <input type="text" id="sarsPayRef" maxlength="100"></label>
+                    <label>Notes <input type="text" id="sarsPayNotes" maxlength="300"></label>
+                    <button type="button" class="btn-secondary" onclick="addSarsPayment()">+ Add payment</button>
+                </div>`;
+
+            el.innerHTML = html;
+            if (opts.capture && !cur) showSarsReturnForm();
+        }
+
+        function openOlderPeriodForm() {
+            document.getElementById('sarsOlderPeriod').style.display = 'block';
+        }
+
+        function startOlderPeriodCapture() {
+            const key = document.getElementById('sarsNewKey').value;        // YYYY-MM
+            const from = document.getElementById('sarsNewFrom').value;
+            const to = document.getElementById('sarsNewTo').value;
+            if (!/^\d{4}-\d{2}$/.test(key) || !from || !to || from > to) {
+                alert('Give the period (end month) and its from and to dates.');
+                return;
+            }
+            sarsNewPeriod = { periodKey: key, fromDate: from, toDate: to };
+            sarsDetail = null;
+            document.getElementById('sarsOlderPeriod').style.display = 'none';
+            const el = document.getElementById('sarsPeriodDetail');
+            el.innerHTML = `<h3 class="vat-report-group-title" style="font-size:16px;">New period ${escapeVatHtml(key)} (${escapeVatHtml(from)} – ${escapeVatHtml(to)})</h3><div id="sarsReturnForm"></div>`;
+            showSarsReturnForm();
+        }
+
+        // Totals are calculated, never typed.
+        const SARS_TOTAL_KEYS = ['field_13', 'field_19', 'field_20'];
+
+        function showSarsReturnForm() {
+            const host = document.getElementById('sarsReturnForm');
+            if (!host) return;
+            const d = sarsDetail;
+            const layout = (d && d.fields) || sarsFieldLayout;
+            if (!layout) { host.innerHTML = '<p style="color:#ea4335;">The VAT201 layout has not loaded — reload the page.</p>'; return; }
+            const start = d ? (d.current || d.ledger) : {};
+            const leo = d ? d.ledger : null;
+
+            const rowsHtml = layout.map((f, i) => {
+                const prev = layout[i - 1];
+                const head = (!prev || prev.section !== f.section)
+                    ? `<tr class="sars-section-row"><td colspan="${leo ? 4 : 3}">${f.section === 'output' ? 'OUTPUT TAX' : f.section === 'input' ? 'INPUT TAX' : 'RESULT'}</td></tr>` : '';
+                const isTotal = SARS_TOTAL_KEYS.includes(f.key);
+                const val = Number(start[f.key] || 0).toFixed(2);
+                return head + `<tr>
+                    <td style="white-space:nowrap;"><strong>${escapeVatHtml(f.code)}</strong></td>
+                    <td>${escapeVatHtml(f.label)}</td>
+                    <td class="num"><input class="sars-field-input" data-key="${f.key}" type="number" step="0.01" value="${val}" ${isTotal ? 'readonly tabindex="-1"' : ''} oninput="recalcSarsTotals()"></td>
+                    ${leo ? `<td class="num vat-detail-note">Leo: ${sarsR(leo[f.key])}</td>` : ''}
+                </tr>`;
+            }).join('');
+
+            host.innerHTML = `
+                <div class="vat-summary">
+                    <h3>${d && d.current ? 'Revised return (becomes version ' + (d.versions[0].version + 1) + ')' : 'Return as filed on eFiling'}</h3>
+                    <div class="vat-detail-note" style="margin-bottom:8px;">Fill in the figures exactly as they appear on the return you submitted. ${d && !d.current ? 'They start from Leo\'s own calculation — change any that differ.' : ''} Totals 13, 19 and 20 add up by themselves.</div>
+                    <div class="sars-form-row">
+                        <label>Filed on <input type="date" id="sarsFiledDate" value="${new Date().toISOString().slice(0, 10)}"></label>
+                        <label>SARS reference <input type="text" id="sarsRef" maxlength="100"></label>
+                        <label style="flex:1; min-width:220px;">Notes <input type="text" id="sarsNotes" maxlength="500"></label>
+                    </div>
+                    <div style="overflow-x:auto;"><table class="vat-report-group-table" style="max-width:900px;"><tbody>${rowsHtml}</tbody></table></div>
+                    <div class="vat-detail-note" style="margin:6px 0 10px;">Saving locks the period: anything posted later with a date in this period moves to the open period, so a filed period never changes silently.</div>
+                    <button type="button" class="btn-secondary" id="sarsSaveBtn" onclick="saveSarsReturn()">Save filed return</button>
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('sarsReturnForm').innerHTML=''">Cancel</button>
+                </div>`;
+            recalcSarsTotals();
+        }
+
+        function recalcSarsTotals() {
+            const v = k => { const el = document.querySelector(`.sars-field-input[data-key="${k}"]`); return el ? (Number(el.value) || 0) : 0; };
+            const set = (k, x) => { const el = document.querySelector(`.sars-field-input[data-key="${k}"]`); if (el) el.value = (Math.round(x * 100) / 100).toFixed(2); };
+            const a = v('field_4') + v('field_4a') + v('field_9') + v('field_11') + v('field_12');
+            const b = v('field_14') + v('field_14a') + v('field_15') + v('field_15a') + v('field_16') + v('field_17') + v('field_18');
+            set('field_13', a); set('field_19', b); set('field_20', a - b);
+        }
+
+        async function saveSarsReturn() {
+            const btn = document.getElementById('sarsSaveBtn');
+            const fields = {};
+            document.querySelectorAll('.sars-field-input').forEach(el => { fields[el.dataset.key] = el.value; });
+            const body = {
+                filedDate: document.getElementById('sarsFiledDate').value,
+                sarsReference: document.getElementById('sarsRef').value,
+                notes: document.getElementById('sarsNotes').value,
+                fields,
+            };
+            if (sarsNewPeriod) body.newPeriod = sarsNewPeriod; else body.periodId = sarsDetail.period.id;
+            const verb = sarsDetail && sarsDetail.current ? 'Save this revised return? The current version stays in the history.' : 'Save this filed return? The period will be locked.';
+            if (!confirm(verb)) return;
+            try {
+                btn.disabled = true; btn.textContent = 'Saving…';
+                const res = await fetchAPI('/vat-returns/returns', { method: 'POST', body: JSON.stringify(body) });
+                if (res.lockWarning) alert(res.lockWarning);
+                await loadSarsOverview();
+                await openSarsPeriod(res.saved.vat_period_id);
+                if (currentPeriodData && currentPeriodData.id === res.saved.vat_period_id) currentPeriodData.status = 'LOCKED';
+            } catch (error) {
+                alert('Could not save: ' + error.message);
+                btn.disabled = false; btn.textContent = 'Save filed return';
+            }
+        }
+
+        async function addSarsPayment() {
+            if (!sarsDetail) return;
+            const body = {
+                periodId: sarsDetail.period.id,
+                paymentDate: document.getElementById('sarsPayDate').value,
+                amount: document.getElementById('sarsPayAmount').value,
+                paymentType: document.getElementById('sarsPayType').value,
+                reference: document.getElementById('sarsPayRef').value,
+                notes: document.getElementById('sarsPayNotes').value,
+            };
+            try {
+                await fetchAPI('/vat-returns/payments', { method: 'POST', body: JSON.stringify(body) });
+                await loadSarsOverview();
+                await openSarsPeriod(sarsDetail.period.id);
+            } catch (error) {
+                alert('Could not add the payment: ' + error.message);
+            }
+        }
+
+        async function deleteSarsPayment(id) {
+            if (!sarsDetail || !confirm('Remove this payment? It stays in the audit trail.')) return;
+            try {
+                await fetchAPI(`/vat-returns/payments/${id}`, { method: 'DELETE' });
+                await loadSarsOverview();
+                await openSarsPeriod(sarsDetail.period.id);
+            } catch (error) {
+                alert('Could not remove the payment: ' + error.message);
+            }
+        }
+
         // ── VAT Report tab: line-by-line detail from the posted ledger ─────────
         // GET /vat/detail — output standard / output no VAT / input standard /
         // input no VAT / adjustments, then a summary that shows the calculation
@@ -1488,14 +1820,19 @@
         function parsePeriodKey(periodKey) {
             const canonical = normalizeVatPeriodKey(periodKey);
             // Parse canonical "2025-03" format
+            // Build the dates as plain strings. new Date(y, m, d) is LOCAL midnight;
+            // toISOString() then converts to UTC, which in South Africa (UTC+2) is
+            // the previous day — every period was stored one day early (fixed
+            // 2026-11-25, existing rows corrected by migration 189).
             const [year, month] = canonical.split('-');
-            const fromDate = new Date(year, parseInt(month) - 1, 1);
-            const toDate = new Date(year, parseInt(month), 0); // Last day of month
+            const y = parseInt(year, 10), m = parseInt(month, 10);
+            const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+            const mm = String(m).padStart(2, '0');
 
             return {
                 periodKey: canonical,
-                fromDate: fromDate.toISOString().split('T')[0],
-                toDate: toDate.toISOString().split('T')[0],
+                fromDate: `${y}-${mm}-01`,
+                toDate: `${y}-${mm}-${String(lastDay).padStart(2, '0')}`,
                 filingFrequency: 'monthly'
             };
         }
@@ -1805,48 +2142,15 @@
             }
         }
 
+        // "Submit to SARS" now opens the SARS Returns tab to capture what was
+        // ACTUALLY filed on eFiling (every VAT201 field). The old flow stored
+        // Leo's own three totals in vat_submissions, needed an approved
+        // reconciliation first and was never used (0 rows on 2026-11-25).
         async function submitToSARS() {
-            if (!currentPeriodData) {
-                alert('Please select a VAT period first');
-                return;
-            }
-
-            if (!confirm('⚠️ IMPORTANT: Submit to SARS?\n\nThis will LOCK the reconciliation and VAT report for this period.\nNo further changes will be allowed.\n\nContinue?')) {
-                return;
-            }
-
-            if (!currentVat201Report) {
-                alert('The VAT201 report for this period has not loaded yet — please wait a moment and try again.');
-                return;
-            }
-
-            const submissionRef = prompt('Enter SARS submission reference (optional):');
-
-            try {
-                const submissionData = {
-                    outputVat: Number(currentVat201Report.outputVat) || 0,
-                    inputVat:  Number(currentVat201Report.inputVat) || 0,
-                    netVat:    Number(currentVat201Report.netVatPayableRefundable) || 0,
-                    submissionReference: submissionRef,
-                    paymentDate: null,
-                    paymentReference: null
-                };
-
-                const result = await fetchAPI(`/vat-recon/periods/${currentPeriodData.id}/submit`, {
-                    method: 'POST',
-                    body: JSON.stringify(submissionData)
-                });
-
-                if (result.success) {
-                    alert('✓ Successfully submitted to SARS!\n\nPeriod is now LOCKED.');
-                    if (currentPeriodData) currentPeriodData.status = 'LOCKED';
-                    updatePeriodLockUI(currentPeriodData);
-                    await loadVATSubmissionHistory();
-                    setReconciliationReadOnly();
-                }
-            } catch (error) {
-                console.error('Error submitting to SARS:', error);
-                alert('Error: ' + error.message);
+            switchVatTab('sarsReturnsTab');
+            await loadSarsOverview();
+            if (currentPeriodData && currentPeriodData.id) {
+                await openSarsPeriod(currentPeriodData.id, { capture: true });
             }
         }
 
