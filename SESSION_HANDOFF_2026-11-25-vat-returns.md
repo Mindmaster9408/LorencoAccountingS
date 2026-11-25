@@ -26,9 +26,10 @@ to SARS, and show where the books **now differ** from the filed return.
 - Old vs new period filter give identical totals on real data (Turkstra Oct input VAT R122 098,84 both).
 
 ## NOT done / needs doing
-- **Migration 189 is NOT run yet** — needs Ruan's yes (it also corrects 17 period rows in companies 1, 2, 7, 40, 41, 51).
-- E2E in test company 51 after the migration (capture → revision → payment → differences).
-- Not committed / pushed.
+- Migration 189 RUN 2026-11-25 (17 period rows in companies 1, 2, 7, 40, 41, 51 now start on the 1st).
+- E2E in test company 51: 12/12 pass (capture, lock, wrong total refused, revision, one filed version, payments,
+  penalty apart, delete payment, older period). Test rows removed and periods reset to DRAFT afterwards.
+- Pushed b53d226 together with the VAT detail PDF one-line fix.
 
 ## Step 2 (agreed, not built)
 Carry a difference into a later return (output → field 12, input → field 18) with from/to period, amount and
