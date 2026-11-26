@@ -1922,11 +1922,24 @@
             if (want) sel.value = want;
 
             const cycleSel = document.getElementById('vatCycleSelect');
-            if (cycleSel) cycleSel.value = `${vatCycleSettings.frequency}|${vatCycleSettings.cycle || ''}`;
+            if (cycleSel) {
+                cycleSel.value = `${vatCycleSettings.frequency}|${vatCycleSettings.cycle || ''}`;
+                // Locked once set: changed in Firmflow by an authorised person
+                // (a super admin may still change it here, with a reason).
+                cycleSel.disabled = vatCycleSettings.canChange === false;
+                cycleSel.title = vatCycleSettings.locked ? 'Locked — change it in Firmflow (owner, partner, admin or manager)' : '';
+            }
             const warn = document.getElementById('vatCycleWarning');
             if (warn) {
-                warn.style.display = vatCycleSettings.configured ? 'none' : 'block';
-                warn.textContent = vatCycleSettings.configured ? '' : 'No VAT cycle is set for this company — showing calendar months. Choose the cycle SARS gave you.';
+                const msg = !vatCycleSettings.configured
+                    ? 'No VAT cycle is set for this company — showing calendar months. Choose the cycle SARS gave you.'
+                    : !vatCycleSettings.isVatRegistered
+                        ? 'This company is not marked VAT registered — choosing the cycle marks it registered and locks the cycle.'
+                        : vatCycleSettings.canChange === false
+                            ? '🔒 VAT cycle locked. An authorised person changes it in Firmflow, with a reason.'
+                            : '';
+                warn.style.display = msg ? 'block' : 'none';
+                warn.textContent = msg;
             }
         }
 
@@ -1934,12 +1947,17 @@
             const cycleSel = document.getElementById('vatCycleSelect');
             const [frequency, cycle] = cycleSel.value.split('|');
             const label = cycleSel.options[cycleSel.selectedIndex].textContent;
-            if (!confirm(`Set this company's VAT cycle to "${label}"?\n\nThe company is marked VAT registered, the period list and all VAT reports follow this cycle, new entries are placed in these periods, and Firmflow shows the same cycle. Periods already filed or locked keep their dates.`)) {
-                if (vatCycleSettings) cycleSel.value = `${vatCycleSettings.frequency}|${vatCycleSettings.cycle || ''}`;
+            const resetSel = () => { if (vatCycleSettings) cycleSel.value = `${vatCycleSettings.frequency}|${vatCycleSettings.cycle || ''}`; };
+            let reason = null;
+            if (vatCycleSettings && vatCycleSettings.locked) {
+                reason = prompt(`The VAT cycle is locked. Why is it being changed to "${label}"? (kept in the audit trail)`);
+                if (!reason || !reason.trim()) { resetSel(); return; }
+            } else if (!confirm(`Set this company's VAT cycle to "${label}"?\n\nThe company is marked VAT registered and the cycle is then LOCKED — after this only an authorised person can change it in Firmflow. The period list and all VAT reports follow this cycle, new entries are placed in these periods, and Firmflow shows the same cycle. Periods already filed or locked keep their dates.`)) {
+                resetSel();
                 return;
             }
             try {
-                await fetchAPI('/vat-recon/cycle', { method: 'PUT', body: JSON.stringify({ frequency, cycle: cycle || null }) });
+                await fetchAPI('/vat-recon/cycle', { method: 'PUT', body: JSON.stringify({ frequency, cycle: cycle || null, reason }) });
                 await setupPeriodSelector();
                 await selectVATPeriod();
                 if (typeof loadSarsOverview === 'function') loadSarsOverview();

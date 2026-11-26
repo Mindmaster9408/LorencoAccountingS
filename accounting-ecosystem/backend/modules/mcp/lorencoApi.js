@@ -63,6 +63,7 @@ const HARD_BLOCK = [
   [W,      /^\/api\/accounting\/vat-recon\/periods\/[^/]+\/submit$/,       'SARS submissions are done by a person'],
   [W,      /^\/api\/accounting\/vat-returns(\/|$)/,                       'capturing filed SARS VAT returns and payments is done by a person'],
   [W,      /^\/api\/accounting\/vat-recon\/cycle$/,                        'changing the company\'s VAT cycle is done by a person'],
+  [W,      /^\/api\/practice\/clients\/[^/]+\/vat-cycle$/,                 'changing a client\'s VAT cycle is done by an authorised person'],
   [ANY,    /^\/api\/accounting\/paye(\/|$)/,                             'PAYE / payroll belongs to Paytime, which the bot does not use'],
   [ANY,    /^\/api\/accounting\/employees(\/|$)/,                        'employees belong to Paytime, which the bot does not use'],
   [ANY,    /^\/api\/accounting\/pos\/(?!customers(\/|$))/,               'Checkout Charlie (POS) is not available to the bot'],

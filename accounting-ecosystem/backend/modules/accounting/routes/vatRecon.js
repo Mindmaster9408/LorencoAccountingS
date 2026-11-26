@@ -95,30 +95,42 @@ router.post('/periods', async (req, res) => {
  */
 router.get('/cycle/period-options', async (req, res) => {
     try {
-        res.json({ success: true, ...(await vatCycleService.periodOptions(req.user.companyId, { months: req.query.months })) });
+        const data = await vatCycleService.periodOptions(req.user.companyId, { months: req.query.months });
+        // A locked cycle can be changed here only by a super admin; everyone else
+        // changes it in Firmflow (authorised roles) — the page shows it read-only.
+        data.settings.canChange = !data.settings.locked || isSuperUser(req.user);
+        res.json({ success: true, ...data });
     } catch (error) {
         console.error('Error loading VAT period options:', error);
         res.status(error.status || 500).json({ success: false, error: error.message });
     }
 });
 
+const isSuperUser = u => !!(u && (u.isSuperAdmin || u.isGlobalAdmin || u.role === 'super_admin'));
+
 /**
- * PUT /api/accounting/vat-recon/cycle   { frequency, cycle }
- * Change the company's VAT cycle (SARS category). Admin / accountant.
+ * PUT /api/accounting/vat-recon/cycle   { frequency, cycle, reason }
+ * Set the company's VAT cycle (SARS category). Admin / accountant may set it
+ * the first time; once locked (VAT registered + cycle) only a super admin may
+ * change it here, with a reason — otherwise it is changed in Firmflow by an
+ * authorised person (POST /api/practice/clients/:id/vat-cycle).
  */
 router.put('/cycle', authorize('admin', 'accountant'), async (req, res) => {
     try {
         const { companyId, id: userId } = req.user;
-        const { before, after } = await vatCycleService.setCycle(companyId, req.body || {});
+        const body = req.body || {};
+        const { before, after, reason } = await vatCycleService.setCycle(
+            companyId, { frequency: body.frequency, cycle: body.cycle, reason: body.reason },
+            { authorised: isSuperUser(req.user) });
         await auditLogger.log({
             companyId, actorType: 'USER', actorId: userId,
-            actionType: 'VAT_CYCLE_CHANGED', entityType: 'company', entityId: companyId,
-            beforeJson: before, afterJson: after,
+            actionType: before.locked ? 'VAT_CYCLE_CHANGED' : 'VAT_CYCLE_SET', entityType: 'company', entityId: companyId,
+            beforeJson: before, afterJson: after, metadata: { reason, via: 'ledger-vat-page' },
         }).catch(e => console.warn('[vat-recon] audit log failed:', e.message));
         res.json({ success: true, settings: after });
     } catch (error) {
         console.error('Error changing VAT cycle:', error);
-        res.status(error.status || 500).json({ success: false, error: error.message });
+        res.status(error.status || 500).json({ success: false, error: error.message, code: error.code });
     }
 });
 

@@ -10,6 +10,7 @@ const { supabase } = require('../../../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { buildDisplayConfig } = require('../../../shared/services/jurisdiction');
 const companyIdentitySync = require('../../../shared/services/companyIdentitySync');
+const vatCycleService = require('../services/vatCycleService');
 
 // ── field mapping helpers ─────────────────────────────────────────────────────
 
@@ -162,7 +163,10 @@ router.get('/:id', authenticate, async (req, res) => {
     // reads d.name directly off this response; every accounting page can now
     // also read d.currency_symbol/d.tax_label/d.tax_authority/d.jurisdiction
     // from the exact same call, no second round-trip.
-    res.json({ ...mapCompanyRow(data), ...buildDisplayConfig(data) });
+    // VAT cycle lock: the settings page shows registration + cycle read-only
+    // when locked, unless the caller is a super admin.
+    const vatLocked = !!data.is_vat_registered && vatCycleService.FREQUENCIES.includes(String(data.vat_period || '').toLowerCase());
+    res.json({ ...mapCompanyRow(data), ...buildDisplayConfig(data), vatLocked, vatCycleCanChange: !vatLocked || !!isSuperAdmin });
   } catch (err) {
     console.error('[Accounting] Get company details error:', err.message);
     res.status(500).json({ error: 'Failed to fetch company details', detail: err.message });
@@ -188,6 +192,25 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
   }
 
   try {
+    // VAT cycle lock (2026-11-26): once the company is VAT registered with a
+    // cycle, this page may not change the registration or the cycle — that is
+    // done in Firmflow by an authorised person (or by a super admin), with a
+    // reason (vatCycleService). Unchanged values (the form sends all) pass.
+    if (d.isVatRegistered !== undefined || d.vatPeriod || d.vatCycleType) {
+      const before = await vatCycleService.settings(parseInt(companyId, 10));
+      const desired = {
+        registered: d.isVatRegistered !== undefined ? !!d.isVatRegistered : before.isVatRegistered,
+        frequency: d.vatPeriod ? String(d.vatPeriod).toLowerCase() : before.frequency,
+        cycle: d.vatCycleType ? String(d.vatCycleType).toLowerCase() : before.cycle,
+      };
+      if (vatCycleService.changeIsLockedOut(before, desired, !!isSuperAdmin)) {
+        return res.status(409).json({
+          error: 'The VAT registration and cycle are locked. Change them in Firmflow (owner, partner, admin or manager), with a reason.',
+          code: 'VAT_CYCLE_LOCKED',
+        });
+      }
+    }
+
     // Build update object — only include non-empty values so COALESCE behaviour is preserved
     const updates = {};
     if (d.name)            updates.company_name        = d.name;

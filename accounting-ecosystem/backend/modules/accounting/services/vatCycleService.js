@@ -108,6 +108,10 @@ class VatCycleService {
     return {
       configured,
       isVatRegistered: !!data.is_vat_registered,
+      // Locked once the company is a VAT vendor with a cycle: from then on only
+      // an authorised change (Firmflow manager/partner/owner, or a super admin)
+      // with a reason may alter it — see changeIsLockedOut().
+      locked: !!data.is_vat_registered && configured,
       frequency,
       cycle: frequency === 'bi-monthly' ? (data.vat_cycle_type || 'even').toLowerCase() : null,
       registeredDate: saDate(data.vat_registered_date),
@@ -191,22 +195,62 @@ class VatCycleService {
     return updated;
   }
 
-  async setCycle(companyId, { frequency, cycle }) {
+  /**
+   * Set the company's VAT cycle (and VAT registration).
+   *   desired: { frequency, cycle, registered = true, reason }
+   *   opts.authorised: caller verified a Firmflow manager role (owner / partner
+   *   / admin / manager at the managing practice) or a super admin.
+   * The first set is open to admin / accountant (route-level). Once locked,
+   * any change needs opts.authorised AND a reason; otherwise 409 VAT_CYCLE_LOCKED.
+   */
+  async setCycle(companyId, { frequency, cycle, registered = true, reason } = {}, opts = {}) {
     const f = String(frequency || '').toLowerCase();
     if (!FREQUENCIES.includes(f)) throw badRequest('Choose a VAT cycle');
     const c = f === 'bi-monthly' ? String(cycle || '').toLowerCase() : null;
     if (f === 'bi-monthly' && !['odd', 'even'].includes(c)) throw badRequest('Choose odd or even months for a bi-monthly cycle');
+    const reg = registered !== false;
     const before = await this.settings(companyId);
+    const desired = { registered: reg, frequency: f, cycle: c };
+
+    if (changeIsLockedOut(before, desired, opts.authorised)) {
+      const e = new Error(`The VAT cycle is locked (${describeCycle(before)}). It can only be changed in Firmflow by an authorised person (owner, partner, admin or manager), with a reason.`);
+      e.status = 409; e.code = 'VAT_CYCLE_LOCKED';
+      throw e;
+    }
+    if (before.locked && isChange(before, desired) && !String(reason || '').trim()) {
+      throw badRequest('Give a reason for changing the VAT cycle — it is kept in the audit trail');
+    }
+
     // Choosing a SARS VAT cycle means the company is a VAT vendor: journalService
     // only places entries in VAT periods for registered companies, and Firmflow
     // takes the cycle from Leo only for registered companies (practice/lib/company-sync).
-    const update = { vat_period: f, is_vat_registered: true, updated_at: new Date().toISOString() };
+    const update = { vat_period: f, is_vat_registered: reg, updated_at: new Date().toISOString() };
     if (c) update.vat_cycle_type = c;
     const { error } = await supabase.from('companies').update(update).eq('id', companyId);
     if (error) throw new Error(error.message);
-    return { before, after: await this.settings(companyId) };
+    return { before, after: await this.settings(companyId), reason: String(reason || '').trim() || null };
   }
 }
 
+/** "bi-monthly (even)" etc. Pure. */
+function describeCycle(s) {
+  return `${s.frequency}${s.cycle ? ' (' + s.cycle + ')' : ''}`;
+}
+
+/** Does `desired` differ from the current settings? Pure. */
+function isChange(before, desired) {
+  return before.isVatRegistered !== desired.registered
+    || before.frequency !== desired.frequency
+    || (desired.frequency === 'bi-monthly' && (before.cycle || 'even') !== desired.cycle);
+}
+
+/** A locked cycle may only change when authorised. Pure. */
+function changeIsLockedOut(before, desired, authorised) {
+  return !!before.locked && isChange(before, desired) && !authorised;
+}
+
 module.exports = new VatCycleService();
-Object.assign(module.exports, { mergePeriodOptions, canonicalKey, saDate, monthsBack, FREQUENCIES });
+Object.assign(module.exports, {
+  mergePeriodOptions, canonicalKey, saDate, monthsBack, FREQUENCIES,
+  describeCycle, isChange, changeIsLockedOut,
+});

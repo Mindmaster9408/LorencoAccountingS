@@ -356,6 +356,9 @@
                 <option value="odd">Odd months (Jan, Mar, May, Jul, Sep, Nov)</option>
               </select>
             </div>
+            <div id="vatLockNote" style="display:none; color:#f9ab00; font-size:12px; margin:-4px 0 10px;">
+              &#128274; VAT registration and cycle are locked. An authorised person (owner, partner, admin or manager) changes them in Firmflow, with a reason.
+            </div>
             <div class="form-group" id="vatRegisteredDateGroup" style="display:none;">
               <label>VAT Registration Date</label>
               <input type="date" id="vatRegisteredDate" placeholder="Date VAT registration became effective">
@@ -855,6 +858,12 @@
       document.getElementById('vatCycleType').value = data.vatCycleType || 'even';
       document.getElementById('vatRegisteredDate').value = data.vatRegisteredDate ? data.vatRegisteredDate.slice(0,10) : '';
       toggleVatFields();  // show/hide dependent fields — called AFTER all VAT values are set
+      // VAT cycle lock: registration + cycle are read-only once set; changed in
+      // Firmflow by an authorised person (the server refuses it from here too).
+      const vatLockedHere = data.vatCycleCanChange === false;
+      ['isVatRegistered', 'vatPeriod', 'vatCycleType'].forEach(id => { document.getElementById(id).disabled = vatLockedHere; });
+      const lockNote = document.getElementById('vatLockNote');
+      if (lockNote) lockNote.style.display = vatLockedHere ? 'block' : 'none';
       document.getElementById('payeRef').value = data.payeRef || '';
       document.getElementById('uifRef').value = data.uifRef || '';
       document.getElementById('sdlRef').value = data.sdlRef || '';

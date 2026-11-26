@@ -45,6 +45,7 @@ const capacityRouter         = require('./capacity');
 const teamAccess             = require('./lib/team-access');
 const companyVat             = require('./lib/company-sync');
 const identitySync           = require('../../shared/services/companyIdentitySync');
+const vatCycleService        = require('../accounting/services/vatCycleService');
 const { derivePeriodForDate } = require('../accounting/services/vatPeriodUtils');
 const clientHealthRouter     = require('./client-health');
 const remindersRouter        = require('./reminders');
@@ -1099,6 +1100,22 @@ router.put('/clients/:id', async (req, res) => {
   if (body.risk_rating && !CLIENT_RISK_RATINGS.includes(body.risk_rating))
     return res.status(400).json({ error: 'Invalid risk_rating' });
 
+  // VAT cycle lock: once the linked company is VAT registered with a cycle,
+  // the ordinary client save may not change registration or cycle — that goes
+  // through POST /clients/:id/vat-cycle (owner / partner / admin / manager, with a reason).
+  if (existing.eco_client_id && (body.vat_registered !== undefined || body.vat_payment_sequence || body.vat_bi_monthly_parity)) {
+    const linkedForLock = await getLinkedCompanyId(existing.eco_client_id);
+    if (linkedForLock) {
+      const before = await vatCycleService.settings(linkedForLock);
+      if (vatCycleService.changeIsLockedOut(before, companyVat.desiredVatFromPractice(body, before), false)) {
+        return res.status(409).json({
+          error: 'The VAT registration and cycle are locked. Use "Change VAT cycle" (owner, partner, admin or manager), with a reason.',
+          code: 'VAT_CYCLE_LOCKED',
+        });
+      }
+    }
+  }
+
   body.updated_at = new Date().toISOString();
   if (req.user?.userId) body.updated_by = req.user?.userId;
 
@@ -1164,6 +1181,66 @@ router.put('/clients/:id', async (req, res) => {
 
   await auditFromReq(req, 'UPDATE', 'practice_client', data.id, { module: 'practice' });
   res.json({ client: data });
+});
+
+// ─── Authorised VAT cycle change (2026-11-26) ─────────────────────────────────
+// The client's VAT registration + cycle (SARS category) is locked once set. Only
+// a practice manager role (lib/team-access: owner, partner, admin, manager — super
+// admins via the bypass) may change it, with a reason. For a linked client it
+// changes the company record (Leo's VAT page, VAT periods, journals follow);
+// practice_clients' own copy is kept in step. Audit-logged with before/after.
+router.post('/clients/:id/vat-cycle', async (req, res) => {
+  try {
+    const me = await teamAccess.getMyTeamMember(supabase, req.companyId, req.user);
+    if (!teamAccess.isManager(me)) {
+      return res.status(403).json({ error: 'Only an owner, partner, admin or manager may change a client\'s VAT cycle.' });
+    }
+    const reason = String((req.body || {}).reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Give a reason for the change — it is kept in the audit trail.' });
+
+    const { data: existing } = await supabase
+      .from('practice_clients').select('id, eco_client_id, vat_registered, vat_payment_sequence, vat_bi_monthly_parity')
+      .eq('id', req.params.id).eq('company_id', req.companyId).maybeSingle();
+    if (!existing) return res.status(404).json({ error: 'Client not found' });
+
+    const body = {
+      vat_registered: req.body.vat_registered,
+      vat_payment_sequence: req.body.vat_payment_sequence || null,
+      vat_bi_monthly_parity: req.body.vat_payment_sequence === 'bi_monthly' ? (req.body.vat_bi_monthly_parity || null) : null,
+    };
+    if (body.vat_registered !== false && !body.vat_payment_sequence) {
+      return res.status(400).json({ error: 'Choose the VAT cycle (or untick VAT registered).' });
+    }
+    if (body.vat_payment_sequence === 'bi_monthly' && !body.vat_bi_monthly_parity) {
+      return res.status(400).json({ error: 'Choose odd or even months for a bi-monthly cycle.' });
+    }
+
+    let before = null, after = null;
+    const linkedCompanyId = await getLinkedCompanyId(existing.eco_client_id);
+    if (linkedCompanyId) {
+      const current = await vatCycleService.settings(linkedCompanyId);
+      const desired = companyVat.desiredVatFromPractice(body, current);
+      ({ before, after } = await vatCycleService.setCycle(linkedCompanyId,
+        { frequency: desired.frequency, cycle: desired.cycle, registered: desired.registered, reason },
+        { authorised: true }));
+    }
+    const practiceUpdate = { ...body, vat_registered: body.vat_registered !== false, updated_at: new Date().toISOString() };
+    if (req.user?.userId) practiceUpdate.updated_by = req.user.userId;
+    const { error: upErr } = await supabase.from('practice_clients').update(practiceUpdate)
+      .eq('id', existing.id).eq('company_id', req.companyId);
+    if (upErr) return res.status(500).json({ error: upErr.message });
+
+    await auditFromReq(req, 'VAT_CYCLE_CHANGED', 'practice_client', existing.id, {
+      module: 'practice', reason, linkedCompanyId,
+      oldValue: before || { vat_registered: existing.vat_registered, vat_payment_sequence: existing.vat_payment_sequence, vat_bi_monthly_parity: existing.vat_bi_monthly_parity },
+      newValue: after || practiceUpdate,
+      authorisedBy: { userId: req.user?.userId || null, role: me.role, name: me.display_name || null },
+    });
+    res.json({ success: true, settings: after, client: practiceUpdate });
+  } catch (err) {
+    console.error('[practice] VAT cycle change failed:', err.message);
+    res.status(err.status || 500).json({ error: err.message, code: err.code });
+  }
 });
 
 router.delete('/clients/:id', async (req, res) => {

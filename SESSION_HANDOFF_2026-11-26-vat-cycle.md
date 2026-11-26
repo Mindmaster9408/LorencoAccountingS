@@ -125,3 +125,40 @@ session's work, or staged per hunk.
   today. They should read from the company.
 - Legacy columns (`physical_address, city, postal_code, paye_reference, coid_number, email, phone`) can be dropped
   once nothing reads them.
+
+## Part 4 — VAT cycle lock (authorised change only)
+
+**Rule.** Once a company is VAT registered with a cycle, its VAT registration and cycle are locked:
+- The first time, an admin or accountant can choose the cycle on the Leo VAT page.
+- After that, the registration and cycle can only change through Firmflow → client → "Change VAT cycle". This
+  needs a practice manager role (lib/team-access: owner, partner, admin, manager; a super admin who is not on the
+  roster gets owner through the existing bypass) and a reason. The change is audit-logged (before, after, reason,
+  who authorised it).
+- A super admin may also change the cycle on the Leo VAT page, with a reason.
+- Saving the same values (the forms send every field) is never treated as a change.
+
+| File | Purpose |
+|---|---|
+| `backend/modules/accounting/services/vatCycleService.js` | `settings().locked`; `setCycle(…, {reason, registered}, {authorised})` refuses a locked change without authorisation (409 `VAT_CYCLE_LOCKED`) or without a reason (400). Pure helpers: `isChange`, `changeIsLockedOut`, `describeCycle`. |
+| `backend/modules/accounting/routes/vatRecon.js` | PUT /cycle: only super admins are authorised there; `settings.canChange` is returned for the page; audit action is VAT_CYCLE_SET or VAT_CYCLE_CHANGED, with the reason. |
+| `backend/modules/accounting/routes/company.js` | PUT refuses a registration or cycle change on a locked company (unless super admin). GET returns `vatLocked` and `vatCycleCanChange`. |
+| `frontend-accounting/company.html`, `frontend-accounting/vat.html` | Fields are read-only when locked, with a note. A super admin is prompted for a reason. The first-set confirm says the cycle locks. |
+| `backend/modules/practice/lib/company-sync.js` | `vat_settings_locked` on the overlay; `desiredVatFromPractice`. |
+| `backend/modules/practice/index.js` | The ordinary PUT /clients/:id refuses a locked change (409). NEW POST /clients/:id/vat-cycle (manager roles + reason) → vatCycleService (authorised); keeps practice_clients in step; audit-logged. |
+| `backend/frontend-practice/js/client-detail.js` | Lock box with a "Change VAT cycle" button (fields unlock, reason field, "Save VAT change"). |
+| `backend/modules/mcp/lorencoApi.js` | The bot may not call the Firmflow vat-cycle route. |
+| `backend/tests/vat-cycle.test.js` | +5 lock tests. |
+
+**Confirmed.**
+- E2E in co 51, real routes: 15/15. First set by staff; then locked. A staff change on the VAT page, in company
+  settings and through the Firmflow ordinary save is refused (409), while saves with the same values still work.
+  The Firmflow change is refused for a non-manager (403) and without a reason (400). With a reason it changes
+  Leo and writes to the audit trail. A super admin on the VAT page needs a reason. Everything restored.
+- Full suite: 1643 pass. Lint: 0 errors.
+
+**Locked as soon as this is deployed:** co 1 (bi-monthly even), Walkerpark co 3 (bi-monthly even — set outside
+this session on 2026-11-26), Turkstra co 7 (monthly), Dronedog co 41 (monthly).
+
+**Roster note.** Ruan is owner in practices 1 and 38; MJ, Anton and Anrich are partners in practice 1. In test
+co 51's roster Ruan is 'staff', so there the real roster role applies (existing team-access rule) and Ruan can't
+change it there.

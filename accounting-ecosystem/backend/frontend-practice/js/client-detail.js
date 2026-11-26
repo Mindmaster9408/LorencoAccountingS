@@ -208,6 +208,7 @@
         setVal('dVatSubmissionMonth',  c.vat_last_submission_month ? String(c.vat_last_submission_month) : '');
         setVal('dVatBiMonthlyParity',  c.vat_bi_monthly_parity || '');
         toggleVatBiMonthly();
+        renderVatLock(!!c.vat_settings_locked);
         setVal('dCoidaRef',            c.coida_registration_number);
         setVal('dCoidaDueMonth',       c.coida_due_month ? String(c.coida_due_month) : '');
 
@@ -528,6 +529,71 @@
         }
     }
     window.toggleVatBiMonthly = toggleVatBiMonthly;
+
+    // ── VAT cycle lock (2026-11-26) ────────────────────────────────────────
+    // Once the client is VAT registered with a cycle, registration + cycle are
+    // read-only here. "Change VAT cycle" (owner / partner / admin / manager —
+    // enforced by the server) opens them with a required reason and saves via
+    // POST /api/practice/clients/:id/vat-cycle, which also updates Leo.
+    var VAT_LOCK_FIELDS = ['dVatReg', 'dVatPaySeq', 'dVatBiMonthlyParity'];
+
+    function renderVatLock(locked) {
+        var anchor = document.getElementById('dVatPaySeq');
+        if (!anchor) return;
+        var box = document.getElementById('vatLockBox');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'vatLockBox';
+            box.style.cssText = 'margin:0 0 12px; padding:10px 12px; border-radius:8px; border:1px solid rgba(249,171,0,0.45); background:rgba(249,171,0,0.08); font-size:13px;';
+            var grid = anchor.closest('.form-grid') || anchor.parentNode;
+            grid.parentNode.insertBefore(box, grid);
+        }
+        VAT_LOCK_FIELDS.forEach(function (id) { var el = document.getElementById(id); if (el) el.disabled = locked; });
+        if (!locked) { box.style.display = 'none'; return; }
+        box.style.display = '';
+        box.innerHTML = '&#128274; <strong>VAT registration and cycle are locked.</strong> They drive the VAT periods and reports in Ledger Leo. ' +
+            'Only an owner, partner, admin or manager can change them, with a reason. ' +
+            '<button type="button" class="btn btn-secondary" style="margin-left:8px; padding:3px 10px; font-size:12px;" onclick="startVatCycleChange()">Change VAT cycle</button>';
+    }
+
+    function startVatCycleChange() {
+        VAT_LOCK_FIELDS.forEach(function (id) { var el = document.getElementById(id); if (el) el.disabled = false; });
+        var box = document.getElementById('vatLockBox');
+        box.innerHTML = '<strong>Change the VAT cycle</strong> — set the new registration / cycle below, give the reason, then save this change. ' +
+            '<div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">' +
+            '<input type="text" id="vatChangeReason" maxlength="300" placeholder="Reason (e.g. SARS moved the client to Category B)" style="flex:1; min-width:240px;">' +
+            '<button type="button" class="btn btn-primary" id="vatChangeSaveBtn" onclick="saveVatCycleChange()">Save VAT change</button>' +
+            '<button type="button" class="btn btn-secondary" onclick="loadClient()">Cancel</button></div>';
+    }
+
+    async function saveVatCycleChange() {
+        var reason = (document.getElementById('vatChangeReason').value || '').trim();
+        if (!reason) { PracticeAPI.showToast('❌ Give a reason for the change.', true); return; }
+        var seq = document.getElementById('dVatPaySeq').value || null;
+        var body = {
+            vat_registered: document.getElementById('dVatReg').checked,
+            vat_payment_sequence: seq,
+            vat_bi_monthly_parity: seq === 'bi_monthly' ? (document.getElementById('dVatBiMonthlyParity').value || null) : null,
+            reason: reason
+        };
+        if (!confirm("Change this client's VAT registration / cycle? Leo's VAT periods and reports follow the new cycle; periods already filed keep their dates.")) return;
+        var btn = document.getElementById('vatChangeSaveBtn');
+        btn.disabled = true;
+        try {
+            var res = await PracticeAPI.fetch('/api/practice/clients/' + clientId + '/vat-cycle', { method: 'POST', body: JSON.stringify(body) });
+            var d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Change failed');
+            PracticeAPI.showToast('VAT cycle changed.');
+            loadClient();
+        } catch (err) {
+            PracticeAPI.showToast('❌ ' + err.message, true);
+            btn.disabled = false;
+        }
+    }
+
+    window.startVatCycleChange = startVatCycleChange;
+    window.saveVatCycleChange  = saveVatCycleChange;
+    window.loadClient          = loadClient;   // Cancel in the VAT change box reloads the client
 
     // ── Compliance Suggestions ─────────────────────────────────────────────────
 

@@ -100,6 +100,22 @@ function companyVatUpdateFromPractice(body) {
   return u;
 }
 
+/**
+ * What a Firmflow body asks for, in Leo terms, starting from the company's
+ * current settings (vatCycleService.settings shape). Pure.
+ */
+function desiredVatFromPractice(body, before) {
+  const seq = body.vat_payment_sequence;
+  const frequency = PRACTICE_TO_LEO[seq] || before.frequency;
+  return {
+    registered: body.vat_registered !== undefined ? (body.vat_registered === true || body.vat_registered === 'true') : before.isVatRegistered,
+    frequency,
+    cycle: frequency === 'bi-monthly'
+      ? (seq === 'bi_monthly' && ['odd', 'even'].includes(body.vat_bi_monthly_parity) ? body.vat_bi_monthly_parity : (before.cycle || 'even'))
+      : null,
+  };
+}
+
 /** Leo frequency for a (possibly overlaid) Firmflow client, for period maths. Pure. */
 function leoFrequencyOf(client) {
   return PRACTICE_TO_LEO[client.vat_payment_sequence] || null;
@@ -129,12 +145,14 @@ async function overlayCompanyVat(clients) {
     const company = byId.get(companyByEco.get(c.eco_client_id));
     if (!company) return c;
     const vat = practiceVatFromCompany(company);
-    return { ...c, ...practiceFieldsFromCompany(company), ...(vat ? { ...vat, vat_settings_source: 'ledger' } : {}) };
+    return { ...c, ...practiceFieldsFromCompany(company), ...(vat ? { ...vat, vat_settings_source: 'ledger' } : {}),
+      // locked = VAT registered with a cycle: changed only via POST /clients/:id/vat-cycle (authorised)
+      vat_settings_locked: company.is_vat_registered === true && !!LEO_TO_PRACTICE[String(company.vat_period || '').toLowerCase()] };
   });
 }
 
 module.exports = {
   COMPANY_FIELD_MAP, practiceFieldsFromCompany,
   PRACTICE_TO_LEO, LEO_TO_PRACTICE,
-  practiceVatFromCompany, companyVatUpdateFromPractice, leoFrequencyOf, overlayCompanyVat,
+  practiceVatFromCompany, companyVatUpdateFromPractice, desiredVatFromPractice, leoFrequencyOf, overlayCompanyVat,
 };

@@ -88,3 +88,35 @@ test('the bot cannot change the VAT cycle', () => {
   expect(blockReason('PUT', '/api/accounting/vat-recon/cycle')).toMatch(/done by a person/);
   expect(blockReason('GET', '/api/accounting/vat-recon/cycle/period-options')).toBeNull();
 });
+
+describe('VAT cycle lock', () => {
+  const { isChange, changeIsLockedOut } = require('../modules/accounting/services/vatCycleService');
+  const { desiredVatFromPractice } = require('../modules/practice/lib/company-sync');
+  const locked = { locked: true, isVatRegistered: true, frequency: 'bi-monthly', cycle: 'even' };
+
+  test('same cycle again is not a change (forms send every field)', () => {
+    expect(isChange(locked, { registered: true, frequency: 'bi-monthly', cycle: 'even' })).toBe(false);
+    expect(changeIsLockedOut(locked, { registered: true, frequency: 'bi-monthly', cycle: 'even' }, false)).toBe(false);
+  });
+
+  test('a different cycle, parity or deregistration on a locked company needs authorisation', () => {
+    expect(changeIsLockedOut(locked, { registered: true, frequency: 'monthly', cycle: null }, false)).toBe(true);
+    expect(changeIsLockedOut(locked, { registered: true, frequency: 'bi-monthly', cycle: 'odd' }, false)).toBe(true);
+    expect(changeIsLockedOut(locked, { registered: false, frequency: 'bi-monthly', cycle: 'even' }, false)).toBe(true);
+    expect(changeIsLockedOut(locked, { registered: true, frequency: 'monthly', cycle: null }, true)).toBe(false);
+  });
+
+  test('first set (not locked) is open', () => {
+    expect(changeIsLockedOut({ ...locked, locked: false, isVatRegistered: false }, { registered: true, frequency: 'monthly', cycle: null }, false)).toBe(false);
+  });
+
+  test('Firmflow form → Leo terms (unchanged form = no change)', () => {
+    const d = desiredVatFromPractice({ vat_registered: true, vat_payment_sequence: 'bi_monthly', vat_bi_monthly_parity: 'even' }, locked);
+    expect(isChange(locked, d)).toBe(false);
+    expect(desiredVatFromPractice({ vat_payment_sequence: 'quarterly' }, locked)).toEqual({ registered: true, frequency: 'four-monthly', cycle: null });
+  });
+
+  test('the bot cannot change a client\'s VAT cycle in Firmflow', () => {
+    expect(blockReason('POST', '/api/practice/clients/5/vat-cycle')).toMatch(/authorised person/);
+  });
+});
