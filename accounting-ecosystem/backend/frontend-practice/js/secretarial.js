@@ -12,7 +12,7 @@
     var _currentProfile = null;
 
     var COMPANY_STATUS_LABELS = { active: 'Active', dormant: 'Dormant', deregistration_process: 'Deregistration Process', deregistered: 'Deregistered', in_liquidation: 'In Liquidation', other: 'Other' };
-    var DIRECTOR_ROLE_LABELS = { executive: 'Executive', non_executive: 'Non-Executive', alternate: 'Alternate' };
+    var DIRECTOR_ROLE_LABELS = { director: 'Director', executive: 'Executive', non_executive: 'Non-Executive', alternate: 'Alternate', member: 'Member (CC)' };
     var RETURN_STATUS_LABELS = { pending: 'Pending', submitted: 'Submitted', overdue: 'Overdue', exempted: 'Exempted' };
     var EV_LABELS = {
         profile_created: 'Profile Created', profile_updated: 'Profile Updated',
@@ -352,7 +352,14 @@
         }).join('');
     }
 
-    function secOpenDirector() { document.getElementById('directorModal').classList.add('open'); }
+    function secOpenDirector() {
+        // A close corporation has members, not directors — preselect accordingly.
+        var p = (_currentProfile && _currentProfile.profile) || {};
+        var c = (_currentProfile && _currentProfile.client) || {};
+        var isCc = p.company_type === 'cc' || (!p.company_type && c.client_type === 'cc');
+        document.getElementById('dfRole').value = isCc ? 'member' : 'director';
+        document.getElementById('directorModal').classList.add('open');
+    }
     function secCloseDirector() { document.getElementById('directorModal').classList.remove('open'); }
     function secSubmitDirector() {
         var payload = {

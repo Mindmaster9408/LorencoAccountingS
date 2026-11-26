@@ -34,7 +34,7 @@ const supabase = createClient(
 
 const COMPANY_TYPES = ['pty_ltd', 'cc', 'npc', 'trust', 'partnership', 'sole_proprietor', 'other'];
 const COMPANY_STATUSES = ['active', 'dormant', 'deregistration_process', 'deregistered', 'in_liquidation', 'other'];
-const DIRECTOR_ROLES = ['executive', 'non_executive', 'alternate'];
+const directorRoles = require('./lib/director-roles');   // director, executive, non_executive, alternate, member
 const DIRECTOR_STATUSES = ['active', 'resigned'];
 const SHAREHOLDER_TYPES = ['individual', 'company', 'trust'];
 const SHAREHOLDER_STATUSES = ['active', 'transferred', 'cancelled'];
@@ -294,12 +294,14 @@ router.post('/:clientId/directors', async (req, res) => {
 
     const { director_name, id_or_passport_number, role, appointment_date, shareholding_pct, signing_authority, notes } = req.body;
     if (!director_name) return res.status(400).json({ error: 'director_name is required' });
-    if (role && !DIRECTOR_ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    let finalRole = directorRoles.normalizeDirectorRole(role);
+    if (finalRole === null) return res.status(400).json({ error: directorRoles.invalidRoleMessage(role) });
 
     try {
+        if (!finalRole) finalRole = await directorRoles.resolveDefaultDirectorRole(supabase, cid, clientId);
         const { data, error } = await supabase.from('practice_company_directors').insert({
             company_id: cid, client_id: clientId, director_name, id_or_passport_number: id_or_passport_number || null,
-            role: role || 'executive', appointment_date: appointment_date || null,
+            role: finalRole, appointment_date: appointment_date || null,
             shareholding_pct: shareholding_pct != null ? parseFloat(shareholding_pct) : null,
             signing_authority: !!signing_authority, notes: notes || null, created_by: req.user.userId,
         }).select().single();
@@ -326,7 +328,11 @@ router.put('/directors/:id', async (req, res) => {
 
     const allowed = ['director_name', 'id_or_passport_number', 'role', 'appointment_date', 'resignation_date', 'status', 'shareholding_pct', 'signing_authority', 'notes'];
     const update = _pick(req.body, allowed);
-    if (update.role && !DIRECTOR_ROLES.includes(update.role)) return res.status(400).json({ error: 'Invalid role' });
+    if ('role' in update) {
+        const r = directorRoles.normalizeDirectorRole(update.role);
+        if (!r) return res.status(400).json({ error: directorRoles.invalidRoleMessage(update.role) });
+        update.role = r;
+    }
     if (update.status && !DIRECTOR_STATUSES.includes(update.status)) return res.status(400).json({ error: 'Invalid status' });
     if (update.status === 'resigned' && !update.resignation_date) update.resignation_date = today();
     if (update.shareholding_pct != null) update.shareholding_pct = parseFloat(update.shareholding_pct);

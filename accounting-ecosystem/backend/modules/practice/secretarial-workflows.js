@@ -23,6 +23,7 @@ const { authenticateToken, requireCompany } = require('../../middleware/auth');
 const secretarial = require('./secretarial');
 const { notify } = require('./notifications');
 const teamAccess = require('./lib/team-access');
+const directorRoles = require('./lib/director-roles');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -162,9 +163,12 @@ function _pick(obj, keys) {
 async function _implDirectorAppointment(cid, clientId, payload) {
     const { director_name, role, appointment_date, id_or_passport_number, shareholding_pct, signing_authority } = payload;
     if (!director_name) return { error: 'payload.director_name is required to appoint a director.' };
+    let finalRole = directorRoles.normalizeDirectorRole(role);
+    if (finalRole === null) return { error: `payload.role: ${directorRoles.invalidRoleMessage(role)}` };
+    if (!finalRole) finalRole = await directorRoles.resolveDefaultDirectorRole(supabase, cid, clientId);
     const { data, error } = await supabase.from('practice_company_directors').insert({
         company_id: cid, client_id: clientId, director_name,
-        role: role || 'executive', appointment_date: appointment_date || null,
+        role: finalRole, appointment_date: appointment_date || null,
         id_or_passport_number: id_or_passport_number || null,
         shareholding_pct: shareholding_pct != null ? parseFloat(shareholding_pct) : null,
         signing_authority: !!signing_authority, status: 'active',
