@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { derivePeriodForDate } = require('./vatPeriodUtils');
 const { getBadge } = require('./reportTruthBadge');
 
 const PERIOD_KEY_CANONICAL = /^\d{4}-\d{2}$/;
@@ -62,6 +63,19 @@ class VATReportService {
     return normalizeVatPeriodKey(input);
   }
 
+  /** { fromDate, toDate, frequency } for a period-end key under the company's cycle, or null. */
+  async _cycleRangeForKey(companyId, key) {
+    const { rows } = await db.query('SELECT vat_period, vat_cycle_type FROM companies WHERE id = $1', [companyId]);
+    const freq = rows[0] && String(rows[0].vat_period || '').toLowerCase();
+    if (!freq || freq === 'monthly') return null;
+    try {
+      const p = derivePeriodForDate(`${key}-01`, freq, rows[0].vat_cycle_type || 'even');
+      return p.periodKey === key ? { fromDate: p.fromDate, toDate: p.toDate, frequency: freq } : null;
+    } catch (_) {
+      return null;            // unknown frequency → month fallback
+    }
+  }
+
   async getVatPeriodRange(companyId, periodKeyInput) {
     const normalized = normalizeVatPeriodKey(periodKeyInput);
     const warnings = [];
@@ -96,12 +110,21 @@ class VATReportService {
         );
       }
     } else {
-      const [yearStr, monthStr] = canonicalKey.split('-');
-      const year = parseInt(yearStr, 10);
-      const month = parseInt(monthStr, 10);
-      dateFrom = `${yearStr}-${monthStr}-01`;
-      dateTo = endOfMonth(year, month);
-      warnings.push('VAT period row not found. Using month boundary date range from normalized period key.');
+      // No row yet: follow the company's VAT cycle (bi-monthly etc.) when one
+      // is set and this key is one of its period ends; otherwise the month.
+      const cycleRange = await this._cycleRangeForKey(companyId, canonicalKey);
+      if (cycleRange) {
+        dateFrom = cycleRange.fromDate;
+        dateTo = cycleRange.toDate;
+        warnings.push(`VAT period row not found. Using the company's ${cycleRange.frequency} VAT cycle dates.`);
+      } else {
+        const [yearStr, monthStr] = canonicalKey.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        dateFrom = `${yearStr}-${monthStr}-01`;
+        dateTo = endOfMonth(year, month);
+        warnings.push('VAT period row not found. Using month boundary date range from normalized period key.');
+      }
     }
 
     return {

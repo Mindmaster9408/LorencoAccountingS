@@ -62,6 +62,7 @@ const HARD_BLOCK = [
   [W,      /^\/api\/accounting\/customer-invoices\/\d+\/billing-choice$/,  'monthly billing plans e-mail clients — a person sets them up'],
   [W,      /^\/api\/accounting\/vat-recon\/periods\/[^/]+\/submit$/,       'SARS submissions are done by a person'],
   [W,      /^\/api\/accounting\/vat-returns(\/|$)/,                       'capturing filed SARS VAT returns and payments is done by a person'],
+  [W,      /^\/api\/accounting\/vat-recon\/cycle$/,                        'changing the company\'s VAT cycle is done by a person'],
   [ANY,    /^\/api\/accounting\/paye(\/|$)/,                             'PAYE / payroll belongs to Paytime, which the bot does not use'],
   [ANY,    /^\/api\/accounting\/employees(\/|$)/,                        'employees belong to Paytime, which the bot does not use'],
   [ANY,    /^\/api\/accounting\/pos\/(?!customers(\/|$))/,               'Checkout Charlie (POS) is not available to the bot'],
@@ -139,7 +140,9 @@ function createClient() {
   return {
     /** Companies this user can open (exactly the user's own list in the Eco dashboard). */
     async listCompanies(ctx) {
-      const r = await call(mintUserJwt(ctx.user, ctx.tokenId), 'GET', '/api/auth/companies');
+      // include_clients=1: also clients the user may open through a practice (owner: all; others:
+      // invited ones) — the bot works there as practice staff (2026-11-26).
+      const r = await call(mintUserJwt(ctx.user, ctx.tokenId), 'GET', '/api/auth/companies?include_clients=1');
       if (!r.ok) throw new LorencoApiError(r.status, (r.data && r.data.error) || 'Could not list companies');
       const list = (r.data && (r.data.companies || r.data.data)) || [];
       allowedCache.set(ctx.user.id, { ids: new Set(list.map(c => String(c.id))), exp: Date.now() + ALLOWED_COMPANIES_CACHE_MS });

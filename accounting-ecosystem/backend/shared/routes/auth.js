@@ -12,6 +12,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { isSuperCompany } = require('../utils/ecoCompanies');
+const { resolveClientAccess, listReachableClients } = require('../services/clientAccess');
 const { supabase } = require('../../config/database');
 const { authenticateToken, invalidateUserSessions, JWT_SECRET } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
@@ -768,59 +769,17 @@ router.post('/select-company', authenticateToken, async (req, res) => {
         // by a practice the user belongs to.  This mirrors the sso-launch logic so
         // accountants / business owners can select a client company from inside
         // Paytime's company-selection page without needing an explicit row.
-        const { data: userPractices } = await supabase
-          .from('user_company_access')
-          .select('company_id')
-          .eq('user_id', userId)
-          .eq('is_active', true);
-        const practiceIds = (userPractices || []).map(r => r.company_id);
-
-        const { data: ecoClient } = practiceIds.length > 0
-          ? await supabase
-              .from('eco_clients')
-              .select('id, company_id')
-              .eq('client_company_id', parsedCompanyId)
-              .in('company_id', practiceIds)
-              .eq('is_active', true)
-              .maybeSingle()
-          : { data: null };
-
-        if (!ecoClient) {
-          return res.status(403).json({ error: 'You do not have access to this company' });
+        // 2026-11-26 (Ruan): one rule for everyone — the practice OWNER sees all its clients,
+        // everyone else only the clients they were invited to (shared/services/clientAccess.js).
+        const grant = await resolveClientAccess(supabase, { userId, clientCompanyId: parsedCompanyId });
+        if (!grant.ok) {
+          return res.status(403).json({ error: grant.reason === 'not_invited'
+            ? 'You have not been invited to this client — ask the practice owner'
+            : 'You do not have access to this company' });
         }
-
-        // Use the user's role from their managing practice
-        const { data: practiceAccess } = await supabase
-          .from('user_company_access')
-          .select('role')
-          .eq('user_id', userId)
-          .eq('company_id', ecoClient.company_id)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        const ALLOWED_CROSS_ROLES = ['business_owner', 'practice_manager', 'administrator', 'accountant', 'super_admin', 'store_manager'];
-        if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
-          // Delegated access path: user has a restricted role at the practice but may have
-          // explicit client visibility grant from the admin.
-          let delegatedAccess = false;
-          if (practiceAccess) {
-            const { data: clientAccessRows } = await supabase
-              .from('user_client_access').select('eco_client_id')
-              .eq('user_id', userId)
-              .eq('company_id', ecoClient.company_id);
-            const rows = clientAccessRows || [];
-            if (rows.length === 0) {
-              // Zero rows = unrestricted client visibility
-              delegatedAccess = true;
-            } else {
-              delegatedAccess = rows.some(r => r.eco_client_id === ecoClient.id);
-            }
-          }
-          if (!delegatedAccess) {
-            return res.status(403).json({ error: 'You do not have access to this company' });
-          }
-        }
-        role = practiceAccess.role;
+        // The user's role and app list come from their managing practice
+        role = grant.role;
+        appsAccess = grant.apps_access;
       }
     }
 
@@ -981,6 +940,28 @@ router.get('/companies', authenticateToken, async (req, res) => {
       // otherwise, so whichever row lands at [0] here silently becomes "the"
       // company for the whole session.
       .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+
+    // Opt-in (2026-11-26, used by the bot connection): also the client companies this user may
+    // open through a practice — practice owner: all its clients; others: the clients they were
+    // invited to (shared/services/clientAccess.js). The dashboard and Paytime do not ask for this.
+    if (String(req.query.include_clients || '') === '1' && !isSuperAdmin) {
+      const have = new Set(list.map(c => Number(c.id)));
+      const reach = (await listReachableClients(supabase, req.user.userId)).filter(r => !have.has(r.client_company_id));
+      if (reach.length) {
+        const { data: cos } = await supabase.from('companies')
+          .select('id, company_name, trading_name, modules_enabled, account_holder_type, is_active')
+          .in('id', [...new Set(reach.map(r => r.client_company_id))]).eq('is_active', true);
+        const byId = new Map((cos || []).map(c => [Number(c.id), c]));
+        for (const r of reach) {
+          const c = byId.get(r.client_company_id);
+          if (!c || have.has(r.client_company_id)) continue;
+          have.add(r.client_company_id);
+          list.push({ id: c.id, company_name: c.company_name, trading_name: c.trading_name, modules_enabled: c.modules_enabled,
+            account_holder_type: c.account_holder_type || null, role: r.role, is_primary: false, apps_access: r.apps_access,
+            company_type: 'client', via_practice_id: r.practice_id });
+        }
+      }
+    }
 
     res.json({ companies: list });
   } catch (err) {
@@ -1242,90 +1223,26 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
       const access = directAccess; // already fetched in parallel above
 
       if (!access) {
-        // No direct company membership — check if the target company is a client company
-        // managed by a practice the user belongs to.  This lets accountants / business
-        // owners SSO into a client's isolated company without needing a direct
-        // user_company_access row for that client company.
-        //
-        // SECURITY FIX: restrict the eco_clients lookup to practices the user actually
-        // belongs to.  Without this filter any eco_client in the system could satisfy
-        // the chain, potentially granting access to a client owned by a DIFFERENT firm.
-        const { data: userPractices } = await supabase
-          .from('user_company_access')
-          .select('company_id')
-          .eq('user_id', user.id)
-          .eq('is_active', true);
-        const practiceIds = (userPractices || []).map(r => r.company_id);
-
-        // Only eco_clients managed by THIS user's own firms. access_link/apps are
-        // read for linked companies (migration 181); if that column is missing
-        // the original lookup runs unchanged.
-        const lookupEcoClient = cols => supabase
-          .from('eco_clients')
-          .select(cols)
-          .eq('client_company_id', resolvedCompanyId)
-          .in('company_id', practiceIds)
-          .eq('is_active', true)
-          .maybeSingle();
-        let ecoClient = null;
-        if (practiceIds.length > 0) {
-          const withLink = await lookupEcoClient('id, company_id, access_link, apps');
-          ecoClient = withLink.error ? (await lookupEcoClient('id, company_id')).data : withLink.data;
-        }
-
-        // "Link an existing company" (migration 181): the company approved
-        // specific apps only — no way into the others through this link.
-        // Additive: rows without access_link behave exactly as before.
-        if (ecoClient && ecoClient.access_link && targetApp
-            && !(Array.isArray(ecoClient.apps) && ecoClient.apps.includes(targetApp))) {
-          return res.status(403).json({ error: `This company has not given your practice access to the ${targetApp} app.` });
-        }
-
-        if (ecoClient) {
-          const { data: practiceAccess } = await supabase
-            .from('user_company_access')
-            .select('role')
-            .eq('user_id', user.id)
-            .eq('company_id', ecoClient.company_id)
-            .eq('is_active', true)
-            .maybeSingle();
-
-          const ALLOWED_CROSS_ROLES = ['business_owner', 'practice_manager', 'administrator', 'accountant', 'super_admin', 'store_manager'];
-          if (!practiceAccess || !ALLOWED_CROSS_ROLES.includes(practiceAccess.role)) {
-            // Delegated access path: user has a restricted role (e.g. employee) at the practice
-            // but may have been explicitly granted app + client access by the admin.
-            // Check: user_app_access grant for targetApp at practice + client visibility.
-            let delegatedAccess = false;
-            if (practiceAccess && targetApp) {
-              const [appGrantResult, clientRowsResult] = await Promise.all([
-                supabase.from('user_app_access').select('id')
-                  .eq('user_id', user.id)
-                  .eq('company_id', ecoClient.company_id)
-                  .eq('app_key', targetApp)
-                  .maybeSingle(),
-                supabase.from('user_client_access').select('eco_client_id')
-                  .eq('user_id', user.id)
-                  .eq('company_id', ecoClient.company_id),
-              ]);
-              if (appGrantResult.data) {
-                const clientAccessRows = clientRowsResult.data || [];
-                if (clientAccessRows.length === 0) {
-                  // Zero rows = unrestricted — can access all clients
-                  delegatedAccess = true;
-                } else {
-                  delegatedAccess = clientAccessRows.some(r => r.eco_client_id === ecoClient.id);
-                }
-              }
-            }
-            if (!delegatedAccess) {
-              return res.status(403).json({ error: 'You do not have access to this company' });
-            }
+        // No direct company membership — the company may be a client of a practice the user
+        // belongs to. 2026-11-26 (Ruan): one rule for everyone — the practice OWNER may open all
+        // its clients, everyone else only the clients they were INVITED to (user_client_access).
+        // A linked company (access_link, migration 181) still limits the practice to the apps it
+        // approved. See shared/services/clientAccess.js.
+        const grant = await resolveClientAccess(supabase, { userId: user.id, clientCompanyId: resolvedCompanyId, targetApp });
+        if (!grant.ok) {
+          if (grant.reason === 'app_not_shared') {
+            return res.status(403).json({ error: `This company has not given your practice access to the ${targetApp} app.` });
           }
-          // Use the user's role from their managing practice
-          role = practiceAccess.role;
-        } else {
-          return res.status(403).json({ error: 'You do not have access to this company' });
+          return res.status(403).json({ error: grant.reason === 'not_invited'
+            ? 'You have not been invited to this client — ask the practice owner'
+            : 'You do not have access to this company' });
         }
+        // Per-app access of the practice membership (null = all apps)
+        if (grant.apps_access && targetApp && !grant.apps_access.includes(targetApp)) {
+          return res.status(403).json({ error: `You do not have access to the ${targetApp} app` });
+        }
+        // Use the user's role from their managing practice
+        role = grant.role;
       } else {
         role = access.role;
         // Check per-app access (null = all apps allowed)

@@ -564,10 +564,23 @@
         <div class="report-controls">
             <div class="control-group">
                 <label>VAT Period</label>
-                <select id="periodSelect" onchange="selectVATPeriod()" style="min-width: 180px;">
+                <select id="periodSelect" onchange="selectVATPeriod()" style="min-width: 220px;">
                     <option value="">Loading periods…</option>
                 </select>
             </div>
+            <div class="control-group">
+                <label>VAT cycle</label>
+                <select id="vatCycleSelect" onchange="changeVatCycle()" style="min-width: 230px;">
+                    <option value="monthly|">Monthly (Category C)</option>
+                    <option value="bi-monthly|odd">Every 2 months, odd (Category A: Jan, Mar …)</option>
+                    <option value="bi-monthly|even">Every 2 months, even (Category B: Feb, Apr …)</option>
+                    <option value="four-monthly|">Every 4 months (Category F: Feb, Jun, Oct)</option>
+                    <option value="six-monthly|">Every 6 months (Category D: Feb, Aug)</option>
+                    <option value="annually|">Annually (Category E: Mar – Feb)</option>
+                    <option value="quarterly|">Quarterly (non-SA)</option>
+                </select>
+            </div>
+            <div id="vatCycleWarning" style="display:none; color:#f9ab00; font-size:12px; font-weight:600; max-width:260px;"></div>
             <!-- Period lock status badge -->
             <div id="periodLockBadge" style="display:none; align-items:center; gap:8px; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600;"></div>
             <button class="btn-secondary" id="btnGeneratePeriods" onclick="generateVatPeriods()" style="display:none;">Generate Periods</button>
@@ -1058,8 +1071,15 @@
         // On page load: build period dropdown, auto-load current period, load submission history
         window.addEventListener('DOMContentLoaded', () => {
             switchVatTab('vatReportTab');
-            setupPeriodSelector();   // populate last 12 months; defaults to current month
-            selectVATPeriod();       // auto-load current period — no click required
+            // periods from the company's VAT cycle (36 months back); defaults to
+            // the latest period that has ended, then loads it — no click required
+            setupPeriodSelector()
+                .catch(err => {
+                    console.error('Could not load VAT periods:', err);
+                    const sel = document.getElementById('periodSelect');
+                    if (sel) sel.innerHTML = '<option value="">Could not load periods — reload</option>';
+                })
+                .then(() => selectVATPeriod());
             loadVATSubmissionHistory();
         });
 
@@ -1866,21 +1886,66 @@
         }
 
         // Build the period dropdown with the last 12 months and auto-select current month
-        function setupPeriodSelector() {
+        // Periods follow the company's VAT cycle (monthly / 2- / 4- / 6-monthly …)
+        // from GET /vat-recon/cycle/period-options — 36 months back, newest first.
+        let vatPeriodOptions = {};      // periodKey → { periodKey, fromDate, toDate, locked, filed, … }
+        let vatCycleSettings = null;
+
+        const VAT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        function vatPeriodLabel(fromDate, toDate) {
+            const [fy, fm] = fromDate.split('-').map(Number);
+            const [ty, tm] = toDate.split('-').map(Number);
+            if (fy === ty && fm === tm) return `${VAT_MONTHS[tm - 1]} ${ty}`;
+            return fy === ty ? `${VAT_MONTHS[fm - 1]} – ${VAT_MONTHS[tm - 1]} ${ty}` : `${VAT_MONTHS[fm - 1]} ${fy} – ${VAT_MONTHS[tm - 1]} ${ty}`;
+        }
+
+        async function setupPeriodSelector(keepKey) {
             const sel = document.getElementById('periodSelect');
             if (!sel) return;
-            const now = new Date();
+            const data = await fetchAPI('/vat-recon/cycle/period-options?months=36');
+            vatCycleSettings = data.settings;
+            vatPeriodOptions = {};
             sel.innerHTML = '';
-            for (let i = 0; i < 12; i++) {
-                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                const year  = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const key   = `${year}-${month}`;
-                const label = d.toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
-                const opt   = document.createElement('option');
-                opt.value       = key;
-                opt.textContent = label;
+            let defaultKey = null;
+            for (const p of data.periods) {
+                vatPeriodOptions[p.periodKey] = p;
+                const opt = document.createElement('option');
+                opt.value = p.periodKey;
+                opt.textContent = vatPeriodLabel(p.fromDate, p.toDate)
+                    + (p.filed ? '  ✓ filed' : p.locked ? '  🔒' : '')
+                    + (p.otherCycle ? '  (earlier cycle)' : '');
                 sel.appendChild(opt);
+                // default: the latest period that has ended
+                if (!defaultKey && p.toDate < data.today) defaultKey = p.periodKey;
+            }
+            const want = keepKey && vatPeriodOptions[keepKey] ? keepKey : (defaultKey || (data.periods[0] && data.periods[0].periodKey));
+            if (want) sel.value = want;
+
+            const cycleSel = document.getElementById('vatCycleSelect');
+            if (cycleSel) cycleSel.value = `${vatCycleSettings.frequency}|${vatCycleSettings.cycle || ''}`;
+            const warn = document.getElementById('vatCycleWarning');
+            if (warn) {
+                warn.style.display = vatCycleSettings.configured ? 'none' : 'block';
+                warn.textContent = vatCycleSettings.configured ? '' : 'No VAT cycle is set for this company — showing calendar months. Choose the cycle SARS gave you.';
+            }
+        }
+
+        async function changeVatCycle() {
+            const cycleSel = document.getElementById('vatCycleSelect');
+            const [frequency, cycle] = cycleSel.value.split('|');
+            const label = cycleSel.options[cycleSel.selectedIndex].textContent;
+            if (!confirm(`Set this company's VAT cycle to "${label}"?\n\nThe company is marked VAT registered, the period list and all VAT reports follow this cycle, new entries are placed in these periods, and Firmflow shows the same cycle. Periods already filed or locked keep their dates.`)) {
+                if (vatCycleSettings) cycleSel.value = `${vatCycleSettings.frequency}|${vatCycleSettings.cycle || ''}`;
+                return;
+            }
+            try {
+                await fetchAPI('/vat-recon/cycle', { method: 'PUT', body: JSON.stringify({ frequency, cycle: cycle || null }) });
+                await setupPeriodSelector();
+                await selectVATPeriod();
+                if (typeof loadSarsOverview === 'function') loadSarsOverview();
+            } catch (error) {
+                alert('Could not change the VAT cycle: ' + error.message);
+                if (vatCycleSettings) cycleSel.value = `${vatCycleSettings.frequency}|${vatCycleSettings.cycle || ''}`;
             }
         }
 
@@ -1909,10 +1974,10 @@
                 }
 
                 // Update page title and stat card subtexts with real period info
-                const [yr, mo] = periodKey.split('-');
-                const periodLabel = new Date(yr, parseInt(mo) - 1, 1)
-                    .toLocaleString('en-ZA', { month: 'long', year: 'numeric' });
-                const dueDate = new Date(yr, parseInt(mo), 25); // 25th of following month
+                // (the period's own dates: 1, 2, 4 or 6 months)
+                const [toY, toM] = String(currentPeriodData.to_date).slice(0, 10).split('-').map(Number);
+                const periodLabel = vatPeriodLabel(String(currentPeriodData.from_date).slice(0, 10), String(currentPeriodData.to_date).slice(0, 10));
+                const dueDate = new Date(toY, toM, 25); // 25th of the month after the period ends
                 const dueDateLabel = dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
 
                 const titleEl = document.getElementById('vatReconTitle');
@@ -1954,6 +2019,11 @@
             // toISOString() then converts to UTC, which in South Africa (UTC+2) is
             // the previous day — every period was stored one day early (fixed
             // 2026-11-25, existing rows corrected by migration 189).
+            // The server derives the dates from the company's VAT cycle; these
+            // are only used when no cycle is set (calendar month).
+            const opt = vatPeriodOptions[canonical];
+            if (opt) return { periodKey: canonical, fromDate: opt.fromDate, toDate: opt.toDate,
+                filingFrequency: vatCycleSettings ? vatCycleSettings.frequency : 'monthly' };
             const [year, month] = canonical.split('-');
             const y = parseInt(year, 10), m = parseInt(month, 10);
             const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();

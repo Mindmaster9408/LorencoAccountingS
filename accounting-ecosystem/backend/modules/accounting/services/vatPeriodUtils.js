@@ -11,6 +11,8 @@
  *                  odd:  Jan, Mar, May, Jul, Sep, Nov
  *                  (odd cycle: Dec+Jan spans the year boundary → period ends Jan)
  *   quarterly  — every 3 months; period ends Mar, Jun, Sep, Dec
+ *   four-monthly — SARS Category F; periods end Feb, Jun, Oct (Nov–Feb spans the year)
+ *   six-monthly  — SARS Category D; periods end Feb and Aug (Sep–Feb spans the year)
  *   annually   — full tax year (12 months)
  *
  * Period key format: "YYYY-MM" (the period's end month).
@@ -30,6 +32,27 @@ function _ymd(y, m, d) {
 /** Last day of month as integer. */
 function _lastDay(year, month) {
   return new Date(year, month, 0).getDate(); // month here is 1-based, new Date handles it
+}
+
+/**
+ * Period containing year/month when periods end in the given months (sorted,
+ * 1-12). A period may span the year boundary (e.g. Nov–Feb). The start is the
+ * month after the previous end.
+ */
+function _periodFromEndMonths(year, month, ends) {
+  let endMonth = ends.find(e => e >= month);
+  let endYear = year;
+  if (endMonth === undefined) { endMonth = ends[0]; endYear = year + 1; }
+  const idx = ends.indexOf(endMonth);
+  const prevEnd = idx > 0 ? ends[idx - 1] : ends[ends.length - 1];
+  let startMonth = prevEnd + 1, startYear = endYear;
+  if (startMonth > 12) startMonth -= 12;
+  if (startMonth > endMonth) startYear = endYear - 1;
+  return {
+    periodKey: `${endYear}-${_pad(endMonth)}`,
+    fromDate:  _ymd(startYear, startMonth, 1),
+    toDate:    _ymd(endYear, endMonth, _lastDay(endYear, endMonth)),
+  };
 }
 
 // ─── Period derivation ───────────────────────────────────────────────────────
@@ -113,6 +136,16 @@ function derivePeriodForDate(dateStr, filingFrequency, vatCycleType) {
       const toDate     = _ymd(year, endMonth, _lastDay(year, endMonth));
       return { periodKey, fromDate, toDate };
     }
+
+    // SARS Category F — every 4 months, periods end Feb, Jun, Oct
+    case 'four-monthly':
+    case 'every 4 months':
+      return _periodFromEndMonths(year, month, [2, 6, 10]);
+
+    // SARS Category D — every 6 months, periods end Feb and Aug
+    case 'six-monthly':
+    case 'every 6 months':
+      return _periodFromEndMonths(year, month, [2, 8]);
 
     case 'annually': {
       // SA tax year: March to February (e.g. Mar 2025 – Feb 2026)

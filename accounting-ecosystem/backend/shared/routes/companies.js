@@ -395,6 +395,10 @@ router.put('/:id', requireCompany, requirePermission('COMPANIES.EDIT'), async (r
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'Company not found' });
 
+    // Keep the ECO Hub client record (name / email / phone / address) in step
+    const identitySync = require('../services/companyIdentitySync');
+    await identitySync.mirrorCompanyToEcoClients(parseInt(id, 10), identitySync.changedColumns(old, updates));
+
     await auditFromReq(req, 'UPDATE', 'company', id, {
       oldValue: old,
       newValue: data,

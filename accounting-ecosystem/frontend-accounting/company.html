@@ -341,10 +341,12 @@
             <div class="form-group" id="vatPeriodGroup" style="display:none;">
               <label>VAT Submission Frequency</label>
               <select id="vatPeriod" onchange="toggleVatCycleType()">
-                <option value="monthly">Monthly</option>
-                <option value="bi-monthly">Every 2 Months (Bi-Monthly)</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="annually">Annually</option>
+                <option value="monthly">Monthly (Category C)</option>
+                <option value="bi-monthly">Every 2 Months (Category A odd / B even)</option>
+                <option value="four-monthly">Every 4 Months (Category F: Feb, Jun, Oct)</option>
+                <option value="six-monthly">Every 6 Months (Category D: Feb, Aug)</option>
+                <option value="annually">Annually (Category E)</option>
+                <option value="quarterly">Quarterly (non-SA)</option>
               </select>
             </div>
             <div class="form-group" id="vatCycleTypeGroup" style="display:none;">
@@ -366,18 +368,29 @@
       <div class="settings-section">
         <h2>Contact Information</h2>
         <form id="contactForm">
-          <div class="form-group">
-            <label>Physical Address</label>
-            <textarea id="physicalAddress" placeholder="Street address"></textarea>
+          <!-- Same address as Paytime, invoices, statements and Firmflow (companies.address_*) -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Street Address</label>
+              <input type="text" id="addressStreet" placeholder="Street and number">
+            </div>
+            <div class="form-group">
+              <label>Suburb</label>
+              <input type="text" id="addressSuburb" placeholder="Suburb">
+            </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>City</label>
-              <input type="text" id="city" placeholder="City">
+              <input type="text" id="addressCity" placeholder="City">
+            </div>
+            <div class="form-group">
+              <label>Province</label>
+              <input type="text" id="addressProvince" placeholder="Province">
             </div>
             <div class="form-group">
               <label>Postal Code</label>
-              <input type="text" id="postalCode" placeholder="Postal code">
+              <input type="text" id="addressPostalCode" placeholder="Postal code">
             </div>
           </div>
           <div class="form-group">
@@ -847,9 +860,11 @@
       document.getElementById('sdlRef').value = data.sdlRef || '';
       document.getElementById('coidNumber').value = data.coidNumber || '';
       document.getElementById('yearEnd').value = data.yearEnd || '02';
-      document.getElementById('physicalAddress').value = data.physicalAddress || '';
-      document.getElementById('city').value = data.city || '';
-      document.getElementById('postalCode').value = data.postalCode || '';
+      document.getElementById('addressStreet').value = data.addressStreet || '';
+      document.getElementById('addressSuburb').value = data.addressSuburb || '';
+      document.getElementById('addressCity').value = data.addressCity || '';
+      document.getElementById('addressProvince').value = data.addressProvince || '';
+      document.getElementById('addressPostalCode').value = data.addressPostalCode || '';
       document.getElementById('postalAddress').value = data.postalAddress || '';
       document.getElementById('phone').value = data.phone || '';
       document.getElementById('email').value = data.email || '';
@@ -894,9 +909,11 @@
         sdlRef: document.getElementById('sdlRef').value,
         coidNumber: document.getElementById('coidNumber').value,
         yearEnd: document.getElementById('yearEnd').value,
-        physicalAddress: document.getElementById('physicalAddress').value,
-        city: document.getElementById('city').value,
-        postalCode: document.getElementById('postalCode').value,
+        addressStreet: document.getElementById('addressStreet').value,
+        addressSuburb: document.getElementById('addressSuburb').value,
+        addressCity: document.getElementById('addressCity').value,
+        addressProvince: document.getElementById('addressProvince').value,
+        addressPostalCode: document.getElementById('addressPostalCode').value,
         postalAddress: document.getElementById('postalAddress').value,
         phone: document.getElementById('phone').value,
         email: document.getElementById('email').value,

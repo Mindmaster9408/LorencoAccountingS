@@ -104,6 +104,46 @@
         }
     }
 
+    // ── Firmflow-only vs ecosystem (Ruan 2026-11-26) ──────────────────────────
+    // A client added in Firmflow is Firmflow-only until activated: then it gets its own company
+    // and shows in the ECO Hub, where its apps are switched on. Two-step button, no browser popup.
+    function renderEcosystemBanner(c) {
+        var old = document.getElementById('ecoBanner');
+        if (old) old.remove();
+        if (c.ecosystem_active !== false) return;
+        var sub = document.getElementById('pageSubtitle');
+        if (!sub || !sub.parentNode) return;
+        var box = document.createElement('div');
+        box.id = 'ecoBanner';
+        box.style.cssText = 'margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 14px;' +
+            'border:1px solid rgba(165,180,252,0.35);background:rgba(102,126,234,0.10);border-radius:10px;font-size:0.85rem;';
+        box.innerHTML = '<span><b>Firmflow only</b> — this client is not on the ecosystem (no ECO Hub, Leo or Paytime).</span>' +
+            '<button type="button" id="ecoActivateBtn" class="btn btn-sm" style="margin-left:auto;">Activate on the ecosystem</button>';
+        sub.parentNode.insertBefore(box, sub.nextSibling);
+        var armed = false;
+        document.getElementById('ecoActivateBtn').onclick = async function () {
+            var btn = this;
+            if (!armed) {
+                armed = true;
+                btn.textContent = 'Press again to activate';
+                return;
+            }
+            btn.disabled = true;
+            try {
+                var res = await PracticeAPI.fetch('/api/practice/clients/' + clientId + '/activate-ecosystem', { method: 'POST' });
+                var d = await res.json().catch(function () { return {}; });
+                if (!res.ok) throw new Error(d.error || 'Could not activate');
+                PracticeAPI.showToast(d.message || 'Activated on the ecosystem.');
+                box.remove();
+            } catch (err) {
+                PracticeAPI.showToast('❌ ' + err.message, true);
+                btn.disabled = false;
+                armed = false;
+                btn.textContent = 'Activate on the ecosystem';
+            }
+        };
+    }
+
     // ── Populate form ──────────────────────────────────────────────────────────
 
     function populateForm(c) {
@@ -113,6 +153,7 @@
         var subtitleParts = [typeLabel[c.client_type] || ''];
         if (c.client_code) subtitleParts.push(c.client_code);
         document.getElementById('pageSubtitle').textContent = subtitleParts.filter(Boolean).join(' · ');
+        renderEcosystemBanner(c);
 
         setVal('dName',         c.name);
         setVal('dClientType',   c.client_type || 'company');

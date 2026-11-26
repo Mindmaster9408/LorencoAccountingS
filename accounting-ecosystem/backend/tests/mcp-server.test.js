@@ -340,7 +340,7 @@ describe('Codebox 3 controls', () => {
       seen = [];
       global.fetch = async (url, opts) => {
         seen.push([opts.method, url.replace(/^http:\/\/127\.0\.0\.1:\d+/, '')]);
-        const body = url.endsWith('/api/auth/companies') ? { companies: [{ id: 51 }] }
+        const body = url.includes('/api/auth/companies') ? { companies: [{ id: 51 }] }
           : url.endsWith('/api/auth/select-company') ? { token: 'company-jwt' } : { ok: 1 };
         return { status: 200, ok: true, json: async () => body };
       };
@@ -392,21 +392,21 @@ describe('Codebox 3 controls', () => {
     test('an allowed write goes through select-company, then the POST with a JSON body', async () => {
       const c = createClient();
       await c.request(ctx, 51, 'POST', '/api/accounting/bank/staging/confirm', { stagingIds: [1] });
-      expect(seen.map(s => s.join(' '))).toEqual(['GET /api/auth/companies', 'POST /api/auth/select-company',
+      expect(seen.map(s => s.join(' '))).toEqual(['GET /api/auth/companies?include_clients=1', 'POST /api/auth/select-company',
         'POST /api/accounting/bank/staging/confirm']);
     });
 
     test('a company outside the user\'s own list is refused before select-company is tried', async () => {
       const c = createClient();
       await expect(c.request(ctx, 7, 'GET', '/api/accounting/reports/trial-balance')).rejects.toMatchObject({ status: 403 });
-      expect(seen.map(s => s[1])).toEqual(['/api/auth/companies']);
+      expect(seen.map(s => s[1])).toEqual(['/api/auth/companies?include_clients=1']);
     });
 
     test('an allowed company goes through select-company, then the GET', async () => {
       const c = createClient();
       await c.request(ctx, 51, 'GET', '/api/accounting/reports/trial-balance?fromDate=2026-03-01&toDate=2026-03-31');
       expect(seen.map(s => s.join(' '))).toEqual([
-        'GET /api/auth/companies', 'POST /api/auth/select-company',
+        'GET /api/auth/companies?include_clients=1', 'POST /api/auth/select-company',
         'GET /api/accounting/reports/trial-balance?fromDate=2026-03-01&toDate=2026-03-31']);
     });
   });
@@ -827,7 +827,7 @@ describe('company session cache is per key (2026-11-24)', () => {
     seen = [];
     global.fetch = async (url, opts) => {
       seen.push([opts.method, url.replace(/^http:\/\/127\.0\.0\.1:\d+/, '')]);
-      const body = url.endsWith('/api/auth/companies') ? { companies: [{ id: 51 }] }
+      const body = url.includes('/api/auth/companies') ? { companies: [{ id: 51 }] }
         : url.endsWith('/api/auth/select-company') ? { token: 'company-jwt-' + seen.length } : { ok: 1 };
       return { status: 200, ok: true, json: async () => body };
     };

@@ -1086,6 +1086,14 @@ Being "just test data" does not suspend any other rule in this file. In particul
 - Client groups (e.g. Turkstra / Pennygrow) are users with access to several companies — independent of who manages them.
 - Bots linked to Lorenco Accounting get a restricted role there plus explicit user_client_access rows, so the
   practice link never opens every client to a bot.
+- **Access to a client through a practice = invitation (2026-11-26, Ruan).** The practice OWNER (business_owner) and
+  super users see all the practice's clients; every other practice member (people and bots) only the clients they are
+  invited to (`user_client_access`). No invitation = no access ("empty = all" is gone). One rule for select-company,
+  sso-launch, the session check in `middleware/auth.js` and the client list: `backend/shared/services/clientAccess.js`.
+  The owner invites staff on the ECO Hub (Users → client access); changes apply at once.
+- **Firmflow-only clients (2026-11-26).** A client added in Firmflow gets an identity record in eco_clients but no company of
+  its own (`client_company_id` null) and does not show in the ECO Hub. "Activate on the ecosystem" in Firmflow
+  (POST /api/practice/clients/:id/activate-ecosystem) gives it its own company; apps are then switched on in the ECO Hub.
 
 ---
 

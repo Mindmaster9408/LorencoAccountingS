@@ -4,6 +4,7 @@ const vatReportService = require('../services/vatReportService');
 const vatCategoryReportService = require('../services/vatCategoryReportService');
 const vatDetailReportService = require('../services/vatDetailReportService');
 const db = require('../config/database');
+const { supabase } = require('../../../config/database');
 const XLSX = require('xlsx');
 const { generateVatDetailPdf } = require('../services/vatDetailPdfService');
 const { authenticate, PERMISSIONS } = require('../middleware/auth');
@@ -74,8 +75,20 @@ router.get('/categorized', authenticate, canViewVat, async (req, res) => {
     const [yearStr, monthStr] = canonicalKey.split('-');
     const year = parseInt(yearStr, 10);
     const month = parseInt(monthStr, 10);
-    const dateFrom = `${yearStr}-${monthStr}-01`;
-    const dateTo = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    let dateFrom = `${yearStr}-${monthStr}-01`;
+    let dateTo = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    // Bi-monthly / 4- / 6-monthly companies: use the stored period's dates
+    // (the VAT page creates the row from the company's VAT cycle first).
+    try {
+      const { data: rows } = await supabase
+        .from('vat_periods').select('period_key, from_date, to_date')
+        .eq('company_id', req.user.companyId)
+        .in('period_key', [canonicalKey, canonicalKey.replace('-', '.')]);
+      const row = (rows || []).find(r => r.period_key === canonicalKey) || (rows || [])[0];
+      if (row && row.from_date && row.to_date) { dateFrom = row.from_date; dateTo = row.to_date; }
+    } catch (e) {
+      console.warn('[vat-report] categorized: period lookup failed, using the month:', e.message);
+    }
 
     const report = await vatCategoryReportService.getCategorizedReport(
       req.user.companyId,

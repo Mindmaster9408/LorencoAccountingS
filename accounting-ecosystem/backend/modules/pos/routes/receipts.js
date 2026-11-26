@@ -7,6 +7,19 @@
  */
 
 const express = require('express');
+const { composeAddress } = require('../../../shared/services/companyIdentitySync');
+
+/**
+ * Receipt address: the till's own receipt address (Settings → Company Details,
+ * companies.address) when set, otherwise the company's registered address
+ * (address_* — the one Leo, Paytime and Firmflow edit). Mutates.
+ */
+function receiptAddress(company) {
+  if (!company) return company;
+  if (!company.address) company.address = composeAddress(company);
+  for (const k of ['address_street', 'address_suburb', 'address_city', 'address_province', 'address_postal_code']) delete company[k];
+  return company;
+}
 const { supabase } = require('../../../config/database');
 const { requireCompany, requirePermission } = require('../../../middleware/auth');
 const { posAuditFromReq, POS_EVENTS } = require('../services/posAuditLogger');
@@ -51,9 +64,10 @@ router.get('/preview/:saleId', receiptsViewGate, async (req, res) => {
     // Get company info for receipt header
     const { data: company } = await supabase
       .from('companies')
-      .select('company_name, trading_name, vat_number, registration_number, contact_phone, address')
+      .select('company_name, trading_name, vat_number, registration_number, contact_phone, address, address_street, address_suburb, address_city, address_province, address_postal_code')
       .eq('id', req.companyId)
       .single();
+    receiptAddress(company);
 
     // Get receipt settings
     const { data: settings } = await supabase
@@ -117,9 +131,10 @@ router.post('/print/:saleId', receiptsViewGate, async (req, res) => {
 
     const { data: company } = await supabase
       .from('companies')
-      .select('company_name, trading_name, vat_number, registration_number, contact_phone, address')
+      .select('company_name, trading_name, vat_number, registration_number, contact_phone, address, address_street, address_suburb, address_city, address_province, address_postal_code')
       .eq('id', req.companyId)
       .single();
+    receiptAddress(company);
 
     posAuditFromReq(req, POS_EVENTS.RECEIPT_PRINTED, {
       saleId:        sale.id,

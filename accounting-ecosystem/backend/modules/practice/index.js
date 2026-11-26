@@ -23,15 +23,9 @@ const { requireCompany } = require('../../middleware/auth');
 // which already read/write `companies` directly) never appeared on Practice's
 // client-detail page, and vice versa. Field names are 1:1 except COIDA
 // (practice_clients.coida_registration_number <-> companies.coid_reference_number).
-const COMPLIANCE_FIELD_MAP = {
-  vat_number: 'vat_number',
-  registration_number: 'registration_number',
-  income_tax_number: 'income_tax_number',
-  paye_reference_number: 'paye_reference_number',
-  uif_reference_number: 'uif_reference_number',
-  sdl_reference_number: 'sdl_reference_number',
-  coida_registration_number: 'coid_reference_number',
-};
+// 2026-11-26: the map now lives in lib/company-sync.js and also covers the
+// address (address_line1/2, city, province, postal code) and email / phone.
+const COMPLIANCE_FIELD_MAP = require('./lib/company-sync').COMPANY_FIELD_MAP;
 
 async function getLinkedCompanyId(ecoClientId) {
   if (!ecoClientId) return null;
@@ -49,6 +43,9 @@ const engagementPeriodsRouter = require('./engagement-periods');
 const dashboardRouter        = require('./dashboard');
 const capacityRouter         = require('./capacity');
 const teamAccess             = require('./lib/team-access');
+const companyVat             = require('./lib/company-sync');
+const identitySync           = require('../../shared/services/companyIdentitySync');
+const { derivePeriodForDate } = require('../accounting/services/vatPeriodUtils');
 const clientHealthRouter     = require('./client-health');
 const remindersRouter        = require('./reminders');
 const communicationsRouter   = require('./communications');
@@ -742,7 +739,7 @@ router.get('/clients', async (req, res) => {
   if (onboarding_status) q = q.eq('onboarding_status', onboarding_status);
   if (risk_rating) q = q.eq('risk_rating', risk_rating);
   if (responsible_team_member_id) q = q.eq('responsible_team_member_id', parseInt(responsible_team_member_id));
-  if (vat_registered !== undefined) q = q.eq('vat_registered', vat_registered === 'true');
+  // vat_registered is filtered after the Leo overlay below (company-sync)
   if (paye_registered !== undefined) q = q.eq('paye_registered', paye_registered === 'true');
   if (provisional_taxpayer !== undefined) q = q.eq('provisional_taxpayer', provisional_taxpayer === 'true');
 
@@ -750,6 +747,10 @@ router.get('/clients', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   let results = data || [];
+  // Leo is canonical for VAT registration + cycle of linked clients
+  try { results = await companyVat.overlayCompanyVat(results); }
+  catch (e) { console.error('[practice] VAT overlay failed:', e.message); }
+  if (vat_registered !== undefined) results = results.filter(c => !!c.vat_registered === (vat_registered === 'true'));
   if (search) {
     const s = search.toLowerCase();
     results = results.filter(c =>
@@ -802,6 +803,8 @@ router.get('/clients/:id', async (req, res) => {
       client.client_code = ec.client_code;
       client.eco_apps    = ec.apps;
       client.eco_addons  = ec.addons;
+      // false = Firmflow-only (no company of its own yet) — see POST /clients/:id/activate-ecosystem
+      client.ecosystem_active = !!ec.client_company_id;
 
       // Read-through: prefer the linked operational company's live VAT/
       // registration/tax-reference values over practice_clients' own copy
@@ -822,11 +825,64 @@ router.get('/clients/:id', async (req, res) => {
             }
           }
         }
+        // VAT registration + cycle (lib/company-sync.js)
+        try { [client] = await companyVat.overlayCompanyVat([client]); }
+        catch (e) { console.error('[practice] VAT overlay failed:', e.message); }
       }
     }
   }
 
   res.json({ client });
+});
+
+// ─── POST /clients/:id/activate-ecosystem (Ruan 2026-11-26) ─────────────────
+// A client added in Firmflow is Firmflow-only: an identity record in eco_clients but no company of
+// its own, so it does not show in the ECO Hub. "Activate on the ecosystem" gives it its own company
+// (exactly as the ECO Hub's Add Client does, with no apps switched on); apps are then switched on in
+// the ECO Hub through the normal request / approval flow. Managers only.
+router.post('/clients/:id/activate-ecosystem', async (req, res) => {
+  try {
+    // Super users may always (CLAUDE.md F1); everyone else must be a practice manager.
+    if (!(req.user && req.user.isSuperAdmin)) {
+      const member = await teamAccess.requireManager(req, res, supabase,
+        'Only owners, partners, admins and practice managers can activate a client on the ecosystem.');
+      if (!member) return;
+    }
+    const { data: pc } = await supabase.from('practice_clients')
+      .select('id, name, eco_client_id, registration_number, id_number, email, phone')
+      .eq('id', req.params.id).eq('company_id', req.companyId).maybeSingle();
+    if (!pc) return res.status(404).json({ error: 'Client not found' });
+    if (!pc.eco_client_id) return res.status(409).json({ error: 'This client has no central identity record — open and save it once, then try again.' });
+    const { data: ec } = await supabase.from('eco_clients').select('id, name, client_company_id, company_id')
+      .eq('id', pc.eco_client_id).eq('company_id', req.companyId).maybeSingle();
+    if (!ec) return res.status(404).json({ error: 'Central client record not found for this practice' });
+    if (ec.client_company_id) return res.status(409).json({ error: 'This client is already on the ecosystem.', client_company_id: ec.client_company_id });
+
+    const companyInsert = {
+      company_name: pc.name, trading_name: pc.name, is_active: true,
+      modules_enabled: [], subscription_status: 'active'
+    };
+    if (pc.registration_number || pc.id_number) companyInsert.registration_number = pc.registration_number || pc.id_number;
+    const { data: co, error: coErr } = await supabase.from('companies').insert(companyInsert).select('id').single();
+    if (coErr || !co) return res.status(500).json({ error: 'Could not create the client’s company: ' + (coErr && coErr.message) });
+
+    // Link only while still unlinked (guards a double click)
+    const { data: linked, error: lErr } = await supabase.from('eco_clients')
+      .update({ client_company_id: co.id, updated_at: new Date().toISOString() })
+      .eq('id', ec.id).is('client_company_id', null).select('id');
+    if (lErr || !linked || !linked.length) {
+      await supabase.from('companies').delete().eq('id', co.id);
+      return res.status(409).json({ error: 'This client was activated at the same moment by someone else.' });
+    }
+    await auditFromReq(req, 'UPDATE', 'eco_client', String(ec.id), {
+      metadata: { action: 'activate_on_ecosystem', practice_client_id: pc.id, client_company_id: co.id }
+    });
+    res.json({ success: true, client_company_id: co.id,
+      message: 'Activated — the client now shows in the ECO Hub. Switch on its apps there.' });
+  } catch (err) {
+    console.error('[practice] activate-ecosystem:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 router.post('/clients', async (req, res) => {
@@ -1029,7 +1085,7 @@ router.post('/clients', async (req, res) => {
 router.put('/clients/:id', async (req, res) => {
   const { data: existing, error: fetchErr } = await supabase
     .from('practice_clients')
-    .select('id, eco_client_id')
+    .select('id, eco_client_id, name')
     .eq('id', req.params.id)
     .eq('company_id', req.companyId)
     .single();
@@ -1081,14 +1137,24 @@ router.put('/clients/:id', async (req, res) => {
       for (const [practiceField, companyField] of Object.entries(COMPLIANCE_FIELD_MAP)) {
         if (body[practiceField] !== undefined) companyUpdate[companyField] = body[practiceField];
       }
+      // VAT registered + cycle → Leo (lib/company-sync.js), so the VAT page
+      // and journal period placement follow what was set here.
+      Object.assign(companyUpdate, companyVat.companyVatUpdateFromPractice(body));
+      // A rename in Firmflow renames the company record too (only when it changed —
+      // the form always sends the name).
+      if (body.name && body.name !== existing.name) companyUpdate.company_name = body.name;
       if (Object.keys(companyUpdate).length > 0) {
         const linkedCompanyId = await getLinkedCompanyId(existing.eco_client_id);
         if (linkedCompanyId) {
+          const { data: oldCompany } = await supabase
+            .from('companies').select(Object.keys(companyUpdate).join(', ')).eq('id', linkedCompanyId).maybeSingle();
           companyUpdate.updated_at = new Date().toISOString();
           await supabase
             .from('companies')
             .update(companyUpdate)
             .eq('id', linkedCompanyId);
+          // address / name / contact → ECO Hub client record (only what changed)
+          await identitySync.mirrorCompanyToEcoClients(linkedCompanyId, identitySync.changedColumns(oldCompany, companyUpdate));
         }
       }
     } catch (ecoSyncErr) {
@@ -2753,12 +2819,16 @@ router.post('/deadlines/generate', async (req, res) => {
   const periodEndDate = new Date(year, month, 0); // last calendar day of selected month
   const periodEndStr  = _isoDate(periodEndDate);
 
-  const { data: clients, error: cliErr } = await supabase
+  const { data: rawClients, error: cliErr } = await supabase
     .from('practice_clients')
-    .select('id, name, vat_payment_sequence, vat_bi_monthly_parity, paye_registered, uif_registered, sdl_registered')
+    .select('id, name, eco_client_id, vat_registered, vat_payment_sequence, vat_bi_monthly_parity, paye_registered, uif_registered, sdl_registered')
     .eq('company_id', cid)
     .eq('is_active', true);
   if (cliErr) return res.status(500).json({ error: cliErr.message });
+  // Leo is canonical for VAT registration + cycle of linked clients
+  let clients = rawClients;
+  try { clients = await companyVat.overlayCompanyVat(rawClients); }
+  catch (e) { console.error('[practice] VAT overlay failed:', e.message); }
 
   const { data: settingsData } = await supabase
     .from('practice_deadline_settings')
@@ -2793,8 +2863,12 @@ router.post('/deadlines/generate', async (req, res) => {
         if (parity === 'odd')  fileThisMonth = (month % 2 === 1);
         else if (parity === 'even') fileThisMonth = (month % 2 === 0);
         else fileThisMonth = true; // parity not yet configured — generate anyway, flag via title
+      } else if (c.vat_payment_sequence === 'quarterly' || c.vat_payment_sequence === '6_monthly') {
+        // every 4 months (Cat F: Feb/Jun/Oct) / every 6 months (Cat D: Feb/Aug) —
+        // same period maths as Ledger Leo (vatPeriodUtils)
+        fileThisMonth = derivePeriodForDate(`${period}-01`, companyVat.leoFrequencyOf(c)).periodKey === period;
       }
-      // quarterly/annual VAT sequences are too client-specific to auto-generate safely — skipped
+      // annual: the period ends on the client's own year end — too client-specific to auto-generate, skipped
 
       if (fileThisMonth && !existingKeys.has(`${c.id}|vat_return`)) {
         const statutory = _lastWorkDay(nextYear, nextMonth);
@@ -3030,10 +3104,13 @@ router.get('/compliance/suggestions/client/:clientId', async (req, res) => {
     .eq('company_id', req.companyId)
     .single();
   if (clientErr || !client) return res.status(404).json({ error: 'Client not found' });
+  let clientVat = client;
+  try { [clientVat] = await companyVat.overlayCompanyVat([client]); }
+  catch (e) { console.error('[practice] VAT overlay failed:', e.message); }
 
   const suggestions = [];
 
-  if (client.vat_registered) {
+  if (clientVat.vat_registered) {
     suggestions.push({
       key: 'vat201',
       title: 'VAT201 Return',

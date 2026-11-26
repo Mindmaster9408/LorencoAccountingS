@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const vatReconService = require('../services/vatReconciliationService');
+const vatCycleService = require('../services/vatCycleService');
 const auditLogger = require('../services/auditLogger');
 const { authenticate, authorize } = require('../middleware/auth');
 const { enforceCompanyStatus } = require('../middleware/companyStatus');
@@ -65,8 +66,11 @@ router.post('/periods', async (req, res) => {
     try {
         const { companyId, id: userId } = req.user;
         const periodData = req.body;
-        
-        const period = await vatReconService.createOrGetPeriod(companyId, periodData);
+
+        // The company's VAT cycle decides the period dates (vatCycleService);
+        // only a company without a cycle set uses the dates the page sent.
+        const period = (await vatCycleService.ensureCyclePeriod(companyId, periodData && periodData.periodKey))
+            || await vatReconService.createOrGetPeriod(companyId, periodData);
         
         await auditLogger.log({
             companyId,
@@ -81,7 +85,40 @@ router.post('/periods', async (req, res) => {
         res.json({ success: true, period });
     } catch (error) {
         console.error('Error creating VAT period:', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(error.status || 500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/accounting/vat-recon/cycle/period-options?months=36
+ * The company's VAT cycle + the periods to choose from (newest first).
+ */
+router.get('/cycle/period-options', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await vatCycleService.periodOptions(req.user.companyId, { months: req.query.months })) });
+    } catch (error) {
+        console.error('Error loading VAT period options:', error);
+        res.status(error.status || 500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * PUT /api/accounting/vat-recon/cycle   { frequency, cycle }
+ * Change the company's VAT cycle (SARS category). Admin / accountant.
+ */
+router.put('/cycle', authorize('admin', 'accountant'), async (req, res) => {
+    try {
+        const { companyId, id: userId } = req.user;
+        const { before, after } = await vatCycleService.setCycle(companyId, req.body || {});
+        await auditLogger.log({
+            companyId, actorType: 'USER', actorId: userId,
+            actionType: 'VAT_CYCLE_CHANGED', entityType: 'company', entityId: companyId,
+            beforeJson: before, afterJson: after,
+        }).catch(e => console.warn('[vat-recon] audit log failed:', e.message));
+        res.json({ success: true, settings: after });
+    } catch (error) {
+        console.error('Error changing VAT cycle:', error);
+        res.status(error.status || 500).json({ success: false, error: error.message });
     }
 });
 

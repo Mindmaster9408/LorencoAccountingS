@@ -5281,15 +5281,14 @@
             modal.innerHTML = `
                 <div style="${MODAL_STYLES.container}">
                     <h3 style="color:#fff;margin:0 0 6px;font-size:1.05rem;font-weight:700;">Client Access &mdash; ${escHtml(name)}</h3>
-                    <p style="color:rgba(255,255,255,0.45);font-size:0.8rem;margin:0 0 18px;">Restrict which clients this user can see. Leave all unchecked to allow access to all clients.</p>
-                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:14px;">
-                        <input type="checkbox" id="caUnrestricted" style="width:16px;height:16px;cursor:pointer;accent-color:#667eea;" ${isUnrestricted ? 'checked' : ''}
-                            onchange="document.querySelectorAll('#caClientList input').forEach(cb => cb.disabled = this.checked); document.querySelectorAll('#caClientList label').forEach(l => l.style.opacity = this.checked ? '0.4' : '1');">
+                    <p style="color:rgba(255,255,255,0.45);font-size:0.8rem;margin:0 0 18px;">Tick the clients this person is invited to. No ticks = no client access. The practice owner always sees all clients.</p>
+                    ${isUnrestricted ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:14px;">
+                        <input type="checkbox" id="caUnrestricted" checked disabled style="display:none;">
                         <div>
-                            <div style="color:#a5b4fc;font-weight:700;font-size:0.85rem;">All clients (unrestricted)</div>
-                            <div style="color:rgba(255,255,255,0.35);font-size:0.73rem;">User can see all practice clients &mdash; no restriction</div>
+                            <div style="color:#a5b4fc;font-weight:700;font-size:0.85rem;">Practice owner &mdash; all clients</div>
+                            <div style="color:rgba(255,255,255,0.35);font-size:0.73rem;">The owner sees every client automatically; invitations are for the other staff.</div>
                         </div>
-                    </label>
+                    </div>` : ''}
                     <div id="caClientList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:5px;max-height:320px;padding-right:4px;">
                         ${allClients.map(c => `
                         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;transition:background 0.15s;${isUnrestricted ? 'opacity:0.4;' : ''}" onmouseover="this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
@@ -5311,9 +5310,11 @@
 
         async function saveUserClients(userId, name) {
             const token = localStorage.getItem('eco_token');
-            const unrestricted = document.getElementById('caUnrestricted').checked;
+            // Invitation model (2026-11-26): only the owner is "all clients" (no checkbox for staff).
+            const ownerBox = document.getElementById('caUnrestricted');
+            const unrestricted = !!(ownerBox && ownerBox.checked);
 
-            let clients = null; // null = unrestricted (removes all restrictions)
+            let clients = [];   // invited clients; [] = no client access
             if (!unrestricted) {
                 clients = Array.from(document.querySelectorAll('#caClientList input[name="clientAccess"]:checked'))
                     .map(cb => parseInt(cb.value));

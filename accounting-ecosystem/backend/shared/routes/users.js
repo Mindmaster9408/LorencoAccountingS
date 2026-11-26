@@ -10,6 +10,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
 const { companyMayUseStockton } = require('../utils/ecoCompanies');
+const { isOwnerRole } = require('../services/clientAccess');
 const { authenticateToken, requireCompany, requirePermission, invalidateUserSessions } = require('../../middleware/auth');
 const { auditFromReq } = require('../../middleware/audit');
 const { canManageRole, getAllRoles } = require('../../config/permissions');
@@ -103,8 +104,9 @@ router.get('/', requirePermission('USERS.VIEW'), async (req, res) => {
       is_primary: d.is_primary,
       // apps[] is null when no explicit restriction is set (means: access all company apps)
       apps: appsByUser[d.users.id] || null,
-      // clients[] is null when no explicit restriction is set (means: access all company clients)
-      clients: clientsByUser[d.users.id] || null,
+      // Invitation model (2026-11-26): null = the practice OWNER (sees all clients automatically);
+      // everyone else gets the list of clients they were invited to — [] = no client access.
+      clients: isOwnerRole(d.role) ? null : (clientsByUser[d.users.id] || []),
       apps_access: d.apps_access || null,
     }));
 
@@ -576,16 +578,25 @@ router.put('/:id/password', async (req, res) => {
 
 /**
  * PUT /api/users/:id/client-access
- * Replace per-user eco_client grants for the current company.
- *   clients: null/undefined = remove all restrictions (unrestricted)
- *   clients: []             = block all clients
- *   clients: [id, ...]      = only those eco_client_ids are visible
+ * Replace the clients this person is INVITED to, for the current practice (Ruan 2026-11-26).
+ *   clients: [id, ...]  = invited to exactly these eco_client ids (must be this practice's clients)
+ *   clients: [] / null  = no client access (the practice owner sees all clients regardless)
+ * Takes effect immediately (the person's cached sessions are dropped).
  */
 router.put('/:id/client-access', requirePermission('USERS.EDIT'), async (req, res) => {
   try {
     const userId = parseInt(req.params.id);
     const companyId = req.companyId;
     const { clients } = req.body;
+
+    // Only this practice's own clients can be granted — never another firm's.
+    const wanted = Array.isArray(clients) ? [...new Set(clients.map(id => parseInt(id)).filter(id => !isNaN(id)))] : [];
+    if (wanted.length) {
+      const { data: own } = await supabase.from('eco_clients').select('id').eq('company_id', companyId).in('id', wanted);
+      const ownIds = new Set((own || []).map(r => Number(r.id)));
+      const foreign = wanted.filter(id => !ownIds.has(id));
+      if (foreign.length) return res.status(400).json({ error: 'Not clients of this practice: ' + foreign.join(', ') });
+    }
 
     // Always clear existing grants first (replace semantics)
     await supabase
@@ -594,31 +605,23 @@ router.put('/:id/client-access', requirePermission('USERS.EDIT'), async (req, re
       .eq('user_id', userId)
       .eq('company_id', companyId);
 
-    if (Array.isArray(clients) && clients.length > 0) {
-      const rows = clients
-        .map(id => parseInt(id))
-        .filter(id => !isNaN(id))
-        .map(eco_client_id => ({
-          user_id: userId,
-          company_id: companyId,
-          eco_client_id,
-          granted_by: req.user.userId,
-        }));
-
-      if (rows.length > 0) {
-        const { error } = await supabase.from('user_client_access').insert(rows);
-        if (error) return res.status(500).json({ error: error.message });
-      }
+    if (wanted.length > 0) {
+      const rows = wanted.map(eco_client_id => ({
+        user_id: userId,
+        company_id: companyId,
+        eco_client_id,
+        granted_by: req.user.userId,
+      }));
+      const { error } = await supabase.from('user_client_access').insert(rows);
+      if (error) return res.status(500).json({ error: error.message });
     }
+    invalidateUserSessions(userId);   // an invitation change applies at once, not after the 60 s cache
 
     await auditFromReq(req, 'UPDATE', 'user_client_access', userId, {
-      metadata: { clients: clients || null, company_id: companyId }
+      metadata: { clients: wanted, company_id: companyId }
     });
 
-    res.json({
-      success: true,
-      clients: Array.isArray(clients) && clients.length > 0 ? clients : null
-    });
+    res.json({ success: true, clients: wanted });
   } catch (err) {
     console.error('PUT client-access error:', err);
     res.status(500).json({ error: 'Server error' });

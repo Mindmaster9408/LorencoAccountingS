@@ -190,8 +190,18 @@ async function _checkActiveSession(req, res, next) {
           .maybeSingle();
 
         if (!access) {
-          _writeCache(cacheKey, false, 403, 'Access to this company has been revoked');
-          return res.status(403).json({ error: 'Access to this company has been revoked' });
+          // No direct membership — a client of the user's practice is allowed for the practice owner
+          // and for staff INVITED to that client (Ruan 2026-11-26, shared/services/clientAccess.js).
+          // Before this, such sessions were refused on every request even after select-company allowed them.
+          const { resolveClientAccess } = require('../shared/services/clientAccess');
+          const grant = await resolveClientAccess(db, { userId, clientCompanyId: companyId });
+          if (!grant.ok) {
+            _writeCache(cacheKey, false, 403, 'Access to this company has been revoked');
+            return res.status(403).json({ error: 'Access to this company has been revoked' });
+          }
+          const viaPractice = { role: grant.role, apps_access: grant.apps_access || null, via_practice_id: grant.practiceId };
+          _writeCache(cacheKey, true, 200, null, viaPractice);
+          return _finishSession(req, res, next, viaPractice);
         }
 
         const facts = { role: access.role, apps_access: access.apps_access || null };

@@ -14,6 +14,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { supabase } = require('../../config/database');
 const { isStocktonManager } = require('../utils/ecoCompanies');
+const { isOwnerRole } = require('../services/clientAccess');
 const { auditFromReq } = require('../../middleware/audit');
 const { MANAGEMENT_ROLES } = require('../../config/permissions');
 const { normalizeLogin, loginOrFilter } = require('../utils/loginIdentity');
@@ -211,6 +212,7 @@ router.get('/', async (req, res) => {
     let effectiveCompanyId = (isAdminUser(req.user) && showAll)
       ? null
       : (req.companyId || null);
+    let roleAtCompany = req.user.role;   // the user's role at effectiveCompanyId (for the invitation filter)
 
     if (company_id) {
       const requestedId = parseInt(company_id);
@@ -221,7 +223,7 @@ router.get('/', async (req, res) => {
         // Regular users: verify they are a member of the requested company
         const { data: access } = await supabase
           .from('user_company_access')
-          .select('id')
+          .select('id, role')
           .eq('user_id', req.user.userId)
           .eq('company_id', requestedId)
           .eq('is_active', true)
@@ -231,6 +233,7 @@ router.get('/', async (req, res) => {
           return res.status(403).json({ error: 'Access denied' });
         }
         effectiveCompanyId = requestedId;
+        roleAtCompany = access[0].role;
       }
     }
 
@@ -242,6 +245,14 @@ router.get('/', async (req, res) => {
 
     if (!showAll) {
       q = q.eq('is_active', true);
+    }
+
+    // Firmflow-only clients (Ruan 2026-11-26): a client added in Firmflow gets an identity record here
+    // but no company of its own until it is activated on the ecosystem (Firmflow → "Activate on the
+    // ecosystem"). The dashboard always creates the client's own company, so "no client_company_id" =
+    // Firmflow-only. Those stay out of the ECO Hub lists unless explicitly asked for.
+    if (String(req.query.include_firmflow_only || '') !== '1') {
+      q = q.not('client_company_id', 'is', null);
     }
 
     if (!isAdminUser(req.user) || effectiveCompanyId) {
@@ -265,7 +276,8 @@ router.get('/', async (req, res) => {
 
     // ── Parallel phase: run owned-clients query, firm-access lookup,
     //    and per-user access filter all at the same time ─────────────────────
-    const isNonAdminWithCompany = !isAdminUser(req.user) && req.user.userId && effectiveCompanyId && !company_id;
+    // (2026-11-26: also with ?company_id= — the invitation filter must never be skippable)
+    const isNonAdminWithCompany = !isAdminUser(req.user) && req.user.userId && effectiveCompanyId;
 
     const firmAccessPromise = (!isAdminUser(req.user) && req.companyId && !company_id)
       ? supabase
@@ -323,13 +335,14 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // ── 3. Per-user client access filter (data already fetched in parallel) ──
-    // If the user has ANY rows in user_client_access for (user_id, company_id),
-    // filter to only those clients.  Zero rows = unrestricted (backward-compat).
-    if (userClientRows && userClientRows.length > 0) {
-      const allowedIds = new Set(userClientRows.map(r => r.eco_client_id));
-      results = results.filter(c => allowedIds.has(c.id));
-      // Zero rows: no restriction, all clients remain visible
+    // ── 3. Per-user client access (data already fetched in parallel) ──
+    // 2026-11-26 (Ruan): invitation model — the practice OWNER sees all its clients; everyone
+    // else sees only the clients they were invited to (user_client_access). No invitations =
+    // no clients (it used to mean "all"). The practice's own self row stays visible.
+    // Same rule as select-company / sso-launch / the session check (shared/services/clientAccess.js).
+    if (isNonAdminWithCompany && !isOwnerRole(roleAtCompany)) {
+      const allowedIds = new Set((userClientRows || []).map(r => r.eco_client_id));
+      results = results.filter(c => allowedIds.has(c.id) || Number(c.client_company_id) === Number(effectiveCompanyId));
     }
 
     let filtered = results;
@@ -1068,6 +1081,10 @@ async function applyEcoClientUpdate(req, old, body) {
 
     // 2. Push field-level updates to already-linked app records
     const fieldSync = await syncUpdateToApps(updated, changedFields);
+
+    // 2b. Name / email / phone → the client's own company record, so Leo,
+    //     Paytime, Firmflow and invoices show the same (companyIdentitySync).
+    await require('../services/companyIdentitySync').mirrorEcoClientToCompany(updated, changedFields);
 
     // 3. Sync Sean addon toggle → companies.modules_enabled for this client's company
     if (changedFields.includes('addons') && updated.client_company_id) {

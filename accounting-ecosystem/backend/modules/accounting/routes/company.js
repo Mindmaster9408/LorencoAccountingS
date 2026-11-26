@@ -9,6 +9,7 @@ const router = express.Router();
 const { supabase } = require('../../../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { buildDisplayConfig } = require('../../../shared/services/jurisdiction');
+const companyIdentitySync = require('../../../shared/services/companyIdentitySync');
 
 // ── field mapping helpers ─────────────────────────────────────────────────────
 
@@ -49,12 +50,20 @@ function mapCompanyRow(row) {
     // from, not a second per-page fetch.
     jurisdiction:    row.jurisdiction,
     currencyCode:    row.currency_code,
-    physicalAddress: row.physical_address,
-    city:            row.city,
-    postalCode:      row.postal_code,
+    // Address (2026-11-26): the canonical structured columns that Paytime,
+    // invoices, statements, EMP501 and Eco billing already use. This page used
+    // to read physical_address / city / postal_code — empty for every company,
+    // so the address showed blank here and edits never reached invoices.
+    addressStreet:     row.address_street,
+    addressSuburb:     row.address_suburb,
+    addressCity:       row.address_city,
+    addressProvince:   row.address_province,
+    addressPostalCode: row.address_postal_code,
     postalAddress:   row.postal_address,
-    phone:           row.phone,
-    email:           row.email,
+    // contact_email / contact_phone are the columns Paytime, Checkout Charlie,
+    // invoices and Eco billing use (email / phone are legacy, almost all empty)
+    phone:           row.contact_phone || row.phone,
+    email:           row.contact_email || row.email,
     website:         row.website,
     bankName:        row.bank_name,
     branchCode:      row.branch_code,
@@ -197,12 +206,14 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
     if (d.coidNumber)      updates.coid_reference_number = d.coidNumber;
     if (d.yearEnd)         updates.financial_year_end  = d.yearEnd;
     if (d.vatPeriod)       updates.vat_period          = d.vatPeriod;
-    if (d.physicalAddress) updates.physical_address    = d.physicalAddress;
-    if (d.city)            updates.city                = d.city;
-    if (d.postalCode)      updates.postal_code         = d.postalCode;
+    if (d.addressStreet)     updates.address_street      = d.addressStreet;
+    if (d.addressSuburb)     updates.address_suburb      = d.addressSuburb;
+    if (d.addressCity)       updates.address_city        = d.addressCity;
+    if (d.addressProvince)   updates.address_province    = d.addressProvince;
+    if (d.addressPostalCode) updates.address_postal_code = d.addressPostalCode;
     if (d.postalAddress)   updates.postal_address      = d.postalAddress;
-    if (d.phone)           updates.phone               = d.phone;
-    if (d.email)           updates.email               = d.email;
+    if (d.phone)           updates.contact_phone       = d.phone;
+    if (d.email)           updates.contact_email       = d.email;
     if (d.website)         updates.website             = d.website;
     if (d.bankName)        updates.bank_name           = d.bankName;
     if (d.branchCode)      updates.branch_code         = d.branchCode;
@@ -211,6 +222,11 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
     if (d.accountHolder)   updates.account_holder      = d.accountHolder;
     updates.updated_at = new Date().toISOString();
 
+    // Previous values, so only fields that really changed are mirrored to ECO Hub
+    const { data: oldIdentity } = await supabase
+      .from('companies').select('company_name, contact_email, contact_phone, address_street, address_suburb, address_city, address_province, address_postal_code')
+      .eq('id', companyId).maybeSingle();
+
     const { error: updateErr } = await supabase
       .from('companies')
       .update(updates)
@@ -218,12 +234,12 @@ router.put('/:id', authenticate, authorize('admin', 'accountant'), async (req, r
 
     if (updateErr) throw updateErr;
 
-    // Sync overlapping fields back to eco_clients (bidirectional ECO Hub sync)
+    // Mirror name / email / phone / address to the ECO Hub client record
+    // (shared/services/companyIdentitySync.js — same path as Paytime's edits).
+    await companyIdentitySync.mirrorCompanyToEcoClients(parseInt(companyId, 10), companyIdentitySync.changedColumns(oldIdentity, updates));
+
+    // eco_clients.id_number carries the registration number for businesses
     const ecoUpdates = {};
-    if (d.name)            ecoUpdates.name       = d.name;
-    if (d.email)           ecoUpdates.email      = d.email;
-    if (d.phone)           ecoUpdates.phone      = d.phone;
-    if (d.physicalAddress) ecoUpdates.address    = d.physicalAddress;
     if (d.regNumber)       ecoUpdates.id_number  = d.regNumber;
 
     if (Object.keys(ecoUpdates).length > 0) {
