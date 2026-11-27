@@ -91,7 +91,8 @@ function classifyJournal(journal, lines, rate = STANDARD_RATE) {
     reference: journal.reference || '',
     description: journal.description || '',
     note: journal.is_out_of_period ? 'Late item moved into this period'
-        : journal.reversal_of_journal_id ? 'Reversal of an earlier entry' : '',
+        : journal.reversal_of_journal_id ? 'Reversal of an earlier entry'
+        : journal.status === 'reversed' ? 'Later reversed — the reversal is listed separately' : '',
   };
   const names = set => [...set].filter(Boolean).slice(0, 3).join(', ');
   const rows = [];
@@ -257,13 +258,13 @@ class VatDetailReportService {
 
     const { rows: lineRows } = await db.query(
       `SELECT j.id, j.date::text AS date, j.reference, j.description,
-              j.is_out_of_period, j.reversal_of_journal_id, j.posted_at,
+              j.is_out_of_period, j.reversal_of_journal_id, j.posted_at, j.status,
               a.code, a.name, a.type, a.sub_type, jl.debit, jl.credit
          FROM journals j
          JOIN journal_lines jl ON jl.journal_id = j.id
          JOIN accounts a       ON a.id = jl.account_id
         WHERE j.company_id = $1
-          AND j.status = 'posted'
+          AND j.status IN ('posted', 'reversed')
           AND ${PERIOD_JOURNAL_FILTER}
         ORDER BY j.date, j.id, jl.id`,
       [companyId, dateFrom, dateTo, periodId]

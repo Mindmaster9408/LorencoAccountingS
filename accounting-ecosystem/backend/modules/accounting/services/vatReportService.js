@@ -177,7 +177,7 @@ class VATReportService {
        INNER JOIN journals j ON j.id = jl.journal_id
        INNER JOIN accounts a ON a.id = jl.account_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND a.code = '1400'
          AND ${PERIOD_JOURNAL_FILTER}`,
       [companyId, dateFrom, dateTo, periodId]
@@ -193,7 +193,7 @@ class VATReportService {
        INNER JOIN journals j ON j.id = jl.journal_id
        INNER JOIN accounts a ON a.id = jl.account_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND a.code = '2300'
          AND ${PERIOD_JOURNAL_FILTER}`,
       [companyId, dateFrom, dateTo, periodId]
@@ -221,7 +221,7 @@ class VATReportService {
        INNER JOIN journal_lines jl ON jl.journal_id = j.id
        INNER JOIN accounts a ON a.id = jl.account_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND j.vat_period_id = $2
          AND j.is_out_of_period = true
          AND a.code IN ('1400', '2300')`,
@@ -259,7 +259,7 @@ class VATReportService {
        INNER JOIN journal_lines jl ON jl.journal_id = j.id
        INNER JOIN accounts a ON a.id = jl.account_id
        WHERE j.company_id = $1
-         AND j.status = 'posted'
+         AND j.status IN ('posted', 'reversed')
          AND j.date >= $2
          AND j.date <= $3
          AND a.code IN ('1400', '2300')

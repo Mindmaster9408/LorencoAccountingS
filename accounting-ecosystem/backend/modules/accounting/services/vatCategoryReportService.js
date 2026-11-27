@@ -128,7 +128,7 @@ class VatCategoryReportService {
       .from('journals')
       .select('id, date, reference, description, source_type')
       .eq('company_id', companyId)
-      .eq('status', 'posted')
+      .in('status', ['posted', 'reversed'])
       .gte('date', dateFrom)
       .lte('date', dateTo)
       .not('source_type', 'in', '(customer_invoice,supplier_invoice)');

@@ -1180,6 +1180,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
 
     // Run user fetch and company access check in parallel (both need only req.user.userId)
     const resolvedCompanyId0 = companyId ? parseInt(companyId) : null;
+    let launchViaPractice = false;   // set when the company is reached through the user's practice
     const [
       { data: user, error: userError },
       { data: directAccess }
@@ -1221,6 +1222,7 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
       }
     } else if (resolvedCompanyId) {
       const access = directAccess; // already fetched in parallel above
+      launchViaPractice = !access;   // no direct membership → reached through the practice (2026-11-27)
 
       if (!access) {
         // No direct company membership — the company may be a client of a practice the user
@@ -1291,7 +1293,9 @@ router.post('/sso-launch', authenticateToken, async (req, res) => {
     // If the user has explicit app grants for this (user, company) pair,
     // the requested targetApp must be in that set.
     // Zero rows = unrestricted (backward-compatible default).
-    if (!user.is_super_admin && resolvedCompanyId) {
+    // Only for a DIRECT membership: through a practice the practice membership's apps decide
+    // (checked above) — leftover rows on the client company must not block it (2026-11-27).
+    if (!user.is_super_admin && resolvedCompanyId && !launchViaPractice) {
       const { data: appRows } = await supabase
         .from('user_app_access')
         .select('app_key')

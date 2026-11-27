@@ -609,7 +609,7 @@ class VATReconciliationService {
             .from('journals')
             .select('id')
             .eq('company_id', companyId)
-            .eq('status', 'posted')
+            .in('status', ['posted', 'reversed'])
             .gte('date', fromDate)
             .lte('date', toDate);
 
@@ -852,7 +852,7 @@ class VATReconciliationService {
             .eq('company_id', companyId)
             .eq('vat_period_id', periodId)
             .eq('is_out_of_period', true)
-            .eq('status', 'posted')
+            .in('status', ['posted', 'reversed'])
             .order('out_of_period_original_date', { ascending: true });
 
         if (error) throw new Error(error.message);

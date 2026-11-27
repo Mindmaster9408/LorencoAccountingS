@@ -858,7 +858,7 @@ class DiagnosticsService {
         FROM journal_lines jl
         JOIN journals j ON j.id = jl.journal_id
         WHERE j.company_id = $1
-          AND j.status = 'posted'
+          AND j.status IN ('posted', 'reversed')
           AND jl.account_id = ANY($2::int[])
       `, [companyId, arIds]);
 
@@ -1006,7 +1006,7 @@ class DiagnosticsService {
         FROM journal_lines jl
         JOIN journals j ON j.id = jl.journal_id
         WHERE j.company_id = $1
-          AND j.status = 'posted'
+          AND j.status IN ('posted', 'reversed')
           AND jl.account_id = ANY($2::int[])
       `, [companyId, apIds]);
 
@@ -1060,7 +1060,7 @@ class DiagnosticsService {
         FROM journal_lines jl
         JOIN journals j ON j.id = jl.journal_id
         WHERE j.company_id = $1
-          AND j.status = 'posted'
+          AND j.status IN ('posted', 'reversed')
           AND jl.account_id = ANY($2::int[])
       `, [companyId, apIds]);
 
@@ -1137,7 +1137,7 @@ class DiagnosticsService {
       FROM journal_lines jl
       JOIN journals j ON j.id = jl.journal_id
       WHERE j.company_id = $1
-        AND j.status = 'posted'
+        AND j.status IN ('posted', 'reversed')
     `, [companyId]);
 
     const tb = tbBalance.rows[0];
@@ -1176,7 +1176,7 @@ class DiagnosticsService {
         FROM journal_lines jl
         JOIN journals j ON j.id = jl.journal_id
         WHERE j.company_id = $1
-          AND j.status = 'posted'
+          AND j.status IN ('posted', 'reversed')
           AND jl.account_id = ANY($2::int[])
       `, [companyId, vatIds]);
 
@@ -1239,7 +1239,7 @@ class DiagnosticsService {
       JOIN journals j ON j.id = jl.journal_id
       JOIN accounts a ON a.id = jl.account_id AND a.company_id = j.company_id
       WHERE j.company_id = $1
-        AND j.status = 'posted'
+        AND j.status IN ('posted', 'reversed')
     `, [companyId]);
 
     const retainedRes = await db.query(`
@@ -1280,7 +1280,7 @@ class DiagnosticsService {
           FROM journal_lines jl
           JOIN journals j ON j.id = jl.journal_id
           WHERE j.company_id = $1
-            AND j.status = 'posted'
+            AND j.status IN ('posted', 'reversed')
             AND jl.account_id = a.id
             AND j.date >= CURRENT_DATE - INTERVAL '12 months'
         )

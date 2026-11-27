@@ -172,7 +172,7 @@ describe('MCP server over HTTP', () => {
     const write = tools.filter(t => !t.annotations.readOnlyHint).map(t => t.name).sort();
     expect(write).toEqual(['allocate_bank_transaction', 'confirm_staged_transactions', 'create_account', 'create_allocation_rule',
       'create_bank_account', 'create_customer', 'create_customer_invoice', 'create_journal', 'create_supplier', 'create_supplier_invoice',
-      'create_vat_code', 'firmflow_request', 'flag_for_review', 'import_bank_statement_pdf', 'leo_request', 'post_customer_invoice', 'reconcile_bank_transactions',
+      'create_vat_code', 'firmflow_request', 'flag_for_review', 'import_bank_statement_pdf', 'leo_request', 'payroll_request', 'post_customer_invoice', 'reconcile_bank_transactions',
       'reject_staged_transaction', 'sean_auto_allocate', 'stage_bank_transactions']);
     expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ping', 'list_companies', 'get_trial_balance',
       'list_accounts', 'list_vat_settings', 'list_bank_transactions', 'get_sean_suggestions', 'list_bot_decisions', 'get_bot_policy']));
@@ -221,7 +221,8 @@ describe('MCP server over HTTP', () => {
 
   test('prohibited capabilities do not exist as tools and fail closed', async () => {
     const list = (await post({ jsonrpc: '2.0', id: 43, method: 'tools/list' })).body.result.tools.map(t => t.name).join(' ');
-    expect(list).not.toMatch(/sars|submit|pay|close|reopen|approve|delete|permission|role|email|send/i);
+    // (payroll_* = Paytime clerk work since 2026-11-27; still no payment / pay_ tool)
+    expect(list).not.toMatch(/sars|submit|payment|pay_|close|reopen|approve|delete|permission|role|email|send/i);
     for (const name of ['submit_sars_return', 'make_bank_payment', 'close_period', 'reopen_period', 'approve_financial_statements',
       'delete_journal', 'set_my_permissions', 'email_client']) {
       const r = await post({ jsonrpc: '2.0', id: 44, method: 'tools/call', params: { name, arguments: { company_id: 51 } } });
@@ -350,10 +351,10 @@ describe('Codebox 3 controls', () => {
 
     test('everything in Ledger Leo is allowed; other apps and the hard-block list are refused before anything is sent', async () => {
       const c = createClient();
-      for (const [m, p] of [['PUT', '/api/users/45'], ['POST', '/api/payroll/payruns'], ['GET', '/api/payroll/employees'],
+      for (const [m, p] of [['PUT', '/api/users/45'], ['POST', '/api/payroll/finalize'], ['GET', '/api/pos/products'],
         ['GET', '/api/pos/sales'], ['POST', '/api/accounting/bank/transactions/1/allocate/../../../journals'],
         ['PUT', '/api/accounting/bank/sean-settings'], ['POST', '/api/accounting/customer-invoices/12/send'],
-        ['POST', '/api/accounting/vat-recon/periods/3/submit'], ['GET', '/api/accounting/paye/config'],
+        ['POST', '/api/accounting/vat-recon/periods/3/submit'], ['PUT', '/api/accounting/paye/config'],
         ['POST', '/api/accounting/bot-decisions/5/approve'], ['DELETE', '/api/accounting/company/51'],
         ['POST', '/api/accounting/integrations'], ['TRACE', '/api/accounting/accounts']]) {
         await expect(c.request(ctx, 51, m, p, {})).rejects.toMatchObject({ status: 403 });
@@ -735,7 +736,9 @@ describe('Full Ledger Leo access — VAT codes, journals, reports, leo_routes / 
     const paths = r.routes.map(x => x.method + ' ' + x.path);
     expect(paths).toEqual(expect.arrayContaining(['POST /api/accounting/credit-notes', 'POST /api/accounting/journals/:id/reverse',
       'POST /api/accounting/suppliers/payments', 'DELETE /api/accounting/accounts/:id', 'POST /api/accounting/periods/:id/lock']));
-    expect(paths.some(p => /\/send$|\/paye|\/employees|\/integrations|\/kv|pdf$/.test(p))).toBe(false);
+    expect(paths.some(p => /\/send$|\/integrations|\/kv|pdf$/.test(p))).toBe(false);
+    // Leo's PAYE recon and employee list are read-only for the bot (2026-11-27)
+    expect(paths.some(p => !p.startsWith('GET ') && /\/paye|\/employees/.test(p))).toBe(false);
     const vat = (await tool('leo_routes').run(api, ctxOf(), { filter: 'vat-settings', method: 'POST' })).routes;
     expect(vat.find(x => x.path === '/api/accounting/vat-settings').body).toEqual(expect.arrayContaining(['code', 'name', 'rate']));
   });
@@ -840,5 +843,45 @@ describe('company session cache is per key (2026-11-24)', () => {
     await c.request({ user: { id: 10, email: 'bot@example.test' }, tokenId: 1 }, 51, 'GET', '/api/accounting/accounts');
     await c.request({ user: { id: 10, email: 'bot@example.test' }, tokenId: 2 }, 51, 'GET', '/api/accounting/accounts');
     expect(seen.filter(s => s[1] === '/api/auth/select-company')).toHaveLength(2);   // key 1 once (cached), key 2 fresh
+  });
+});
+
+describe('Paytime (payroll) access — prepare the month, a person finalizes (2026-11-27)', () => {
+  const { blockReason } = require('../modules/mcp/lorencoApi');
+  const { TOOLS: T, validateArgs: V } = require('../modules/mcp/tools');
+  test('payroll clerk work is allowed', () => {
+    for (const [m, p] of [['GET', '/api/payroll/employees'], ['PUT', '/api/payroll/employees/5/bank-details'],
+      ['POST', '/api/payroll/employees/5/salary-change'], ['POST', '/api/payroll/bulk-inputs'], ['POST', '/api/payroll/transactions/inputs'],
+      ['POST', '/api/payroll/transactions/overtime'], ['POST', '/api/payroll/attendance'], ['POST', '/api/payroll/attendance/leave'],
+      ['POST', '/api/payroll/items/employee'], ['PUT', '/api/payroll/items/employee/3'], ['POST', '/api/payroll/run'],
+      ['GET', '/api/payroll/history'], ['POST', '/api/payroll/calculate'], ['POST', '/api/payroll/periods'],
+      ['GET', '/api/payroll/recon/emp501'], ['GET', '/api/payroll/tax-tables'], ['GET', '/api/accounting/paye/config']]) {
+      expect([m, p, blockReason(m, p)]).toEqual([m, p, null]);
+    }
+  });
+  test('closing the month and SARS- / rule-facing steps are refused', () => {
+    for (const [m, p] of [['POST', '/api/payroll/finalize'], ['POST', '/api/payroll/reverse'], ['POST', '/api/payroll/unlock'],
+      ['POST', '/api/payroll/historical-import'], ['POST', '/api/payroll/historical-import/batches/x/undo'],
+      ['GET', '/api/payroll/kv'], ['PUT', '/api/payroll/kv/x'], ['PUT', '/api/payroll/tax-tables'], ['POST', '/api/payroll/pay-schedules'],
+      ['POST', '/api/payroll/items'], ['PUT', '/api/payroll/items/4'], ['DELETE', '/api/payroll/items/4'], ['PUT', '/api/payroll/items/hidden'],
+      ['PUT', '/api/payroll/recon/submitted'], ['POST', '/api/payroll/recon/easyfile'], ['PUT', '/api/payroll/periods/3/status'],
+      ['PUT', '/api/payroll/transactions/status'], ['DELETE', '/api/payroll/employees/5'], ['DELETE', '/api/payroll/employees/5/historical'],
+      ['POST', '/api/payroll/sean/learn'], ['POST', '/api/accounting/paye/reconciliation/approve/3']]) {
+      expect([m, p, typeof blockReason(m, p)]).toEqual([m, p, 'string']);
+    }
+  });
+  test('payroll_routes lists Paytime routes without the closed ones; payroll_request takes /api/payroll only', async () => {
+    const r = await T.find(t => t.name === 'payroll_routes').run(null, {}, {});
+    const paths = r.routes.map(x => x.method + ' ' + x.path);
+    expect(paths).toEqual(expect.arrayContaining(['POST /api/payroll/run', 'POST /api/payroll/bulk-inputs', 'GET /api/payroll/employees']));
+    expect(paths.some(p => /(finalize|reverse|unlock)$|\/kv/.test(p) && !p.startsWith('GET /api/payroll/recon'))).toBe(false);
+    expect(paths.some(p => !p.startsWith('GET ') && /historical-import/.test(p))).toBe(false);   // read only
+    const t = T.find(x => x.name === 'payroll_request');
+    expect(V(t.inputSchema, { company_id: 7, method: 'GET', path: '/api/accounting/accounts' })).toMatch(/path must look like/);
+    const calls = [];
+    const api = { async request(c, cid, m, p, b) { calls.push([m, p, b, cid]); return {}; } };
+    await expect(t.run(api, {}, { company_id: 7, method: 'POST', path: '/api/payroll/run', body: {} })).rejects.toMatchObject({ status: 400 });
+    await t.run(api, {}, { company_id: 7, method: 'GET', path: '/api/payroll/history', query: { period_key: '2026-11' } });
+    expect(calls).toEqual([['GET', '/api/payroll/history?period_key=2026-11', undefined, 7]]);
   });
 });

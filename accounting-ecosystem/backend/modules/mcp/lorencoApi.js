@@ -64,8 +64,9 @@ const HARD_BLOCK = [
   [W,      /^\/api\/accounting\/vat-returns(\/|$)/,                       'capturing filed SARS VAT returns and payments is done by a person'],
   [W,      /^\/api\/accounting\/vat-recon\/cycle$/,                        'changing the company\'s VAT cycle is done by a person'],
   [W,      /^\/api\/practice\/clients\/[^/]+\/vat-cycle$/,                 'changing a client\'s VAT cycle is done by an authorised person'],
-  [ANY,    /^\/api\/accounting\/paye(\/|$)/,                             'PAYE / payroll belongs to Paytime, which the bot does not use'],
-  [ANY,    /^\/api\/accounting\/employees(\/|$)/,                        'employees belong to Paytime, which the bot does not use'],
+  // Leo's PAYE reconciliation (approve / lock = SARS-facing) and Leo's employee list: read only.
+  [W,      /^\/api\/accounting\/paye(\/|$)/,                             'approving or locking a PAYE reconciliation is done by a person'],
+  [W,      /^\/api\/accounting\/employees(\/|$)/,                        'employees are maintained in Paytime (payroll_request)'],
   [ANY,    /^\/api\/accounting\/pos\/(?!customers(\/|$))/,               'Checkout Charlie (POS) is not available to the bot'],
   [ANY,    /^\/api\/accounting\/(integrations|kv|diagnostics|pilot|pilot-smoke-tests)(\/|$)/, 'system settings, keys and integrations are not available to the bot'],
   [W,      /^\/api\/accounting\/company(\/|$)/,                          'creating, changing or deleting companies is done by a person'],
@@ -86,9 +87,25 @@ const HARD_BLOCK = [
   [W,      /^\/api\/practice\/tax-(submissions|disputes)\/[^/]+\/mark-submitted$/, 'only the person who submitted on SARS eFiling marks a submission as submitted'],
   [W,      /^\/api\/practice\/(?!tax-disputes\/).+\/(approve|reject|approve-[a-z-]+|reject-[a-z-]+|start-review|qa-lock|qa-unlock|partner-review|partner-override|override|accept-risk|sign|lock|decision)$/,
                                                                          'sign-off (approve / reject / QA lock / partner override) is done by a person — submit the work for review instead'],
-  ['POST', /^\/api\/practice\/.+\/(reviews|review)$/,                    'reviews are recorded by the person who did the review']
+  ['POST', /^\/api\/practice\/.+\/(reviews|review)$/,                    'reviews are recorded by the person who did the review'],
+
+  // ── Paytime (/api/payroll) — 2026-11-27 (Ruan) ──
+  // The bot prepares the month like a payroll clerk: employees, monthly inputs, attendance / leave, recurring
+  // employee items, a DRAFT pay run and draft payslips. Closing the month and anything SARS- or rule-facing
+  // stays with a person. Paytime's own permissions and finalized-month locks still apply underneath.
+  ['POST', /^\/api\/payroll\/(finalize|reverse)$/,                       'finalizing or reversing a pay run is done by a person — the bot prepares the draft'],
+  [W,      /^\/api\/payroll\/unlock(\/|$)/,                              'unlocking a finalized payslip is done by a person'],
+  [W,      /^\/api\/payroll\/historical-import(\/|$)/,                   'a historical import creates locked payslips — a person does that'],
+  [ANY,    /^\/api\/payroll\/kv(\/|$)/,                                  'raw payroll storage is not available to the bot'],
+  [W,      /^\/api\/payroll\/(tax-tables|global-authority|pay-schedules)(\/|$)/, 'tax tables, global rules and pay schedules are set by a person'],
+  [W,      /^\/api\/payroll\/items(\/hidden|\/\d+)?$/,                   'payroll items and their IRP5 codes are set by a person (employee items: /api/payroll/items/employee)'],
+  [W,      /^\/api\/payroll\/recon(\/|$)/,                               'EMP501 / e@syFile submitted and finalized marks are set by the person who filed'],
+  [W,      /^\/api\/payroll\/periods\/[^/]+\/status$/,                   'changing a pay period\'s status is done by a person'],
+  [W,      /^\/api\/payroll\/transactions\/status$/,                     'changing payroll transaction status is done by a person'],
+  ['DELETE', /^\/api\/payroll\/employees\/[^/]+(\/historical)?$/,        'deleting an employee or their history is done by a person (end of service is an employment date)'],
+  [W,      /^\/api\/payroll\/sean(\/|$)/,                                'Sean learning for payroll is approved by a person']
 ];
-const LEO_PATH = /^\/api\/(accounting|practice)\/[A-Za-z0-9._~\-/]*$/;
+const LEO_PATH = /^\/api\/(accounting|practice|payroll)\/[A-Za-z0-9._~\-/]*$/;
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 /** Why this call is refused, or null when it may go to Leo. */
@@ -97,7 +114,7 @@ function blockReason(method, path) {
   if (!METHODS.includes(m)) return 'unsupported method ' + m;
   const p = String(path || '').split('?')[0];
   if (!LEO_PATH.test(p) || p.includes('..') || p.includes('//')) {
-    return 'only Ledger Leo (/api/accounting/…) and Firmflow (/api/practice/…) are available to the bot — other apps are not';
+    return 'only Ledger Leo (/api/accounting/…), Firmflow (/api/practice/…) and Paytime (/api/payroll/…) are available to the bot — other apps are not';
   }
   for (const [bm, re, why] of HARD_BLOCK) {
     if ((bm === ANY || (bm === W ? m !== 'GET' : bm === m)) && re.test(p)) return why;

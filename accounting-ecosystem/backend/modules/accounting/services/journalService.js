@@ -586,6 +586,68 @@ class JournalService {
   }
 
   /**
+   * Decide where a reversal lands (audit R1, 2026-11-27).
+   *
+   *   'original' → reversal gets the original's date (and VAT period): an undo
+   *                that cancels inside the same, still-open month / VAT return.
+   *   'today'    → reversal is dated today, in the current open period: used once
+   *                the original's period is closed for VAT or for the year.
+   *
+   * 'today' when ANY of these holds:
+   *   - the original's VAT period is LOCKED, or a filed VAT return exists for it
+   *   - the original carries VAT lines but no vat_period_id (posted before VAT
+   *     periods existed) — we cannot prove its period is still open
+   *   - a year-end close journal exists on/after the original's date
+   * The original's own ACCOUNTING period is never locked here — reverseJournal
+   * refuses that case before calling this.
+   *
+   * Errors reading any of this throw: the reversal must not guess (fail closed).
+   *
+   * @returns {Promise<{ date: string, mode: 'original'|'today', reason: string }>}
+   */
+  static async _chooseReversalPlacement(companyId, originalJournal, originalLines) {
+    const today = new Date().toISOString().split('T')[0];
+    const originalDate = String(originalJournal.date).slice(0, 10);
+    const toToday = (reason) => ({ date: today, mode: 'today', reason });
+
+    if (originalDate >= today) return { date: originalDate, mode: 'original', reason: 'original_dated_today_or_later' };
+
+    // Year-end already closed over this date → the closed year must not change.
+    const { rows: yeRows } = await db.query(
+      `SELECT 1 FROM journals
+        WHERE company_id = $1 AND source_type = 'year_end_close'
+          AND status IN ('posted', 'reversed') AND date >= $2
+        LIMIT 1`,
+      [companyId, originalDate]
+    );
+    if (yeRows.length) return toToday('year_end_closed');
+
+    if (originalJournal.vat_period_id) {
+      const { rows: vpRows } = await db.query(
+        `SELECT p.status,
+                EXISTS (SELECT 1 FROM vat_returns r
+                         WHERE r.company_id = p.company_id AND r.vat_period_id = p.id
+                           AND r.status = 'filed') AS filed
+           FROM vat_periods p
+          WHERE p.id = $1 AND p.company_id = $2`,
+        [originalJournal.vat_period_id, companyId]
+      );
+      const vp = vpRows[0];
+      if (!vp) return toToday('vat_period_missing');
+      if (String(vp.status || '').toUpperCase() === 'LOCKED') return toToday('vat_period_locked');
+      if (vp.filed) return toToday('vat_return_filed');
+      return { date: originalDate, mode: 'original', reason: 'periods_open' };
+    }
+
+    // No VAT period on the original: only safe to copy its date if it has no VAT lines.
+    const flat = originalLines.map(l => ({
+      ...l, account_code: l.accounts?.code, account_reporting_group: l.accounts?.reporting_group,
+    }));
+    if (isVatJournal(flat)) return toToday('vat_lines_without_vat_period');
+    return { date: originalDate, mode: 'original', reason: 'periods_open' };
+  }
+
+  /**
    * Reverse a posted journal — ATOMIC + VAT-SAFE
    *
    * VAT ASSIGNMENT — P3 FIX (2026-04-17):
@@ -638,11 +700,6 @@ class JournalService {
       );
     }
 
-    // Check period lock for reversal date (today)
-    const today = new Date().toISOString().split('T')[0];
-    const isLocked = await this.isPeriodLocked(companyId, today);
-    if (isLocked) throw new Error('Cannot create reversal journal in a locked period');
-
     // Get original journal lines WITH account detail — needed for VAT detection.
     // We fetch with the accounts join here so _resolveVatPeriodForPost can
     // detect VAT accounts without an additional DB round-trip.
@@ -654,19 +711,30 @@ class JournalService {
 
     if (linesErr) throw new Error(linesErr.message);
 
-    // ── VAT period resolution — synchronous, fail-safe ───────────────────────
-    // Runs BEFORE the transaction opens. Uses the same canonical helper as
-    // postJournal (Priority 2). The reversal date is today, so we resolve VAT
-    // for today's period — same logic as any other posted journal.
-    //
-    // Original lines are passed for VAT account detection (same accounts as
-    // the reversal; debit/credit direction is irrelevant for period assignment).
-    //
-    // If resolution throws, no transaction is started — original journal stays
-    // posted, no reversal created.
-    const vatAssignment = await this._resolveVatPeriodForPost(
-      companyId, today, originalLines || []
-    );
+    // ── Reversal date + VAT period (2026-11-27, audit R1) ────────────────────
+    // While the original's month and VAT period are still open, the reversal is
+    // an "undo": it takes the ORIGINAL's date and VAT period, so both cancel out
+    // inside the same month and the same VAT return. Only once that period is
+    // closed (VAT period LOCKED, VAT return filed, year-end closed) does the
+    // reversal go to today, in the current open period — the SARS treatment.
+    // Before this, every reversal took today's date: undoing an October bank
+    // allocation in November moved R23k of Turkstra's input VAT into November.
+    const placement = await this._chooseReversalPlacement(companyId, originalJournal, originalLines || []);
+    const reversalDate = placement.date;
+
+    const isLocked = await this.isPeriodLocked(companyId, reversalDate);
+    if (isLocked) throw new Error('Cannot create reversal journal in a locked period');
+
+    // VAT period: 'original' mode copies the original's assignment; 'today' mode
+    // resolves today's period with the canonical helper (same as postJournal).
+    // Resolution runs BEFORE the transaction opens — if it throws, no reversal.
+    const vatAssignment = placement.mode === 'original'
+      ? (originalJournal.vat_period_id
+          ? { vatPeriodId:   originalJournal.vat_period_id,
+              isOutOfPeriod: !!originalJournal.is_out_of_period,
+              originalDate:  originalJournal.out_of_period_original_date || null }
+          : null)
+      : await this._resolveVatPeriodForPost(companyId, reversalDate, originalLines || []);
 
     // ── Atomic write: reversal header + reversal lines + mark original ────────
     // VAT fields are included directly in the header INSERT — they are part of
@@ -687,13 +755,13 @@ class JournalService {
          RETURNING *`,
         [
           companyId,
-          today,
+          reversalDate,
           `REV-${originalJournal.reference || originalJournal.id}`,
           `Reversal of: ${originalJournal.description}. Reason: ${reason}`,
           originalJournal.source_type,
           reversedByUserId,
           originalJournalId,
-          { reversalReason: reason },
+          { reversalReason: reason, reversalPlacement: placement.mode, reversalPlacementReason: placement.reason },
           vatAssignment?.vatPeriodId              ?? null,
           vatAssignment?.isOutOfPeriod            ?? false,
           vatAssignment?.originalDate             ?? null,
@@ -712,6 +780,25 @@ class JournalService {
       }));
 
       await _insertLinesOnClient(client, reversalJournal.id, reversedLines);
+
+      // An out-of-period original was counted on its target VAT period's OOP
+      // counters; a reversal copied into that same period nets them back.
+      if (placement.mode === 'original' && vatAssignment && vatAssignment.isOutOfPeriod) {
+        const { inputVat, outputVat } = getVatAmountsFromLines(reversedLines.map(l => {
+          const orig = (originalLines || []).find(o => o.account_id === l.accountId) || {};
+          return { debit: l.debit, credit: l.credit,
+                   account_code: orig.accounts?.code, account_reporting_group: orig.accounts?.reporting_group };
+        }));
+        await client.query(
+          `UPDATE vat_periods
+              SET out_of_period_count        = COALESCE(out_of_period_count, 0) + 1,
+                  out_of_period_total_input  = COALESCE(out_of_period_total_input, 0)  + $1,
+                  out_of_period_total_output = COALESCE(out_of_period_total_output, 0) + $2,
+                  updated_at = NOW()
+            WHERE id = $3 AND company_id = $4`,
+          [inputVat, outputVat, vatAssignment.vatPeriodId, companyId]
+        );
+      }
 
       // Mark original journal as reversed — conditional UPDATE prevents concurrent
       // double-reversal. The predicate (status='posted' AND reversed_by_journal_id IS NULL)

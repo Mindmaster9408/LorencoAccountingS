@@ -478,7 +478,7 @@ class VatReturnsService {
          JOIN journal_lines jl ON jl.journal_id = j.id
          JOIN accounts a       ON a.id = jl.account_id
         WHERE j.company_id = $1
-          AND j.status = 'posted'
+          AND j.status IN ('posted', 'reversed')
           AND ${PERIOD_JOURNAL_FILTER}
           AND j.posted_at >= $5::date
         GROUP BY j.id

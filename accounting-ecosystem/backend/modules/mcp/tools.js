@@ -976,6 +976,47 @@ const TOOLS = [
       }
       return api.request(ctx, a.company_id, m, p + qs(q), m === 'GET' || m === 'DELETE' ? undefined : (a.body || {}));
     }
+  },
+
+  // ── Paytime — payroll (Ruan 2026-11-27): prepare the month, a person finalizes ─────────────
+  {
+    name: 'payroll_routes',
+    description: 'The list of everything you can do in Paytime (payroll) through payroll_request: employees (details, salary changes, bank details, work schedules, company cars, notes), monthly variable inputs (bulk-inputs — one file / list for the whole month), current inputs, overtime, short time, attendance and leave, employee recurring items, voluntary tax, calculations, a DRAFT pay run (POST /api/payroll/run), pay-run history and draft payslips, reports. Search with "filter" (e.g. "employees", "bulk-inputs", "transactions", "attendance", "leave", "run", "history"). Finalizing, reversing and SARS steps are done by a person.',
+    inputSchema: { type: 'object', properties: {
+      filter: { type: 'string', description: 'Words to match in the path, e.g. "employees" or "bulk-inputs"' },
+      method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }
+    }, additionalProperties: false },
+    async run(api, ctx, a) {
+      const words = String(a.filter || '').toLowerCase().split(/\s+/).filter(Boolean);
+      const rows = routeCatalogue('payroll').filter(r => (!a.method || r.method === a.method) &&
+        words.every(w => r.path.toLowerCase().includes(w)));
+      return { count: rows.length, routes: rows,
+        how: 'Call payroll_request with the CLIENT company_id (e.g. Turkstra), method, path (replace :id etc.), query and body. Period keys look like 2026-11. When unsure of the fields, GET an existing record first and copy its shape.' };
+    }
+  },
+  {
+    name: 'payroll_request',
+    description: 'Do payroll work in Paytime as this user, like a payroll clerk: read everything; add / update employees; capture the month\'s inputs (POST /api/payroll/bulk-inputs with dry_run: true first, then dry_run: false), overtime, short time, attendance and leave; employee recurring items; run a DRAFT pay run (POST /api/payroll/run with period_key and employee_ids) and read the draft payslips (GET /api/payroll/history?period_key=…). Find the route with payroll_routes. company_id is the CLIENT company whose payroll it is. Paytime checks permissions and refuses changes to a finalized month. Not available (a person does it): Finalize Payroll, reversing a run, unlocking payslips, historical imports, tax tables, pay schedules, payroll items / IRP5 codes, EMP501 / e@syFile filing marks, deleting employees.',
+    inputSchema: { type: 'object', properties: {
+      company_id: Object.assign({}, companyIdProp, { description: 'The client company whose payroll this is (from list_companies)' }),
+      method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+      path: { type: 'string', pattern: '^/api/payroll/[A-Za-z0-9._~\\-/]+$', description: 'e.g. /api/payroll/employees or /api/payroll/bulk-inputs' },
+      query: { type: 'object', description: 'Query-string values, e.g. {"period_key":"2026-11"}' },
+      body: { type: 'object', description: 'JSON body for POST / PUT / PATCH' },
+      reason: { type: 'string', description: 'Why (required for anything that changes data)' }
+    }, required: ['company_id', 'method', 'path'], additionalProperties: false },
+    write: true,
+    async run(api, ctx, a) {
+      const m = a.method, p = a.path.replace(/\/+$/, '');
+      if (m !== 'GET' && !(a.reason && String(a.reason).trim())) throw apiError(400, 'reason is required for anything that changes data');
+      if (m === 'GET' && /\/(pdf|file|download|export)$/.test(p)) throw apiError(400, 'PDF / file downloads are not available through the bot — use the data route instead.');
+      const q = {};
+      for (const [k, v] of Object.entries(a.query || {})) {
+        if (v !== null && typeof v === 'object') throw apiError(400, `query.${k} must be a plain value`);
+        q[k] = v;
+      }
+      return api.request(ctx, a.company_id, m, p + qs(q), m === 'GET' || m === 'DELETE' ? undefined : (a.body || {}));
+    }
   }
 ];
 
@@ -985,7 +1026,7 @@ const TOOLS = [
  * with const xRouter = require('./f') — plus routes defined in index.js itself, with the
  * req.body / req.query fields each handler reads. Routes the bot may not use are left out.
  */
-const APPS = { accounting: '/api/accounting', practice: '/api/practice' };
+const APPS = { accounting: '/api/accounting', practice: '/api/practice', payroll: '/api/payroll' };
 const _catalogues = {};
 function routeCatalogue(app) {
   if (_catalogues[app]) return _catalogues[app];

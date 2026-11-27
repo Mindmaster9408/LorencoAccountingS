@@ -159,55 +159,42 @@ router.post('/close', authenticate, requireAccountant, async (req, res) => {
       });
     }
 
-    // ── 5. Fetch posted journals in the year range ───────────────────────────
-    const { data: yearJournals, error: jErr } = await supabase
-      .from('journals')
-      .select('id')
-      .eq('company_id', companyId)
-      .eq('status', 'posted')
-      .gte('date', fromDate)
-      .lte('date', toDate);
+    // ── 5 + 6. P&L balances for the year, summed in SQL ──────────────────────
+    // 2026-11-27 (audit R1): one aggregate query instead of two Supabase reads.
+    //   - status IN ('posted','reversed'): a reversed original and its reversal
+    //     net to zero. Reading only 'posted' counted the reversal but not the
+    //     original, closing −X to retained earnings instead of 0 (same rule as
+    //     reports.js since 2026-09-02).
+    //   - no row cap: the Supabase reads silently stopped at 1000 journals /
+    //     1000 lines, so any normal company got a wrong closing journal.
+    //   - inactive accounts included: an account switched off with a balance
+    //     still has to close, or retained earnings stays out of balance.
+    const { rows: plRows } = await db.query(
+      `SELECT a.id, a.code, a.name, a.type,
+              COALESCE(SUM(jl.debit), 0)::numeric  AS debit,
+              COALESCE(SUM(jl.credit), 0)::numeric AS credit
+         FROM journal_lines jl
+         JOIN journals j ON j.id = jl.journal_id
+         JOIN accounts a ON a.id = jl.account_id
+        WHERE j.company_id = $1
+          AND a.company_id = $1
+          AND j.status IN ('posted', 'reversed')
+          AND j.date >= $2 AND j.date <= $3
+          AND a.type IN ('income', 'expense')
+        GROUP BY a.id, a.code, a.name, a.type`,
+      [companyId, fromDate, toDate]
+    );
 
-    if (jErr) throw new Error(jErr.message);
-    if (!yearJournals || yearJournals.length === 0) {
+    if (plRows.length === 0) {
       return res.status(422).json({
-        error: 'No posted journals found in the specified date range. Nothing to close.'
+        error: 'No posted income or expense entries found in the specified date range. Nothing to close.'
       });
     }
 
-    const journalIds = yearJournals.map(j => j.id);
-
-    // Fetch active income and expense accounts for this company
-    const { data: plAccounts, error: acctErr } = await supabase
-      .from('accounts')
-      .select('id, code, name, type')
-      .eq('company_id', companyId)
-      .in('type', ['income', 'expense'])
-      .eq('is_active', true);
-
-    if (acctErr) throw new Error(acctErr.message);
-    if (!plAccounts || plAccounts.length === 0) {
-      return res.status(422).json({ error: 'No income or expense accounts found.' });
-    }
-
-    const plAccountIds = plAccounts.map(a => a.id);
-
-    // Fetch journal lines for P&L accounts within the year (batched — supabase .in() supports up to 1000)
-    const { data: plLines, error: lErr } = await supabase
-      .from('journal_lines')
-      .select('account_id, debit, credit')
-      .in('journal_id', journalIds)
-      .in('account_id', plAccountIds);
-
-    if (lErr) throw new Error(lErr.message);
-
-    // ── 6. Aggregate balances per account ────────────────────────────────────
+    const plAccounts = plRows.map(r => ({ id: r.id, code: r.code, name: r.name, type: r.type }));
     const balMap = {};
-    for (const l of plLines || []) {
-      const id = l.account_id;
-      if (!balMap[id]) balMap[id] = { debit: 0, credit: 0 };
-      balMap[id].debit  += parseFloat(l.debit  || 0);
-      balMap[id].credit += parseFloat(l.credit || 0);
+    for (const r of plRows) {
+      balMap[r.id] = { debit: parseFloat(r.debit), credit: parseFloat(r.credit) };
     }
 
     // Build closing journal lines:

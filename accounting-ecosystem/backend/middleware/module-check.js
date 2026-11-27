@@ -44,7 +44,11 @@ function requireModule(moduleKey) {
     // Super admins are exempt.  If the user has ANY rows in user_app_access
     // for their (userId, companyId) pair, then the requested app must be in
     // those rows.  Zero rows means "unrestricted" (default: no restriction set).
-    if (req.user?.userId && req.companyId && !req.user?.isSuperAdmin) {
+    // A session that reaches a CLIENT through the user's practice (invitation model, 2026-11-26) is
+    // governed by the practice membership's apps (tier 4 below) — rows left on the client company from
+    // an earlier direct membership must not block it (2026-11-27: they blocked the bot's Paytime work).
+    const viaPractice = !!(req.companyAccess && req.companyAccess.via_practice_id);
+    if (req.user?.userId && req.companyId && !req.user?.isSuperAdmin && !viaPractice) {
       const { data: appRows, error: appErr } = await supabase
         .from('user_app_access')
         .select('app_key')
